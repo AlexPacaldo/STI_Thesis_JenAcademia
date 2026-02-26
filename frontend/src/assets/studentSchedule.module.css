@@ -286,3 +286,4 @@
   .wrapper { grid-template-columns: 1fr; }
   .bookPanel { order: -1; }  /* slots above calendar on small screens */
 }
+.today { outline: 3px solid #056c00; }

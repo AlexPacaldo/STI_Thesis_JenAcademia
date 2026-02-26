@@ -1,0 +1,210 @@
+.container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+}
+
+.videoCard {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  max-width: 500px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.closeBtn {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 28px;
+  cursor: pointer;
+  padding: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.closeBtn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.content {
+  padding: 32px 24px;
+}
+
+.joinBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.3s;
+  width: 100%;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.joinBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.joinBtn:active {
+  transform: translateY(0);
+}
+
+.icon {
+  font-size: 20px;
+}
+
+.info {
+  margin-top: 24px;
+  padding: 16px;
+  background: #f5f5f5;
+  border-radius: 8px;
+}
+
+.label {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: #333;
+  text-transform: capitalize;
+}
+
+.instructions {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #eee;
+}
+
+.instructions h3 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.instructions ul {
+  margin: 0;
+  padding-left: 20px;
+  list-style-type: none;
+}
+
+.instructions li {
+  margin: 8px 0;
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.instructions li:before {
+  content: "✓ ";
+  color: #667eea;
+  font-weight: bold;
+  margin-right: 8px;
+}
+
+.loadingMessage,
+.errorMessage {
+  background: white;
+  border-radius: 12px;
+  padding: 40px;
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  max-width: 500px;
+  width: 100%;
+}
+
+.loadingMessage {
+  font-size: 16px;
+  color: #666;
+}
+
+.errorMessage h2 {
+  margin: 0 0 12px 0;
+  color: #ef4444;
+}
+
+.errorMessage p {
+  margin: 0 0 24px 0;
+  color: #666;
+}
+
+.backBtn {
+  padding: 10px 20px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.backBtn:hover {
+  background: #764ba2;
+}
+
+@media (max-width: 640px) {
+  .container {
+    padding: 12px;
+  }
+
+  .header {
+    padding: 16px;
+  }
+
+  .header h1 {
+    font-size: 20px;
+  }
+
+  .content {
+    padding: 20px 16px;
+  }
+
+  .joinBtn {
+    padding: 14px 20px;
+    font-size: 14px;
+  }
+}

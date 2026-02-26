@@ -2,17 +2,58 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/AdminDashboard.module.css";
+import Calendar from "./Calendar.jsx"; // admin calendar view
 
 const API = "http://localhost:3001";
 
+// Helper to safely parse date strings
+const parseDate = (dateString) => {
+  if (!dateString) return null;
+  try {
+    // Try direct Date constructor first
+    const date = new Date(dateString);
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
+    
+    // Try manual parsing for YYYY-MM-DD format
+    const parts = String(dateString).split("-");
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10);
+      const day = parseInt(parts[2], 10);
+      if (year && month && day) {
+        return new Date(year, month - 1, day);
+      }
+    }
+  } catch (e) {
+    // fallback to null
+  }
+  return null;
+};
+
+// Helper to format date nicely
+const formatDate = (dateString) => {
+  const date = parseDate(dateString);
+  if (!date || isNaN(date.getTime())) {
+    return dateString || "No date";
+  }
+  try {
+    return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  } catch (e) {
+    return dateString || "Invalid date";
+  }
+};
+
 export default function AdminDashboard() {
   const { notify } = useNotification() || {};
-  const [active, setActive] = useState("enrollees"); // 'enrollees' | 'trials' | 'create' | 'archive'
+  const [active, setActive] = useState("calendar"); // 'calendar' | 'createTeacher' | 'createStudent' | 'archive' | 'requests'
   const [me, setMe] = useState(null);
 
   // data
   const [students, setStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
+  const [requests, setRequests] = useState([]); // reschedule requests
 
   // create-teacher form
   const [tForm, setTForm] = useState({
@@ -31,6 +72,10 @@ export default function AdminDashboard() {
     contact: "",
   });
   const [loading, setLoading] = useState(false);
+  const [archiveRefresh, setArchiveRefresh] = useState(0); // bump to reload archived list
+  const [requestFilter, setRequestFilter] = useState("all"); // 'all', 'pending', 'approved', 'declined'
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null); // { id, status, action }
 
   // ---- role gate (admin only) ----
    useEffect(() => {
@@ -51,11 +96,11 @@ export default function AdminDashboard() {
   async function loadUsers() {
     try {
       const [s, t] = await Promise.all([
-        axios.get(`${API}/api/admin/users?role=student&archived=0`),
-        axios.get(`${API}/api/admin/users?role=teacher&archived=0`),
+        axios.get(`${API}/api/admin/users?role=student&status=active`),
+        axios.get(`${API}/api/admin/users?role=teacher&status=active`),
       ]);
-      setStudents(s.data.items || []);
-      setTeachers(t.data.items || []);
+      setStudents(s.data || []);
+      setTeachers(t.data || []);
     } catch (e) {
       console.error(e);
       setStudents([]);
@@ -65,9 +110,17 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (!me) return;
-    // preload default tab + archive lists
+    // preload default data
     loadUsers();
+    if (active === "requests") loadRequests();
   }, [me]);
+
+  // reload requests when tab becomes active
+  useEffect(() => {
+    if (active === "requests") {
+      loadRequests();
+    }
+  }, [active]);
 
   // ---- actions: create teacher ----
   async function createTeacher(e) {
@@ -108,23 +161,53 @@ export default function AdminDashboard() {
   // ---- actions: archive ----
   async function archiveUser(id) {
     try {
-      await axios.patch(`${API}/api/admin/users/${id}`, { action: "archive" });
+      await axios.put(`${API}/api/users/${id}/status`, { status: "archived" });
       // remove from visible lists
-      setStudents(prev => prev.filter(x => x.id !== id));
-      setTeachers(prev => prev.filter(x => x.id !== id));
+      setStudents(prev => prev.filter(x => x.user_id !== id));
+      setTeachers(prev => prev.filter(x => x.user_id !== id));
       notify("User archived successfully", "success");
+      loadUsers(); // refresh the active lists
+      setArchiveRefresh(r => r + 1); // tell archived component to reload
     } catch (e) {
       notify("Failed to archive user", "error");
     }
   }
   async function unarchiveUser(id) {
     try {
-      await axios.patch(`${API}/api/admin/users/${id}`, { action: "unarchive" });
+      await axios.put(`${API}/api/users/${id}/status`, { status: "active" });
       // optional: refetch archived lists; or ignore if not needed here
       loadUsers();
+      setArchiveRefresh(r => r + 1);
       notify("User unarchived successfully", "success");
     } catch (e) {
       notify("Failed to unarchive user", "error");
+    }
+  }
+
+  // ---- actions: requests ----
+  async function loadRequests() {
+    setRequestsLoading(true);
+    try {
+      const r = await axios.get(`${API}/api/admin/reschedule-requests`);
+      setRequests(r.data.requests || []);
+    } catch (e) {
+      console.error(e);
+      setRequests([]);
+    } finally {
+      setRequestsLoading(false);
+    }
+  }
+
+  async function updateRequest(id, status) {
+    try {
+      await axios.put(`${API}/api/admin/reschedule-requests/${id}`, { status });
+      const verb = status === 'approved' ? 'approved' : 'declined';
+      notify(`Request ${verb} successfully`, "success");
+      setConfirmDialog(null);
+      loadRequests();
+    } catch (e) {
+      console.error(e);
+      notify("Failed to update request", "error");
     }
   }
 
@@ -145,6 +228,8 @@ export default function AdminDashboard() {
       <div className={styles.header}>
         <h1><b>Admin Console</b></h1>
         <div className={styles.tabs}>
+          <Tab id="calendar" label="Calendar" />
+          <Tab id="requests" label="Schedule Requests" />
           <Tab id="createTeacher" label="Create Teacher" />
           <Tab id="createStudent" label="Create Student" />
           <Tab id="archive" label="Archive Accounts" />
@@ -235,10 +320,10 @@ export default function AdminDashboard() {
                 <ul className={styles.list}>
                   {students.length === 0 && <li className={styles.empty}>No active students</li>}
                   {students.map(s => (
-                    <li key={s.id} className={styles.listRow}>
-                      <span>{s.firstName} {s.lastName} — {s.email}</span>
+                    <li key={s.user_id} className={styles.listRow}>
+                      <span>{s.first_name} {s.last_name} — {s.email}</span>
                       <div>
-                        <button className={styles.warn} onClick={() => archiveUser(s.id)}>Archive</button>
+                        <button className={styles.warn} onClick={() => archiveUser(s.user_id)}>Archive</button>
                       </div>
                     </li>
                   ))}
@@ -249,10 +334,10 @@ export default function AdminDashboard() {
                 <ul className={styles.list}>
                   {teachers.length === 0 && <li className={styles.empty}>No active teachers</li>}
                   {teachers.map(t => (
-                    <li key={t.id} className={styles.listRow}>
-                      <span>{t.firstName} {t.lastName} — {t.email}</span>
+                    <li key={t.user_id} className={styles.listRow}>
+                      <span>{t.first_name} {t.last_name} — {t.email}</span>
                       <div>
-                        <button className={styles.warn} onClick={() => archiveUser(t.id)}>Archive</button>
+                        <button className={styles.warn} onClick={() => archiveUser(t.user_id)}>Archive</button>
                       </div>
                     </li>
                   ))}
@@ -262,8 +347,285 @@ export default function AdminDashboard() {
 
             <details className={styles.archivedBox}>
               <summary>Show Archived Users</summary>
-              <ArchivedUsers onUnarchive={unarchiveUser} />
+              <ArchivedUsers onUnarchive={unarchiveUser} refresh={archiveRefresh} />
             </details>
+          </section>
+        )}
+        {active === "requests" && (
+          <section className={styles.card}>
+            <div className={styles.cardHead}>
+              <h2>Schedule Requests</h2>
+              <p style={{ margin: "4px 0 0 0", fontSize: "0.9em", color: "#666" }}>Manage student reschedule requests</p>
+            </div>
+
+            {/* Filter Tabs */}
+            <div style={{ display: "flex", gap: "8px", marginBottom: "16px", borderBottom: "1px solid #e0e0e0", paddingBottom: "12px" }}>
+              {["all", "pending", "approved", "declined"].map((status) => {
+                const counts = {
+                  all: requests.length,
+                  pending: requests.filter(r => r.status === "pending").length,
+                  approved: requests.filter(r => r.status === "approved").length,
+                  declined: requests.filter(r => r.status === "declined").length,
+                };
+                return (
+                  <button
+                    key={status}
+                    onClick={() => setRequestFilter(status)}
+                    style={{
+                      padding: "8px 16px",
+                      border: "none",
+                      background: requestFilter === status ? "#0f0f0f" : "#f5f5f5",
+                      color: requestFilter === status ? "#fff" : "#333",
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      fontWeight: requestFilter === status ? "600" : "500",
+                      fontSize: "0.9em",
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    {status.charAt(0).toUpperCase() + status.slice(1)} ({counts[status]})
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Requests List */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {requestsLoading ? (
+                <div style={{ textAlign: "center", padding: "32px", color: "#999" }}>
+                  Loading requests...
+                </div>
+              ) : requests.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "32px", color: "#999" }}>
+                  No reschedule requests at this time
+                </div>
+              ) : requests
+                .filter(r => requestFilter === "all" || r.status === requestFilter)
+                .map((r) => {
+                  const statusColors = {
+                    pending: { bg: "#fff3cd", border: "#ffc107", text: "#856404" },
+                    approved: { bg: "#d4edda", border: "#28a745", text: "#155724" },
+                    declined: { bg: "#f8d7da", border: "#dc3545", text: "#721c24" },
+                  };
+                  const statusColor = statusColors[r.status] || statusColors.pending;
+
+                  return (
+                    <div
+                      key={r.request_id}
+                      style={{
+                        border: `1px solid #e0e0e0`,
+                        borderRadius: "8px",
+                        padding: "14px",
+                        background: "#fafafa",
+                        transition: "all 0.2s",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.1)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.boxShadow = "none")}
+                    >
+                      {/* Header: Class name and Status Badge */}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
+                        <div>
+                          <h4 style={{ margin: "0 0 4px 0", fontSize: "1em", fontWeight: "600" }}>
+                            {r.class_name || "Untitled Class"}
+                          </h4>
+                          <p style={{ margin: 0, fontSize: "0.85em", color: "#666" }}>
+                            Requested by <strong>{r.requester_first} {r.requester_last}</strong>
+                          </p>
+                        </div>
+                        <div
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: "20px",
+                            background: statusColor.bg,
+                            border: `1px solid ${statusColor.border}`,
+                            color: statusColor.text,
+                            fontSize: "0.8em",
+                            fontWeight: "600",
+                            textTransform: "capitalize",
+                          }}
+                        >
+                          {r.status}
+                        </div>
+                      </div>
+
+                      {/* Details Grid */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px", fontSize: "0.9em" }}>
+                        <div style={{ background: "#fff", padding: "10px", borderRadius: "6px", border: "1px solid #e0e0e0" }}>
+                          <p style={{ margin: "0 0 4px 0", fontSize: "0.8em", color: "#999", fontWeight: "600", textTransform: "uppercase" }}>Current Schedule</p>
+                          <p style={{ margin: 0, fontWeight: "500" }}>
+                            {formatDate(r.scheduled_date)}
+                          </p>
+                          <p style={{ margin: "4px 0 0 0", color: "#666" }}>
+                            {r.start_time || "—"}
+                          </p>
+                        </div>
+                        <div style={{ background: "#fff", padding: "10px", borderRadius: "6px", border: "1px solid #e0e0e0" }}>
+                          <p style={{ margin: "0 0 4px 0", fontSize: "0.8em", color: "#999", fontWeight: "600", textTransform: "uppercase" }}>Requested Schedule</p>
+                          <p style={{ margin: 0, fontWeight: "500" }}>
+                            {formatDate(r.requested_date)}
+                          </p>
+                          <p style={{ margin: "4px 0 0 0", color: "#666" }}>
+                            {r.requested_time || "—"}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Reason */}
+                      {r.reason && (
+                        <div style={{ marginBottom: "12px", padding: "10px", background: "#fff", borderRadius: "6px", border: "1px solid #e0e0e0" }}>
+                          <p style={{ margin: "0 0 4px 0", fontSize: "0.8em", color: "#999", fontWeight: "600", textTransform: "uppercase" }}>Reason</p>
+                          <p style={{ margin: 0, fontSize: "0.9em", color: "#333", lineHeight: "1.4" }}>{r.reason}</p>
+                        </div>
+                      )}
+
+                      {/* Meta Info */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "12px", fontSize: "0.8em", color: "#999" }}>
+                        <p style={{ margin: 0 }}>
+                          <strong>Requester:</strong> {r.requester_first} {r.requester_last}
+                        </p>
+                        <p style={{ margin: 0 }}>
+                          <strong>Teacher:</strong> {r.teacher_first} {r.teacher_last}
+                        </p>
+                        {r.student_first && (
+                          <p style={{ margin: 0 }}>
+                            <strong>Student:</strong> {r.student_first} {r.student_last}
+                          </p>
+                        )}
+                        {r.requested_at && (
+                          <p style={{ margin: 0 }}>
+                            <strong>Requested:</strong> {formatDate(r.requested_at)}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                        {r.status === "pending" && (
+                          <>
+                            <button
+                              onClick={() => setConfirmDialog({ id: r.request_id, status: "declined" })}
+                              style={{
+                                padding: "8px 16px",
+                                fontSize: "0.85em",
+                                fontWeight: "600",
+                                border: "1px solid #dc3545",
+                                background: "#fff",
+                                color: "#dc3545",
+                                borderRadius: "6px",
+                                cursor: "pointer",
+                                transition: "all 0.2s",
+                              }}
+                              onMouseEnter={(e) => (e.target.style.background = "#f8d7da")}
+                              onMouseLeave={(e) => (e.target.style.background = "#fff")}
+                            >
+                              Decline
+                            </button>
+                            <button
+                              onClick={() => setConfirmDialog({ id: r.request_id, status: "approved" })}
+                              style={{
+                                padding: "8px 16px",
+                                fontSize: "0.85em",
+                                fontWeight: "600",
+                                border: "none",
+                                background: "#28a745",
+                                color: "#fff",
+                                borderRadius: "6px",
+                                cursor: "pointer",
+                                transition: "all 0.2s",
+                              }}
+                              onMouseEnter={(e) => (e.target.style.background = "#218838")}
+                              onMouseLeave={(e) => (e.target.style.background = "#28a745")}
+                            >
+                              Approve
+                            </button>
+                          </>
+                        )}
+                        {r.status !== "pending" && (
+                          <span style={{ fontSize: "0.85em", color: "#999", fontStyle: "italic" }}>
+                            {r.resolved_at ? `Resolved on ${formatDate(r.resolved_at)}` : "—"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </section>
+        )}
+
+        {/* Confirmation Dialog */}
+        {confirmDialog && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0,0,0,0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+            }}
+            onClick={() => setConfirmDialog(null)}
+          >
+            <div
+              style={{
+                background: "#fff",
+                borderRadius: "8px",
+                padding: "24px",
+                maxWidth: "400px",
+                boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: "0 0 12px 0", fontSize: "1.1em" }}>
+                {confirmDialog.status === "approved" ? "Approve Request?" : "Decline Request?"}
+              </h3>
+              <p style={{ margin: "0 0 24px 0", color: "#666", lineHeight: "1.6" }}>
+                {confirmDialog.status === "approved"
+                  ? "Are you sure you want to approve this reschedule request? The student will be notified."
+                  : "Are you sure you want to decline this reschedule request? The student will be notified and may submit a new request."}
+              </p>
+              <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                <button
+                  onClick={() => setConfirmDialog(null)}
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: "0.9em",
+                    fontWeight: "600",
+                    border: "1px solid #d0d0d0",
+                    background: "#fff",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => updateRequest(confirmDialog.id, confirmDialog.status)}
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: "0.9em",
+                    fontWeight: "600",
+                    border: "none",
+                    background: confirmDialog.status === "approved" ? "#28a745" : "#dc3545",
+                    color: "#fff",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                  }}
+                >
+                  {confirmDialog.status === "approved" ? "Approve" : "Decline"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {active === "calendar" && (
+          <section className={styles.card}>
+            <div className={styles.cardHead}><h2>Scheduled Classes</h2></div>
+            <Calendar />
           </section>
         )}
       </main>
@@ -273,22 +635,22 @@ export default function AdminDashboard() {
 }
 
 // Lazy subcomponent to list archived users
-function ArchivedUsers({ onUnarchive }) {
+function ArchivedUsers({ onUnarchive, refresh }) {
   const [items, setItems] = useState([]);
   useEffect(() => {
     axios
-      .get(`http://localhost:3001/api/admin/users?archived=1`)
-      .then((r) => setItems(r.data.items || []))
+      .get(`http://localhost:3001/api/admin/users?status=archived`)
+      .then((r) => setItems(r.data || []))
       .catch(() => setItems([]));
-  }, []);
+  }, [refresh]);
   return (
     <ul className={styles.list}>
       {items.length === 0 && <li className={styles.empty}>No archived users</li>}
       {items.map(u => (
-        <li key={u.id} className={styles.listRow}>
-          <span>{u.firstName} {u.lastName} — {u.email} ({u.role})</span>
+        <li key={u.user_id} className={styles.listRow}>
+          <span>{u.first_name} {u.last_name} — {u.email} ({u.role})</span>
           <div>
-            <button className={styles.approve} onClick={() => onUnarchive(u.id)}>Unarchive</button>
+            <button className={styles.approve} onClick={() => onUnarchive(u.user_id)}>Restore</button>
           </div>
         </li>
       ))}

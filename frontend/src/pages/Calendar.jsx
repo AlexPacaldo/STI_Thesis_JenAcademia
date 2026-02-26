@@ -1,60 +1,30 @@
 import { useMemo, useState, useEffect } from "react";
+import axios from "axios";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/studentSchedule.module.css";
 
-// Sample data for demo
-const SAMPLE_AVAILABILITY = {
-  "2026-02-17": "available",
-  "2026-02-18": "unavailable",
-  "2026-02-19": "available",
-  "2026-02-20": "available",
-  "2026-02-25": "unavailable",
-  "2026-02-26": "available",
-  "2026-03-02": "available",
-  "2026-03-05": "unavailable",
+// API base
+const API = "http://localhost:3001";
+
+// Helper to format date as YYYY-MM-DD in local timezone
+const fmtDate = (d) => {
+  if (!d) return "";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
-const SAMPLE_CLASSES = {
-  "2026-02-17": [
-    { id: 1, className: "Mathematics 101", time: "09:00 AM", duration: "1h 30m", studentId: 101, studentName: "John Doe", studentEmail: "john.doe@example.com", classLink: "https://zoom.us/j/1234567890" },
-    { id: 2, className: "Physics Lab", time: "11:00 AM", duration: "2h", studentId: 102, studentName: "Jane Smith", studentEmail: "jane.smith@example.com", classLink: "https://zoom.us/j/0987654321" },
-    { id: 3, className: "Chem Lab", time: "5:00 PM", duration: "2h", studentId: 102, studentName: "Jane Smith", studentEmail: "jane.smith@example.com", classLink: "https://zoom.us/j/0987654321" },
-  ],
-  "2026-02-19": [
-    { id: 3, className: "English Literature", time: "10:00 AM", duration: "1h", studentId: 103, studentName: "Mike Johnson", studentEmail: "mike.j@example.com", classLink: "https://zoom.us/j/1111111111" },
-  ],
-  "2026-02-20": [
-    { id: 4, className: "Biology", time: "02:00 PM", duration: "1h 30m", studentId: 104, studentName: "Sarah Williams", studentEmail: "sarah.w@example.com", classLink: "https://zoom.us/j/2222222222" },
-    { id: 5, className: "Chemistry", time: "04:00 PM", duration: "1h", studentId: 105, studentName: "Alex Brown", studentEmail: "alex.b@example.com", classLink: "https://zoom.us/j/3333333333" },
-    { id: 6, className: "Advanced Math", time: "05:30 PM", duration: "1h 30m", studentId: 106, studentName: "Emma Davis", studentEmail: "emma.d@example.com", classLink: "https://zoom.us/j/4444444444" },
-  ],
-  "2026-02-26": [
-    { id: 7, className: "History", time: "11:00 AM", duration: "1h", studentId: 107, studentName: "Oliver Miller", studentEmail: "oliver.m@example.com", classLink: "https://zoom.us/j/5555555555" },
-  ],
-  "2026-03-02": [
-    { id: 8, className: "Computer Science", time: "08:00 AM", duration: "2h", studentId: 108, studentName: "Sophia Wilson", studentEmail: "sophia.w@example.com", classLink: "https://zoom.us/j/6666666666" },
-    { id: 9, className: "Web Development", time: "10:30 AM", duration: "1h 30m", studentId: 109, studentName: "Liam Taylor", studentEmail: "liam.t@example.com", classLink: "https://zoom.us/j/7777777777" },
-  ],
-};
-
-// Sample student (used when no logged-in user present)
-const SAMPLE_STUDENT = { id: 101, firstName: "John", lastName: "Doe", role: "student" };
-
-// Helper: count classes for a student across SAMPLE_CLASSES
-const countClassesForStudent = (studentId) => {
-  if (!studentId) return 0;
-  let count = 0;
-  Object.values(SAMPLE_CLASSES).forEach((arr) => {
-    arr.forEach((cls) => {
-      if (cls.studentId === studentId) count++;
-    });
-  });
-  return count;
-};
-
-// Mock function to get classes for a date
-const mockGetClassesForDate = (dateStr) => {
-  return SAMPLE_CLASSES[dateStr] || [];
+// convert 24‑hour time string (HH:MM:SS) to human format e.g. "2:30 PM"
+const humanTime = (t24) => {
+  if (!t24) return "";
+  const [h, m] = t24.split(":");
+  let hour = parseInt(h, 10);
+  const mins = m || "00";
+  const ampm = hour >= 12 ? "PM" : "AM";
+  if (hour > 12) hour -= 12;
+  if (hour === 0) hour = 12;
+  return `${hour}:${mins} ${ampm}`;
 };
 
 // Helper: check if a class is joinable (within 30 mins before start time)
@@ -78,7 +48,7 @@ const isClassJoinable = (classObj, selectedDate) => {
     
     // Get current time for the selected date
     const now = new Date();
-    const currentDate = now.toISOString().slice(0, 10);
+    const currentDate = fmtDate(now);
     const currentHours = now.getHours();
     const currentMins = now.getMinutes();
     const currentTotalMins = currentHours * 60 + currentMins;
@@ -95,37 +65,44 @@ const isClassJoinable = (classObj, selectedDate) => {
 };
 
 /**
- * Teacher editor for setting availability per day
+ * Calendar view for teachers and students. Data is loaded from the backend using
+ * the SQL schema tables (teacher_availability, classes, student_class_packages).
  *
- * Props:
- * - initialAvailability: { "YYYY-MM-DD": "available" | "unavailable" }
- * - getClassesForDate: (dateStr: "YYYY-MM-DD") => Array of class objects
- * - title: string
+ * Optional props:
+ * - classesUsed, classesLimit: for overriding package counts (primarily student)
  */
-export default function teacherScheduleEditor({
-  initialAvailability = SAMPLE_AVAILABILITY,
-  getClassesForDate = mockGetClassesForDate,
-  title = "Teacher Availability",
-  role = "teacher", // 'teacher' or 'student'
-  classesUsed = 0,
-  classesLimit = 20,
-}) {
+export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
   const { notify } = useNotification() || {};
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth()); // 0-based
-  const [availability, setAvailability] = useState(initialAvailability);
+
+  // data pulled from server
+  const [availability, setAvailability] = useState({});
+  const [classesCache, setClassesCache] = useState({}); // map date->classes array
+  const [studentPackage, setStudentPackage] = useState(null);
+
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedClassId, setSelectedClassId] = useState(null);
-  const [localRole, setLocalRole] = useState(role);
+  // reschedule request form
+  const [requestMode, setRequestMode] = useState(false);
+  const [requestDate, setRequestDate] = useState("");
+  const [requestTime, setRequestTime] = useState("");
+  const [requestReason, setRequestReason] = useState("");
+  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+  const [requestError, setRequestError] = useState("");
+  const [localRole, setLocalRole] = useState("");
   const [localUserId, setLocalUserId] = useState(null);
+  const [me, setMe] = useState(null); // loaded from storage
+  const isAdmin = localRole === "admin"; // helper for rendering
 
-  // Read role from localStorage (matches Header.jsx behavior)
+  // Read user info from localStorage
   useEffect(() => {
     try {
       const stored = localStorage.getItem("user");
       if (stored) {
         const parsed = JSON.parse(stored);
+        setMe(parsed);
         if (parsed && parsed.role) setLocalRole(parsed.role);
         if (parsed && parsed.id) setLocalUserId(parsed.id);
       }
@@ -134,10 +111,78 @@ export default function teacherScheduleEditor({
     }
   }, []);
 
-  // if parent updates initialAvailability (e.g., after fetch), sync it
+
+  // fetch teacher availability whenever month/year or user changes
   useEffect(() => {
-    setAvailability(initialAvailability);
-  }, [initialAvailability]);
+    if (localRole !== "teacher" || !localUserId) return;
+    const y = year;
+    const m = month + 1; // 1-based for API
+    axios
+      .get(`${API}/api/calendar/teacher-availability`, {
+        params: { teacher_id: localUserId, year: y, month: m }
+      })
+      .then(r => {
+        if (r.data && r.data.availability) setAvailability(r.data.availability);
+      })
+      .catch(() => {});
+  }, [year, month, localRole, localUserId]);
+
+  // fetch student package when we know student id
+  useEffect(() => {
+    if (localRole === "student" && localUserId) {
+      axios
+        .get(`${API}/api/calendar/student-package/${localUserId}`)
+        .then(r => setStudentPackage(r.data.package))
+        .catch(() => setStudentPackage(null));
+    }
+  }, [localRole, localUserId]);
+
+  // helper to load classes for a particular date
+  const loadClassesForDate = (dateStr) => {
+    if (!dateStr || classesCache[dateStr]) return;
+    const params = { scheduled_date: dateStr };
+    if (localRole === "student") params.student_id = localUserId;
+    if (localRole === "teacher") params.teacher_id = localUserId;
+
+    axios
+      .get(`${API}/api/calendar/classes-by-date`, { params })
+      .then(r => {
+        if (r.data && r.data.classes) {
+          // normalize the returned rows to camelCase / unified fields
+          const formatted = r.data.classes.map(c => ({
+            ...c,
+            id: c.id || c.class_id,
+            className: c.className || c.class_name || c.name,
+            studentName: c.studentName || c.student_name,
+            studentEmail: c.studentEmail || c.student_email,
+            teacherName: c.teacherName || c.teacher_name,
+            teacherEmail: c.teacherEmail || c.teacher_email,
+            classLink: c.classLink || c.class_link,
+            time: c.time || humanTime(c.start_time),
+            duration: c.duration || c.duration,
+          }));
+          setClassesCache(prev => ({ ...prev, [dateStr]: formatted }));
+        }
+      })
+      .catch(() => {
+        setClassesCache(prev => ({ ...prev, [dateStr]: [] }));
+      });
+  };
+
+  // whenever selectedDate changes we fetch if necessary
+  useEffect(() => {
+    if (selectedDate) loadClassesForDate(selectedDate);
+  }, [selectedDate, localRole, localUserId]);
+
+  // preload every day in the month so cells with classes are colored on load
+  useEffect(() => {
+    if (!localUserId) return;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = fmtDate(new Date(year, month, d));
+      loadClassesForDate(dateStr);
+    }
+  }, [year, month, localRole, localUserId]);
 
   const viewDate = new Date(year, month, 1);
   const monthName = viewDate.toLocaleString("default", { month: "long" });
@@ -153,7 +198,6 @@ export default function teacherScheduleEditor({
     return cells;
   }, [year, month]);
 
-  const fmtDate = (d) => (d ? d.toISOString().slice(0, 10) : "");
   const statusOf = (d) => (d ? availability[fmtDate(d)] || "" : "");
 
   const handleCellClick = (d) => {
@@ -161,11 +205,11 @@ export default function teacherScheduleEditor({
     setSelectedDate(fmtDate(d));
   };
 
-  // Check if a date has classes
+  // Check if a date has classes (cached)
   const hasClassesOnDate = (d) => {
     if (!d) return false;
     const formatted = fmtDate(d);
-    const classes = getClassesForDate(formatted);
+    const classes = classesCache[formatted];
     return classes && classes.length > 0;
   };
 
@@ -185,6 +229,55 @@ export default function teacherScheduleEditor({
   const jumpToToday = () => {
     setYear(today.getFullYear());
     setMonth(today.getMonth());
+    // also highlight today's cell
+    setSelectedDate(fmtDate(today));
+  };
+
+  // handle request form submission
+  const submitRequest = async () => {
+    setRequestError("");
+    
+    // Validation
+    if (!selectedClass || !selectedClass.id) {
+      setRequestError("Please select a class first");
+      return;
+    }
+    if (!requestDate) {
+      setRequestError("Please select a new date");
+      return;
+    }
+    if (!requestTime) {
+      setRequestError("Please select a new time");
+      return;
+    }
+    if (!requestReason || requestReason.trim().length < 5) {
+      setRequestError("Please provide a reason (at least 5 characters)");
+      return;
+    }
+
+    setIsSubmittingRequest(true);
+    try {
+      await axios.post(`${API}/api/calendar/reschedule-request`, {
+        class_id: selectedClass.id,
+        requested_by_id: localUserId,
+        requested_date: requestDate,
+        requested_time: requestTime,
+        reason: requestReason,
+      });
+      
+      notify("Reschedule request sent successfully! The teacher will review your request.", "success");
+      setRequestMode(false);
+      setRequestDate("");
+      setRequestTime("");
+      setRequestReason("");
+      setRequestError("");
+    } catch (error) {
+      const errMsg = error.response?.data?.message || "Failed to send request. Please try again.";
+      setRequestError(errMsg);
+      notify(errMsg, "error");
+    } finally {
+      setIsSubmittingRequest(false);
+    }
   };
 
   const countAvailable = days.reduce(
@@ -196,22 +289,25 @@ export default function teacherScheduleEditor({
     0
   );
 
-  // Get scheduled classes for selected date
-  const selectedClasses = selectedDate && getClassesForDate
-    ? getClassesForDate(selectedDate)
-    : [];
+  // Get scheduled classes for selected date from cache
+  const selectedClasses = selectedDate ? (classesCache[selectedDate] || []) : [];
 
   // Get selected class details
   const selectedClass = selectedClassId
     ? selectedClasses.find(cls => cls.id === selectedClassId)
     : null;
+  const isTeacherOrAdmin = localRole === "teacher" || isAdmin;
 
-  // Effective classesUsed for student view: prefer prop, else compute from sample data and local user
-  const effectiveStudentId = localUserId || SAMPLE_STUDENT.id;
-  const effectiveClassesUsed = (classesUsed && classesUsed > 0)
-    ? classesUsed
-    : countClassesForStudent(effectiveStudentId);
-  const effectiveClassesLeft = Math.max(0, classesLimit - effectiveClassesUsed);
+  // student package based usage calculation
+  const effectiveClassesUsed = (() => {
+    if (classesUsed && classesUsed > 0) return classesUsed;
+    if (studentPackage) return studentPackage.classes_used || 0;
+    return 0;
+  })();
+  const effectiveClassesLeft = (() => {
+    if (studentPackage) return studentPackage.classes_left != null ? studentPackage.classes_left : Math.max(0, classesLimit - effectiveClassesUsed);
+    return Math.max(0, classesLimit - effectiveClassesUsed);
+  })();
   const effectivePercent = classesLimit > 0 ? Math.min(100, Math.round((effectiveClassesUsed / classesLimit) * 100)) : 0;
 
   return (
@@ -245,6 +341,9 @@ export default function teacherScheduleEditor({
               {days.map((d, idx) => {
                 const status = statusOf(d);
                 const hasClasses = hasClassesOnDate(d);
+                const formatted = d ? fmtDate(d) : "";
+                const isTodayCell = formatted === fmtDate(new Date());
+                const isSelected = formatted === selectedDate;
                 return (
                   <button
                     key={idx}
@@ -254,6 +353,8 @@ export default function teacherScheduleEditor({
                       styles.clickableCell,         // interactive for teacher
                       status === "available" && styles.available,
                       hasClasses && styles.available,
+                      isTodayCell && styles.today,
+                      isSelected && styles.selected,
                     ]
                       .filter(Boolean)
                       .join(" ")}
@@ -273,21 +374,37 @@ export default function teacherScheduleEditor({
           </div>
 
           <aside className={styles.bookPanel}>
-            {localRole === "teacher" ? (
+            {isTeacherOrAdmin ? (
               selectedClass ? (
                 <>
                   <div className={styles.legendTitle}>
-                    Student Information
+                    {localRole === "teacher" ? "Student Information" : "Class Information"}
                   </div>
                   <div className={styles.slotList}>
-                    <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                      <div><strong>Name:</strong></div>
-                      <div style={{ fontSize: "0.95em", marginTop: "4px" }}>{selectedClass.studentName}</div>
-                    </div>
-                    <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                      <div><strong>Email:</strong></div>
-                      <div style={{ fontSize: "0.85em", marginTop: "4px", wordBreak: "break-all" }}>{selectedClass.studentEmail}</div>
-                    </div>
+                    {selectedClass.studentName && (
+                      <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
+                        <div><strong>Student:</strong></div>
+                        <div style={{ fontSize: "0.95em", marginTop: "4px" }}>{selectedClass.studentName}</div>
+                      </div>
+                    )}
+                    {selectedClass.studentEmail && (
+                      <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
+                        <div><strong>Student Email:</strong></div>
+                        <div style={{ fontSize: "0.85em", marginTop: "4px", wordBreak: "break-all" }}>{selectedClass.studentEmail}</div>
+                      </div>
+                    )}
+                    {isAdmin && selectedClass.teacherName && (
+                      <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
+                        <div><strong>Teacher:</strong></div>
+                        <div style={{ fontSize: "0.95em", marginTop: "4px" }}>{selectedClass.teacherName}</div>
+                      </div>
+                    )}
+                    {isAdmin && selectedClass.teacherEmail && (
+                      <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
+                        <div><strong>Teacher Email:</strong></div>
+                        <div style={{ fontSize: "0.85em", marginTop: "4px", wordBreak: "break-all" }}>{selectedClass.teacherEmail}</div>
+                      </div>
+                    )}
                     <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
                       <div><strong>Class:</strong></div>
                       <div style={{ fontSize: "0.95em", marginTop: "4px" }}>{selectedClass.className}</div>
@@ -317,15 +434,96 @@ export default function teacherScheduleEditor({
                   >
                     Join Class
                   </button>
-                  <button
-                    className={styles.bookBtn}
-                    onClick={() => {
-                      notify(`Reschedule request sent for ${selectedClass.className}`, "success");
-                    }}
-                    style={{ marginTop: "8px" }}
-                  >
-                    Request for Reschedule
-                  </button>
+                  { !isAdmin && !requestMode && (
+                    <button
+                      className={styles.bookBtn}
+                      onClick={() => {
+                        setRequestMode(true);
+                        // preload fields with current class date/time
+                        setRequestDate(selectedClass.scheduled_date || selectedDate);
+                        setRequestTime(selectedClass.start_time || "");
+                      }}
+                      style={{ marginTop: "8px" }}
+                    >
+                      Request for Reschedule
+                    </button>
+                  ) }
+                  { requestMode && (
+                    <div style={{ marginTop: 12, padding: 14, border: "1px solid #e0e0e0", borderRadius: 8, background: "#fafafa" }}>
+                      <div style={{ marginBottom: 12 }}>
+                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#333" }}>Request Reschedule</h4>
+                        <p style={{ margin: 0, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
+                          Select your preferred date and time, and let your teacher know why you need the reschedule.
+                        </p>
+                      </div>
+                      
+                      {requestError && (
+                        <div style={{ marginBottom: 10, padding: 8, background: "#ffebee", border: "1px solid #ffcdd2", borderRadius: 6, color: "#c62828", fontSize: "0.8rem" }}>
+                          {requestError}
+                        </div>
+                      )}
+                      
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>New Date *</label>
+                        <input
+                          type="date"
+                          value={requestDate}
+                          onChange={e => {
+                            setRequestDate(e.target.value);
+                            setRequestError("");
+                          }}
+                          style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
+                        />
+                      </div>
+                      
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>New Time *</label>
+                        <input
+                          type="time"
+                          value={requestTime}
+                          onChange={e => {
+                            setRequestTime(e.target.value);
+                            setRequestError("");
+                          }}
+                          style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
+                        />
+                      </div>
+                      
+                      <div style={{ marginBottom: 12 }}>
+                        <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Reason *</label>
+                        <textarea
+                          rows={3}
+                          placeholder="Please explain why you need to reschedule (minimum 5 characters)"
+                          value={requestReason}
+                          onChange={e => {
+                            setRequestReason(e.target.value);
+                            setRequestError("");
+                          }}
+                          style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }}
+                        />
+                      </div>
+                      
+                      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                        <button 
+                          onClick={() => {
+                            setRequestMode(false);
+                            setRequestError("");
+                          }}
+                          disabled={isSubmittingRequest}
+                          style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, cursor: isSubmittingRequest ? "not-allowed" : "pointer", opacity: isSubmittingRequest ? 0.6 : 1 }}
+                        >
+                          Cancel
+                        </button>
+                        <button 
+                          onClick={submitRequest}
+                          disabled={isSubmittingRequest}
+                          style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: isSubmittingRequest ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: isSubmittingRequest ? "not-allowed" : "pointer" }}
+                        >
+                          {isSubmittingRequest ? "Sending..." : "Send Request"}
+                        </button>
+                      </div>
+                    </div>
+                  ) }
                   <button
                     className={styles.slotBtn}
                     onClick={() => setSelectedClassId(null)}
@@ -353,6 +551,7 @@ export default function teacherScheduleEditor({
                             {cls.time || cls.startTime || ""} {cls.duration || ""}
                           </div>
                           {cls.studentName && <div style={{ fontSize: "0.85em", color: "#666" }}>Student: {cls.studentName}</div>}
+                          {isAdmin && cls.teacherName && <div style={{ fontSize: "0.85em", color: "#666" }}>Teacher: {cls.teacherName}</div>}
                         </button>
                       ))
                     ) : (
@@ -389,8 +588,19 @@ export default function teacherScheduleEditor({
                       <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
                         <div><strong>{selectedClass.className}</strong></div>
                         <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.time} ({selectedClass.duration})</div>
-                        {selectedClass.teacher && <div style={{ fontSize: "0.85em", color: "#666" }}>Teacher: {selectedClass.teacher}</div>}
                       </div>
+                      {selectedClass.teacherName && (
+                        <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
+                          <div><strong>Teacher:</strong></div>
+                          <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.teacherName}</div>
+                        </div>
+                      )}
+                      {selectedClass.teacherEmail && (
+                        <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
+                          <div><strong>Email:</strong></div>
+                          <div style={{ fontSize: "0.75em", marginTop: "4px", wordBreak: "break-all" }}>{selectedClass.teacherEmail}</div>
+                        </div>
+                      )}
                     </div>
                     <button
                       disabled={!isClassJoinable(selectedClass, selectedDate)}
@@ -415,12 +625,90 @@ export default function teacherScheduleEditor({
                     <button
                       className={styles.bookBtn}
                       onClick={() => {
-                        notify(`Reschedule request sent for ${selectedClass.className}`, "success");
+                        setRequestMode(true);
+                        setRequestDate(selectedDate);
+                        setRequestTime("");
                       }}
                       style={{ marginTop: "8px" }}
                     >
                       Request for Reschedule
                     </button>
+                    { requestMode && (
+                      <div style={{ marginTop: 12, padding: 14, border: "1px solid #e0e0e0", borderRadius: 8, background: "#fafafa" }}>
+                        <div style={{ marginBottom: 12 }}>
+                          <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#333" }}>Request Reschedule</h4>
+                          <p style={{ margin: 0, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
+                            Select your preferred date and time, and let your teacher know why you need the reschedule.
+                          </p>
+                        </div>
+                        
+                        {requestError && (
+                          <div style={{ marginBottom: 10, padding: 8, background: "#ffebee", border: "1px solid #ffcdd2", borderRadius: 6, color: "#c62828", fontSize: "0.8rem" }}>
+                            {requestError}
+                          </div>
+                        )}
+                        
+                        <div style={{ marginBottom: 10 }}>
+                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>New Date *</label>
+                          <input
+                            type="date"
+                            value={requestDate}
+                            onChange={e => {
+                              setRequestDate(e.target.value);
+                              setRequestError("");
+                            }}
+                            style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
+                          />
+                        </div>
+                        
+                        <div style={{ marginBottom: 10 }}>
+                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>New Time *</label>
+                          <input
+                            type="time"
+                            value={requestTime}
+                            onChange={e => {
+                              setRequestTime(e.target.value);
+                              setRequestError("");
+                            }}
+                            style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
+                          />
+                        </div>
+                        
+                        <div style={{ marginBottom: 12 }}>
+                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Reason *</label>
+                          <textarea
+                            rows={3}
+                            placeholder="Please explain why you need to reschedule (minimum 5 characters)"
+                            value={requestReason}
+                            onChange={e => {
+                              setRequestReason(e.target.value);
+                              setRequestError("");
+                            }}
+                            style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }}
+                          />
+                        </div>
+                        
+                        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                          <button 
+                            onClick={() => {
+                              setRequestMode(false);
+                              setRequestError("");
+                            }}
+                            disabled={isSubmittingRequest}
+                            style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, cursor: isSubmittingRequest ? "not-allowed" : "pointer", opacity: isSubmittingRequest ? 0.6 : 1 }}
+                          >
+                            Cancel
+                          </button>
+                          <button 
+                            onClick={submitRequest}
+                            disabled={isSubmittingRequest}
+                            style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: isSubmittingRequest ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: isSubmittingRequest ? "not-allowed" : "pointer" }}
+                          >
+                            {isSubmittingRequest ? "Sending..." : "Send Request"}
+                          </button>
+                        </div>
+                      </div>
+                    ) }
                     <button
                       className={styles.slotBtn}
                       onClick={() => setSelectedClassId(null)}
@@ -482,12 +770,22 @@ export default function teacherScheduleEditor({
                       </div>
                     </div>
                     <div style={{ marginTop: 12, fontSize: 12, color: "#666" }}>Tip: Contact your teacher to add or reschedule classes.</div>
+                    <div style={{ marginTop: 12 }}>
+                      <button className={styles.slotBtn} onClick={jumpToToday}>
+                        Jump to Today
+                      </button>
+                    </div>
                   </>
                 )}
               </>
             )}
 
             <div className={styles.legendBlock}>
+              <div className={styles.legendRow}>
+                <span className={`${styles.legendDot}`} style={{ background:"#0b6909"}} />
+                <span>Today</span>
+              </div>
+
               <div className={styles.legendRow}>
                 <span className={`${styles.legendDot} ${styles.legendAvail}`} />
                 <span>Classes</span>

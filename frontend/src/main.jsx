@@ -12,7 +12,6 @@ import "./index.css";
 import VideoCall from "./components/VideoCall.jsx"
 
 import LoginChoice from "./pages/loginChoice.jsx"
-import Reschedule from "./pages/reschedule.jsx";
 
 import AdminDashboard from "./pages/AdminDashboard.jsx";
 
@@ -61,7 +60,6 @@ const router = createBrowserRouter([
       { path: "register", element: <Register /> },
       { path: "login", element: <Login /> },
       // { path: "loginChoice", element: <LoginChoice /> },
-      { path: "reschedule/:classId", element: <Reschedule /> },
       
       // in your router
       { path: "/call/:classId", element: <VideoCall /> },

@@ -1,71 +1,41 @@
 import { useMemo, useState, useEffect } from "react";
+import axios from "axios";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/studentSchedule.module.css";
 
-// Sample data for demo
-const SAMPLE_AVAILABILITY = {
-  "2026-02-17": "available",
-  "2026-02-18": "unavailable",
-  "2026-02-19": "available",
-  "2026-02-20": "available",
-  "2026-02-25": "unavailable",
-  "2026-02-26": "available",
-  "2026-03-02": "available",
-  "2026-03-05": "unavailable",
-};
+// API base
+const API = "http://localhost:3001";
 
-const SAMPLE_CLASSES = {
-  "2026-02-17": [
-    { id: 1, className: "Mathematics 101", time: "09:00 AM", duration: "1h 30m", studentId: 101, studentName: "John Doe", studentEmail: "john.doe@example.com", classLink: "https://zoom.us/j/1234567890" },
-    { id: 2, className: "Physics Lab", time: "11:00 AM", duration: "2h", studentId: 102, studentName: "Jane Smith", studentEmail: "jane.smith@example.com", classLink: "https://zoom.us/j/0987654321" },
-  ],
-  "2026-02-19": [
-    { id: 3, className: "English Literature", time: "10:00 AM", duration: "1h", studentId: 103, studentName: "Mike Johnson", studentEmail: "mike.j@example.com", classLink: "https://zoom.us/j/1111111111" },
-  ],
-  "2026-02-20": [
-    { id: 4, className: "Biology", time: "02:00 PM", duration: "1h 30m", studentId: 104, studentName: "Sarah Williams", studentEmail: "sarah.w@example.com", classLink: "https://zoom.us/j/2222222222" },
-    { id: 5, className: "Chemistry", time: "04:00 PM", duration: "1h", studentId: 105, studentName: "Alex Brown", studentEmail: "alex.b@example.com", classLink: "https://zoom.us/j/3333333333" },
-    { id: 6, className: "Advanced Math", time: "05:30 PM", duration: "1h 30m", studentId: 106, studentName: "Emma Davis", studentEmail: "emma.d@example.com", classLink: "https://zoom.us/j/4444444444" },
-  ],
-  "2026-02-26": [
-    { id: 7, className: "History", time: "11:00 AM", duration: "1h", studentId: 107, studentName: "Oliver Miller", studentEmail: "oliver.m@example.com", classLink: "https://zoom.us/j/5555555555" },
-  ],
-  "2026-03-02": [
-    { id: 8, className: "Computer Science", time: "08:00 AM", duration: "2h", studentId: 108, studentName: "Sophia Wilson", studentEmail: "sophia.w@example.com", classLink: "https://zoom.us/j/6666666666" },
-    { id: 9, className: "Web Development", time: "10:30 AM", duration: "1h 30m", studentId: 109, studentName: "Liam Taylor", studentEmail: "liam.t@example.com", classLink: "https://zoom.us/j/7777777777" },
-  ],
-};
+// helper to format ISO date string
+const fmtDate = (d) => (d ? d.toISOString().slice(0, 10) : "");
 
-// Mock function to get classes for a date
-const mockGetClassesForDate = (dateStr) => {
-  return SAMPLE_CLASSES[dateStr] || [];
-};
 
 /**
- * Teacher editor for setting availability per day
+ * Teacher schedule editor — displays a monthly calendar where teachers can set
+ * availability and view scheduled classes. Data is pulled from the backend
+ * using the calendar tables (teacher_availability, classes).
  *
- * Props:
- * - initialAvailability: { "YYYY-MM-DD": "available" | "unavailable" }
- * - getClassesForDate: (dateStr: "YYYY-MM-DD") => Array of class objects
- * - title: string
+ * Optional props:
+ * - title: header text for the page
  */
-export default function teacherScheduleEditor({
-  initialAvailability = SAMPLE_AVAILABILITY,
-  getClassesForDate = mockGetClassesForDate,
-  title = "Teacher Availability",
-}) {
+export default function teacherScheduleEditor({ title = "Teacher Availability" } = {}) {
   const { notify } = useNotification() || {};
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth()); // 0-based
-  const [availability, setAvailability] = useState(initialAvailability);
+  const [availability, setAvailability] = useState({});
+  const [classesCache, setClassesCache] = useState({});
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedClassId, setSelectedClassId] = useState(null);
+  const [localUserId, setLocalUserId] = useState(null);
 
-  // if parent updates initialAvailability (e.g., after fetch), sync it
+  // load teacher ID from local storage
   useEffect(() => {
-    setAvailability(initialAvailability);
-  }, [initialAvailability]);
+    try {
+      const u = JSON.parse(localStorage.getItem("user") || "null");
+      if (u && u.id) setLocalUserId(u.id);
+    } catch {}
+  }, []);
 
   const viewDate = new Date(year, month, 1);
   const monthName = viewDate.toLocaleString("default", { month: "long" });
@@ -81,19 +51,52 @@ export default function teacherScheduleEditor({
     return cells;
   }, [year, month]);
 
-  const fmtDate = (d) => (d ? d.toISOString().slice(0, 10) : "");
   const statusOf = (d) => (d ? availability[fmtDate(d)] || "" : "");
 
   const handleCellClick = (d) => {
     if (!d) return;
-    setSelectedDate(fmtDate(d));
+    const dateStr = fmtDate(d);
+    setSelectedDate(dateStr);
+    loadClassesForDate(dateStr);
   };
 
-  // Check if a date has classes
+  // fetch availability when month/year or teacher id changes
+  useEffect(() => {
+    if (!localUserId) return;
+    const y = year;
+    const m = month + 1;
+    axios
+      .get(`${API}/api/calendar/teacher-availability`, {
+        params: { teacher_id: localUserId, year: y, month: m }
+      })
+      .then(r => {
+        if (r.data && r.data.availability) setAvailability(r.data.availability);
+      })
+      .catch(() => {});
+  }, [year, month, localUserId]);
+
+  // helper to load classes for a date and cache them
+  const loadClassesForDate = (dateStr) => {
+    if (!dateStr || classesCache[dateStr]) return;
+    axios
+      .get(`${API}/api/calendar/classes-by-date`, {
+        params: { scheduled_date: dateStr, teacher_id: localUserId }
+      })
+      .then(r => {
+        if (r.data && r.data.classes) {
+          setClassesCache(prev => ({ ...prev, [dateStr]: r.data.classes }));
+        }
+      })
+      .catch(() => {
+        setClassesCache(prev => ({ ...prev, [dateStr]: [] }));
+      });
+  };
+
+  // Check if a date has classes (cached)
   const hasClassesOnDate = (d) => {
     if (!d) return false;
     const formatted = fmtDate(d);
-    const classes = getClassesForDate(formatted);
+    const classes = classesCache[formatted];
     return classes && classes.length > 0;
   };
 
@@ -124,10 +127,8 @@ export default function teacherScheduleEditor({
     0
   );
 
-  // Get scheduled classes for selected date
-  const selectedClasses = selectedDate && getClassesForDate
-    ? getClassesForDate(selectedDate)
-    : [];
+  // Get scheduled classes for selected date from cache
+  const selectedClasses = selectedDate ? (classesCache[selectedDate] || []) : [];
 
   // Get selected class details
   const selectedClass = selectedClassId
