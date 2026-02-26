@@ -1,0 +1,147 @@
+  .cont{
+    display: flex;
+    justify-content: center;
+  }
+
+  .center{
+    width: 75vw;
+    margin-top: 3%;
+    gap: 50px;
+  }
+
+
+   
+
+    .CourseCard {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .CourseCard button {
+    padding: 10px 15px;
+    font-size: 13px;
+    border: none;
+    background-color: #f2f2f2;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+  }
+
+  .CourseCard button:hover {
+    background-color: #dcdcdc;
+  }
+
+  .AvailableLessonSegment{
+    height: 40vh;
+    display: flex;
+    flex-direction: row;
+    gap: 5%;
+    font-size: 100%;
+    justify-content: center;
+    align-items: center;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    padding: 3%;
+    border-radius: 1rem;
+    margin-top: 2%;
+  }
+
+  .AvailableLessonSegment img{
+    
+    height: 30vh;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    border-radius: 1rem;
+  }
+
+  .ContentAvailable{
+    display: flex;
+    flex-direction: column;
+  }
+
+   .carouselSegment {
+      width: auto;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+      margin-top: 4%;
+    }
+
+    .imgEdit img{
+      width: 100%;
+      height: 40vh; 
+      object-fit: cover;
+    }
+
+    .AvailableLessons{
+      height: 70vh;
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+      margin-top: 4%;
+    }
+    
+    .LessonsCard {
+    font-family: 'Poppins';
+    width: 30%;
+    height: 55vh;
+    overflow: hidden;
+    border-radius: 1rem;
+    /* background-color: #dcdcdc; */
+    display: flex;
+    flex-direction: column; 
+    text-align: left;
+   align-items: flex-start;
+    justify-content: center;
+    padding: 2%; 
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    
+  }
+
+    .LessonsCard h1{
+      font-size: 200%;
+    }
+
+  
+      .LessonsCard img {
+        height: 30vh;
+        width: 100%;
+        border-radius: 1rem;
+        margin-bottom: 2%;
+        box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+      }
+
+      .Uploaded {
+    display: flex;
+    align-items: center;      
+    justify-content: center;  
+    gap: 4%;                 
+    margin: 2% 0;
+  }
+
+  .Uploaded img {
+    height: 5vh;           
+    border-radius: 50%;
+  }
+
+  .Uploaded h3 {
+    font-size: 100%;
+    margin: 0;
+    white-space: nowrap;     
+  }
+
+  .LessonsCard button {
+    margin-top: 1%;        
+    padding: 10px 20px;
+    font-size: 14px;
+    border: none;
+    background-color: black;
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: 0.2s;
+  }
+
+  .LessonsCard button:hover {
+    background-color: #444;
+  }

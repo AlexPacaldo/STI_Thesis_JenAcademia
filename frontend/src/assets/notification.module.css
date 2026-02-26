@@ -1,0 +1,125 @@
+.notification {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  animation: slideIn 0.3s ease-out;
+  transition: all 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.notification.exit {
+  animation: slideOut 0.3s ease-in forwards;
+}
+
+@keyframes slideOut {
+  to {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+}
+
+.content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.icon {
+  font-weight: 700;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+
+.message {
+  color: inherit;
+  line-height: 1.4;
+  word-wrap: break-word;
+}
+
+.close {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  margin-left: 12px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.close:hover {
+  opacity: 1;
+}
+
+/* Success notification */
+.notification.success {
+  background-color: #ecfdf5;
+  color: #065f46;
+  border-left: 4px solid #10b981;
+}
+
+.notification.success .icon {
+  background-color: #10b981;
+  color: white;
+}
+
+/* Error notification */
+.notification.error {
+  background-color: #fef2f2;
+  color: #7f1d1d;
+  border-left: 4px solid #ef4444;
+}
+
+.notification.error .icon {
+  background-color: #ef4444;
+  color: white;
+}
+
+/* Warning notification */
+.notification.warning {
+  background-color: #fffbeb;
+  color: #78350f;
+  border-left: 4px solid #f59e0b;
+}
+
+.notification.warning .icon {
+  background-color: #f59e0b;
+  color: white;
+}
+
+/* Info notification */
+.notification.info {
+  background-color: #eff6ff;
+  color: #1e40af;
+  border-left: 4px solid #3b82f6;
+}
+
+.notification.info .icon {
+  background-color: #3b82f6;
+  color: white;
+}

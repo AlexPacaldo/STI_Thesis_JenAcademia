@@ -1,0 +1,107 @@
+    .Center {
+      min-height: 86vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .CenterContent {
+      width: 90%;
+      background-color: #e9ecef;
+      margin: 0 auto;
+      border-radius: 1rem;
+      padding-bottom: 20px;
+      box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    }
+
+    .TopContent {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 40px;
+    }
+
+    .Teacher, .Date {
+      display: flex;
+      align-items: center;
+      background-color: white;
+      border-radius: 1rem;
+      padding: 8px 15px;
+      box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    }
+
+    .Teacher img {
+      width: 50px !important;
+      object-fit: cover;
+      border-radius: 50%;
+      margin-right: 10px;
+      border: 1px solid #e9ecef;;
+      box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    }
+
+    .Teacher h1, .Date h1 {
+      font-size: 1rem;
+      margin: 0;
+    }
+
+    .bookLayout {
+      display: flex;
+      gap: 20px;
+      padding: 20px;
+      background-color: #f8f9fa;
+      box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+      border-radius: 1rem;
+      margin: 0 20px;
+    }
+
+    .bookContent {
+      flex: 2;
+      background-color: white;
+      padding: 20px;
+      border-radius: 1rem;
+      box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+      overflow-y: auto;
+      max-height: 60vh;
+    }
+
+    .bookContent h2 {
+      font-weight: 700;
+      margin-bottom: 15px;
+    }
+
+    .bookContent p {
+      font-size: 0.95rem;
+      line-height: 1.6;
+      text-align: justify;
+    }
+
+    .glossarySection {
+      flex: 1;
+      background-color: #e9ecef;
+      border-radius: 1rem;
+      padding: 10px;
+      overflow-y: auto;
+      max-height: 60vh;
+    }
+
+    .glossaryBox {
+      background-color: white;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-radius: 1rem;
+      box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    }
+
+    .glossaryBox h5 {
+      margin-bottom: 5px;
+      font-weight: 700;
+    }
+
+    .glossarySection::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .glossarySection::-webkit-scrollbar-thumb {
+      background: gray;
+      border-radius: 10px;
+    }

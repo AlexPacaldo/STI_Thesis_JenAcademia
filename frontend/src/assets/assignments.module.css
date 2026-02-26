@@ -1,0 +1,22 @@
+.Center {
+      height: 86vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    table {
+      width: 80vw;
+      box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+      border-radius: 1rem;
+    }
+
+    th, td {
+      padding: 25px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .Icon{
+      color: black;
+    }

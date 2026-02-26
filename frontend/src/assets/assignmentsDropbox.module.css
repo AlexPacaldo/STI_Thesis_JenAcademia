@@ -1,0 +1,137 @@
+
+.cont{
+    display: flex;
+    min-height: 86vh;
+    justify-content: center;
+    align-items: center;
+}
+.center {
+    
+    }
+
+    .centerContent {
+        text-align: center;
+        height: 3vh;
+        
+    }
+
+    .centerContent h1 {
+        font-size: 200%;
+    }
+
+    .instruction {
+    width: 8%;
+    background-color: black;
+    border-radius: 1rem;
+    text-align: center;
+    padding: 4px;
+    }
+
+    .instruction h1 {
+    font-size: 100%;
+    color: white;
+    margin-top: 4%;
+    }
+
+    .instructionContent {
+    height: min-content;
+    width: 100%;
+    background-color: white;
+
+    display: flex;
+    justify-content: space-between;
+    }
+
+    .leftSide {
+    width: 70%;
+    height: 105%;
+    border-radius: 1rem;
+    padding: 2%;
+    background-color: #f0f0f0;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    }
+    
+    .leftSide p{
+        font-size: 100%;
+    }
+
+    .rightSide {
+    width: 26%;
+    height: min-content;
+    border-radius: 1rem;
+    background-color: #f0f0f0;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    }
+    .card {
+    width: 100%;
+    border-radius: 1rem;
+    padding: 7%;
+    color: black;
+    }
+
+    .teacherImg {
+    height: 6vh;
+    border-radius: 50%;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    object-fit: cover;
+    margin-right: 10px;
+    }
+
+    .card h2 {
+    font-size: 2vh;
+    }
+
+    .card p {
+    font-size: 1.7vh;
+    margin: 3px 0;
+    }
+
+    .commentBox {
+    width: 100%;
+    min-height: 15vh;
+    border: none;
+    border-radius: 1rem;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    padding: 17px;
+    resize: none;
+    margin-top: 8px;
+    }
+
+    .submitComment {
+    background-color: black;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 1rem;
+    cursor: pointer;
+    margin-top: 10px;
+    transition: 0.3s;
+    width: 100%;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    }
+
+    .submitComment:hover {
+    background-color: white;
+    color: black;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    }
+
+    .uploadBtn {
+    background-color: black;
+    color: white;
+    padding: 8px;
+    border-radius: 1rem;
+    cursor: pointer;
+    transition: 0.3s;
+    margin-top: 5%;
+    width: 100%;
+    border: none;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    }
+
+    .uploadBtn:hover {
+    background-color: white;
+    color: black;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    border: none;
+    }

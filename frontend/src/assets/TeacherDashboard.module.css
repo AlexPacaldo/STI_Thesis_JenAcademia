@@ -1,0 +1,159 @@
+
+  .mainn{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 86vh;
+  }
+
+  .Center {
+    display: flex;
+    flex-direction: column;
+    text-align: center;
+    padding: 50px;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    border-radius: 1rem;
+  }
+
+  .Title{
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .Title h1 {
+    font-size: 1.8rem;
+    margin-bottom: 5px;
+  }
+
+  .Title p {
+    color: #555;
+    margin-bottom: 15px;
+  }
+
+  .Title .btn {
+    background-color: black;
+    color: white;
+    border: 2px solid black;
+    padding: 10px 20px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 0.9rem;
+  }
+
+  .Title .btn:hover {
+    background-color: white;
+    color: black;
+  }
+
+  .CenterContent {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    width: 90%;
+    margin-top: 40px;
+  }
+
+  .LeftContent {
+    width: 25vw;
+    text-align: left;
+  }
+
+  .LeftContent h2 {
+    font-size: 1.3rem;
+    margin-bottom: 10px;
+  }
+
+  .LeftContent p {
+    color: #555;
+    font-size: 0.9rem;
+  }
+
+  .RightContent {
+    width: 60%;
+    display: grid;
+    grid-template-columns: repeat(2, 250px);
+    gap: 20px;
+    justify-content: center;
+  }
+
+  .classCard {
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 1rem;
+    padding: 20px;
+    text-align: left;
+  }
+
+  .classCard h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: bold;
+  }
+
+  .classCard p {
+    margin: 5px 0;
+    font-size: 0.9rem;
+  }
+
+ /* Top action bar */
+.modeBar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.rescheduleBtn {
+  padding: 10px 16px;
+  border: 1px solid #ccc;
+  background-color: #000000;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: 0.2s;
+  color: WHITE;
+}
+
+.rescheduleBtn:hover {
+  background-color: #f5f5f5;
+}
+
+.active {
+  background-color: #000;
+  color: #fff;
+  border-color: #000;
+}
+
+/* See all link */
+.seeAllBtn {
+  text-decoration: none;
+  color: #111;
+  background-color: #fff;
+  padding: 10px 16px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  font-weight: 600;
+  transition: box-shadow .15s ease, transform .05s ease;
+}
+.seeAllBtn:hover { box-shadow: 0 4px 18px rgba(0,0,0,.08); }
+.seeAllBtn:active { transform: translateY(1px); }
+
+/* Cards */
+.classCard {
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 1rem;
+  padding: 16px;
+  box-shadow: 0 8px 24px rgba(149, 157, 165, 0.2);
+  cursor: pointer;
+  transition: transform .15s ease;
+}
+.classCard:hover { transform: scale(1.02); }
+
+.rescheduleMode {
+  border: 2px dashed #007bff;
+  background-color: #f6f9ff;
+}

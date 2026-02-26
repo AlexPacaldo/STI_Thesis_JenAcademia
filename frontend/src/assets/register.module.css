@@ -1,0 +1,150 @@
+
+.cont{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+} 
+.Center{
+  margin-top: 3%;
+  width: 45%;
+  padding: 50px;
+  box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+  border-radius: 1rem;
+}
+  .Title {
+    display: flex;
+    text-align: center;
+    justify-content: center;
+    flex-direction: column;
+    
+  }
+
+  .CenterContent {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 20px;
+  }
+
+  .LeftContent {
+    
+    width: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+  }
+
+  .RightContent {
+    width: 50%;
+    display: flex;
+    justify-content: center;
+  }
+
+  .formContainer {
+    width: 70%;
+  }
+
+  form {
+    display: flex;
+    flex-direction: column;
+  }
+
+  label {
+    font-weight: 500;
+    margin-top: 20px;
+    margin-bottom: 6px;
+    font-size: 14px;
+    white-space: nowrap;
+    line-height: 1.2;
+  }
+
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="tel"],
+  input[type="datetime-local"] {
+    background-color: #fff !important;   /* always white */
+    color: #000 !important;              /* black text */
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 1rem;
+    font-size: 14px;
+    width: 100%;
+    appearance: none;                    /* removes OS styling */
+    -webkit-appearance: none;
+    -moz-appearance: none;
+  }
+
+  input{
+    color: white;
+  }
+
+  .courseButtons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .courseButtons button {
+    padding: 10px 15px;
+    font-size: 13px;
+    border: none;
+    background-color: #f2f2f2;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    color: rgba(0, 0, 0, 0.624);
+  }
+
+  .courseButtons button:hover {
+    background-color: #dcdcdc;
+  }
+
+  .submitBtn {
+    background-color: #000;
+    color: #fff;
+    padding: 10px;
+    border: none;
+    border-radius: 1rem;
+    font-size: 15px;
+    font-weight: bold;
+    margin-top: 15px;
+    cursor: pointer;
+    width: 100%;
+    transition: 0.3s ease; 
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+  }
+
+  .submitBtn:hover {
+    background-color: white;
+    color: black;
+  }
+
+  .container {
+    display: block;
+    position: relative;
+    padding-left: 35px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    font-size: 22px;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+
+  .DataPrivacy {
+    font-size: 80%;
+  }
+
+  .checkboxRow p {
+    font-size: 1.3vh;
+  }
+  .Title p{
+    font-size: 1.7vh;
+  }

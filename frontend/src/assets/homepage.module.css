@@ -1,0 +1,208 @@
+    .center, .HowItWorks {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .WelcomeIntro {
+        display: flex;
+        height: 70vh;
+        font-family: 'Poppins';
+        flex: 1;
+        justify-content: center;
+        align-items: flex-start;
+        flex-direction: column;
+        padding-left: 5rem; 
+    }
+
+
+
+    .WelcomeIntro h1,
+    .WelcomeIntro h4,
+    .StepIntro h1,
+    .StepIntro h4,
+    .WelcomeIntro a.btn {
+        margin: 1; 
+        text-align: left;
+    }
+
+    .WelcomeIntro h4, .StepIntro h4 {
+        font-family: 'Poppins';
+        color: black;
+        margin-top: 2%; 
+    }
+
+    .WelcomeIntro a.btn, .Services a.btn {
+        background-color: black;
+        color: white;
+        border: 2px solid black;
+        text-decoration: none;
+        padding: 8px 15px;  
+        border-radius: 1rem; 
+        transition: 0.3s ease; 
+        margin-top: 15px; 
+    }
+    .WelcomeDescrip {
+        display: flex;
+        height: 30vh;
+        flex: 1;
+        text-align: center;
+        justify-content: center;
+        align-items: center;
+    } 
+
+    .WelcomeDescrip img{
+        height: 50vh;
+        border-radius: 1rem;
+        box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    }
+
+    .StepIntro {
+        display: flex;
+        height: 30vh;
+        flex: 1;
+        justify-content: center;
+        align-items: flex-start;
+        flex-direction: column;
+        padding-left: 4rem; 
+    }
+
+    .HowItWorks {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 30px 5%;
+        gap: 40px;
+        box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+        border-radius: 1rem;
+    }
+
+    .StepIntro {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .Steps {
+        flex: 1;
+    }
+
+    .step {
+        display: flex;
+        align-items: center;
+        margin-bottom: 5%;
+    }
+
+    .step img {
+        width: 45px;
+        height: 45px;
+        margin-right: 10%;
+    }
+
+    .step {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    }
+
+    .stepContent {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex: 1;
+    }
+
+    .stepDesc {
+    font-size: 100%;
+    color: #000;
+    white-space: nowrap;
+    }
+
+    .stepTitle{
+    font-size: 100%;
+    color: #000;
+    font-family: 'Poppins';
+    }
+
+   .OurServices{
+    height: 30vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+   }
+
+   .servicesTitle{
+    font-size: 300%;
+    color: #000;
+    font-family: 'Poppins';
+   }
+
+   .Services{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+   }
+
+   .servicesTitle,
+    .servicesDesc, 
+    .Services a.btn {
+    margin-top: 3%;
+   }
+
+   .ListOfServices {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    padding: 40px 5%;
+    background-color: #fff;
+    flex-wrap: wrap;
+    align-items: center;
+    }
+
+    .ServicesList {
+    display: flex;
+    align-items: center;
+    flex-direction: row; 
+    background-color: #fff;
+    
+    border-radius: 1rem;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    padding: 1%;
+    width: 45%;
+    }
+
+    .ServicesList:hover {
+    transform: translateY(-5px);
+    box-shadow: rgba(149, 157, 165, 0.3) 0px 8px 24px;
+    }
+
+    .ServicesList img {
+    height: 10vh;
+    background-color: #f3f3f3;
+    border-radius: 1rem;
+    margin-right: 5%; 
+    object-fit: cover;
+    }
+
+    .textContent {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    }
+
+    .ListServicesTitle {
+    font-size: 120%;
+    color: #000;
+    margin-bottom: 3%;
+    }
+
+    .ListServicesDescription {
+    font-size: 100%;
+    color: #333;
+    }
+
+
+
+    

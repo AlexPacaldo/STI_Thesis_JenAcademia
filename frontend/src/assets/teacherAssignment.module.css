@@ -1,0 +1,194 @@
+.cont{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 86vh;
+}
+.Center{
+        width: 100%;
+        background-color: #e9e7e7;
+        display: flex;
+        flex-direction: row;
+        padding: 40px;
+        gap: 3%;
+        margin-top: 20px;
+        border-radius: 1rem;
+        box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    }
+
+   .leftCard{
+    height: min-content;
+    width: 40%;
+    background-color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    border-radius: 1rem;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    padding: 15px;
+   }
+
+   .rightCard{
+    width: 60%;
+    height: min-content;
+    padding: 2%;
+    background-color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 1rem;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+   }
+
+   .boxCard{
+    height: 6vh;
+    width: 80%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: 1px solid rgb(218, 213, 213);
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    border-radius: 1rem;
+    margin-top: 20px;
+    margin-bottom: 20px;
+    background-color: white;
+   }
+
+   .boxCard:hover{
+    background-color: #c4bbbb;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    cursor: pointer;
+    border: none;
+   }
+
+   .boxCard h1{
+    font-size: 2vh;
+    margin-top: 1%;
+   }
+
+   .rightContent{
+    width: 100%;
+   }
+
+    .searchContainer {
+    display: flex;
+    align-items: center;
+    background-color: #fff;
+    border-radius: 1rem;
+    width: 80%;
+    height: 7vh;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    margin-top: 3%;
+    margin-bottom: 2%;
+    gap: 2%;
+    padding: 12px;
+    }
+
+    .searchContainer input[type="text"] {
+    border: none;
+    outline: none;
+    flex: 1;
+    font-size: 14px;
+    color: #333;
+    }
+
+    .searchContainer i {
+    color: #888;
+    font-size: 16px;
+    }
+
+
+   .user{
+    display: flex;
+    align-items: center;
+    flex-direction: row;
+    gap: 3%;
+    margin-bottom: 2%;
+   }
+
+   .user img{
+    height: 8vh;
+    border-radius: 50%;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    border: 1px solid #e9e7e7;;
+   }
+
+   .user h1{
+    font-size: 2vh;
+   }
+
+   .infoCard{
+    
+    border: 1px solid rgb(214, 212, 212);
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    display: flex;
+    flex-direction: column;
+    padding: 3%;
+    font-family: 'Poppins';
+    border-radius: 1rem;
+   }
+
+
+   .Date{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+   }
+
+   .dateBox{
+    width: 60%;
+    height: 5vh;
+    border-radius: 1rem;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+   }
+
+   label {
+    margin-right: 1%; 
+    font-weight: 500;
+    width: 12%;
+    }
+
+    input[type="datetime-local"] {
+    padding: 5px 8px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+    }
+
+    .Instrunctions{
+    width: 100%;
+    height: 20vh;
+    border-radius: 2%;
+   }
+
+   
+
+   .commentBox {
+    width: 100%;
+    height: 25vh;
+    border: 1px solid #ccc;
+    border-radius: 1rem;
+    padding: 4%;
+    font-family: 'Poppins', sans-serif;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    resize: none;
+    }
+
+    .submitComment {
+     background-color: black;
+      width: 100%;
+      color: white;
+      border: none;
+      padding: 1% 2%;
+      box-shadow: rgba(50, 50, 93, 0.25) 0px 13px 27px -5px, rgba(0, 0, 0, 0.3) 0px 8px 16px -8px;
+      cursor: pointer;
+      border-radius: 1rem;
+      margin-top: 2%;
+      transition: 0.3s;
+    }
+
+    .submitComment:hover {
+    background-color: white;
+      color: black;
+      box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    }

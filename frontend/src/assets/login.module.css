@@ -1,0 +1,44 @@
+.cont{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 61vh;
+} 
+.Center{
+  margin-top: 3%;
+  width: 30%;
+  padding: 50px;
+  box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+  border-radius: 1rem;
+}
+.submitbtn {
+    background-color: #000;
+    color: #fff;
+    padding: 10px;
+    border: none;
+    border-radius: 1rem;
+    font-size: 15px;
+    font-weight: bold;
+    margin-top: 15px;
+    cursor: pointer;
+    width: 100%;
+    transition: 0.3s ease; 
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+  }
+
+  .submitbtn:hover {
+    background-color: white;
+    color: black;
+  }
+  
+  
+  .forgotPass{
+    justify-self: center;
+    margin-top: 5%;
+    font-size: 90%;
+  }
+  .forgotPass a{
+    text-decoration: none;
+  }
+
+  

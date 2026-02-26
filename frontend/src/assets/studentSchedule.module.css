@@ -1,0 +1,288 @@
+:root { color-scheme: light; }
+
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+
+/* HEADER */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid #eee;
+  background: #fff;
+}
+
+.brand { font-weight: 700; }
+
+.topnav {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.topnav a {
+  text-decoration: none;
+  color: #111;
+  font-weight: 500;
+}
+
+.bell {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+/* MAIN */
+.center {
+  width: min(1100px, 95%);
+  margin: 24px auto;
+}
+
+.title {
+  text-align: center;
+  margin-bottom: 12px;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.wrapper {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 20px;
+}
+
+/* CALENDAR */
+.calendarCard {
+  background: white;
+  padding: 14px;
+  border-radius: 1rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,.06);
+}
+
+.calHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.monthLabel {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.navBtn {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 1rem;
+  transition: background .2s ease;
+}
+.navBtn:hover { background: rgba(0,0,0,.06); }
+
+.weekHeader {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.weekday {
+  text-align: center;
+  font-size: 12px;
+  color: #333;
+  font-weight: 600;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.cell {
+  aspect-ratio: 1 / 1;
+  border-radius: 1rem;
+  font-weight: 600;
+  background: #f7fff7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  border: 1px solid rgba(0,0,0,.05);
+}
+
+.empty {
+  background: transparent;
+  border: none;
+}
+
+/* status */
+.available { background: #c9f2c9; }
+.unavailable { background: #ffd6d6; }
+.pastCell { background: #f1f1f1; color: #999; }
+
+/* interactions */
+.clickableCell { cursor: pointer; }
+.clickableCell:hover { outline: 2px solid rgba(0,0,0,.25); }
+.selected { outline: 3px solid #111; }
+
+/* BOOKING PANEL */
+.bookPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.legendTitle {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.selectionInfo {
+  display: flex;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid #eee;
+  border-radius: 1rem;
+  background: #fafafa;
+}
+.infoLabel { font-size: 12px; color: #666; }
+.infoValue { font-weight: 700; }
+
+.slotList {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.slotBtn {
+  border: 1px solid #ddd;
+  background: #fff;
+  padding: 10px 12px;
+  border-radius: 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  text-align: left;
+  transition: border .15s ease, background .15s ease;
+}
+.slotBtn:hover { border-color: #bbb; }
+.slotBtn:disabled { cursor: not-allowed; opacity: .6; }
+.slotBtnActive {
+  background: #111;
+  color: #fff;
+  border-color: #111;
+}
+
+.bookBtn {
+  border: none;
+  border-radius: 1rem;
+  padding: 12px 14px;
+  cursor: pointer;
+  font-weight: 700;
+  background: #0f0f0f;
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(0,0,0,.08);
+  margin-top: 8px;
+}
+.bookBtn:disabled { opacity: .6; cursor: not-allowed; }
+
+/* legend block */
+.legendBlock {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #e0e0e0;
+}
+
+.legendRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.legendDot {
+  width: 14px;
+  height: 14px;
+  border-radius: 1rem;
+  display: inline-block;
+  border: 1px solid #d0d0d0;
+}
+.legendAvail { background: #c9f2c9; }
+.legendUnavail { background: #ffd6d6; }
+.legendPast { background: #f1f1f1; }
+
+/* FOOTER */
+.footer {
+  margin-top: auto;
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  padding: 18px;
+  border-top: 1px solid #eee;
+  color: #555;
+  font-size: 14px;
+}
+/* Counter card */
+.counterCard {
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+}
+
+.counterRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.counterLabel {
+  font-size: 14px;
+  color: #666;
+}
+
+.counterValue {
+  font-weight: 700;
+  font-size: 20px;
+}
+
+.counterSub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #888;
+}
+
+.progress {
+  margin-top: 10px;
+  height: 8px;
+  background: #f1f1f1;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: #1f7a4f; /* any brand/green */
+  width: 0%;
+  transition: width 200ms ease;
+  border-radius: 999px;
+}
+
+/* RESPONSIVE */
+@media (max-width: 900px) {
+  .wrapper { grid-template-columns: 1fr; }
+  .bookPanel { order: -1; }  /* slots above calendar on small screens */
+}

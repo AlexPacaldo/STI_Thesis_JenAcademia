@@ -1,0 +1,17 @@
+.container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  max-width: 400px;
+  pointer-events: all;
+}
+
+@media (max-width: 640px) {
+  .container {
+    left: 12px;
+    right: 12px;
+    top: 12px;
+    max-width: none;
+  }
+}
