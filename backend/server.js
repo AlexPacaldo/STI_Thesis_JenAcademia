@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import mysql from "mysql2/promise";
 import bcrypt from "bcryptjs";
-
+//hi
 const PORT = process.env.PORT || 3001;
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USER || "root";
