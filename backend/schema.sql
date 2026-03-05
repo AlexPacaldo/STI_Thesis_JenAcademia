@@ -38,6 +38,20 @@ CREATE TABLE IF NOT EXISTS teacher_profiles (
   INDEX idx_user_id (user_id)
 );
 
+CREATE TABLE IF NOT EXISTS student_profiles (
+  student_id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL UNIQUE,
+  proficiency_level ENUM('beginner', 'elementary', 'intermediate', 'upper-intermediate', 'advanced', 'proficient') DEFAULT 'beginner',
+  assigned_teacher_id INT,
+  trial_notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(user_id),
+  FOREIGN KEY (assigned_teacher_id) REFERENCES users(user_id),
+  INDEX idx_user_id (user_id),
+  INDEX idx_assigned_teacher_id (assigned_teacher_id)
+);
+
 -- ============================================================================
 -- COURSES & ENROLLMENTS
 -- ============================================================================
@@ -337,6 +351,29 @@ CREATE TABLE IF NOT EXISTS video_sessions (
   INDEX idx_teacher_id (teacher_id),
   INDEX idx_student_id (student_id),
   INDEX idx_status (status)
+);
+
+-- ============================================================================
+-- NOTIFICATIONS & ALERTS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS notifications (
+  notification_id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  type ENUM('reschedule', 'assignment', 'remark', 'announcement', 'class_reminder', 'general') DEFAULT 'general',
+  title VARCHAR(255),
+  message TEXT NOT NULL,
+  related_id INT COMMENT 'ID of related entity (class_id, assignment_id, etc.)',
+  related_type VARCHAR(50) COMMENT 'Type of related entity: class, assignment, remark, etc.',
+  is_read BOOLEAN DEFAULT FALSE,
+  action_url VARCHAR(500) COMMENT 'Optional URL to navigate when clicking notification',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  read_at TIMESTAMP NULL,
+  FOREIGN KEY (user_id) REFERENCES users(user_id),
+  INDEX idx_user_id (user_id),
+  INDEX idx_is_read (is_read),
+  INDEX idx_type (type),
+  INDEX idx_created_at (created_at)
 );
 
 -- ============================================================================

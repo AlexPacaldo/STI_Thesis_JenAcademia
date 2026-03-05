@@ -1,12 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import axios from "axios";
 import styles from "../assets/header.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
+import NotificationPanel from "./NotificationPanel";
+
+const API = "http://localhost:3001";
 
 function Header() {
   const location = useLocation();
   const [user, setUser] = useState(null);
-  const [role, setRole] = useState(null); // ✅ Track if user is student or teacher
+  const [role, setRole] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -14,13 +20,31 @@ function Header() {
       if (stored) {
         const parsedUser = JSON.parse(stored);
         setUser(parsedUser);
-        setRole(parsedUser.role); // fallback role
+        setRole(parsedUser.role);
       }
     } catch (e) {
       console.warn("Failed to read user from localStorage:", e);
     }
   }, []);
 
+  // Fetch unread notification count
+  useEffect(() => {
+    if (user?.id && (role === "student" || role === "teacher")) {
+      fetchUnreadCount();
+      // Poll for new notifications every 30 seconds
+      const interval = setInterval(fetchUnreadCount, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user?.id, role]);
+
+  const fetchUnreadCount = async () => {
+    try {
+      const response = await axios.get(`${API}/api/notifications/unread/${user.id}`);
+      setUnreadCount(response.data.unreadCount || 0);
+    } catch (err) {
+      console.error("Error fetching unread count:", err);
+    }
+  };
 
   // ✅ Current page routes (you already have these)
   const path = location.pathname;
@@ -46,8 +70,7 @@ function Header() {
   const isTeacherBooksDropboxPage = path === "/teacherBooksDropbox";
   const isCalendarPage = path === "/Calendar";
 
-
-    if (isCallPage) {
+  if (isCallPage) {
     return (
       <header className={styles.header}>
         <div className={styles.headerContainer}>
@@ -69,7 +92,7 @@ function Header() {
     isAssignmentsPage ||
     isRemarksPage ||
     isBooksLessonsPage ||
-    isCalendarPage||
+    isCalendarPage ||
     isBooksContentPage;
 
   const isTeacherArea =
@@ -81,18 +104,17 @@ function Header() {
     isPassRemarksPage ||
     isTeacherAssignmentPage ||
     isTeacherBooksLessonsPage ||
-    isBooksContentPage||
+    isBooksContentPage ||
     isTeacherBooksDropboxPage;
 
   const isAdminArea =
     isAccountPage ||
     isAdminDashboardPage;
 
-
-
   return (
-    <header className={styles.header}>
-      <div className={styles.headerContainer}>
+    <>
+      <header className={styles.header}>
+        <div className={styles.headerContainer}>
         
 
         {role === "student" && isStudentArea && (
@@ -126,6 +148,18 @@ function Header() {
               <Link to="/remarks">Remarks</Link>
               <Link to="/booksLessons">Books / Lessons</Link>
 
+              {/* Notification Bell */}
+              <button
+                className={styles.notificationBell}
+                onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+                title="Reschedule Requests"
+              >
+                🔔
+                {unreadCount > 0 && (
+                  <span className={styles.badge}>{unreadCount}</span>
+                )}
+              </button>
+
               <Link to="/account" className={styles.StudentAccount}>
                 <img
                   src={pfp}
@@ -148,6 +182,18 @@ function Header() {
               <Link to="/PassRemarks">Remarks</Link>
               <Link to="/teacherAssignment">Assignments</Link>
               <Link to="/teacherBooksLessons">Books / Lessons</Link>
+
+              {/* Notification Bell */}
+              <button
+                className={styles.notificationBell}
+                onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+                title="Reschedule Requests"
+              >
+                🔔
+                {unreadCount > 0 && (
+                  <span className={styles.badge}>{unreadCount}</span>
+                )}
+              </button>
 
               <Link to="/account" className={styles.TeacherAccount}>
                 <img
@@ -191,6 +237,14 @@ function Header() {
         </nav>
       </div>
     </header>
+
+    {/* Notification Panel */}
+    <NotificationPanel 
+      userId={user?.id} 
+      isOpen={isNotificationOpen} 
+      onClose={() => setIsNotificationOpen(false)}
+    />
+    </>
   );
 }
 

@@ -70,7 +70,13 @@ export default function AdminDashboard() {
     email: "",
     password: "",
     contact: "",
+    trialNotes: "",
+    level: "",
+    teacherId: "",
+    classesAvailed: "",
   });
+  // selected bookings for new student
+  const [selectedBookings, setSelectedBookings] = useState([]); // array of { date, time, duration }
   const [loading, setLoading] = useState(false);
   const [archiveRefresh, setArchiveRefresh] = useState(0); // bump to reload archived list
   const [requestFilter, setRequestFilter] = useState("all"); // 'all', 'pending', 'approved', 'declined'
@@ -146,9 +152,28 @@ export default function AdminDashboard() {
     setLoading(true);
     try {
       const payload = { ...sForm, role: "student" };
-      await axios.post(`${API}/api/admin/users`, payload); // creates student
+      const response = await axios.post(`${API}/api/admin/users`, payload); // creates student
+      const studentId = response.data.userId;
+
+      // Create selected bookings if any
+      if (selectedBookings.length > 0 && sForm.teacherId) {
+        for (const booking of selectedBookings) {
+          await axios.post(`${API}/api/calendar/class`, {
+            class_name: booking.subject || `Class with ${sForm.firstName} ${sForm.lastName}`,
+            teacher_id: parseInt(sForm.teacherId),
+            student_id: studentId,
+            scheduled_date: booking.date,
+            start_time: booking.time,
+            end_time: booking.endTime || booking.time, // fallback if not provided
+            duration: booking.duration || 60,
+            class_link: ""
+          });
+        }
+      }
+
       notify("Student created successfully!", "success");
-      setSForm({ firstName: "", lastName: "", email: "", password: "", contact: "" });
+      setSForm({ firstName: "", lastName: "", email: "", password: "", contact: "", trialNotes: "", level: "", teacherId: "", classesAvailed: "" });
+      setSelectedBookings([]); // clear selected bookings
       loadUsers();
     } catch (e) {
       console.error(e);
@@ -189,7 +214,7 @@ export default function AdminDashboard() {
     setRequestsLoading(true);
     try {
       const r = await axios.get(`${API}/api/admin/reschedule-requests`);
-      setRequests(r.data.requests || []);
+      setRequests(r.data.requests.sort((a, b) => new Date(b.requested_at) - new Date(a.requested_at)) || []);
     } catch (e) {
       console.error(e);
       setRequests([]);
@@ -208,6 +233,29 @@ export default function AdminDashboard() {
     } catch (e) {
       console.error(e);
       notify("Failed to update request", "error");
+    }
+  }
+
+  async function deleteRequest(id) {
+    try {
+      await axios.delete(`${API}/api/admin/reschedule-requests/${id}`);
+      notify("Request deleted successfully", "success");
+      loadRequests();
+    } catch (e) {
+      console.error(e);
+      notify("Failed to delete request", "error");
+    }
+  }
+
+  async function deleteAllRequests() {
+    if (!window.confirm("Are you sure you want to delete all reschedule requests?")) return;
+    try {
+      await axios.delete(`${API}/api/admin/reschedule-requests`);
+      notify("All requests deleted successfully", "success");
+      loadRequests();
+    } catch (e) {
+      console.error(e);
+      notify("Failed to delete requests", "error");
     }
   }
 
@@ -303,6 +351,301 @@ export default function AdminDashboard() {
                 </div>
               </div>
               <br />
+              <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
+                <div style={{ display: "flex", alignItems: "center", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "1.3em", marginRight: "8px" }}>📝</span>
+                  <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>Trial Class Assessment</h3>
+                </div>
+                <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
+                  Enter detailed notes from the student's trial class session. Our AI system will analyze these notes to assess the student's proficiency level and automatically recommend the most suitable teacher for their learning needs.
+                </p>
+                <div>
+                  <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Trial Class Notes</label>
+                  <textarea
+                    value={sForm.trialNotes}
+                    onChange={(e)=>setSForm({...sForm, trialNotes:e.target.value})}
+                    rows={5}
+                    placeholder="Describe the student's performance, strengths, weaknesses, communication style, learning pace, and any specific areas of focus identified during the trial class..."
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      border: "1px solid #d0d0d0",
+                      borderRadius: "6px",
+                      fontFamily: "inherit",
+                      fontSize: "0.9em",
+                      resize: "vertical",
+                      lineHeight: "1.5",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                  <div style={{ marginTop: "12px", textAlign: "center" }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // AI analysis simulation - in real implementation, this would call an API
+                        if (!sForm.trialNotes.trim()) {
+                          notify("Please enter trial class notes before analyzing", "error");
+                          return;
+                        }
+                        notify("AI analysis in progress... (This is a placeholder - actual AI integration needed)", "info");
+                        // Simulate AI analysis delay
+                        setTimeout(() => {
+                          // For demo: set to intermediate level and first available teacher
+                          const recommendedLevel = "intermediate";
+                          const recommendedTeacher = teachers.length > 0 ? teachers[0].user_id : "";
+                          setSForm(prev => ({
+                            ...prev,
+                            level: recommendedLevel,
+                            teacherId: recommendedTeacher
+                          }));
+                          notify("AI analysis complete! Recommendations applied.", "success");
+                        }, 2000);
+                      }}
+                      style={{
+                        padding: "10px 20px",
+                        background: "black",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        fontSize: "0.95em",
+                        fontWeight: "600",
+                        cursor: "pointer",
+                        transition: "all 0.3s ease",
+                        boxShadow: "0 4px 15px rgba(102, 126, 234, 0.4)",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "8px"
+                      }}
+                      onMouseOver={(e) => {
+                        e.target.style.transform = "translateY(-2px)";
+                        e.target.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
+                      }}
+                      onMouseOut={(e) => {
+                        e.target.style.transform = "translateY(0)";
+                        e.target.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
+                      }}
+                    >
+                      <span style={{ fontSize: "1.1em" }}>🤖</span>
+                      Analyze with AI
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <br />
+              <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
+                <div style={{ display: "flex", alignItems: "center", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "1.3em", marginRight: "8px" }}>🎯</span>
+                  <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>AI Recommendations</h3>
+                </div>
+                <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
+                  Based on the trial class notes, the AI has analyzed the student's proficiency level and recommended the most suitable teacher.
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                  <div>
+                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Proficiency Level</label>
+                    <select
+                      value={sForm.level}
+                      onChange={(e)=>setSForm({...sForm, level:e.target.value})}
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        border: "1px solid #d0d0d0",
+                        borderRadius: "6px",
+                        fontFamily: "inherit",
+                        fontSize: "0.9em",
+                        background: "#fff"
+                      }}
+                    >
+                      <option value="">Select Level</option>
+                      <option value="beginner">Beginner</option>
+                      <option value="elementary">Elementary</option>
+                      <option value="intermediate">Intermediate</option>
+                      <option value="upper-intermediate">Upper Intermediate</option>
+                      <option value="advanced">Advanced</option>
+                      <option value="proficient">Proficient</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Assigned Teacher</label>
+                    <select
+                      value={sForm.teacherId}
+                      onChange={(e)=>setSForm({...sForm, teacherId:e.target.value})}
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        border: "1px solid #d0d0d0",
+                        borderRadius: "6px",
+                        fontFamily: "inherit",
+                        fontSize: "0.9em",
+                        background: "#fff"
+                      }}
+                    >
+                      <option value="">Select Teacher</option>
+                      {teachers.map(t => (
+                        <option key={t.user_id} value={t.user_id}>
+                          {t.first_name} {t.last_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <br />
+              <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
+                <div style={{ display: "flex", alignItems: "center", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "1.3em", marginRight: "8px" }}>📊</span>
+                  <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>Class Package Information</h3>
+                </div>
+                <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
+                  Specify the number of classes this student has purchased or availed in their package. This helps track their remaining classes and package utilization.
+                </p>
+                <div>
+                  <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Number of Classes Availed</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={sForm.classesAvailed}
+                    onChange={(e)=>setSForm({...sForm, classesAvailed:e.target.value})}
+                    placeholder="Enter the number of classes in the student's package"
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      border: "1px solid #d0d0d0",
+                      borderRadius: "6px",
+                      fontFamily: "inherit",
+                      fontSize: "0.9em",
+                      background: "#fff",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                  <div style={{ marginTop: "8px", fontSize: "0.85em", color: "#666" }}>
+                    This information will be stored with the student's profile for tracking purposes.
+                  </div>
+                </div>
+              </div>
+              <br />
+              <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
+                <div style={{ display: "flex", alignItems: "center", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "1.3em", marginRight: "8px" }}>📅</span>
+                  <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>Schedule Classes</h3>
+                </div>
+                <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
+                  View the assigned teacher's availability and schedule classes for this student. Select dates and times when the teacher is available to book classes.
+                </p>
+                
+                {sForm.teacherId ? (
+                  <Calendar 
+                    teacherId={sForm.teacherId} 
+                    onBookClass={(date, time, subject = "General English", endTime) => {
+                      // Add booking to selected bookings
+                      const newBooking = { 
+                        date, 
+                        time,
+                        endTime: endTime || time,
+                        duration: endTime ? Math.round((new Date(`2000-01-01T${endTime}`) - new Date(`2000-01-01T${time}`)) / (1000 * 60)) : 60,
+                        subject: subject || "General English"
+                      };
+                      setSelectedBookings(prev => {
+                        // Check if already booked
+                        const exists = prev.some(b => b.date === date && b.time === time);
+                        if (exists) {
+                          notify("This time slot is already selected", "warning");
+                          return prev;
+                        }
+                        notify(`Class booked for ${new Date(date + "T00:00:00").toLocaleDateString()} at ${time}`, "success");
+                        return [...prev, newBooking];
+                      });
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    padding: "40px",
+                    textAlign: "center",
+                    background: "#f8f9fa",
+                    border: "2px dashed #dee2e6",
+                    borderRadius: "8px",
+                    color: "#6c757d"
+                  }}>
+                    <span style={{ fontSize: "2em", marginBottom: "12px", display: "block" }}>📅</span>
+                    <p style={{ margin: "0", fontSize: "1em" }}>Please select a teacher first to view their schedule and book classes.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Selected Bookings Display */}
+              {selectedBookings.length > 0 && (
+                <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
+                  <div style={{ display: "flex", alignItems: "center", marginBottom: "8px" }}>
+                    <span style={{ fontSize: "1.3em", marginRight: "8px" }}>📋</span>
+                    <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>
+                      Scheduled Classes 
+                    </h3>
+                  </div>
+                  <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
+                    These classes will be created when you submit the student form.
+                  </p>
+                  {sForm.classesAvailed && parseInt(sForm.classesAvailed) > 0 && (
+                  <div style={{
+                    background: "#e8f4fd",
+                    border: "1px solid #b3d9ff",
+                    borderRadius: "6px",
+                    padding: "12px",
+                    marginBottom: "16px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center"
+                  }}>
+                    <span style={{ fontSize: "1.1em", fontWeight: "600", color: "#0066cc" }}>
+                      Booked {selectedBookings.length}/{sForm.classesAvailed} classes
+                    </span>
+                  </div>
+                )}
+                  <div style={{ display: "grid", gap: "8px" }}>
+                    {selectedBookings.map((booking, index) => (
+                      <div key={index} style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "12px",
+                        background: "#f8f9ff",
+                        border: "1px solid #e0e6ff",
+                        borderRadius: "6px"
+                      }}>
+                        <div>
+                          <div style={{ fontWeight: "600", color: "#333" }}>
+                            {new Date(booking.date + "T00:00:00").toLocaleDateString()} at {booking.time}
+                          </div>
+                          <div style={{ fontSize: "0.85em", color: "#666" }}>
+                            Subject: {booking.subject || "General English"}
+                          </div>
+                          <div style={{ fontSize: "0.85em", color: "#666" }}>
+                            Duration: {booking.duration} minutes
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedBookings(prev => prev.filter((_, i) => i !== index));
+                            notify("Class booking removed", "info");
+                          }}
+                          style={{
+                            padding: "6px 12px",
+                            background: "#dc3545",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "4px",
+                            fontSize: "0.8em",
+                            cursor: "pointer"
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <br />
               <button className={styles.primary} disabled={loading}>
                 {loading ? "Creating..." : "Create Student"}
@@ -389,8 +732,21 @@ export default function AdminDashboard() {
               })}
             </div>
 
+            {/* Clear All Button */}
+            {requests.length > 0 && (
+              <div style={{ marginBottom: "16px", textAlign: "right" }}>
+                <button
+                  onClick={deleteAllRequests}
+                  className={styles.warn}
+                  style={{ fontSize: "0.9em" }}
+                >
+                  Clear All Requests
+                </button>
+              </div>
+            )}
+
             {/* Requests List */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div style={{ overflowX: "auto" }}>
               {requestsLoading ? (
                 <div style={{ textAlign: "center", padding: "32px", color: "#999" }}>
                   Loading requests...
@@ -399,156 +755,94 @@ export default function AdminDashboard() {
                 <div style={{ textAlign: "center", padding: "32px", color: "#999" }}>
                   No reschedule requests at this time
                 </div>
-              ) : requests
-                .filter(r => requestFilter === "all" || r.status === requestFilter)
-                .map((r) => {
-                  const statusColors = {
-                    pending: { bg: "#fff3cd", border: "#ffc107", text: "#856404" },
-                    approved: { bg: "#d4edda", border: "#28a745", text: "#155724" },
-                    declined: { bg: "#f8d7da", border: "#dc3545", text: "#721c24" },
-                  };
-                  const statusColor = statusColors[r.status] || statusColors.pending;
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9em" }}>
+                  <thead>
+                    <tr style={{ background: "#f5f5f5", borderBottom: "2px solid #e0e0e0" }}>
+                      <th style={{ padding: "12px", textAlign: "left", fontWeight: "600", color: "#333" }}>Class</th>
+                      <th style={{ padding: "12px", textAlign: "left", fontWeight: "600", color: "#333" }}>Requester</th>
+                      <th style={{ padding: "12px", textAlign: "left", fontWeight: "600", color: "#333" }}>Current Schedule</th>
+                      <th style={{ padding: "12px", textAlign: "left", fontWeight: "600", color: "#333" }}>Requested Schedule</th>
+                      <th style={{ padding: "12px", textAlign: "left", fontWeight: "600", color: "#333" }}>Status</th>
+                      <th style={{ padding: "12px", textAlign: "left", fontWeight: "600", color: "#333" }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {requests
+                      .filter(r => requestFilter === "all" || r.status === requestFilter)
+                      .map((r) => {
+                        const statusColors = {
+                          pending: { bg: "#fff3cd", text: "#856404" },
+                          approved: { bg: "#d4edda", text: "#155724" },
+                          declined: { bg: "#f8d7da", text: "#721c24" },
+                        };
+                        const statusColor = statusColors[r.status] || statusColors.pending;
 
-                  return (
-                    <div
-                      key={r.request_id}
-                      style={{
-                        border: `1px solid #e0e0e0`,
-                        borderRadius: "8px",
-                        padding: "14px",
-                        background: "#fafafa",
-                        transition: "all 0.2s",
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.1)")}
-                      onMouseLeave={(e) => (e.currentTarget.style.boxShadow = "none")}
-                    >
-                      {/* Header: Class name and Status Badge */}
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
-                        <div>
-                          <h4 style={{ margin: "0 0 4px 0", fontSize: "1em", fontWeight: "600" }}>
-                            {r.class_name || "Untitled Class"}
-                          </h4>
-                          <p style={{ margin: 0, fontSize: "0.85em", color: "#666" }}>
-                            Requested by <strong>{r.requester_first} {r.requester_last}</strong>
-                          </p>
-                        </div>
-                        <div
-                          style={{
-                            padding: "6px 12px",
-                            borderRadius: "20px",
-                            background: statusColor.bg,
-                            border: `1px solid ${statusColor.border}`,
-                            color: statusColor.text,
-                            fontSize: "0.8em",
-                            fontWeight: "600",
-                            textTransform: "capitalize",
-                          }}
-                        >
-                          {r.status}
-                        </div>
-                      </div>
-
-                      {/* Details Grid */}
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px", fontSize: "0.9em" }}>
-                        <div style={{ background: "#fff", padding: "10px", borderRadius: "6px", border: "1px solid #e0e0e0" }}>
-                          <p style={{ margin: "0 0 4px 0", fontSize: "0.8em", color: "#999", fontWeight: "600", textTransform: "uppercase" }}>Current Schedule</p>
-                          <p style={{ margin: 0, fontWeight: "500" }}>
-                            {formatDate(r.scheduled_date)}
-                          </p>
-                          <p style={{ margin: "4px 0 0 0", color: "#666" }}>
-                            {r.start_time || "—"}
-                          </p>
-                        </div>
-                        <div style={{ background: "#fff", padding: "10px", borderRadius: "6px", border: "1px solid #e0e0e0" }}>
-                          <p style={{ margin: "0 0 4px 0", fontSize: "0.8em", color: "#999", fontWeight: "600", textTransform: "uppercase" }}>Requested Schedule</p>
-                          <p style={{ margin: 0, fontWeight: "500" }}>
-                            {formatDate(r.requested_date)}
-                          </p>
-                          <p style={{ margin: "4px 0 0 0", color: "#666" }}>
-                            {r.requested_time || "—"}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Reason */}
-                      {r.reason && (
-                        <div style={{ marginBottom: "12px", padding: "10px", background: "#fff", borderRadius: "6px", border: "1px solid #e0e0e0" }}>
-                          <p style={{ margin: "0 0 4px 0", fontSize: "0.8em", color: "#999", fontWeight: "600", textTransform: "uppercase" }}>Reason</p>
-                          <p style={{ margin: 0, fontSize: "0.9em", color: "#333", lineHeight: "1.4" }}>{r.reason}</p>
-                        </div>
-                      )}
-
-                      {/* Meta Info */}
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "12px", fontSize: "0.8em", color: "#999" }}>
-                        <p style={{ margin: 0 }}>
-                          <strong>Requester:</strong> {r.requester_first} {r.requester_last}
-                        </p>
-                        <p style={{ margin: 0 }}>
-                          <strong>Teacher:</strong> {r.teacher_first} {r.teacher_last}
-                        </p>
-                        {r.student_first && (
-                          <p style={{ margin: 0 }}>
-                            <strong>Student:</strong> {r.student_first} {r.student_last}
-                          </p>
-                        )}
-                        {r.requested_at && (
-                          <p style={{ margin: 0 }}>
-                            <strong>Requested:</strong> {formatDate(r.requested_at)}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Actions */}
-                      <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-                        {r.status === "pending" && (
-                          <>
-                            <button
-                              onClick={() => setConfirmDialog({ id: r.request_id, status: "declined" })}
-                              style={{
-                                padding: "8px 16px",
-                                fontSize: "0.85em",
+                        return (
+                          <tr key={r.request_id} style={{ borderBottom: "1px solid #e0e0e0", background: "#fff" }}>
+                            <td style={{ padding: "12px", verticalAlign: "top" }}>
+                              <div style={{ fontWeight: "500", color: "#333" }}>{r.class_name || "Untitled Class"}</div>
+                              <div style={{ fontSize: "0.8em", color: "#666", marginTop: "2px" }}>
+                                Teacher: {r.teacher_first} {r.teacher_last}
+                              </div>
+                              {r.student_first && (
+                                <div style={{ fontSize: "0.8em", color: "#666", marginTop: "2px" }}>
+                                  Student: {r.student_first} {r.student_last}
+                                </div>
+                              )}
+                              {r.reason && (
+                                <div style={{ fontSize: "0.8em", color: "#666", marginTop: "4px", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.reason}>
+                                  Reason: {r.reason}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ padding: "12px", verticalAlign: "top" }}>
+                              <div style={{ fontWeight: "500" }}>{r.requester_first} {r.requester_last}</div>
+                              <div style={{ fontSize: "0.8em", color: "#666" }}>{r.requester_email || ""}</div>
+                            </td>
+                            <td style={{ padding: "12px", verticalAlign: "top" }}>
+                              <div style={{ fontWeight: "500" }}>{formatDate(r.scheduled_date)}</div>
+                              <div style={{ fontSize: "0.8em", color: "#666" }}>{r.start_time || "—"}</div>
+                            </td>
+                            <td style={{ padding: "12px", verticalAlign: "top" }}>
+                              <div style={{ fontWeight: "500" }}>{formatDate(r.requested_date)}</div>
+                              <div style={{ fontSize: "0.8em", color: "#666" }}>{r.requested_time || "—"}</div>
+                            </td>
+                            <td style={{ padding: "12px", verticalAlign: "top" }}>
+                              <span style={{
+                                padding: "4px 8px",
+                                borderRadius: "12px",
+                                background: statusColor.bg,
+                                color: statusColor.text,
+                                fontSize: "0.8em",
                                 fontWeight: "600",
-                                border: "1px solid #dc3545",
-                                background: "#fff",
-                                color: "#dc3545",
-                                borderRadius: "6px",
-                                cursor: "pointer",
-                                transition: "all 0.2s",
-                              }}
-                              onMouseEnter={(e) => (e.target.style.background = "#f8d7da")}
-                              onMouseLeave={(e) => (e.target.style.background = "#fff")}
-                            >
-                              Decline
-                            </button>
-                            <button
-                              onClick={() => setConfirmDialog({ id: r.request_id, status: "approved" })}
-                              style={{
-                                padding: "8px 16px",
-                                fontSize: "0.85em",
-                                fontWeight: "600",
-                                border: "none",
-                                background: "#28a745",
-                                color: "#fff",
-                                borderRadius: "6px",
-                                cursor: "pointer",
-                                transition: "all 0.2s",
-                              }}
-                              onMouseEnter={(e) => (e.target.style.background = "#218838")}
-                              onMouseLeave={(e) => (e.target.style.background = "#28a745")}
-                            >
-                              Approve
-                            </button>
-                          </>
-                        )}
-                        {r.status !== "pending" && (
-                          <span style={{ fontSize: "0.85em", color: "#999", fontStyle: "italic" }}>
-                            {r.resolved_at ? `Resolved on ${formatDate(r.resolved_at)}` : "—"}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                                textTransform: "capitalize",
+                              }}>
+                                {r.status}
+                              </span>
+                              {r.resolved_at && (
+                                <div style={{ fontSize: "0.7em", color: "#999", marginTop: "4px" }}>
+                                  Resolved: {formatDate(r.resolved_at)}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ padding: "12px", verticalAlign: "top" }}>
+                              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                                <button
+                                  onClick={() => deleteRequest(r.request_id)}
+                                  className={styles.warn}
+                                  style={{ fontSize: "0.8em", padding: "6px 10px" }}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              )}
             </div>
           </section>
         )}

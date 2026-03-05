@@ -70,12 +70,17 @@ const isClassJoinable = (classObj, selectedDate) => {
  *
  * Optional props:
  * - classesUsed, classesLimit: for overriding package counts (primarily student)
+ * - teacherId: for admin to view a specific teacher's schedule
+ * - studentId: for admin to view a specific student's schedule
+ * - onBookClass: callback for admin to book classes (date, time) => void
  */
-export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
+export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId = null, studentId = null, onBookClass = null }) {
   const { notify } = useNotification() || {};
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth()); // 0-based
+
+  console.log("Calendar component loaded");
 
   // data pulled from server
   const [availability, setAvailability] = useState({});
@@ -94,7 +99,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
   const [localRole, setLocalRole] = useState("");
   const [localUserId, setLocalUserId] = useState(null);
   const [me, setMe] = useState(null); // loaded from storage
+  const [bookedDates, setBookedDates] = useState([]); // booked dates for this user
+  const [counterpartyBookedDates, setCounterpartyBookedDates] = useState([]); // booked dates for the other party (teacher/student)
+  const [counterpartyId, setCounterpartyId] = useState(null); // the other party's user_id
   const isAdmin = localRole === "admin"; // helper for rendering
+
+  // booking form state
+  const [bookingFormOpen, setBookingFormOpen] = useState(false);
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState(null);
+  const [bookingSubject, setBookingSubject] = useState("");
+  const [bookingEndTime, setBookingEndTime] = useState("");
+  const [availableTimeSlots, setAvailableTimeSlots] = useState([]);
 
   // Read user info from localStorage
   useEffect(() => {
@@ -102,30 +117,68 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
       const stored = localStorage.getItem("user");
       if (stored) {
         const parsed = JSON.parse(stored);
+        console.log("User info from localStorage:", parsed);
         setMe(parsed);
         if (parsed && parsed.role) setLocalRole(parsed.role);
         if (parsed && parsed.id) setLocalUserId(parsed.id);
       }
     } catch (e) {
-      // ignore
+      console.error("Error reading user from localStorage:", e);
     }
   }, []);
 
+  // Fetch booked dates when user changes
+  useEffect(() => {
+    if (!localUserId || localRole === "admin") return;
+    axios
+      .get(`${API}/api/calendar/booked-dates/${localUserId}`)
+      .then(r => {
+        if (r.data && r.data.bookedDates) {
+          // Normalize dates to YYYY-MM-DD format
+          const normalized = r.data.bookedDates.map(bd => ({
+            ...bd,
+            scheduled_date: normalizeDate(bd.scheduled_date)
+          }));
+          setBookedDates(normalized);
+        }
+      })
+      .catch(() => setBookedDates([]));
+  }, [localUserId, localRole]);
+
+  // Helper to normalize date to YYYY-MM-DD format
+  const normalizeDate = (dateVal) => {
+    if (!dateVal) return "";
+    let d;
+    if (typeof dateVal === "string") {
+      if (dateVal.includes("T")) {
+        d = new Date(dateVal);
+      } else {
+        d = new Date(dateVal + "T00:00:00");
+      }
+    } else {
+      d = new Date(dateVal);
+    }
+    if (isNaN(d.getTime())) return "";
+    return fmtDate(d);
+  };
 
   // fetch teacher availability whenever month/year or user changes
   useEffect(() => {
-    if (localRole !== "teacher" || !localUserId) return;
+    // If teacherId prop is provided (admin viewing specific teacher), use that
+    const targetTeacherId = teacherId || (localRole === "teacher" ? localUserId : null);
+    if (!targetTeacherId) return;
+
     const y = year;
     const m = month + 1; // 1-based for API
     axios
       .get(`${API}/api/calendar/teacher-availability`, {
-        params: { teacher_id: localUserId, year: y, month: m }
+        params: { teacher_id: targetTeacherId, year: y, month: m }
       })
       .then(r => {
         if (r.data && r.data.availability) setAvailability(r.data.availability);
       })
       .catch(() => {});
-  }, [year, month, localRole, localUserId]);
+  }, [year, month, localRole, localUserId, teacherId]);
 
   // fetch student package when we know student id
   useEffect(() => {
@@ -141,8 +194,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
   const loadClassesForDate = (dateStr) => {
     if (!dateStr || classesCache[dateStr]) return;
     const params = { scheduled_date: dateStr };
-    if (localRole === "student") params.student_id = localUserId;
-    if (localRole === "teacher") params.teacher_id = localUserId;
+
+    // If teacherId prop is provided (admin viewing specific teacher), show that teacher's classes
+    if (teacherId) {
+      params.teacher_id = teacherId;
+    } else if (studentId) {
+      // If studentId prop is provided (admin viewing specific student), show that student's classes
+      params.student_id = studentId;
+    } else {
+      if (localRole === "student") params.student_id = localUserId;
+      if (localRole === "teacher") params.teacher_id = localUserId;
+    }
 
     axios
       .get(`${API}/api/calendar/classes-by-date`, { params })
@@ -169,20 +231,84 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
       });
   };
 
+  // fetch available time slots for a specific date from teacher availability
+  const loadAvailableTimeSlots = (dateStr, tId) => {
+    if (!dateStr || !tId) {
+      setAvailableTimeSlots([]);
+      return;
+    }
+    
+    // Check if teacher is explicitly unavailable on this date
+    const dateStatus = availability[dateStr] || "";
+    if (dateStatus === "unavailable") {
+      setAvailableTimeSlots([]);
+      return;
+    }
+    
+    const classes = classesCache[dateStr] || [];
+    console.log("=== loadAvailableTimeSlots ===");
+    console.log("Date:", dateStr, "Teacher ID:", tId);
+    console.log("All classes for date:", classes);
+    
+    // Get booked times for this specific teacher on this date
+    const bookedClasses = classes.filter(cls => {
+      const classTeacherId = cls.teacher_id;
+      console.log("Checking class:", cls, "Teacher ID match:", classTeacherId, "===", tId, "?", classTeacherId === parseInt(tId));
+      return classTeacherId === parseInt(tId);
+    });
+    
+    console.log("Booked classes for this teacher:", bookedClasses);
+    
+    // Use start_time (24-hour format from DB) instead of formatted time
+    // Normalize to HH:MM format (first 5 characters of HH:MM:SS)
+    const bookedTimes = bookedClasses.map(cls => {
+      let time = cls.start_time || cls.time || "";
+      // Extract HH:MM from HH:MM:SS format
+      if (time.length >= 5) {
+        time = time.substring(0, 5);
+      }
+      return time;
+    }).filter(t => t && t.length === 5); // Only keep valid HH:MM times
+    
+    console.log("Booked times (from start_time):", bookedTimes);
+    
+    // Generate standard time slots (7 AM to 11 PM, hourly in 24-hour format)
+    const allSlots = [
+      "07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00"
+    ];
+    
+    // Filter out booked times
+    const availableSlots = allSlots.filter(slot => !bookedTimes.includes(slot));
+    console.log("Available slots after filtering:", availableSlots);
+    setAvailableTimeSlots(availableSlots);
+  };
+
   // whenever selectedDate changes we fetch if necessary
   useEffect(() => {
-    if (selectedDate) loadClassesForDate(selectedDate);
-  }, [selectedDate, localRole, localUserId]);
+    if (selectedDate) {
+      loadClassesForDate(selectedDate);
+    }
+  }, [selectedDate, localRole, localUserId, teacherId, studentId]);
+
+  // Load available time slots AFTER classes are loaded for the selected date
+  useEffect(() => {
+    if (selectedDate && teacherId && classesCache[selectedDate] !== undefined) {
+      loadAvailableTimeSlots(selectedDate, teacherId);
+    }
+  }, [selectedDate, teacherId, classesCache, availability]);
 
   // preload every day in the month so cells with classes are colored on load
   useEffect(() => {
-    if (!localUserId) return;
+    // If teacherId or studentId prop is provided, use those; otherwise use local user
+    const targetUserId = teacherId || studentId || localUserId;
+    if (!targetUserId) return;
+
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = fmtDate(new Date(year, month, d));
       loadClassesForDate(dateStr);
     }
-  }, [year, month, localRole, localUserId]);
+  }, [year, month, localRole, localUserId, teacherId, studentId]);
 
   const viewDate = new Date(year, month, 1);
   const monthName = viewDate.toLocaleString("default", { month: "long" });
@@ -211,6 +337,30 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
     const formatted = fmtDate(d);
     const classes = classesCache[formatted];
     return classes && classes.length > 0;
+  };
+
+  // Helper: Get booked times for a specific date
+  const getBookedTimesForDate = (dateStr) => {
+    return bookedDates
+      .filter(bd => bd.scheduled_date === dateStr)
+      .map(bd => bd.start_time);
+  };
+
+  // Helper: Check if a specific date/time is booked
+  const isDateTimeBooked = (dateStr, timeStr) => {
+    return bookedDates.some(bd => 
+      bd.scheduled_date === dateStr && 
+      bd.start_time === timeStr
+    );
+  };
+
+  // Helper: Check if counterparty has this date/time booked
+  const isCounterpartyDateTimeBooked = (dateStr, timeStr) => {
+    const normalizedDate = normalizeDate(dateStr);
+    return counterpartyBookedDates.some(bd => 
+      normalizeDate(bd.scheduled_date) === normalizedDate && 
+      bd.start_time.slice(0, 5) === timeStr
+    );
   };
 
   // month navigation
@@ -255,6 +405,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
       return;
     }
 
+    // Check if requested date/time is already booked
+    if (isDateTimeBooked(requestDate, requestTime)) {
+      setRequestError("This date and time are already booked. Please choose another time.");
+      return;
+    }
+
     setIsSubmittingRequest(true);
     try {
       await axios.post(`${API}/api/calendar/reschedule-request`, {
@@ -296,6 +452,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
   const selectedClass = selectedClassId
     ? selectedClasses.find(cls => cls.id === selectedClassId)
     : null;
+  
+  if (selectedClass) {
+    console.log("Selected class updated:", selectedClass);
+  }
+  
   const isTeacherOrAdmin = localRole === "teacher" || isAdmin;
 
   // student package based usage calculation
@@ -304,27 +465,51 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
     if (studentPackage) return studentPackage.classes_used || 0;
     return 0;
   })();
-  const effectiveClassesLeft = (() => {
-    if (studentPackage) return studentPackage.classes_left != null ? studentPackage.classes_left : Math.max(0, classesLimit - effectiveClassesUsed);
-    return Math.max(0, classesLimit - effectiveClassesUsed);
+  const effectiveClassesLimit = (() => {
+    if (studentPackage && studentPackage.total_classes != null) return studentPackage.total_classes;
+    return classesLimit;
   })();
-  const effectivePercent = classesLimit > 0 ? Math.min(100, Math.round((effectiveClassesUsed / classesLimit) * 100)) : 0;
+  const effectiveClassesLeft = (() => {
+    if (studentPackage) return studentPackage.classes_left != null ? studentPackage.classes_left : Math.max(0, effectiveClassesLimit - effectiveClassesUsed);
+    return Math.max(0, effectiveClassesLimit - effectiveClassesUsed);
+  })();
+  const effectivePercent = effectiveClassesLimit > 0 ? Math.min(100, Math.round((effectiveClassesUsed / effectiveClassesLimit) * 100)) : 0;
 
   return (
-    <main className={styles.page}>
+    <>
+      <style>
+        {`
+          @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+          }
+          
+          @keyframes slideIn {
+            from { 
+              opacity: 0;
+              transform: translateY(-20px) scale(0.95);
+            }
+            to { 
+              opacity: 1;
+              transform: translateY(0) scale(1);
+            }
+          }
+        `}
+      </style>
+      <main className={styles.page}>
       <section className={styles.center}>
         <h1 className={styles.title}>Calendar</h1>
 
         <div className={styles.wrapper}>
           <div className={styles.calendarCard}>
             <div className={styles.calHeader}>
-              <button onClick={prevMonth} className={styles.navBtn} aria-label="Previous month">
+              <button type="button" onClick={prevMonth} className={styles.navBtn} aria-label="Previous month">
                 ‹
               </button>
               <div className={styles.monthLabel}>
                 {monthName} {year}
               </div>
-              <button onClick={nextMonth} className={styles.navBtn} aria-label="Next month">
+              <button type="button" onClick={nextMonth} className={styles.navBtn} aria-label="Next month">
                 ›
               </button>
             </div>
@@ -347,6 +532,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                 return (
                   <button
                     key={idx}
+                    type="button"
                     className={[
                       styles.cell,
                       !d && styles.empty,
@@ -415,6 +601,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                     </div>
                   </div>
                   <button
+                    type="button"
                     disabled={!isClassJoinable(selectedClass, selectedDate)}
                     onClick={() => {
                       if (isClassJoinable(selectedClass, selectedDate)) {
@@ -438,10 +625,37 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                     <button
                       className={styles.bookBtn}
                       onClick={() => {
+                        // Fetch counterparty's booked dates
+                        const otherPartyId = localRole === "student" ? selectedClass.teacher_id : selectedClass.student_id;
+                        console.log("selectedClass:", selectedClass);
+                        console.log("otherPartyId:", otherPartyId);
+                        console.log("localRole:", localRole);
+                        setCounterpartyId(otherPartyId);
+                        
+                        // Load the other party's booked dates
+                        axios
+                          .get(`${API}/api/calendar/booked-dates/${otherPartyId}`)
+                          .then(r => {
+                            console.log("Booked dates response:", r.data);
+                            if (r.data && r.data.bookedDates) {
+                              // Normalize dates to YYYY-MM-DD format
+                              const normalized = r.data.bookedDates.map(bd => ({
+                                ...bd,
+                                scheduled_date: normalizeDate(bd.scheduled_date)
+                              }));
+                              console.log("Normalized booked dates:", normalized);
+                              setCounterpartyBookedDates(normalized);
+                            }
+                          })
+                          .catch((err) => {
+                            console.error("Error fetching booked dates:", err);
+                            setCounterpartyBookedDates([]);
+                          });
+                        
                         setRequestMode(true);
                         // preload fields with current class date/time
                         setRequestDate(selectedClass.scheduled_date || selectedDate);
-                        setRequestTime(selectedClass.start_time || "");
+                        setRequestTime(selectedClass.start_time ? selectedClass.start_time.slice(0, 5) : "");
                       }}
                       style={{ marginTop: "8px" }}
                     >
@@ -474,6 +688,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                           }}
                           style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
                         />
+                        {requestDate && (
+                          <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666" }}>
+                            {counterpartyBookedDates.filter(bd => normalizeDate(bd.scheduled_date) === normalizeDate(requestDate)).length > 0 ? (
+                              <p style={{ margin: 0 }}>
+                                ⚠️ {localRole === "student" ? "Teacher" : "Student"} booked: {counterpartyBookedDates.filter(bd => normalizeDate(bd.scheduled_date) === normalizeDate(requestDate)).map(bd => humanTime(bd.start_time)).join(", ")}  
+                              </p>
+                            ) : (
+                              <p style={{ margin: 0, color: "#4caf50" }}>✓ All times available on this date</p>
+                            )}
+                          </div>
+                        )}
                       </div>
                       
                       <div style={{ marginBottom: 10 }}>
@@ -482,11 +707,21 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                           type="time"
                           value={requestTime}
                           onChange={e => {
-                            setRequestTime(e.target.value);
+                            const time = e.target.value;
+                            setRequestTime(time);
                             setRequestError("");
+                            // Check if counterparty has this time booked
+                            if (requestDate && isCounterpartyDateTimeBooked(requestDate, time)) {
+                              setRequestError(`${localRole === "student" ? "Teacher" : "Student"} is not available at this time. Please choose another time.`);
+                            }
                           }}
                           style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
                         />
+                        {requestDate && requestTime && isCounterpartyDateTimeBooked(requestDate, requestTime) && (
+                          <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
+                            ✕ {localRole === "student" ? "Teacher" : "Student"} is already booked at this time
+                          </div>
+                        )}
                       </div>
                       
                       <div style={{ marginBottom: 12 }}>
@@ -505,6 +740,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                       
                       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                         <button 
+                          type="button"
                           onClick={() => {
                             setRequestMode(false);
                             setRequestError("");
@@ -515,9 +751,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                           Cancel
                         </button>
                         <button 
+                          type="button"
                           onClick={submitRequest}
-                          disabled={isSubmittingRequest}
-                          style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: isSubmittingRequest ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: isSubmittingRequest ? "not-allowed" : "pointer" }}
+                          disabled={isSubmittingRequest || (requestDate && requestTime && isCounterpartyDateTimeBooked(requestDate, requestTime))}
+                          style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || (requestDate && requestTime && isCounterpartyDateTimeBooked(requestDate, requestTime))) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || (requestDate && requestTime && isCounterpartyDateTimeBooked(requestDate, requestTime))) ? "not-allowed" : "pointer" }}
                         >
                           {isSubmittingRequest ? "Sending..." : "Send Request"}
                         </button>
@@ -525,6 +762,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                     </div>
                   ) }
                   <button
+                    type="button"
                     className={styles.slotBtn}
                     onClick={() => setSelectedClassId(null)}
                     style={{ marginTop: "8px" }}
@@ -535,13 +773,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
               ) : selectedDate ? (
                 <>
                   <div className={styles.legendTitle}>
-                    Classes on {new Date(selectedDate + "T00:00:00").toLocaleDateString()}
+                    {new Date(selectedDate + "T00:00:00").toLocaleDateString()}
                   </div>
                   <div className={styles.slotList}>
                     {selectedClasses && selectedClasses.length > 0 ? (
                       selectedClasses.map((cls, idx) => (
                         <button
                           key={idx}
+                          type="button"
                           className={styles.slotBtn}
                           onClick={() => setSelectedClassId(cls.id)}
                           style={{ textAlign: "left", cursor: "pointer" }}
@@ -559,8 +798,416 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                         No classes scheduled for this day
                       </div>
                     )}
+
+                    {/* Admin booking interface */}
+                    {onBookClass && selectedDate && (
+                      <>
+                        <div style={{ margin: "16px 0 8px 0", padding: "8px 0", borderTop: "1px solid #e0e0e0" }}>
+                          <div style={{ fontSize: "0.9em", fontWeight: "600", color: "#333" }}>Available Time Slots</div>
+                          <div style={{ fontSize: "0.8em", color: "#666", marginTop: "4px" }}>Click to book a class</div>
+                        </div>
+                        {availableTimeSlots && availableTimeSlots.length > 0 ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                            {/* Group time slots by period */}
+                            {(() => {
+                              const morningSlots = availableTimeSlots.filter(time => {
+                                const hour = parseInt(time.split(':')[0]);
+                                return hour >= 7 && hour < 12;
+                              });
+                              const afternoonSlots = availableTimeSlots.filter(time => {
+                                const hour = parseInt(time.split(':')[0]);
+                                return hour >= 12 && hour < 17;
+                              });
+                              const eveningSlots = availableTimeSlots.filter(time => {
+                                const hour = parseInt(time.split(':')[0]);
+                                return hour >= 17 && hour <= 23;
+                              });
+
+                              const renderTimeGroup = (title, slots, icon) => (
+                                slots.length > 0 && (
+                                  <div>
+                                    <div style={{
+                                      fontSize: "0.8em",
+                                      fontWeight: "600",
+                                      color: "#666",
+                                      marginBottom: "8px",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: "6px"
+                                    }}>
+                                      <span>{icon}</span>
+                                      {title} ({slots.length})
+                                    </div>
+                                    <div style={{
+                                      display: "grid",
+                                      gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+                                      gap: "8px"
+                                    }}>
+                                      {slots.map(time => {
+                                        const isBooked = selectedClasses.some(cls => cls.time === time || cls.startTime === time);
+                                        return (
+                                          <button
+                                            key={time}
+                                            type="button"
+                                            onClick={() => {
+                                              if (!isBooked && !bookingFormOpen) {
+                                                setSelectedTimeSlot(time);
+                                                setBookingFormOpen(true);
+                                                setBookingSubject("");
+                                                setBookingEndTime("");
+                                              }
+                                            }}
+                                            disabled={isBooked}
+                                            style={{
+                                              padding: "12px 16px",
+                                              border: isBooked ? "1px solid #e0e0e0" : "1px solid #4CAF50",
+                                              borderRadius: "8px",
+                                              background: isBooked ? "#f8f8f8" : "#f1f8f1",
+                                              color: isBooked ? "#999" : "#2E7D32",
+                                              fontSize: "0.9em",
+                                              fontWeight: "600",
+                                              cursor: isBooked ? "not-allowed" : "pointer",
+                                              transition: "all 0.2s ease",
+                                              textAlign: "center",
+                                              display: "flex",
+                                              flexDirection: "column",
+                                              alignItems: "center",
+                                              gap: "4px",
+                                              minHeight: "60px",
+                                              justifyContent: "center"
+                                            }}
+                                            onMouseEnter={(e) => {
+                                              if (!isBooked) {
+                                                e.target.style.background = "#e8f5e8";
+                                                e.target.style.borderColor = "#388E3C";
+                                                e.target.style.transform = "translateY(-1px)";
+                                                e.target.style.boxShadow = "0 2px 8px rgba(76, 175, 80, 0.2)";
+                                              }
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              if (!isBooked) {
+                                                e.target.style.background = "#f1f8f1";
+                                                e.target.style.borderColor = "#4CAF50";
+                                                e.target.style.transform = "translateY(0)";
+                                                e.target.style.boxShadow = "none";
+                                              }
+                                            }}
+                                          >
+                                            <div style={{ fontSize: "1em", fontWeight: "700" }}>
+                                              {humanTime(time)}
+                                            </div>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )
+                              );
+
+                              return (
+                                <>
+                                  {renderTimeGroup("Morning", morningSlots)}
+                                  {renderTimeGroup("Afternoon", afternoonSlots)}
+                                  {renderTimeGroup("Evening", eveningSlots)}
+                                </>
+                              );
+                            })()}
+                          </div>
+                        ) : (
+                          <div style={{
+                            padding: "40px 20px",
+                            textAlign: "center",
+                            background: "#f8f9fa",
+                            border: "2px dashed #dee2e6",
+                            borderRadius: "12px",
+                            color: "#6c757d",
+                            fontSize: "0.9em"
+                          }}>
+                            <span style={{ fontSize: "2em", marginBottom: "12px", display: "block" }}>📅</span>
+                            <p style={{ margin: "0", fontWeight: "500" }}>No available time slots for this day</p>
+                            <p style={{ margin: "8px 0 0 0", fontSize: "0.8em", opacity: 0.8 }}>
+                              The teacher may be unavailable or all slots are booked
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Booking Modal */}
+                        {bookingFormOpen && selectedTimeSlot && (
+                          <div style={{
+                            position: "fixed",
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: "rgba(0, 0, 0, 0.5)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            zIndex: 1000,
+                            animation: "fadeIn 0.2s ease-out"
+                          }}>
+                            <div style={{
+                              background: "#fff",
+                              borderRadius: "16px",
+                              padding: "24px",
+                              maxWidth: "420px",
+                              width: "90%",
+                              maxHeight: "90vh",
+                              overflow: "auto",
+                              boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
+                              animation: "slideIn 0.3s ease-out",
+                              position: "relative"
+                            }}>
+                              {/* Close button */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBookingFormOpen(false);
+                                  setSelectedTimeSlot(null);
+                                  setBookingSubject("");
+                                  setBookingEndTime("");
+                                }}
+                                style={{
+                                  position: "absolute",
+                                  top: "16px",
+                                  right: "16px",
+                                  background: "transparent",
+                                  border: "none",
+                                  fontSize: "24px",
+                                  cursor: "pointer",
+                                  color: "#666",
+                                  padding: "4px",
+                                  borderRadius: "50%",
+                                  width: "32px",
+                                  height: "32px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  transition: "all 0.2s ease"
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.background = "#f0f0f0";
+                                  e.target.style.color = "#333";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.background = "transparent";
+                                  e.target.style.color = "#666";
+                                }}
+                              >
+                                ×
+                              </button>
+
+                              {/* Header */}
+                              <div style={{ marginBottom: "20px", paddingRight: "40px" }}>
+                                <div style={{
+                                  fontSize: "1.5em",
+                                  fontWeight: "700",
+                                  color: "#1a1a1a",
+                                  marginBottom: "8px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "8px"
+                                }}>
+                                  Book Class
+                                </div>
+                                <div style={{
+                                  fontSize: "0.9em",
+                                  color: "#666",
+                                  lineHeight: "1.5"
+                                }}>
+                                  Schedule a new class for {new Date(selectedDate + "T00:00:00").toLocaleDateString()} at {humanTime(selectedTimeSlot)}
+                                </div>
+                              </div>
+
+                              {/* Form Fields */}
+                              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                                <div>
+                                  <label style={{
+                                    display: "block",
+                                    fontSize: "0.9em",
+                                    fontWeight: "600",
+                                    marginBottom: "6px",
+                                    color: "#333"
+                                  }}>
+                                    Subject <span style={{ color: "#e74c3c" }}>*</span>
+                                  </label>
+                                  <select
+                                    value={bookingSubject}
+                                    onChange={(e) => setBookingSubject(e.target.value)}
+                                    style={{
+                                      width: "100%",
+                                      padding: "12px 14px",
+                                      fontSize: "0.95em",
+                                      border: "2px solid #e1e5e9",
+                                      borderRadius: "8px",
+                                      boxSizing: "border-box",
+                                      fontFamily: "inherit",
+                                      background: "#fff",
+                                      cursor: "pointer",
+                                      transition: "border-color 0.2s ease, box-shadow 0.2s ease"
+                                    }}
+                                    onFocus={(e) => {
+                                      e.target.style.borderColor = "#4CAF50";
+                                      e.target.style.boxShadow = "0 0 0 3px rgba(76, 175, 80, 0.1)";
+                                    }}
+                                    onBlur={(e) => {
+                                      e.target.style.borderColor = "#e1e5e9";
+                                      e.target.style.boxShadow = "none";
+                                    }}
+                                  >
+                                    <option value="">Select a subject...</option>
+                                    <option value="Business English">Business English</option>
+                                    <option value="Online English">Online English</option>
+                                    <option value="News">News</option>
+                                    <option value="TOEIC">TOEIC</option>
+                                    <option value="IELTS">IELTS</option>
+                                    <option value="OPIc">OPIc</option>
+                                    <option value="Conversational English">Conversational English</option>
+                                    <option value="Travel English">Travel English</option>
+                                  </select>
+                                </div>
+
+                                <div>
+                                  <label style={{
+                                    display: "block",
+                                    fontSize: "0.9em",
+                                    fontWeight: "600",
+                                    marginBottom: "6px",
+                                    color: "#333"
+                                  }}>
+                                    End Time <span style={{ color: "#e74c3c" }}>*</span>
+                                  </label>
+                                  <input
+                                    type="time"
+                                    value={bookingEndTime}
+                                    onChange={(e) => setBookingEndTime(e.target.value)}
+                                    style={{
+                                      width: "100%",
+                                      padding: "12px 14px",
+                                      fontSize: "0.95em",
+                                      border: "2px solid #e1e5e9",
+                                      borderRadius: "8px",
+                                      boxSizing: "border-box",
+                                      fontFamily: "inherit",
+                                      transition: "border-color 0.2s ease, box-shadow 0.2s ease"
+                                    }}
+                                    onFocus={(e) => {
+                                      e.target.style.borderColor = "#4CAF50";
+                                      e.target.style.boxShadow = "0 0 0 3px rgba(76, 175, 80, 0.1)";
+                                    }}
+                                    onBlur={(e) => {
+                                      e.target.style.borderColor = "#e1e5e9";
+                                      e.target.style.boxShadow = "none";
+                                    }}
+                                  />
+                                  <div style={{
+                                    fontSize: "0.8em",
+                                    color: "#666",
+                                    marginTop: "6px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "4px"
+                                  }}>
+                                    <span>🕐</span>
+                                    Start: {humanTime(selectedTimeSlot)} • Duration: {bookingEndTime ? (() => {
+                                      const start = new Date(`2000-01-01T${selectedTimeSlot}`);
+                                      const end = new Date(`2000-01-01T${bookingEndTime}`);
+                                      const diff = Math.round((end - start) / (1000 * 60));
+                                      return diff > 0 ? `${diff} minutes` : 'Invalid duration';
+                                    })() : 'Select end time'}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Action Buttons */}
+                              <div style={{
+                                display: "flex",
+                                gap: "12px",
+                                justifyContent: "flex-end",
+                                marginTop: "24px",
+                                paddingTop: "16px",
+                                borderTop: "1px solid #e1e5e9"
+                              }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setBookingFormOpen(false);
+                                    setSelectedTimeSlot(null);
+                                    setBookingSubject("");
+                                    setBookingEndTime("");
+                                  }}
+                                  style={{
+                                    padding: "10px 20px",
+                                    fontSize: "0.9em",
+                                    fontWeight: "600",
+                                    border: "2px solid #e1e5e9",
+                                    background: "#fff",
+                                    borderRadius: "8px",
+                                    cursor: "pointer",
+                                    transition: "all 0.2s ease"
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.target.style.borderColor = "#ccc";
+                                    e.target.style.background = "#f8f9fa";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.target.style.borderColor = "#e1e5e9";
+                                    e.target.style.background = "#fff";
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!bookingSubject.trim()) {
+                                      notify("Please select a subject", "error");
+                                      return;
+                                    }
+                                    if (!bookingEndTime) {
+                                      notify("Please select an end time", "error");
+                                      return;
+                                    }
+                                    onBookClass(selectedDate, selectedTimeSlot, bookingSubject, bookingEndTime);
+                                    setBookingFormOpen(false);
+                                    setSelectedTimeSlot(null);
+                                    setBookingSubject("");
+                                    setBookingEndTime("");
+                                  }}
+                                  style={{
+                                    padding: "10px 20px",
+                                    fontSize: "0.9em",
+                                    fontWeight: "600",
+                                    border: "none",
+                                    background: "#4CAF50",
+                                    color: "#fff",
+                                    borderRadius: "8px",
+                                    cursor: "pointer",
+                                    transition: "all 0.2s ease",
+                                    boxShadow: "0 2px 8px rgba(76, 175, 80, 0.2)"
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.target.style.background = "#45a049";
+                                    e.target.style.transform = "translateY(-1px)";
+                                    e.target.style.boxShadow = "0 4px 12px rgba(76, 175, 80, 0.3)";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.target.style.background = "#4CAF50";
+                                    e.target.style.transform = "translateY(0)";
+                                    e.target.style.boxShadow = "0 2px 8px rgba(76, 175, 80, 0.2)";
+                                  }}
+                                >
+                                  Book Class
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                   <button
+                    type="button"
                     className={styles.slotBtn}
                     onClick={() => setSelectedDate(null)}
                     style={{ marginTop: "12px" }}
@@ -572,7 +1219,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                 <>
                   <div className={styles.legendTitle}>Actions</div>
                   <div className={styles.slotList}>
-                    <button className={styles.slotBtn} onClick={jumpToToday}>
+                    <button type="button" className={styles.slotBtn} onClick={jumpToToday}>
                       Jump to Today
                     </button>
                   </div>
@@ -623,8 +1270,28 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                       Join Class
                     </button>
                     <button
+                      type="button"
                       className={styles.bookBtn}
                       onClick={() => {
+                        // Fetch counterparty's (student's) booked dates
+                        const studentId = selectedClass.student_id;
+                        setCounterpartyId(studentId);
+                        
+                        // Load the student's booked dates
+                        axios
+                          .get(`${API}/api/calendar/booked-dates/${studentId}`)
+                          .then(r => {
+                            if (r.data && r.data.bookedDates) {
+                              // Normalize dates to YYYY-MM-DD format
+                              const normalized = r.data.bookedDates.map(bd => ({
+                                ...bd,
+                                scheduled_date: normalizeDate(bd.scheduled_date)
+                              }));
+                              setCounterpartyBookedDates(normalized);
+                            }
+                          })
+                          .catch(() => setCounterpartyBookedDates([])); 
+                        
                         setRequestMode(true);
                         setRequestDate(selectedDate);
                         setRequestTime("");
@@ -659,6 +1326,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                             }}
                             style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
                           />
+                          {requestDate && (
+                            <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666" }}>
+                              {counterpartyBookedDates.filter(bd => normalizeDate(bd.scheduled_date) === normalizeDate(requestDate)).length > 0 ? (
+                                <p style={{ margin: 0 }}>
+                                  ⚠️ Student booked: {counterpartyBookedDates.filter(bd => normalizeDate(bd.scheduled_date) === normalizeDate(requestDate)).map(bd => humanTime(bd.start_time)).join(", ")} 
+                                </p>
+                              ) : (
+                                <p style={{ margin: 0, color: "#4caf50" }}>✓ All times available on this date</p>
+                              )}
+                            </div>
+                          )}
                         </div>
                         
                         <div style={{ marginBottom: 10 }}>
@@ -667,11 +1345,21 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                             type="time"
                             value={requestTime}
                             onChange={e => {
-                              setRequestTime(e.target.value);
+                              const time = e.target.value;
+                              setRequestTime(time);
                               setRequestError("");
+                              // Check if student has this time booked
+                              if (requestDate && isCounterpartyDateTimeBooked(requestDate, time)) {
+                                setRequestError("Student is not available at this time. Please choose another time.");
+                              }
                             }}
                             style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
                           />
+                          {requestDate && requestTime && isCounterpartyDateTimeBooked(requestDate, requestTime) && (
+                            <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
+                              ✕ Student is already booked at this time
+                            </div>
+                          )}
                         </div>
                         
                         <div style={{ marginBottom: 12 }}>
@@ -690,6 +1378,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                         
                         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                           <button 
+                            type="button"
                             onClick={() => {
                               setRequestMode(false);
                               setRequestError("");
@@ -700,9 +1389,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                             Cancel
                           </button>
                           <button 
+                            type="button"
                             onClick={submitRequest}
-                            disabled={isSubmittingRequest}
-                            style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: isSubmittingRequest ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: isSubmittingRequest ? "not-allowed" : "pointer" }}
+                            disabled={isSubmittingRequest || (requestDate && requestTime && isCounterpartyDateTimeBooked(requestDate, requestTime))}
+                            style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || (requestDate && requestTime && isCounterpartyDateTimeBooked(requestDate, requestTime))) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || (requestDate && requestTime && isCounterpartyDateTimeBooked(requestDate, requestTime))) ? "not-allowed" : "pointer" }}
                           >
                             {isSubmittingRequest ? "Sending..." : "Send Request"}
                           </button>
@@ -710,6 +1400,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                       </div>
                     ) }
                     <button
+                      type="button"
                       className={styles.slotBtn}
                       onClick={() => setSelectedClassId(null)}
                       style={{ marginTop: "8px" }}
@@ -728,6 +1419,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                         selectedClasses.map((cls, idx) => (
                           <button
                             key={idx}
+                            type="button"
                             className={styles.slotBtn}
                             onClick={() => setSelectedClassId(cls.id)}
                             style={{ textAlign: "left", cursor: "pointer" }}
@@ -746,6 +1438,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                       )}
                     </div>
                     <button
+                      type="button"
                       className={styles.slotBtn}
                       onClick={() => setSelectedDate(null)}
                       style={{ marginTop: "12px" }}
@@ -760,7 +1453,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                     <div className={styles.slotList}>
                       <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", textAlign: "center" }}>
                         <div style={{ fontSize: 14, color: "#666" }}>Used</div>
-                        <div style={{ fontSize: 20, fontWeight: 700, marginTop: 6 }}>{effectiveClassesUsed} / {classesLimit}</div>
+                        <div style={{ fontSize: 20, fontWeight: 700, marginTop: 6 }}>{effectiveClassesUsed} / {effectiveClassesLimit}</div>
                         <div style={{ marginTop: 6, color: "#374151", fontSize: 14 }}>Classes left: {effectiveClassesLeft}</div>
                         <div style={{ marginTop: 8 }}>
                           <div style={{ height: 8, background: "#eef2ff", borderRadius: 8, overflow: "hidden" }}>
@@ -771,7 +1464,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
                     </div>
                     <div style={{ marginTop: 12, fontSize: 12, color: "#666" }}>Tip: Contact your teacher to add or reschedule classes.</div>
                     <div style={{ marginTop: 12 }}>
-                      <button className={styles.slotBtn} onClick={jumpToToday}>
+                      <button type="button" className={styles.slotBtn} onClick={jumpToToday}>
                         Jump to Today
                       </button>
                     </div>
@@ -803,5 +1496,6 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20 }) {
         </div>
       </section>
     </main>
+    </>
   );
 }
