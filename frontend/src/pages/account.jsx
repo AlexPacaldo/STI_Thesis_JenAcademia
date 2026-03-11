@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/account.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
 
@@ -18,6 +19,7 @@ function mapUser(u = {}) {
 
 
 export default function account() {
+  const { notify } = useNotification() || {};
   const [user, setUser] = useState(null);
   const [form, setForm] = useState({
     firstName: "",
@@ -91,10 +93,10 @@ export default function account() {
       setUser(updated);
       setForm(updated);
 
-      alert("Profile updated successfully!");
+      notify("Profile updated successfully!", "success");
     } catch (err) {
       console.error(err);
-      alert("Could not update profile.");
+      notify("Could not update profile.", "error");
     } finally {
       setSaving(false);
     }
@@ -104,7 +106,7 @@ export default function account() {
   async function changePassword(e) {
     e.preventDefault();
     if (!pwd.next || pwd.next !== pwd.confirm) {
-      alert("New password and confirm password do not match.");
+      notify("New password and confirm password do not match.", "error");
       return;
     }
     setPwdSaving(true);
@@ -113,13 +115,12 @@ export default function account() {
         `http://localhost:3001/api/users/${user.id}/password`,
         { current: pwd.current, next: pwd.next }
       );
-      alert(res.data?.message || "Password changed!");
+      notify(res.data?.message || "Password changed!", "success");
       setPwd({ current: "", next: "", confirm: "" });
     } catch (err) {
       console.error(err);
-      alert(
-        err?.response?.data?.message || "Could not change password. Check current password."
-      );
+      notify(err?.response?.data?.message || "Could not change password. Check current password.", "error");
+      
     } finally {
       setPwdSaving(false);
     }
