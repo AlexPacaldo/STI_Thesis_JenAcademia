@@ -27,6 +27,36 @@ const humanTime = (t24) => {
   return `${hour}:${mins} ${ampm}`;
 };
 
+// Helper: calculate end time from start time and duration in minutes
+const getEndTime = (startTime, durationMins) => {
+  if (!startTime || !durationMins) return "";
+  
+  // Parse "HH:MM AM/PM" format
+  const timeMatch = startTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!timeMatch) return "";
+  
+  let hours = parseInt(timeMatch[1]);
+  const mins = parseInt(timeMatch[2]);
+  const period = timeMatch[3].toUpperCase();
+  
+  // Convert to 24-hour format
+  if (period === 'PM' && hours !== 12) hours += 12;
+  if (period === 'AM' && hours === 12) hours = 0;
+  
+  // Add duration in minutes
+  let totalMinutes = hours * 60 + mins + parseInt(durationMins);
+  
+  // Convert back to 12-hour format
+  let endHours = Math.floor(totalMinutes / 60) % 24;
+  let endMins = totalMinutes % 60;
+  
+  const endPeriod = endHours >= 12 ? "PM" : "AM";
+  if (endHours > 12) endHours -= 12;
+  if (endHours === 0) endHours = 12;
+  
+  return `${endHours}:${String(endMins).padStart(2, "0")} ${endPeriod}`;
+};
+
 // Helper: check if a class is joinable (within 30 mins before start time)
 const isClassJoinable = (classObj, selectedDate) => {
   if (!classObj || !classObj.time || !selectedDate) return false;
@@ -597,7 +627,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                     </div>
                     <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
                       <div><strong>Time:</strong></div>
-                      <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.time} ({selectedClass.duration})</div>
+                      <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration)}</div>
                     </div>
                   </div>
                   <button
@@ -787,7 +817,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         >
                           <div><strong>{cls.className || cls.name || "Untitled"}</strong></div>
                           <div style={{ fontSize: "0.85em", marginTop: "4px" }}>
-                            {cls.time || cls.startTime || ""} {cls.duration || ""}
+                            {cls.time || cls.startTime || ""} - {getEndTime(cls.time || cls.startTime, cls.duration) || ""}
                           </div>
                           {cls.studentName && <div style={{ fontSize: "0.85em", color: "#666" }}>Student: {cls.studentName}</div>}
                           {isAdmin && cls.teacherName && <div style={{ fontSize: "0.85em", color: "#666" }}>Teacher: {cls.teacherName}</div>}
@@ -1234,7 +1264,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                     <div className={styles.slotList}>
                       <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
                         <div><strong>{selectedClass.className}</strong></div>
-                        <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.time} ({selectedClass.duration})</div>
+                        <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration)}</div>
                       </div>
                       {selectedClass.teacherName && (
                         <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
@@ -1426,7 +1456,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           >
                             <div><strong>{cls.className || cls.name || "Untitled"}</strong></div>
                             <div style={{ fontSize: "0.85em", marginTop: "4px" }}>
-                              {cls.time || cls.startTime || ""} {cls.duration || ""}
+                              {cls.time || cls.startTime || ""} - {getEndTime(cls.time || cls.startTime, cls.duration) || ""}
                             </div>
                             {cls.teacher && <div style={{ fontSize: "0.85em", color: "#666" }}>Teacher: {cls.teacher}</div>}
                           </button>

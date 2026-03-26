@@ -113,7 +113,7 @@ app.post("/api/login", async (req, res) => {
 
     // Look up the user by email
     const [rows] = await pool.query(
-      `SELECT user_id, first_name, last_name, email, password_hash, role
+      `SELECT user_id, first_name, last_name, email, password_hash, role, profile_completed
        FROM users
        WHERE email = ?
        LIMIT 1`,
@@ -140,7 +140,8 @@ app.post("/api/login", async (req, res) => {
         firstName: user.first_name,
         lastName: user.last_name,
         email: user.email,
-        role: user.role
+        role: user.role,
+        profileCompleted: user.profile_completed
       }
     });
   } catch (err) {
@@ -155,7 +156,7 @@ app.post("/api/login", async (req, res) => {
 app.get("/api/users/:id", async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT user_id, first_name, last_name, email, contact_number AS contact, timezone, role
+      `SELECT user_id, first_name, last_name, email, contact_number AS contact, timezone, role, profile_completed
        FROM users
        WHERE user_id = ? LIMIT 1`,
       [req.params.id]
@@ -172,6 +173,7 @@ app.get("/api/users/:id", async (req, res) => {
         contact: u.contact,
         timezone: u.timezone,
         role: u.role,
+        profileCompleted: u.profile_completed,
       },
     });
   } catch (err) {
@@ -183,9 +185,16 @@ app.put("/api/users/:id", async (req, res) => {
   try {
     const { firstName, lastName, email, contact, timezone } = req.body;
 
+    // Validate required fields for profile completion
+    if (!firstName || !lastName || !contact || !timezone) {
+      return res.status(400).json({ 
+        message: "First name, last name, contact, and timezone are required to complete your profile"
+      });
+    }
+
     await pool.query(
       `UPDATE users
-       SET first_name = ?, last_name = ?, email = ?, contact_number = ?, timezone = ?
+       SET first_name = ?, last_name = ?, email = ?, contact_number = ?, timezone = ?, profile_completed = TRUE
        WHERE user_id = ?`,
       [firstName, lastName, email, contact, timezone, req.params.id]
     );
@@ -239,11 +248,15 @@ app.post("/api/admin/users", async (req, res) => {
     if (exist.length) return res.status(409).json({ message: "Email already exists" });
 
     const hash = await bcrypt.hash(password, 10);
+    
+    // Always mark newly created users as incomplete so they must complete their profile
+    // This ensures they select their timezone and other settings
+    const profileCompleted = false;
 
     const [ins] = await pool.query(`
-      INSERT INTO users (email, password_hash, first_name, last_name, contact_number, role)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `, [email, hash, firstName, lastName, contact, role]);
+      INSERT INTO users (email, password_hash, first_name, last_name, contact_number, role, profile_completed)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [email, hash, firstName, lastName, contact, role, profileCompleted]);
 
     const userId = ins.insertId;
     

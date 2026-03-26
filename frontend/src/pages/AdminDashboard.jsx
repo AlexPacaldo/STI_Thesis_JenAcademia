@@ -96,6 +96,10 @@ export default function AdminDashboard() {
        // only admin can access
        window.location.href = "/";
      }
+     // Check if profile is incomplete and redirect
+     if (!u.profileCompleted) {
+       window.location.href = "/account";
+     }
    }, []);
 
   // ---- fetchers ----

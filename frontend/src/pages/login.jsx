@@ -27,6 +27,13 @@ export default function Login() {
 
     // Save user and route by role
     localStorage.setItem("user", JSON.stringify(data.user));
+    
+    // If profile is not complete, always redirect to account page
+    if (!data.user.profileCompleted) {
+      window.location.href = "/account";
+      return;
+    }
+    
     if (data.user.role === "teacher") {
       window.location.href = "/TeacherDashboard";
     }else if(data.user.role === "admin"){

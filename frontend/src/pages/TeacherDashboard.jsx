@@ -1,10 +1,21 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import styles from "../assets/TeacherDashboard.module.css";
 
 export default function TeacherDashboard() {
   const navigate = useNavigate();
   const [rescheduleMode, setRescheduleMode] = useState(false);
+
+  // Check if profile is incomplete and redirect
+  useEffect(() => {
+    const stored = localStorage.getItem("user");
+    if (stored) {
+      const user = JSON.parse(stored);
+      if (!user.profileCompleted) {
+        navigate("/account");
+      }
+    }
+  }, [navigate]);
 
   const upcoming = [
     { id: 1, student: "Alexander John G. Pacaldo", subject: "Business English", time: "9:00 AM – 10:00 AM" },

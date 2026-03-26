@@ -11,20 +11,53 @@ function Header() {
   const location = useLocation();
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
+  const [profileCompleted, setProfileCompleted] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem("user");
+      console.log('Header: Reading from localStorage:', stored);
       if (stored) {
         const parsedUser = JSON.parse(stored);
+        console.log('Header: Parsed user:', parsedUser);
         setUser(parsedUser);
         setRole(parsedUser.role);
+        console.log('Header: Setting role to:', parsedUser.role);
+        console.log('Header: Setting profileCompleted to:', !!parsedUser.profileCompleted);
+        setProfileCompleted(!!parsedUser.profileCompleted);
       }
     } catch (e) {
       console.warn("Failed to read user from localStorage:", e);
     }
+  }, [location]);
+
+  // Listen for profile updates
+  useEffect(() => {
+    const handleProfileUpdate = (event) => {
+      const updatedUser = event.detail;
+      console.log('Header received profile update:', updatedUser);
+      setProfileCompleted(!!updatedUser.profileCompleted);
+    };
+    
+    const handleStorageChange = () => {
+      const stored = localStorage.getItem("user");
+      if (stored) {
+        const parsedUser = JSON.parse(stored);
+        console.log('Header detected storage change:', parsedUser);
+        setProfileCompleted(!!parsedUser.profileCompleted);
+      }
+    };
+    
+    window.addEventListener('userProfileUpdated', handleProfileUpdate);
+    // Also check on visibility change (when user returns to tab)
+    document.addEventListener('visibilitychange', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('userProfileUpdated', handleProfileUpdate);
+      document.removeEventListener('visibilitychange', handleStorageChange);
+    };
   }, []);
 
   // Fetch unread notification count
@@ -141,12 +174,29 @@ function Header() {
         
         <nav className={styles.navbar}>
           {/* 🧩 STUDENT NAVIGATION */}
-          {role === "student" && isStudentArea && (
+          {role === "student" && isStudentArea && profileCompleted && (
             <>
-              <Link to="/Calendar" className={styles.schedulenav}>Calendar</Link>
-              <Link to="/assignments">Assignments</Link>
-              <Link to="/remarks">Remarks</Link>
-              <Link to="/booksLessons">Books / Lessons</Link>
+              <Link 
+                to="/Calendar"
+                className={styles.schedulenav}
+              >
+                Calendar
+              </Link>
+              <Link 
+                to="/assignments"
+              >
+                Assignments
+              </Link>
+              <Link 
+                to="/remarks"
+              >
+                Remarks
+              </Link>
+              <Link 
+                to="/booksLessons"
+              >
+                Books / Lessons
+              </Link>
 
               {/* Notification Bell */}
               <button
@@ -176,12 +226,28 @@ function Header() {
           )}
 
           {/* 🧩 TEACHER NAVIGATION */}
-          {role === "teacher" && isTeacherArea && (
+          {role === "teacher" && isTeacherArea && profileCompleted && (
             <>
-              <Link to="/Calendar">Calendar</Link>
-              <Link to="/PassRemarks">Remarks</Link>
-              <Link to="/teacherAssignment">Assignments</Link>
-              <Link to="/teacherBooksLessons">Books / Lessons</Link>
+              <Link 
+                to="/Calendar"
+              >
+                Calendar
+              </Link>
+              <Link 
+                to="/PassRemarks"
+              >
+                Remarks
+              </Link>
+              <Link 
+                to="/teacherAssignment"
+              >
+                Assignments
+              </Link>
+              <Link 
+                to="/teacherBooksLessons"
+              >
+                Books / Lessons
+              </Link>
 
               {/* Notification Bell */}
               <button
