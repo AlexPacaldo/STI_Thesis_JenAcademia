@@ -505,12 +505,9 @@ export default function AdminDashboard() {
                 </p>
                 <div>
                   <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Number of Classes Availed</label>
-                  <input
-                    type="number"
-                    min="0"
+                  <select
                     value={sForm.classesAvailed}
                     onChange={(e)=>setSForm({...sForm, classesAvailed:e.target.value})}
-                    placeholder="Enter the number of classes in the student's package"
                     style={{
                       width: "100%",
                       padding: "10px",
@@ -521,7 +518,12 @@ export default function AdminDashboard() {
                       background: "#fff",
                       boxSizing: "border-box"
                     }}
-                  />
+                  >
+                    <option value="">Select Number of Classes</option>
+                    <option value="10">10</option>
+                    <option value="15">15</option>
+                    <option value="20">20</option>
+                  </select>
                   <div style={{ marginTop: "8px", fontSize: "0.85em", color: "#666" }}>
                     This information will be stored with the student's profile for tracking purposes.
                   </div>
