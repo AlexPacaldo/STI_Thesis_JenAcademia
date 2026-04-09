@@ -132,7 +132,18 @@ app.post("/api/login", async (req, res) => {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // Success — return a trimmed user object for the frontend
+    // Success — fetch assigned teacher for students and return a trimmed user object
+    let assignedTeacherId = null;
+    if (user.role === "student") {
+      const [profileRows] = await pool.query(
+        `SELECT assigned_teacher_id FROM student_profiles WHERE user_id = ? LIMIT 1`,
+        [user.user_id]
+      );
+      if (profileRows.length) {
+        assignedTeacherId = profileRows[0].assigned_teacher_id;
+      }
+    }
+
     res.json({
       message: "Login successful",
       user: {
@@ -141,7 +152,8 @@ app.post("/api/login", async (req, res) => {
         lastName: user.last_name,
         email: user.email,
         role: user.role,
-        profileCompleted: user.profile_completed
+        profileCompleted: user.profile_completed,
+        assignedTeacherId,
       }
     });
   } catch (err) {
@@ -156,9 +168,11 @@ app.post("/api/login", async (req, res) => {
 app.get("/api/users/:id", async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT user_id, first_name, last_name, email, contact_number AS contact, timezone, role, profile_completed
-       FROM users
-       WHERE user_id = ? LIMIT 1`,
+      `SELECT u.user_id, u.first_name, u.last_name, u.email, u.contact_number AS contact, u.timezone, u.role, u.profile_completed,
+              sp.assigned_teacher_id
+       FROM users u
+       LEFT JOIN student_profiles sp ON sp.user_id = u.user_id
+       WHERE u.user_id = ? LIMIT 1`,
       [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ message: "User not found" });
@@ -174,6 +188,7 @@ app.get("/api/users/:id", async (req, res) => {
         timezone: u.timezone,
         role: u.role,
         profileCompleted: u.profile_completed,
+        assignedTeacherId: u.assigned_teacher_id || null,
       },
     });
   } catch (err) {
@@ -1194,6 +1209,25 @@ app.get("/api/student/profile/:student_id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching student profile" });
+  }
+});
+
+app.get("/api/student/assigned-teacher/:student_id", async (req, res) => {
+  try {
+    const { student_id } = req.params;
+    const [rows] = await pool.query(
+      `SELECT assigned_teacher_id FROM student_profiles WHERE user_id = ? LIMIT 1`,
+      [student_id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Assigned teacher not found" });
+    }
+
+    res.json({ assigned_teacher_id: rows[0].assigned_teacher_id ?? null });
+  } catch (err) {
+    console.error("GET /api/student/assigned-teacher/:student_id error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 

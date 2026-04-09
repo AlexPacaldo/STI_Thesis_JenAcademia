@@ -16,6 +16,7 @@ function mapUser(u = {}) {
     timezone: u.timezone ?? u.time_zone ?? "",
     role: u.role ?? "student",
     profileCompleted: !!(u.profileCompleted ?? u.profile_completed ?? false),
+    assignedTeacherId: u.assignedTeacherId ?? u.assigned_teacher_id ?? null,
   };
 }
 

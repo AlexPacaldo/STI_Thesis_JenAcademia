@@ -132,6 +132,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [bookedDates, setBookedDates] = useState([]); // booked dates for this user
   const [counterpartyBookedDates, setCounterpartyBookedDates] = useState([]); // booked dates for the other party (teacher/student)
   const [counterpartyId, setCounterpartyId] = useState(null); // the other party's user_id
+  const [studentProfile, setStudentProfile] = useState(null);
+  const [assignedTeacherId, setAssignedTeacherId] = useState(null);
+  const [assignedTeacherName, setAssignedTeacherName] = useState("");
+  const [teacherClassesCache, setTeacherClassesCache] = useState({});
+  const [studentBookingMode, setStudentBookingMode] = useState(false);
+  const [studentBookingDate, setStudentBookingDate] = useState(fmtDate(today));
+  const [studentBookingTime, setStudentBookingTime] = useState("");
+  const [studentBookingSubject, setStudentBookingSubject] = useState("");
+  const [studentBookingEndTime, setStudentBookingEndTime] = useState("");
+  const [studentBookingError, setStudentBookingError] = useState("");
+  const [isSubmittingStudentBooking, setIsSubmittingStudentBooking] = useState(false);
   const isAdmin = localRole === "admin"; // helper for rendering
 
   // booking form state
@@ -149,8 +160,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         const parsed = JSON.parse(stored);
         console.log("User info from localStorage:", parsed);
         setMe(parsed);
-        if (parsed && parsed.role) setLocalRole(parsed.role);
-        if (parsed && parsed.id) setLocalUserId(parsed.id);
+        const normalizedRole = parsed?.role ? String(parsed.role).toLowerCase() : "";
+        setLocalRole(normalizedRole);
+        const userId = parsed?.id || parsed?.user_id || parsed?.userId || null;
+        if (userId) setLocalUserId(userId);
+        const teacherId = parsed?.assigned_teacher_id || parsed?.assignedTeacherId || parsed?.assignedTeacher_Id || null;
+        if (teacherId) setAssignedTeacherId(teacherId);
       }
     } catch (e) {
       console.error("Error reading user from localStorage:", e);
@@ -195,7 +210,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   // fetch teacher availability whenever month/year or user changes
   useEffect(() => {
     // If teacherId prop is provided (admin viewing specific teacher), use that
-    const targetTeacherId = teacherId || (localRole === "teacher" ? localUserId : null);
+    const targetTeacherId = teacherId || (localRole === "teacher" ? localUserId : (localRole === "student" ? assignedTeacherId : null));
     if (!targetTeacherId) return;
 
     const y = year;
@@ -208,7 +223,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         if (r.data && r.data.availability) setAvailability(r.data.availability);
       })
       .catch(() => {});
-  }, [year, month, localRole, localUserId, teacherId]);
+  }, [year, month, localRole, localUserId, teacherId, assignedTeacherId]);
 
   // fetch student package when we know student id
   useEffect(() => {
@@ -218,6 +233,38 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         .then(r => setStudentPackage(r.data.package))
         .catch(() => setStudentPackage(null));
     }
+  }, [localRole, localUserId]);
+
+  // fetch assigned teacher directly from student_profiles using the resolved local user id
+  useEffect(() => {
+    if (localRole !== "student" || !localUserId) return;
+
+    axios
+      .get(`${API}/api/student/assigned-teacher/${localUserId}`)
+      .then(r => {
+        const teacherIdFromProfile = r.data?.assigned_teacher_id ?? null;
+        setAssignedTeacherId(teacherIdFromProfile);
+
+        if (teacherIdFromProfile) {
+          try {
+            const stored = localStorage.getItem("user");
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              const updated = {
+                ...parsed,
+                assignedTeacherId: teacherIdFromProfile,
+                assigned_teacher_id: teacherIdFromProfile,
+              };
+              localStorage.setItem("user", JSON.stringify(updated));
+            }
+          } catch (e) {
+            console.error("Error updating localStorage with assignedTeacherId:", e);
+          }
+        }
+      })
+      .catch(() => {
+        setAssignedTeacherId(null);
+      });
   }, [localRole, localUserId]);
 
   // helper to load classes for a particular date
@@ -261,6 +308,23 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       });
   };
 
+  const loadTeacherClassesForDate = (dateStr, tId) => {
+    if (!dateStr || !tId || teacherClassesCache[dateStr]) return;
+
+    axios
+      .get(`${API}/api/calendar/classes-by-date`, {
+        params: { scheduled_date: dateStr, teacher_id: tId }
+      })
+      .then(r => {
+        if (r.data && r.data.classes) {
+          setTeacherClassesCache(prev => ({ ...prev, [dateStr]: r.data.classes }));
+        }
+      })
+      .catch(() => {
+        setTeacherClassesCache(prev => ({ ...prev, [dateStr]: [] }));
+      });
+  };
+
   // fetch available time slots for a specific date from teacher availability
   const loadAvailableTimeSlots = (dateStr, tId) => {
     if (!dateStr || !tId) {
@@ -275,7 +339,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       return;
     }
     
-    const classes = classesCache[dateStr] || [];
+    const classes = teacherClassesCache[dateStr] !== undefined ? teacherClassesCache[dateStr] : (classesCache[dateStr] || []);
     console.log("=== loadAvailableTimeSlots ===");
     console.log("Date:", dateStr, "Teacher ID:", tId);
     console.log("All classes for date:", classes);
@@ -320,12 +384,21 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
   }, [selectedDate, localRole, localUserId, teacherId, studentId]);
 
-  // Load available time slots AFTER classes are loaded for the selected date
+  useEffect(() => {
+    if (studentBookingMode && studentBookingDate && assignedTeacherId) {
+      loadTeacherClassesForDate(studentBookingDate, assignedTeacherId);
+    }
+  }, [studentBookingMode, studentBookingDate, assignedTeacherId]);
+
+  // Load available time slots AFTER classes are loaded for the selected date or student booking date
   useEffect(() => {
     if (selectedDate && teacherId && classesCache[selectedDate] !== undefined) {
       loadAvailableTimeSlots(selectedDate, teacherId);
     }
-  }, [selectedDate, teacherId, classesCache, availability]);
+    if (studentBookingMode && studentBookingDate && assignedTeacherId && teacherClassesCache[studentBookingDate] !== undefined) {
+      loadAvailableTimeSlots(studentBookingDate, assignedTeacherId);
+    }
+  }, [selectedDate, teacherId, classesCache, availability, studentBookingMode, studentBookingDate, assignedTeacherId, teacherClassesCache]);
 
   // preload every day in the month so cells with classes are colored on load
   useEffect(() => {
@@ -382,6 +455,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       bd.scheduled_date === dateStr && 
       bd.start_time === timeStr
     );
+  };
+
+  const isTeacherDateTimeBooked = (dateStr, timeStr) => {
+    const classes = teacherClassesCache[dateStr] || [];
+    return classes.some(cls => {
+      const time = (cls.start_time || cls.time || "").substring(0, 5);
+      return time === timeStr;
+    });
   };
 
   // Helper: Check if counterparty has this date/time booked
@@ -504,6 +585,104 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     return Math.max(0, effectiveClassesLimit - effectiveClassesUsed);
   })();
   const effectivePercent = effectiveClassesLimit > 0 ? Math.min(100, Math.round((effectiveClassesUsed / effectiveClassesLimit) * 100)) : 0;
+
+  const studentMonthMin = fmtDate(new Date(today.getFullYear(), today.getMonth(), 1));
+  const studentMonthMax = fmtDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+
+  const openMonthlyBooking = () => {
+    setYear(today.getFullYear());
+    setMonth(today.getMonth());
+    setStudentBookingMode(true);
+    setStudentBookingDate(fmtDate(today));
+    setStudentBookingTime("");
+    setStudentBookingSubject("");
+    setStudentBookingEndTime("");
+    setStudentBookingError("");
+    setSelectedDate(null);
+    setSelectedClassId(null);
+  };
+
+  const submitStudentBooking = async () => {
+    setStudentBookingError("");
+    if (!studentBookingDate) {
+      setStudentBookingError("Please select a date within the current month.");
+      return;
+    }
+    if (!studentBookingTime) {
+      setStudentBookingError("Please select a time slot.");
+      return;
+    }
+    if (!assignedTeacherId) {
+      setStudentBookingError("Unable to book because your assigned teacher is not available.");
+      return;
+    }
+    if (studentBookingDate < studentMonthMin || studentBookingDate > studentMonthMax) {
+      setStudentBookingError("Please pick a date in the current month only.");
+      return;
+    }
+    if (isTeacherDateTimeBooked(studentBookingDate, studentBookingTime)) {
+      setStudentBookingError("The teacher is already booked at this time. Please choose another slot.");
+      return;
+    }
+
+    let endTime = studentBookingEndTime;
+    if (!endTime) {
+      const [hour, min] = studentBookingTime.split(":").map(Number);
+      const endDate = new Date(2000, 0, 1, hour + 1, min);
+      endTime = `${String(endDate.getHours()).padStart(2, "0")}:${String(endDate.getMinutes()).padStart(2, "0")}`;
+    }
+
+    const start = new Date(`2000-01-01T${studentBookingTime}`);
+    const end = new Date(`2000-01-01T${endTime}`);
+    const duration = Math.max(0, Math.round((end - start) / (1000 * 60)));
+    if (duration <= 0) {
+      setStudentBookingError("End time must be after start time.");
+      return;
+    }
+
+    setIsSubmittingStudentBooking(true);
+    try {
+      await axios.post(`${API}/api/calendar/class`, {
+        class_name: studentBookingSubject.trim() || "General English",
+        teacher_id: assignedTeacherId,
+        student_id: localUserId,
+        scheduled_date: studentBookingDate,
+        start_time: studentBookingTime,
+        end_time: endTime,
+        duration,
+        class_link: ""
+      });
+
+      notify?.("Class booked for the current month.", "success");
+      setStudentBookingMode(false);
+      setStudentBookingTime("");
+      setStudentBookingSubject("");
+      setStudentBookingEndTime("");
+      setSelectedDate(studentBookingDate);
+      setBookedDates(prev => [
+        ...prev,
+        { scheduled_date: studentBookingDate, start_time: studentBookingTime }
+      ]);
+      // Clear cache for this date so the load functions re-fetch
+      setClassesCache(prev => {
+        const updated = { ...prev };
+        delete updated[studentBookingDate];
+        return updated;
+      });
+      setTeacherClassesCache(prev => {
+        const updated = { ...prev };
+        delete updated[studentBookingDate];
+        return updated;
+      });
+      loadClassesForDate(studentBookingDate);
+      loadTeacherClassesForDate(studentBookingDate, assignedTeacherId);
+    } catch (err) {
+      console.error(err);
+      setStudentBookingError(err?.response?.data?.message || "Unable to book class. Please try again.");
+    } finally {
+      setIsSubmittingStudentBooking(false);
+    }
+  };
 
   return (
     <>
@@ -1476,6 +1655,131 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                       Close
                     </button>
                   </>
+                ) : studentBookingMode ? (
+                  <>
+                    <div className={styles.legendTitle}>Book Classes for This Month</div>
+                    <div className={styles.slotList}>
+                      <div style={{ padding: 12, color: "#333", fontSize: "0.95em" }}>
+                        {assignedTeacherName ? (
+                          <p style={{ margin: 0 }}>Choose a date and time for {assignedTeacherName}. Only current month dates are allowed.</p>
+                        ) : (
+                          <p style={{ margin: 0 }}>You don&apos;t have an assigned teacher yet. Contact support to enable booking.</p>
+                        )}
+                      </div>
+                      <div style={{ display: "grid", gap: 12 }}>
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Date *</label>
+                          <input
+                            type="date"
+                            min={studentMonthMin}
+                            max={studentMonthMax}
+                            value={studentBookingDate}
+                            onChange={e => {
+                              setStudentBookingDate(e.target.value);
+                              setStudentBookingTime("");
+                              setStudentBookingError("");
+                            }}
+                            style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Available Times *</label>
+                          {availability[studentBookingDate] === "unavailable" ? (
+                            <div style={{ padding: 12, background: "#fff3e0", borderRadius: 8, color: "#b65f00" }}>
+                              Teacher is unavailable on this date.
+                            </div>
+                          ) : availableTimeSlots && availableTimeSlots.length > 0 ? (
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
+                              {availableTimeSlots.map(time => {
+                                const isBooked = isTeacherDateTimeBooked(studentBookingDate, time);
+                                return (
+                                  <button
+                                    key={time}
+                                    type="button"
+                                    onClick={() => {
+                                      if (!isBooked) {
+                                        setStudentBookingTime(time);
+                                        setStudentBookingError("");
+                                      }
+                                    }}
+                                    disabled={isBooked}
+                                    style={{
+                                      padding: "12px 14px",
+                                      border: studentBookingTime === time ? "2px solid #4CAF50" : "1px solid #d0d0d0",
+                                      borderRadius: "8px",
+                                      background: studentBookingTime === time ? "#e8f5e9" : isBooked ? "#f8f8f8" : "#fff",
+                                      color: isBooked ? "#999" : "#111",
+                                      cursor: isBooked ? "not-allowed" : "pointer",
+                                      textAlign: "center"
+                                    }}
+                                  >
+                                    {humanTime(time)}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div style={{ padding: 12, background: "#f4f6f8", borderRadius: 8, color: "#555" }}>
+                              No available slots found for this date. Choose another day in the current month.
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Subject</label>
+                          <select
+                            value={studentBookingSubject}
+                            onChange={e => setStudentBookingSubject(e.target.value)}
+                            style={{ width: "100%", padding: "10px 12px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, fontFamily: "inherit" }}
+                          >
+                            <option value="">Select a subject...</option>
+                            <option value="Business English">Business English</option>
+                            <option value="Online English">Online English</option>
+                            <option value="News">News</option>
+                            <option value="TOEIC">TOEIC</option>
+                            <option value="IELTS">IELTS</option>
+                            <option value="OPIc">OPIc</option>
+                            <option value="Conversational English">Conversational English</option>
+                            <option value="Travel English">Travel English</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>End Time</label>
+                          <input
+                            type="time"
+                            value={studentBookingEndTime}
+                            onChange={e => setStudentBookingEndTime(e.target.value)}
+                            style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
+                          />
+                          <div style={{ marginTop: 6, fontSize: "0.8em", color: "#666" }}>
+                            {studentBookingTime ? `Start: ${humanTime(studentBookingTime)} • Default duration: 60 minutes` : "Choose a slot first."}
+                          </div>
+                        </div>
+                        {studentBookingError && (
+                          <div style={{ padding: 10, background: "#ffebee", border: "1px solid #ffcdd2", borderRadius: 6, color: "#c62828", fontSize: "0.85em" }}>
+                            {studentBookingError}
+                          </div>
+                        )}
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                          <button
+                            type="button"
+                            onClick={() => setStudentBookingMode(false)}
+                            disabled={isSubmittingStudentBooking}
+                            style={{ padding: "10px 16px", fontSize: "0.9em", border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer" }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={submitStudentBooking}
+                            disabled={isSubmittingStudentBooking || !studentBookingTime || assignedTeacherId == null}
+                            style={{ padding: "10px 16px", fontSize: "0.9em", border: "none", background: "#4CAF50", color: "#fff", borderRadius: 6, cursor: (isSubmittingStudentBooking || !studentBookingTime || assignedTeacherId == null) ? "not-allowed" : "pointer" }}
+                          >
+                            {isSubmittingStudentBooking ? "Booking..." : "Book Class"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
                 ) : (
                   // Student summary
                   <>
@@ -1493,11 +1797,25 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                       </div>
                     </div>
                     <div style={{ marginTop: 12, fontSize: 12, color: "#666" }}>Tip: Contact your teacher to add or reschedule classes.</div>
-                    <div style={{ marginTop: 12 }}>
+                    <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                      <button
+                        type="button"
+                        className={styles.slotBtn}
+                        onClick={openMonthlyBooking}
+                        disabled={!assignedTeacherId}
+                        style={{ width: "100%", textAlign: "center" }}
+                      >
+                        Book Classes for This Month
+                      </button>
                       <button type="button" className={styles.slotBtn} onClick={jumpToToday}>
                         Jump to Today
                       </button>
                     </div>
+                    {!assignedTeacherId && (
+                      <div style={{ marginTop: 10, fontSize: "0.8em", color: "#b65f00" }}>
+                        Your assigned teacher is not available yet. Please contact support.
+                      </div>
+                    )}
                   </>
                 )}
               </>
