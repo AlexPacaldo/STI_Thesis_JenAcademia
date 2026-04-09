@@ -257,7 +257,7 @@ app.put("/api/users/:id/password", async (req, res) => {
 //Create Teacher Account
 app.post("/api/admin/users", async (req, res) => {
   try {
-    const { firstName, lastName, email, password, contact, role = "teacher", classesAvailed, level, teacherId, trialNotes } = req.body;
+    const { firstName, lastName, email, password, contact, role = "teacher", classesAvailed, level, teacherId, trialNotes, courseId } = req.body;
 
     const [exist] = await pool.query("SELECT user_id FROM users WHERE email = ?", [email]);
     if (exist.length) return res.status(409).json({ message: "Email already exists" });
@@ -284,11 +284,12 @@ app.post("/api/admin/users", async (req, res) => {
     if (role === "student") {
       const assignedTeacherId = teacherId ? parseInt(teacherId, 10) : null;
       const proficiencyLevel = level || "beginner";
+      const courseIdValue = courseId ? parseInt(courseId, 10) : null;
       
       await pool.query(`
-        INSERT INTO student_profiles (user_id, proficiency_level, assigned_teacher_id, trial_notes)
-        VALUES (?, ?, ?, ?)
-      `, [userId, proficiencyLevel, assignedTeacherId, trialNotes || null]);
+        INSERT INTO student_profiles (user_id, proficiency_level, assigned_teacher_id, course_id, trial_notes)
+        VALUES (?, ?, ?, ?, ?)
+      `, [userId, proficiencyLevel, assignedTeacherId, courseIdValue, trialNotes || null]);
       
       // Create student class package if classesAvailed is provided
       if (classesAvailed && parseInt(classesAvailed, 10) > 0) {
@@ -1167,10 +1168,13 @@ app.get("/api/student/profile/:student_id", async (req, res) => {
     const { student_id } = req.params;
 
     const [profileRows] = await pool.query(
-      `SELECT sp.*, u.first_name, u.last_name, u.email, ta.first_name as teacher_first, ta.last_name as teacher_last
+      `SELECT sp.*, u.first_name, u.last_name, u.email,
+              ta.first_name as teacher_first, ta.last_name as teacher_last,
+              c.course_id, c.course_name, c.description as course_description, c.duration as course_duration
        FROM student_profiles sp
        JOIN users u ON sp.user_id = u.user_id
        LEFT JOIN users ta ON sp.assigned_teacher_id = ta.user_id
+       LEFT JOIN courses c ON sp.course_id = c.course_id
        WHERE sp.user_id = ?`,
       [student_id]
     );
@@ -1196,7 +1200,11 @@ app.get("/api/student/profile/:student_id", async (req, res) => {
         proficiency_level: profile.proficiency_level,
         assigned_teacher_id: profile.assigned_teacher_id,
         teacher_name: profile.teacher_first && profile.teacher_last ? `${profile.teacher_first} ${profile.teacher_last}` : null,
-        trial_notes: profile.trial_notes
+        trial_notes: profile.trial_notes,
+        course_id: profile.course_id,
+        course_name: profile.course_name,
+        course_description: profile.course_description,
+        course_duration: profile.course_duration
       },
       package: packageInfo ? {
         package_id: packageInfo.package_id,
@@ -1231,7 +1239,44 @@ app.get("/api/student/assigned-teacher/:student_id", async (req, res) => {
   }
 });
 
-// Update student class package (increment classes_used)
+// Get all courses
+app.get("/api/courses", async (req, res) => {
+  try {
+    const [courses] = await pool.query(
+      `SELECT course_id, course_name, description, duration
+       FROM courses
+       ORDER BY course_name ASC`
+    );
+
+    res.json({ courses });
+  } catch (err) {
+    console.error("GET /api/courses error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.post("/api/admin/student-profile", async (req, res) => {
+  try {
+    const { user_id, proficiency_level, assigned_teacher_id, course_id, trial_notes } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({ message: "user_id is required" });
+    }
+
+    // Insert into student_profiles
+    await pool.query(
+      `INSERT INTO student_profiles (user_id, proficiency_level, assigned_teacher_id, course_id, trial_notes)
+       VALUES (?, ?, ?, ?, ?)`,
+      [user_id, proficiency_level || "beginner", assigned_teacher_id || null, course_id || null, trial_notes || null]
+    );
+
+    res.json({ message: "Student profile created successfully" });
+  } catch (err) {
+    console.error("POST /api/admin/student-profile error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 app.put("/api/student/package/:student_id/use-class", async (req, res) => {
   try {
     const { student_id } = req.params;

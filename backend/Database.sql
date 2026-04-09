@@ -445,6 +445,7 @@ CREATE TABLE `student_profiles` (
   `user_id` int NOT NULL,
   `proficiency_level` enum('beginner','elementary','intermediate','upper-intermediate','advanced','proficient') DEFAULT 'beginner',
   `assigned_teacher_id` int DEFAULT NULL,
+  `course_id` int DEFAULT NULL,
   `trial_notes` text,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -452,8 +453,10 @@ CREATE TABLE `student_profiles` (
   UNIQUE KEY `user_id` (`user_id`),
   KEY `idx_user_id` (`user_id`),
   KEY `idx_assigned_teacher_id` (`assigned_teacher_id`),
+  KEY `idx_course_id` (`course_id`),
   CONSTRAINT `student_profiles_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`),
-  CONSTRAINT `student_profiles_ibfk_2` FOREIGN KEY (`assigned_teacher_id`) REFERENCES `users` (`user_id`)
+  CONSTRAINT `student_profiles_ibfk_2` FOREIGN KEY (`assigned_teacher_id`) REFERENCES `users` (`user_id`),
+  CONSTRAINT `student_profiles_ibfk_3` FOREIGN KEY (`course_id`) REFERENCES `courses` (`course_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

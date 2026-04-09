@@ -267,6 +267,22 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       });
   }, [localRole, localUserId]);
 
+  // fetch student profile and enrolled course information
+  useEffect(() => {
+    if (localRole !== "student" || !localUserId) return;
+
+    axios
+      .get(`${API}/api/student/profile/${localUserId}`)
+      .then(r => {
+        if (r.data && r.data.profile) {
+          setStudentProfile(r.data.profile);
+        }
+      })
+      .catch(() => {
+        setStudentProfile(null);
+      });
+  }, [localRole, localUserId]);
+
   // helper to load classes for a particular date
   const loadClassesForDate = (dateStr) => {
     if (!dateStr || classesCache[dateStr]) return;
@@ -643,7 +659,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     setIsSubmittingStudentBooking(true);
     try {
       await axios.post(`${API}/api/calendar/class`, {
-        class_name: studentBookingSubject.trim() || "General English",
+        class_name: studentProfile?.course_name || "General English",
         teacher_id: assignedTeacherId,
         student_id: localUserId,
         scheduled_date: studentBookingDate,
@@ -1725,22 +1741,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           )}
                         </div>
                         <div>
-                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Subject</label>
-                          <select
-                            value={studentBookingSubject}
-                            onChange={e => setStudentBookingSubject(e.target.value)}
-                            style={{ width: "100%", padding: "10px 12px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, fontFamily: "inherit" }}
-                          >
-                            <option value="">Select a subject...</option>
-                            <option value="Business English">Business English</option>
-                            <option value="Online English">Online English</option>
-                            <option value="News">News</option>
-                            <option value="TOEIC">TOEIC</option>
-                            <option value="IELTS">IELTS</option>
-                            <option value="OPIc">OPIc</option>
-                            <option value="Conversational English">Conversational English</option>
-                            <option value="Travel English">Travel English</option>
-                          </select>
+                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Course</label>
+                          <div style={{ width: "100%", padding: "12px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#f7fafc", color: "#111", minHeight: "42px", display: "flex", alignItems: "center" }}>
+                            {studentProfile?.course_name || "Course not set"}
+                          </div>
                         </div>
                         <div>
                           <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>End Time</label>

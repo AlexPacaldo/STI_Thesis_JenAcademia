@@ -73,10 +73,10 @@ export default function AdminDashboard() {
     trialNotes: "",
     level: "",
     teacherId: "",
+    courseId: "",
     classesAvailed: "",
   });
-  // selected bookings for new student
-  const [selectedBookings, setSelectedBookings] = useState([]); // array of { date, time, duration }
+  const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [archiveRefresh, setArchiveRefresh] = useState(0); // bump to reload archived list
   const [requestFilter, setRequestFilter] = useState("all"); // 'all', 'pending', 'approved', 'declined'
@@ -122,8 +122,20 @@ export default function AdminDashboard() {
     if (!me) return;
     // preload default data
     loadUsers();
+    loadCourses();
     if (active === "requests") loadRequests();
   }, [me]);
+
+  // Fetch available courses
+  async function loadCourses() {
+    try {
+      const r = await axios.get(`${API}/api/courses`);
+      setCourses(r.data?.courses || []);
+    } catch (e) {
+      console.error(e);
+      setCourses([]);
+    }
+  }
 
   // reload requests when tab becomes active
   useEffect(() => {
@@ -156,28 +168,9 @@ export default function AdminDashboard() {
     setLoading(true);
     try {
       const payload = { ...sForm, role: "student" };
-      const response = await axios.post(`${API}/api/admin/users`, payload); // creates student
-      const studentId = response.data.userId;
-
-      // Create selected bookings if any
-      if (selectedBookings.length > 0 && sForm.teacherId) {
-        for (const booking of selectedBookings) {
-          await axios.post(`${API}/api/calendar/class`, {
-            class_name: booking.subject || `Class with ${sForm.firstName} ${sForm.lastName}`,
-            teacher_id: parseInt(sForm.teacherId),
-            student_id: studentId,
-            scheduled_date: booking.date,
-            start_time: booking.time,
-            end_time: booking.endTime || booking.time, // fallback if not provided
-            duration: booking.duration || 60,
-            class_link: ""
-          });
-        }
-      }
-
+      await axios.post(`${API}/api/admin/users`, payload); // creates student
       notify("Student created successfully!", "success");
-      setSForm({ firstName: "", lastName: "", email: "", password: "", contact: "", trialNotes: "", level: "", teacherId: "", classesAvailed: "" });
-      setSelectedBookings([]); // clear selected bookings
+      setSForm({ firstName: "", lastName: "", email: "", password: "", contact: "", trialNotes: "", level: "", teacherId: "", courseId: "", classesAvailed: "" });
       loadUsers();
     } catch (e) {
       console.error(e);
@@ -493,6 +486,30 @@ export default function AdminDashboard() {
                     </select>
                   </div>
                 </div>
+                <div style={{ marginTop: "16px" }}>
+                  <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Enroll in Course</label>
+                  <select
+                    value={sForm.courseId}
+                    onChange={(e)=>setSForm({...sForm, courseId:e.target.value})}
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      border: "1px solid #d0d0d0",
+                      borderRadius: "6px",
+                      fontFamily: "inherit",
+                      fontSize: "0.9em",
+                      background: "#fff",
+                      boxSizing: "border-box"
+                    }}
+                  >
+                    <option value="">Select Course (Optional)</option>
+                    {courses.map(c => (
+                      <option key={c.course_id} value={c.course_id}>
+                        {c.course_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <br />
               <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
@@ -529,129 +546,6 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </div>
-              <br />
-              <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
-                <div style={{ display: "flex", alignItems: "center", marginBottom: "8px" }}>
-                  <span style={{ fontSize: "1.3em", marginRight: "8px" }}>📅</span>
-                  <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>Schedule Classes</h3>
-                </div>
-                <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
-                  View the assigned teacher's availability and schedule classes for this student. Select dates and times when the teacher is available to book classes.
-                </p>
-                
-                {sForm.teacherId ? (
-                  <Calendar 
-                    teacherId={sForm.teacherId} 
-                    onBookClass={(date, time, subject = "General English", endTime) => {
-                      // Add booking to selected bookings
-                      const newBooking = { 
-                        date, 
-                        time,
-                        endTime: endTime || time,
-                        duration: endTime ? Math.round((new Date(`2000-01-01T${endTime}`) - new Date(`2000-01-01T${time}`)) / (1000 * 60)) : 60,
-                        subject: subject || "General English"
-                      };
-                      setSelectedBookings(prev => {
-                        // Check if already booked
-                        const exists = prev.some(b => b.date === date && b.time === time);
-                        if (exists) {
-                          notify("This time slot is already selected", "warning");
-                          return prev;
-                        }
-                        notify(`Class booked for ${new Date(date + "T00:00:00").toLocaleDateString()} at ${time}`, "success");
-                        return [...prev, newBooking];
-                      });
-                    }}
-                  />
-                ) : (
-                  <div style={{
-                    padding: "40px",
-                    textAlign: "center",
-                    background: "#f8f9fa",
-                    border: "2px dashed #dee2e6",
-                    borderRadius: "8px",
-                    color: "#6c757d"
-                  }}>
-                    <span style={{ fontSize: "2em", marginBottom: "12px", display: "block" }}>📅</span>
-                    <p style={{ margin: "0", fontSize: "1em" }}>Please select a teacher first to view their schedule and book classes.</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Selected Bookings Display */}
-              {selectedBookings.length > 0 && (
-                <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
-                  <div style={{ display: "flex", alignItems: "center", marginBottom: "8px" }}>
-                    <span style={{ fontSize: "1.3em", marginRight: "8px" }}>📋</span>
-                    <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>
-                      Scheduled Classes 
-                    </h3>
-                  </div>
-                  <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
-                    These classes will be created when you submit the student form.
-                  </p>
-                  {sForm.classesAvailed && parseInt(sForm.classesAvailed) > 0 && (
-                  <div style={{
-                    background: "#e8f4fd",
-                    border: "1px solid #b3d9ff",
-                    borderRadius: "6px",
-                    padding: "12px",
-                    marginBottom: "16px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center"
-                  }}>
-                    <span style={{ fontSize: "1.1em", fontWeight: "600", color: "#0066cc" }}>
-                      Booked {selectedBookings.length}/{sForm.classesAvailed} classes
-                    </span>
-                  </div>
-                )}
-                  <div style={{ display: "grid", gap: "8px" }}>
-                    {selectedBookings.map((booking, index) => (
-                      <div key={index} style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        padding: "12px",
-                        background: "#f8f9ff",
-                        border: "1px solid #e0e6ff",
-                        borderRadius: "6px"
-                      }}>
-                        <div>
-                          <div style={{ fontWeight: "600", color: "#333" }}>
-                            {new Date(booking.date + "T00:00:00").toLocaleDateString()} at {booking.time}
-                          </div>
-                          <div style={{ fontSize: "0.85em", color: "#666" }}>
-                            Subject: {booking.subject || "General English"}
-                          </div>
-                          <div style={{ fontSize: "0.85em", color: "#666" }}>
-                            Duration: {booking.duration} minutes
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedBookings(prev => prev.filter((_, i) => i !== index));
-                            notify("Class booking removed", "info");
-                          }}
-                          style={{
-                            padding: "6px 12px",
-                            background: "#dc3545",
-                            color: "#fff",
-                            border: "none",
-                            borderRadius: "4px",
-                            fontSize: "0.8em",
-                            cursor: "pointer"
-                          }}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               <br />
               <button className={styles.primary} disabled={loading}>
                 {loading ? "Creating..." : "Create Student"}
