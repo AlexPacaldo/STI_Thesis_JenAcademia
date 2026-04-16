@@ -140,7 +140,6 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [studentBookingDate, setStudentBookingDate] = useState(fmtDate(today));
   const [studentBookingTime, setStudentBookingTime] = useState("");
   const [studentBookingSubject, setStudentBookingSubject] = useState("");
-  const [studentBookingEndTime, setStudentBookingEndTime] = useState("");
   const [studentBookingError, setStudentBookingError] = useState("");
   const [isSubmittingStudentBooking, setIsSubmittingStudentBooking] = useState(false);
   const isAdmin = localRole === "admin"; // helper for rendering
@@ -151,6 +150,20 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [bookingSubject, setBookingSubject] = useState("");
   const [bookingEndTime, setBookingEndTime] = useState("");
   const [availableTimeSlots, setAvailableTimeSlots] = useState([]);
+
+  // Teacher availability setting state
+  const [setAvailabilityMode, setSetAvailabilityMode] = useState(false);
+  const [availabilityDate, setAvailabilityDate] = useState(fmtDate(today));
+  const [availabilityStartTime, setAvailabilityStartTime] = useState("");
+  const [availabilityEndTime, setAvailabilityEndTime] = useState("");
+  const [availabilityBreakStart, setAvailabilityBreakStart] = useState("");
+  const [availabilityBreakEnd, setAvailabilityBreakEnd] = useState("");
+  const [availabilityStatus, setAvailabilityStatus] = useState("available"); // "available" or "unavailable"
+  const [availabilityError, setAvailabilityError] = useState("");
+  const [isSubmittingAvailability, setIsSubmittingAvailability] = useState(false);
+  const [teacherSelectedDate, setTeacherSelectedDate] = useState(null);
+  const [teacherAvailabilityList, setTeacherAvailabilityList] = useState([]); // list of availability records for current month
+  const [teacherAvailabilityRecordForDate, setTeacherAvailabilityRecordForDate] = useState(null); // individual selected date record
 
   // Read user info from localStorage
   useEffect(() => {
@@ -325,37 +338,65 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   };
 
   const loadTeacherClassesForDate = (dateStr, tId) => {
-    if (!dateStr || !tId || teacherClassesCache[dateStr]) return;
+    const dateKey = normalizeDate(dateStr);
+    if (!dateKey || !tId || teacherClassesCache[dateKey]) return;
 
     axios
       .get(`${API}/api/calendar/classes-by-date`, {
-        params: { scheduled_date: dateStr, teacher_id: tId }
+        params: { scheduled_date: dateKey, teacher_id: tId }
       })
       .then(r => {
         if (r.data && r.data.classes) {
-          setTeacherClassesCache(prev => ({ ...prev, [dateStr]: r.data.classes }));
+          setTeacherClassesCache(prev => ({ ...prev, [dateKey]: r.data.classes }));
         }
       })
       .catch(() => {
-        setTeacherClassesCache(prev => ({ ...prev, [dateStr]: [] }));
+        setTeacherClassesCache(prev => ({ ...prev, [dateKey]: [] }));
+      });
+  };
+
+  const loadTeacherAvailabilityRecordForDate = (dateStr, tId) => {
+    const dateKey = normalizeDate(dateStr);
+    if (!dateKey || !tId) {
+      setTeacherAvailabilityRecordForDate(null);
+      return;
+    }
+
+    axios
+      .get(`${API}/api/calendar/teacher-availability-record`, {
+        params: { teacher_id: tId, available_date: dateKey }
+      })
+      .then(r => {
+        if (r.data && r.data.record) {
+          setTeacherAvailabilityRecordForDate({
+            ...r.data.record,
+            available_date: normalizeDate(r.data.record.available_date),
+          });
+        } else {
+          setTeacherAvailabilityRecordForDate(null);
+        }
+      })
+      .catch(() => {
+        setTeacherAvailabilityRecordForDate(null);
       });
   };
 
   // fetch available time slots for a specific date from teacher availability
   const loadAvailableTimeSlots = (dateStr, tId) => {
-    if (!dateStr || !tId) {
+    const dateKey = normalizeDate(dateStr);
+    if (!dateKey || !tId) {
       setAvailableTimeSlots([]);
       return;
     }
     
     // Check if teacher is explicitly unavailable on this date
-    const dateStatus = availability[dateStr] || "";
+    const dateStatus = availability[dateKey] || "";
     if (dateStatus === "unavailable") {
       setAvailableTimeSlots([]);
       return;
     }
     
-    const classes = teacherClassesCache[dateStr] !== undefined ? teacherClassesCache[dateStr] : (classesCache[dateStr] || []);
+    const classes = teacherClassesCache[dateKey] !== undefined ? teacherClassesCache[dateKey] : (classesCache[dateKey] || []);
     console.log("=== loadAvailableTimeSlots ===");
     console.log("Date:", dateStr, "Teacher ID:", tId);
     console.log("All classes for date:", classes);
@@ -382,15 +423,75 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     
     console.log("Booked times (from start_time):", bookedTimes);
     
-    // Generate standard time slots (7 AM to 11 PM, hourly in 24-hour format)
-    const allSlots = [
-      "07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00"
-    ];
+    // Find teacher's availability record for this date (with time ranges and breaks)
+    const teacherAvailabilityRecord = teacherAvailabilityList.find(
+      record => normalizeDate(record.available_date) === dateKey && record.status === "available"
+    ) || (teacherAvailabilityRecordForDate && teacherAvailabilityRecordForDate.status === "available" ? teacherAvailabilityRecordForDate : null);
+    
+    console.log("Teacher availability record:", teacherAvailabilityRecord);
+    
+    let allSlots = [];
+    let teacherStartTime = "07:00"; // default start
+    let teacherEndTime = "23:00";   // default end
+    let breakStartTime = null;
+    let breakEndTime = null;
+    
+    // If teacher has set specific availability hours for this date
+    if (teacherAvailabilityRecord && teacherAvailabilityRecord.start_time && teacherAvailabilityRecord.end_time) {
+      teacherStartTime = teacherAvailabilityRecord.start_time.substring(0, 5); // Extract HH:MM
+      teacherEndTime = teacherAvailabilityRecord.end_time.substring(0, 5);
+      
+      if (teacherAvailabilityRecord.break_start && teacherAvailabilityRecord.break_end) {
+        breakStartTime = teacherAvailabilityRecord.break_start.substring(0, 5);
+        breakEndTime = teacherAvailabilityRecord.break_end.substring(0, 5);
+      }
+      
+      // Generate time slots within teacher's availability window
+      const startHour = parseInt(teacherStartTime.split(":")[0]);
+      const endHour = parseInt(teacherEndTime.split(":")[0]);
+      
+      for (let hour = startHour; hour < endHour; hour++) {
+        allSlots.push(`${String(hour).padStart(2, "0")}:00`);
+      }
+      
+      console.log("Generated slots within teacher hours:", allSlots);
+    } else {
+      // No specific teacher availability set for this date, so there are no available slots.
+      allSlots = [];
+    }
     
     // Filter out booked times
-    const availableSlots = allSlots.filter(slot => !bookedTimes.includes(slot));
-    console.log("Available slots after filtering:", availableSlots);
-    setAvailableTimeSlots(availableSlots);
+    const afterBookingFilter = allSlots.filter(slot => !bookedTimes.includes(slot));
+    console.log("Available slots after booking filter:", afterBookingFilter);
+    
+    // Filter out times within teacher's break
+    const afterBreakFilter = afterBookingFilter.filter(slot => {
+      if (!breakStartTime || !breakEndTime) return true;
+      
+      const slotMinutes = parseInt(slot.split(":")[0]) * 60 + parseInt(slot.split(":")[1]);
+      const breakStartMinutes = parseInt(breakStartTime.split(":")[0]) * 60 + parseInt(breakStartTime.split(":")[1]);
+      const breakEndMinutes = parseInt(breakEndTime.split(":")[0]) * 60 + parseInt(breakEndTime.split(":")[1]);
+      
+      // Include slot if it's NOT within break time
+      return slotMinutes < breakStartMinutes || slotMinutes >= breakEndMinutes;
+    });
+    
+    console.log("Available slots after break filter:", afterBreakFilter);
+    
+    // Also filter out student's own booked classes on this date
+    const studentBookedClasses = classes.filter(cls => cls.student_id === localUserId);
+    const studentBookedTimes = studentBookedClasses.map(cls => {
+      let time = cls.start_time || cls.time || "";
+      if (time.length >= 5) {
+        time = time.substring(0, 5);
+      }
+      return time;
+    }).filter(t => t && t.length === 5);
+    
+    const finalSlots = afterBreakFilter.filter(slot => !studentBookedTimes.includes(slot));
+    
+    console.log("Final available slots after all filters:", finalSlots);
+    setAvailableTimeSlots(finalSlots);
   };
 
   // whenever selectedDate changes we fetch if necessary
@@ -406,6 +507,42 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
   }, [studentBookingMode, studentBookingDate, assignedTeacherId]);
 
+  // Load teacher availability records for the current month when student enters booking mode
+  useEffect(() => {
+    if (studentBookingMode && assignedTeacherId && localRole === "student" && studentBookingDate) {
+      const bookingDate = new Date(studentBookingDate + "T00:00:00");
+      if (isNaN(bookingDate.getTime())) return;
+
+      const targetYear = bookingDate.getFullYear();
+      const targetMonth = bookingDate.getMonth() + 1;
+
+      axios
+        .get(`${API}/api/calendar/teacher-availability-records`, {
+          params: { teacher_id: assignedTeacherId, year: targetYear, month: targetMonth }
+        })
+        .then(r => {
+          if (r.data && r.data.records) {
+            const normalized = r.data.records.map(record => ({
+              ...record,
+              available_date: normalizeDate(record.available_date),
+            }));
+            setTeacherAvailabilityList(normalized);
+            console.log("Loaded teacher availability records:", normalized);
+          }
+        })
+        .catch(err => {
+          console.error("Error loading teacher availability records:", err);
+          setTeacherAvailabilityList([]);
+        });
+    }
+  }, [studentBookingMode, assignedTeacherId, localRole, studentBookingDate]);
+
+  useEffect(() => {
+    if (studentBookingMode && studentBookingDate && assignedTeacherId && localRole === "student") {
+      loadTeacherAvailabilityRecordForDate(studentBookingDate, assignedTeacherId);
+    }
+  }, [studentBookingMode, studentBookingDate, assignedTeacherId, localRole]);
+
   // Load available time slots AFTER classes are loaded for the selected date or student booking date
   useEffect(() => {
     if (selectedDate && teacherId && classesCache[selectedDate] !== undefined) {
@@ -414,7 +551,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     if (studentBookingMode && studentBookingDate && assignedTeacherId && teacherClassesCache[studentBookingDate] !== undefined) {
       loadAvailableTimeSlots(studentBookingDate, assignedTeacherId);
     }
-  }, [selectedDate, teacherId, classesCache, availability, studentBookingMode, studentBookingDate, assignedTeacherId, teacherClassesCache]);
+  }, [selectedDate, teacherId, classesCache, availability, studentBookingMode, studentBookingDate, assignedTeacherId, teacherClassesCache, teacherAvailabilityList]);
 
   // preload every day in the month so cells with classes are colored on load
   useEffect(() => {
@@ -428,6 +565,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       loadClassesForDate(dateStr);
     }
   }, [year, month, localRole, localUserId, teacherId, studentId]);
+
+  // Load teacher availability records for current month when teacher enters availability mode
+  useEffect(() => {
+    if (setAvailabilityMode && localRole === "teacher" && localUserId) {
+      loadTeacherAvailabilityForMonth();
+    }
+  }, [setAvailabilityMode, localRole, localUserId]);
 
   const viewDate = new Date(year, month, 1);
   const monthName = viewDate.toLocaleString("default", { month: "long" });
@@ -508,6 +652,185 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     setMonth(today.getMonth());
     // also highlight today's cell
     setSelectedDate(fmtDate(today));
+  };
+
+  // Fetch teacher availability records for current month
+  const loadTeacherAvailabilityForMonth = () => {
+    if (localRole !== "teacher" || !localUserId) return;
+
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+
+    axios
+      .get(`${API}/api/calendar/teacher-availability-records`, {
+        params: { teacher_id: localUserId, year: currentYear, month: currentMonth }
+      })
+      .then(r => {
+        if (r.data && r.data.records) {
+          const normalized = r.data.records.map(record => ({
+            ...record,
+            available_date: normalizeDate(record.available_date),
+          }));
+          setTeacherAvailabilityList(normalized);
+        }
+      })
+      .catch(err => {
+        console.error("Error loading teacher availability:", err);
+        setTeacherAvailabilityList([]);
+      });
+  };
+
+  // Submit teacher availability
+  const submitTeacherAvailability = async () => {
+    setAvailabilityError("");
+
+    // Validation
+    if (!availabilityDate) {
+      setAvailabilityError("Please select a date");
+      return;
+    }
+
+    // Only allow current month
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth();
+    const selectedDateObj = new Date(availabilityDate + "T00:00:00");
+    if (
+      selectedDateObj.getFullYear() !== currentYear ||
+      selectedDateObj.getMonth() !== currentMonth
+    ) {
+      setAvailabilityError("You can only set availability for the current month");
+      return;
+    }
+
+    // Don't allow past dates
+    const selectedDateOnly = new Date(availabilityDate + "T00:00:00");
+    const todayOnly = new Date(fmtDate(today) + "T00:00:00");
+    if (selectedDateOnly < todayOnly) {
+      setAvailabilityError("You cannot set availability for past dates");
+      return;
+    }
+
+    // Validate times if available status
+    if (availabilityStatus === "available") {
+      if (!availabilityStartTime) {
+        setAvailabilityError("Please select a start time");
+        return;
+      }
+      if (!availabilityEndTime) {
+        setAvailabilityError("Please select an end time");
+        return;
+      }
+
+      // Validate end time is after start time
+      const start = new Date(`2000-01-01T${availabilityStartTime}`);
+      const end = new Date(`2000-01-01T${availabilityEndTime}`);
+      if (end <= start) {
+        setAvailabilityError("End time must be after start time");
+        return;
+      }
+
+      // Validate break times if provided
+      if (availabilityBreakStart || availabilityBreakEnd) {
+        if (!availabilityBreakStart) {
+          setAvailabilityError("Please select a break start time");
+          return;
+        }
+        if (!availabilityBreakEnd) {
+          setAvailabilityError("Please select a break end time");
+          return;
+        }
+
+        const breakStart = new Date(`2000-01-01T${availabilityBreakStart}`);
+        const breakEnd = new Date(`2000-01-01T${availabilityBreakEnd}`);
+
+        // Break end must be after break start
+        if (breakEnd <= breakStart) {
+          setAvailabilityError("Break end time must be after break start time");
+          return;
+        }
+
+        // Break must be within availability window
+        if (breakStart < start || breakEnd > end) {
+          setAvailabilityError("Break time must be within your availability window");
+          return;
+        }
+      }
+
+      // Check if there's already a booked class during this time
+      const bookedClasses = classesCache[availabilityDate] || [];
+      const hasConflict = bookedClasses.some(cls => {
+        if (cls.teacher_id !== localUserId) return false;
+        const classStart = new Date(`2000-01-01T${(cls.start_time || cls.time || "").substring(0, 5)}`);
+        const classEnd = new Date(`2000-01-01T${(cls.end_time || "").substring(0, 5)}`);
+        
+        // Check if class overlaps with availability window
+        return classStart < end && classEnd > start;
+      });
+
+      if (hasConflict) {
+        setAvailabilityError("You have a booked class during this time period");
+        return;
+      }
+    }
+
+    setIsSubmittingAvailability(true);
+    try {
+      await axios.post(`${API}/api/calendar/set-availability`, {
+        teacher_id: localUserId,
+        available_date: availabilityDate,
+        status: availabilityStatus,
+        start_time: availabilityStartTime || null,
+        end_time: availabilityEndTime || null,
+        break_start: availabilityBreakStart || null,
+        break_end: availabilityBreakEnd || null,
+      });
+
+      notify("Availability updated successfully", "success");
+      setAvailabilityError("");
+      setAvailabilityStartTime("");
+      setAvailabilityEndTime("");
+      setAvailabilityBreakStart("");
+      setAvailabilityBreakEnd("");
+      setAvailabilityDate(fmtDate(today));
+      loadTeacherAvailabilityForMonth();
+      
+      // Refresh availability cache
+      const y = year;
+      const m = month + 1;
+      axios.get(`${API}/api/calendar/teacher-availability`, {
+        params: { teacher_id: localUserId, year: y, month: m }
+      }).then(r => {
+        if (r.data && r.data.availability) setAvailability(r.data.availability);
+      });
+    } catch (error) {
+      const errMsg = error.response?.data?.message || "Failed to update availability. Please try again.";
+      setAvailabilityError(errMsg);
+      notify(errMsg, "error");
+    } finally {
+      setIsSubmittingAvailability(false);
+    }
+  };
+
+  // Delete teacher availability
+  const deleteTeacherAvailability = async (recordId) => {
+    if (!window.confirm("Are you sure you want to delete this availability record?")) return;
+
+    try {
+      await axios.delete(`${API}/api/calendar/availability/${recordId}`);
+      notify("Availability deleted successfully", "success");
+      loadTeacherAvailabilityForMonth();
+      
+      // Refresh availability cache
+      const y = year;
+      const m = month + 1;
+      axios.get(`${API}/api/calendar/teacher-availability`, {
+        params: { teacher_id: localUserId, year: y, month: m }
+      }).then(r => {
+        if (r.data && r.data.availability) setAvailability(r.data.availability);
+      });
+    } catch (error) {
+      notify("Failed to delete availability. Please try again.", "error");
+    }
   };
 
   // handle request form submission
@@ -612,7 +935,6 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     setStudentBookingDate(fmtDate(today));
     setStudentBookingTime("");
     setStudentBookingSubject("");
-    setStudentBookingEndTime("");
     setStudentBookingError("");
     setSelectedDate(null);
     setSelectedClassId(null);
@@ -641,12 +963,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       return;
     }
 
-    let endTime = studentBookingEndTime;
-    if (!endTime) {
-      const [hour, min] = studentBookingTime.split(":").map(Number);
-      const endDate = new Date(2000, 0, 1, hour + 1, min);
-      endTime = `${String(endDate.getHours()).padStart(2, "0")}:${String(endDate.getMinutes()).padStart(2, "0")}`;
-    }
+    const [hour, min] = studentBookingTime.split(":").map(Number);
+    const endDate = new Date(2000, 0, 1, hour + 1, min);
+    const endTime = `${String(endDate.getHours()).padStart(2, "0")}:${String(endDate.getMinutes()).padStart(2, "0")}`;
 
     const start = new Date(`2000-01-01T${studentBookingTime}`);
     const end = new Date(`2000-01-01T${endTime}`);
@@ -673,7 +992,6 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       setStudentBookingMode(false);
       setStudentBookingTime("");
       setStudentBookingSubject("");
-      setStudentBookingEndTime("");
       setSelectedDate(studentBookingDate);
       setBookedDates(prev => [
         ...prev,
@@ -1444,10 +1762,283 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                 <>
                   <div className={styles.legendTitle}>Actions</div>
                   <div className={styles.slotList}>
+                    {localRole === "teacher" && (
+                      <button 
+                        type="button" 
+                        className={styles.slotBtn} 
+                        onClick={() => {
+                          setSetAvailabilityMode(!setAvailabilityMode);
+                          if (!setAvailabilityMode) {
+                            setAvailabilityDate(fmtDate(today));
+                            setAvailabilityStartTime("");
+                            setAvailabilityEndTime("");
+                            setAvailabilityBreakStart("");
+                            setAvailabilityBreakEnd("");
+                            setAvailabilityStatus("available");
+                            setAvailabilityError("");
+                            loadTeacherAvailabilityForMonth();
+                          }
+                        }}
+                        style={{ background: setAvailabilityMode ? "#e8f5e9" : "#fff", borderColor: setAvailabilityMode ? "#4CAF50" : "#ccc" }}
+                      >
+                        {setAvailabilityMode ? "Close Availability Manager" : "Set Availability"}
+                      </button>
+                    )}
                     <button type="button" className={styles.slotBtn} onClick={jumpToToday}>
                       Jump to Today
                     </button>
                   </div>
+
+                  {/* Teacher Availability Manager */}
+                  {setAvailabilityMode && localRole === "teacher" && (
+                    <div style={{ marginTop: 16, padding: 14, border: "1px solid #e0e0e0", borderRadius: 8, background: "#fafafa" }}>
+                      <div style={{ marginBottom: 12 }}>
+                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.95rem", color: "#333" }}>Set Your Schedule</h4>
+                        <p style={{ margin: 0, fontSize: "0.8rem", color: "#666", lineHeight: 1.4 }}>
+                          Set your available times for the current month. You cannot set availability on dates with existing bookings or past dates.
+                        </p>
+                      </div>
+
+                      {availabilityError && (
+                        <div style={{ marginBottom: 10, padding: 10, background: "#ffebee", border: "1px solid #ffcdd2", borderRadius: 6, color: "#c62828", fontSize: "0.8rem" }}>
+                          {availabilityError}
+                        </div>
+                      )}
+
+                      <div style={{ marginBottom: 12, display: "grid", gap: 10 }}>
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Date *</label>
+                          <input
+                            type="date"
+                            min={fmtDate(today)}
+                            max={fmtDate(new Date(today.getFullYear(), today.getMonth() + 1, 0))}
+                            value={availabilityDate}
+                            onChange={e => {
+                              setAvailabilityDate(e.target.value);
+                              setAvailabilityError("");
+                            }}
+                            style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
+                          />
+                          <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666" }}>
+                            Only current month dates allowed
+                          </div>
+                        </div>
+
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Availability Status *</label>
+                          <div style={{ display: "flex", gap: 12 }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAvailabilityStatus("available");
+                                setAvailabilityError("");
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: "8px 12px",
+                                fontSize: "0.9rem",
+                                border: availabilityStatus === "available" ? "2px solid #4CAF50" : "1px solid #d0d0d0",
+                                borderRadius: 6,
+                                background: availabilityStatus === "available" ? "#e8f5e9" : "#fff",
+                                color: availabilityStatus === "available" ? "#2E7D32" : "#666",
+                                cursor: "pointer",
+                                fontWeight: 600,
+                              }}
+                            >
+                              Available
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAvailabilityStatus("unavailable");
+                                setAvailabilityError("");
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: "8px 12px",
+                                fontSize: "0.9rem",
+                                border: availabilityStatus === "unavailable" ? "2px solid #f44336" : "1px solid #d0d0d0",
+                                borderRadius: 6,
+                                background: availabilityStatus === "unavailable" ? "#ffebee" : "#fff",
+                                color: availabilityStatus === "unavailable" ? "#c62828" : "#666",
+                                cursor: "pointer",
+                                fontWeight: 600,
+                              }}
+                            >
+                              Unavailable
+                            </button>
+                          </div>
+                        </div>
+
+                        {availabilityStatus === "available" && (
+                          <>
+                            <div>
+                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Start Time *</label>
+                              <input
+                                type="time"
+                                value={availabilityStartTime}
+                                onChange={e => {
+                                  setAvailabilityStartTime(e.target.value);
+                                  setAvailabilityError("");
+                                }}
+                                style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
+                              />
+                            </div>
+
+                            <div>
+                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>End Time *</label>
+                              <input
+                                type="time"
+                                value={availabilityEndTime}
+                                onChange={e => {
+                                  setAvailabilityEndTime(e.target.value);
+                                  setAvailabilityError("");
+                                }}
+                                style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
+                              />
+                              {availabilityStartTime && availabilityEndTime && (
+                                <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666" }}>
+                                  Duration: {(() => {
+                                    const start = new Date(`2000-01-01T${availabilityStartTime}`);
+                                    const end = new Date(`2000-01-01T${availabilityEndTime}`);
+                                    const diffMinutes = Math.round((end - start) / (1000 * 60));
+                                    const hours = Math.floor(diffMinutes / 60);
+                                    const mins = diffMinutes % 60;
+                                    if (hours === 0) return `${mins} minutes`;
+                                    return `${hours}h ${mins}m`;
+                                  })()}
+                                </div>
+                              )}
+                            </div>
+
+                            <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: 10, marginTop: 5 }}>
+                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Break Time (Optional)</label>
+                              
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                                <div>
+                                  <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 500, marginBottom: 3, color: "#666" }}>Break Start</label>
+                                  <input
+                                    type="time"
+                                    value={availabilityBreakStart}
+                                    onChange={e => {
+                                      setAvailabilityBreakStart(e.target.value);
+                                      setAvailabilityError("");
+                                    }}
+                                    style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 500, marginBottom: 3, color: "#666" }}>Break End</label>
+                                  <input
+                                    type="time"
+                                    value={availabilityBreakEnd}
+                                    onChange={e => {
+                                      setAvailabilityBreakEnd(e.target.value);
+                                      setAvailabilityError("");
+                                    }}
+                                    style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
+                                  />
+                                </div>
+                              </div>
+
+                              {availabilityBreakStart && availabilityBreakEnd && (
+                                <div style={{ lineHeight: 1.4, fontSize: "0.75rem", padding: 8, background: "#f5f5f5", borderRadius: 6, color: "#666" }}>
+                                  Break: {humanTime(availabilityBreakStart)} - {humanTime(availabilityBreakEnd)}
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginBottom: 16 }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSetAvailabilityMode(false);
+                            setAvailabilityError("");
+                            setAvailabilityStartTime("");
+                            setAvailabilityEndTime("");
+                            setAvailabilityBreakStart("");
+                            setAvailabilityBreakEnd("");
+                          }}
+                          disabled={isSubmittingAvailability}
+                          style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, cursor: isSubmittingAvailability ? "not-allowed" : "pointer", opacity: isSubmittingAvailability ? 0.6 : 1 }}
+                        >
+                          Close
+                        </button>
+                        <button
+                          type="button"
+                          onClick={submitTeacherAvailability}
+                          disabled={isSubmittingAvailability}
+                          style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: isSubmittingAvailability ? "#999" : "#4CAF50", color: "#fff", borderRadius: 6, cursor: isSubmittingAvailability ? "not-allowed" : "pointer" }}
+                        >
+                          {isSubmittingAvailability ? "Saving..." : "Save Availability"}
+                        </button>
+                      </div>
+
+                      {/* Show current month's availability records */}
+                      {teacherAvailabilityList && teacherAvailabilityList.length > 0 && (
+                        <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: 12 }}>
+                          <h5 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "#333", fontWeight: 600 }}>
+                            Your Availability This Month
+                          </h5>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "200px", overflowY: "auto" }}>
+                            {teacherAvailabilityList.map(record => (
+                              <div
+                                key={record.id || record.availability_id}
+                                style={{
+                                  padding: 10,
+                                  background: record.status === "available" ? "#e8f5e9" : "#ffebee",
+                                  border: `1px solid ${record.status === "available" ? "#c8e6c9" : "#ffcdd2"}`,
+                                  borderRadius: 6,
+                                  fontSize: "0.8rem",
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                                  <div>
+                                    <strong>{new Date(record.available_date + "T00:00:00").toLocaleDateString()}</strong>
+                                    {record.status === "available" ? (
+                                      <span style={{ color: "#2E7D32", marginLeft: 8 }}>✓ Available</span>
+                                    ) : (
+                                      <span style={{ color: "#c62828", marginLeft: 8 }}>✗ Unavailable</span>
+                                    )}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteTeacherAvailability(record.id || record.availability_id)}
+                                    style={{
+                                      padding: "4px 8px",
+                                      fontSize: "0.75rem",
+                                      border: "none",
+                                      background: "#f44336",
+                                      color: "#fff",
+                                      borderRadius: 4,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                                {record.status === "available" && (record.start_time || record.end_time) ? (
+                                  <div style={{ color: "#555", marginTop: 6, lineHeight: 1.5 }}>
+                                    <div>⏰ {humanTime(record.start_time)} - {humanTime(record.end_time)}</div>
+                                    {record.break_start && record.break_end && (
+                                      <div style={{ color: "#666", fontSize: "0.75rem", marginTop: 4 }}>☕ Break: {humanTime(record.break_start)} - {humanTime(record.break_end)}</div>
+                                    )}
+                                  </div>
+                                ) : record.status === "available" ? (
+                                  <div style={{ color: "#555", marginTop: 6, lineHeight: 1.5 }}>
+                                    ⏰ Available all day
+                                  </div>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               )
             ) : (
@@ -1747,15 +2338,15 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           </div>
                         </div>
                         <div>
-                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>End Time</label>
-                          <input
-                            type="time"
-                            value={studentBookingEndTime}
-                            onChange={e => setStudentBookingEndTime(e.target.value)}
-                            style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
-                          />
-                          <div style={{ marginTop: 6, fontSize: "0.8em", color: "#666" }}>
-                            {studentBookingTime ? `Start: ${humanTime(studentBookingTime)} • Default duration: 60 minutes` : "Choose a slot first."}
+                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Class Duration</label>
+                          <div style={{ width: "100%", padding: "12px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#f7fafc", color: "#111", minHeight: "42px", display: "flex", alignItems: "center" }}>
+                            {studentBookingTime ? (
+                              <span style={{ fontWeight: 500 }}>
+                                {humanTime(studentBookingTime)} → {humanTime(`${String((Number(studentBookingTime.split(":")[0]) + 1)).padStart(2, "0")}:${studentBookingTime.split(":")[1]}`)}
+                              </span>
+                            ) : (
+                              <span style={{ color: "#999" }}>Choose a slot first.</span>
+                            )}
                           </div>
                         </div>
                         {studentBookingError && (

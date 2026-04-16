@@ -1302,4 +1302,172 @@ app.put("/api/student/package/:student_id/use-class", async (req, res) => {
   }
 });
 
+// Get teacher availability records for a specific month
+app.get("/api/calendar/teacher-availability-records", async (req, res) => {
+  try {
+    const { teacher_id, year, month } = req.query;
+
+    if (!teacher_id || !year || !month) {
+      return res.status(400).json({ message: "Missing required parameters" });
+    }
+
+    const monthIndex = parseInt(month, 10);
+    const yearValue = parseInt(year, 10);
+    const daysInMonth = new Date(yearValue, monthIndex, 0).getDate();
+    const startDate = `${yearValue}-${String(monthIndex).padStart(2, "0")}-01`;
+    const endDate = `${yearValue}-${String(monthIndex).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+
+    const [rows] = await pool.query(
+      `SELECT availability_id as id, teacher_id, DATE_FORMAT(available_date, '%Y-%m-%d') as available_date, status, notes, start_time, end_time, break_start, break_end
+       FROM teacher_availability
+       WHERE teacher_id = ? AND available_date BETWEEN ? AND ?
+       ORDER BY available_date ASC`,
+      [teacher_id, startDate, endDate]
+    );
+
+    res.json({ records: rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching availability records" });
+  }
+});
+
+// Get teacher availability record for a specific date
+app.get("/api/calendar/teacher-availability-record", async (req, res) => {
+  try {
+    const { teacher_id, available_date } = req.query;
+    if (!teacher_id || !available_date) {
+      return res.status(400).json({ message: "Missing required parameters" });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT availability_id as id, teacher_id, DATE_FORMAT(available_date, '%Y-%m-%d') as available_date, status, notes, start_time, end_time, break_start, break_end
+       FROM teacher_availability
+       WHERE teacher_id = ? AND DATE(available_date) = ?
+       LIMIT 1`,
+      [teacher_id, available_date]
+    );
+
+    res.json({ record: rows[0] || null });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching availability record" });
+  }
+});
+
+// Set teacher availability with validation
+app.post("/api/calendar/set-availability", async (req, res) => {
+  try {
+    const { teacher_id, available_date, status, start_time, end_time, break_start, break_end } = req.body;
+
+    if (!teacher_id || !available_date || !status) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Validate date is not in the past
+    const today = new Date();
+    const selectedDate = new Date(available_date + "T00:00:00");
+    if (selectedDate < today) {
+      return res.status(400).json({ message: "Cannot set availability for past dates" });
+    }
+
+    // Validate date is in current month
+    if (
+      selectedDate.getFullYear() !== today.getFullYear() ||
+      selectedDate.getMonth() !== today.getMonth()
+    ) {
+      return res.status(400).json({ message: "Can only set availability for current month" });
+    }
+
+    // Validate time range if available status
+    if (status === "available") {
+      if (!start_time || !end_time) {
+        return res.status(400).json({ message: "Start time and end time are required when setting available" });
+      }
+
+      // Validate end time is after start time
+      const startMinutes = parseInt(start_time.split(":")[0]) * 60 + parseInt(start_time.split(":")[1]);
+      const endMinutes = parseInt(end_time.split(":")[0]) * 60 + parseInt(end_time.split(":")[1]);
+      
+      if (endMinutes <= startMinutes) {
+        return res.status(400).json({ message: "End time must be after start time" });
+      }
+
+      // Validate break times if provided
+      if (break_start || break_end) {
+        if (!break_start || !break_end) {
+          return res.status(400).json({ message: "Both break start and break end times are required" });
+        }
+
+        const breakStartMin = parseInt(break_start.split(":")[0]) * 60 + parseInt(break_start.split(":")[1]);
+        const breakEndMin = parseInt(break_end.split(":")[0]) * 60 + parseInt(break_end.split(":")[1]);
+
+        // Break end must be after break start
+        if (breakEndMin <= breakStartMin) {
+          return res.status(400).json({ message: "Break end time must be after break start time" });
+        }
+
+        // Break must be within availability window
+        if (breakStartMin < startMinutes || breakEndMin > endMinutes) {
+          return res.status(400).json({ message: "Break time must be within your availability window" });
+        }
+      }
+
+      // Check if there's already a booked class during this time window
+      const [existingClasses] = await pool.query(
+        `SELECT class_id, start_time, end_time FROM classes 
+         WHERE teacher_id = ? AND scheduled_date = ?`,
+        [teacher_id, available_date]
+      );
+
+      if (existingClasses.length > 0) {
+        // Check for time conflict
+        for (const cls of existingClasses) {
+          const classStartMin = parseInt((cls.start_time || "00:00").split(":")[0]) * 60 + parseInt((cls.start_time || "00:00").split(":")[1]);
+          const classEndMin = parseInt((cls.end_time || "00:00").split(":")[0]) * 60 + parseInt((cls.end_time || "00:00").split(":")[1]);
+          
+          // Check if class overlaps with availability window
+          if (classStartMin < endMinutes && classEndMin > startMinutes) {
+            return res.status(409).json({ message: "You have a booked class during this time period" });
+          }
+        }
+      }
+    }
+
+    // Insert or update availability
+    const [result] = await pool.query(
+      `INSERT INTO teacher_availability (teacher_id, available_date, status, start_time, end_time, break_start, break_end)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE status = ?, start_time = ?, end_time = ?, break_start = ?, break_end = ?, updated_at = CURRENT_TIMESTAMP`,
+      [teacher_id, available_date, status, start_time || null, end_time || null, break_start || null, break_end || null, status, start_time || null, end_time || null, break_start || null, break_end || null]
+    );
+
+    res.json({ message: "Availability updated successfully", id: result.insertId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error setting availability" });
+  }
+});
+
+// Delete teacher availability record
+app.delete("/api/calendar/availability/:availability_id", async (req, res) => {
+  try {
+    const { availability_id } = req.params;
+
+    const [result] = await pool.query(
+      `DELETE FROM teacher_availability WHERE availability_id = ?`,
+      [availability_id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Availability record not found" });
+    }
+
+    res.json({ message: "Availability deleted successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error deleting availability" });
+  }
+});
+
 app.listen(PORT, () => console.log(`🚀 API listening on http://localhost:${PORT}`));
