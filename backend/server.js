@@ -1370,8 +1370,12 @@ app.post("/api/calendar/set-availability", async (req, res) => {
 
     // Validate date is not in the past
     const today = new Date();
-    const selectedDate = new Date(available_date + "T00:00:00");
-    if (selectedDate < today) {
+    // Parse date without timezone issues (YYYY-MM-DD format)
+    const [selYear, selMonth, selDay] = available_date.split('-').map(Number);
+    const selectedDate = new Date(selYear, selMonth - 1, selDay, 0, 0, 0, 0);
+    const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+    
+    if (selectedDate < todayMidnight) {
       return res.status(400).json({ message: "Cannot set availability for past dates" });
     }
 
@@ -1381,6 +1385,29 @@ app.post("/api/calendar/set-availability", async (req, res) => {
       selectedDate.getMonth() !== today.getMonth()
     ) {
       return res.status(400).json({ message: "Can only set availability for current month" });
+    }
+
+    // If setting availability for today, validate that times are after current time
+    if (selectedDate.getTime() === todayMidnight.getTime()) {
+      const currentHours = today.getHours();
+      const currentMins = today.getMinutes();
+      const currentTotalMins = currentHours * 60 + currentMins;
+
+      if (status === "available") {
+        const [startHours, startMins] = start_time.split(":").map(Number);
+        const startTotalMins = startHours * 60 + startMins;
+
+        if (startTotalMins <= currentTotalMins) {
+          return res.status(400).json({ message: "Start time must be after the current time" });
+        }
+
+        const [endHours, endMins] = end_time.split(":").map(Number);
+        const endTotalMins = endHours * 60 + endMins;
+
+        if (endTotalMins <= currentTotalMins) {
+          return res.status(400).json({ message: "End time must be after the current time" });
+        }
+      }
     }
 
     // Validate time range if available status

@@ -734,20 +734,16 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     // Only allow current month
     const currentYear = today.getFullYear();
     const currentMonth = today.getMonth();
-    const selectedDateObj = new Date(availabilityDate + "T00:00:00");
+    
+    // Parse availabilityDate (YYYY-MM-DD format from date input) without timezone issues
+    const [selYear, selMonth, selDay] = availabilityDate.split('-').map(Number);
+    const selectedDateObj = new Date(selYear, selMonth - 1, selDay, 0, 0, 0, 0);
+    
     if (
       selectedDateObj.getFullYear() !== currentYear ||
       selectedDateObj.getMonth() !== currentMonth
     ) {
       setAvailabilityError("You can only set availability for the current month");
-      return;
-    }
-
-    // Don't allow past dates
-    const selectedDateOnly = new Date(availabilityDate + "T00:00:00");
-    const todayOnly = new Date(fmtDate(today) + "T00:00:00");
-    if (selectedDateOnly < todayOnly) {
-      setAvailabilityError("You cannot set availability for past dates");
       return;
     }
 
@@ -768,6 +764,30 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       if (end <= start) {
         setAvailabilityError("End time must be after start time");
         return;
+      }
+
+      // If setting availability for today, check that times are after current time
+      const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+      if (selectedDateObj.getTime() === todayMidnight.getTime()) {
+        const currentHours = today.getHours();
+        const currentMins = today.getMinutes();
+        const currentTotalMins = currentHours * 60 + currentMins;
+
+        const [startHours, startMins] = availabilityStartTime.split(":").map(Number);
+        const startTotalMins = startHours * 60 + startMins;
+
+        if (startTotalMins <= currentTotalMins) {
+          setAvailabilityError("Start time must be after the current time");
+          return;
+        }
+
+        const [endHours, endMins] = availabilityEndTime.split(":").map(Number);
+        const endTotalMins = endHours * 60 + endMins;
+
+        if (endTotalMins <= currentTotalMins) {
+          setAvailabilityError("End time must be after the current time");
+          return;
+        }
       }
 
       // Validate break times if provided
@@ -1319,13 +1339,16 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>New Time *</label>
                         <input
                           type="time"
+                          step="3600"
                           value={requestTime}
                           onChange={e => {
                             const time = e.target.value;
-                            setRequestTime(time);
+                            const [hours] = time.split(':');
+                            const roundedTime = `${hours}:00`;
+                            setRequestTime(roundedTime);
                             setRequestError("");
                             // Check if this time is already booked with the same teacher
-                            if (requestDate && isTimeBookedForReschedule(requestDate, time)) {
+                            if (requestDate && isTimeBookedForReschedule(requestDate, roundedTime)) {
                               setRequestError("This time slot is already booked with your teacher. Please choose another time.");
                             }
                           }}
@@ -1947,9 +1970,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                               <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Start Time *</label>
                               <input
                                 type="time"
+                                step="3600"
                                 value={availabilityStartTime}
                                 onChange={e => {
-                                  setAvailabilityStartTime(e.target.value);
+                                  const time = e.target.value;
+                                  const [hours] = time.split(':');
+                                  const roundedTime = `${hours}:00`;
+                                  setAvailabilityStartTime(roundedTime);
                                   setAvailabilityError("");
                                 }}
                                 style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
@@ -1960,9 +1987,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                               <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>End Time *</label>
                               <input
                                 type="time"
+                                step="3600"
                                 value={availabilityEndTime}
                                 onChange={e => {
-                                  setAvailabilityEndTime(e.target.value);
+                                  const time = e.target.value;
+                                  const [hours] = time.split(':');
+                                  const roundedTime = `${hours}:00`;
+                                  setAvailabilityEndTime(roundedTime);
                                   setAvailabilityError("");
                                 }}
                                 style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
@@ -1990,9 +2021,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                                   <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 500, marginBottom: 3, color: "#666" }}>Break Start</label>
                                   <input
                                     type="time"
+                                    step="3600"
                                     value={availabilityBreakStart}
                                     onChange={e => {
-                                      setAvailabilityBreakStart(e.target.value);
+                                      const time = e.target.value;
+                                      const [hours] = time.split(':');
+                                      const roundedTime = `${hours}:00`;
+                                      setAvailabilityBreakStart(roundedTime);
                                       setAvailabilityError("");
                                     }}
                                     style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
@@ -2002,9 +2037,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                                   <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 500, marginBottom: 3, color: "#666" }}>Break End</label>
                                   <input
                                     type="time"
+                                    step="3600"
                                     value={availabilityBreakEnd}
                                     onChange={e => {
-                                      setAvailabilityBreakEnd(e.target.value);
+                                      const time = e.target.value;
+                                      const [hours] = time.split(':');
+                                      const roundedTime = `${hours}:00`;
+                                      setAvailabilityBreakEnd(roundedTime);
                                       setAvailabilityError("");
                                     }}
                                     style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
@@ -2230,13 +2269,16 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>New Time *</label>
                           <input
                             type="time"
+                            step="3600"
                             value={requestTime}
                             onChange={e => {
                               const time = e.target.value;
-                              setRequestTime(time);
+                              const [hours] = time.split(':');
+                              const roundedTime = `${hours}:00`;
+                              setRequestTime(roundedTime);
                               setRequestError("");
                               // Check if student has this time booked
-                              if (requestDate && isCounterpartyDateTimeBooked(requestDate, time)) {
+                              if (requestDate && isCounterpartyDateTimeBooked(requestDate, roundedTime)) {
                                 setRequestError("Student is not available at this time. Please choose another time.");
                               }
                             }}
