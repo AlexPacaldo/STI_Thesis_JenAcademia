@@ -647,6 +647,25 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     });
   };
 
+  // Helper: Check if a specific date/time is booked (for reschedule requests)
+  // For students: checks all classes on the teacher's schedule, excluding the current class
+  // For teachers: checks all classes they have, excluding the current class
+  const isTimeBookedForReschedule = (dateStr, timeStr) => {
+    if (!selectedClass || !selectedClass.id) return false;
+    
+    const dateKey = normalizeDate(dateStr);
+    const classesOnDate = classesCache[dateKey] || [];
+    
+    // Filter classes: 
+    // - Exclude the current class being rescheduled
+    // - Only include classes with the same teacher
+    return classesOnDate.some(cls => 
+      cls.id !== selectedClass.id &&  // Not the current class being rescheduled
+      cls.teacher_id === selectedClass.teacher_id &&  // Same teacher
+      (cls.start_time || cls.time || "").substring(0, 5) === timeStr  // Same time
+    );
+  };
+
   // Helper: Check if counterparty has this date/time booked
   const isCounterpartyDateTimeBooked = (dateStr, timeStr) => {
     const normalizedDate = normalizeDate(dateStr);
@@ -877,9 +896,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       return;
     }
 
-    // Check if requested date/time is already booked
-    if (isDateTimeBooked(requestDate, requestTime)) {
-      setRequestError("This date and time are already booked. Please choose another time.");
+    // Check if requested time slot is already booked by another student with this teacher
+    if (isTimeBookedForReschedule(requestDate, requestTime)) {
+      setRequestError("This time slot is already booked by another student with this teacher. Please choose another time.");
       return;
     }
 
@@ -1305,16 +1324,16 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                             const time = e.target.value;
                             setRequestTime(time);
                             setRequestError("");
-                            // Check if counterparty has this time booked
-                            if (requestDate && isCounterpartyDateTimeBooked(requestDate, time)) {
-                              setRequestError(`${localRole === "student" ? "Teacher" : "Student"} is not available at this time. Please choose another time.`);
+                            // Check if this time is already booked with the same teacher
+                            if (requestDate && isTimeBookedForReschedule(requestDate, time)) {
+                              setRequestError("This time slot is already booked with your teacher. Please choose another time.");
                             }
                           }}
                           style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
                         />
-                        {requestDate && requestTime && isCounterpartyDateTimeBooked(requestDate, requestTime) && (
+                        {requestDate && requestTime && isTimeBookedForReschedule(requestDate, requestTime) && (
                           <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
-                            ✕ {localRole === "student" ? "Teacher" : "Student"} is already booked at this time
+                            ✕ This time slot is already booked by another student
                           </div>
                         )}
                       </div>
@@ -1348,8 +1367,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         <button 
                           type="button"
                           onClick={submitRequest}
-                          disabled={isSubmittingRequest || (requestDate && requestTime && isCounterpartyDateTimeBooked(requestDate, requestTime))}
-                          style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || (requestDate && requestTime && isCounterpartyDateTimeBooked(requestDate, requestTime))) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || (requestDate && requestTime && isCounterpartyDateTimeBooked(requestDate, requestTime))) ? "not-allowed" : "pointer" }}
+                          disabled={isSubmittingRequest || (requestDate && requestTime && isTimeBookedForReschedule(requestDate, requestTime))}
+                          style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || (requestDate && requestTime && isTimeBookedForReschedule(requestDate, requestTime))) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || (requestDate && requestTime && isTimeBookedForReschedule(requestDate, requestTime))) ? "not-allowed" : "pointer" }}
                         >
                           {isSubmittingRequest ? "Sending..." : "Send Request"}
                         </button>
