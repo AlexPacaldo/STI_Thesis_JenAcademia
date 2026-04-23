@@ -376,11 +376,14 @@ app.get("/api/calendar/teacher-availability", async (req, res) => {
       return res.status(400).json({ message: "Missing teacher_id, year, or month" });
     }
 
-    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-    const endDate = `${year}-${String(month).padStart(2, "0")}-31`;
+    const monthIndex = parseInt(month, 10);
+    const yearValue = parseInt(year, 10);
+    const daysInMonth = new Date(yearValue, monthIndex, 0).getDate();
+    const startDate = `${yearValue}-${String(monthIndex).padStart(2, "0")}-01`;
+    const endDate = `${yearValue}-${String(monthIndex).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
     const [rows] = await pool.query(
-      `SELECT available_date, status FROM teacher_availability 
+      `SELECT DATE_FORMAT(available_date, '%Y-%m-%d') as available_date, status FROM teacher_availability 
        WHERE teacher_id = ? AND available_date BETWEEN ? AND ?
        ORDER BY available_date`,
       [teacher_id, startDate, endDate]
@@ -388,6 +391,7 @@ app.get("/api/calendar/teacher-availability", async (req, res) => {
 
     const availability = {};
     rows.forEach(row => {
+      // DATE_FORMAT already returns a string in YYYY-MM-DD format
       availability[row.available_date] = row.status;
     });
 

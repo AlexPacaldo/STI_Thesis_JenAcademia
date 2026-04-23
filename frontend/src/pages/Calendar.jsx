@@ -224,7 +224,21 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   useEffect(() => {
     // If teacherId prop is provided (admin viewing specific teacher), use that
     const targetTeacherId = teacherId || (localRole === "teacher" ? localUserId : (localRole === "student" ? assignedTeacherId : null));
-    if (!targetTeacherId) return;
+    
+    console.log("🔍 Availability fetch triggered:", {
+      localRole,
+      localUserId,
+      assignedTeacherId,
+      teacherId,
+      targetTeacherId,
+      year,
+      month: month + 1
+    });
+    
+    if (!targetTeacherId) {
+      console.log("⚠️ No targetTeacherId, skipping availability fetch");
+      return;
+    }
 
     const y = year;
     const m = month + 1; // 1-based for API
@@ -233,9 +247,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         params: { teacher_id: targetTeacherId, year: y, month: m }
       })
       .then(r => {
-        if (r.data && r.data.availability) setAvailability(r.data.availability);
+        console.log("✅ Availability data received:", r.data);
+        if (r.data && r.data.availability) {
+          setAvailability(r.data.availability);
+        }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("❌ Error fetching availability:", err);
+      });
   }, [year, month, localRole, localUserId, teacherId, assignedTeacherId]);
 
   // fetch student package when we know student id
@@ -252,10 +271,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   useEffect(() => {
     if (localRole !== "student" || !localUserId) return;
 
+    console.log("📚 Fetching assigned teacher for student:", localUserId);
+    
     axios
       .get(`${API}/api/student/assigned-teacher/${localUserId}`)
       .then(r => {
         const teacherIdFromProfile = r.data?.assigned_teacher_id ?? null;
+        console.log("✅ Assigned teacher fetched:", teacherIdFromProfile, "Full response:", r.data);
         setAssignedTeacherId(teacherIdFromProfile);
 
         if (teacherIdFromProfile) {
@@ -1072,28 +1094,58 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                 const formatted = d ? fmtDate(d) : "";
                 const isTodayCell = formatted === fmtDate(new Date());
                 const isSelected = formatted === selectedDate;
+                
+                // Check if date is in the past
+                const isPast = d && d < new Date(new Date().setHours(0, 0, 0, 0));
+                
+                // Check if teacher has set schedule for this date (status exists)
+                const teacherHasSchedule = d && (status === "available" || status === "unavailable");
+                
+                // Determine color coding for student view
+                let cellClass = styles.cell;
+                if (!d) {
+                  cellClass = [styles.cell, styles.empty].join(" ");
+                } else if (isPast) {
+                  cellClass = [styles.cell, styles.clickableCell, styles.pastCell].join(" ");
+                } else if (status === "unavailable") {
+                  cellClass = [styles.cell, styles.clickableCell, styles.unavailable].join(" ");
+                } else if (hasClasses) {
+                  cellClass = [styles.cell, styles.clickableCell, styles.hasClasses].join(" ");
+                } else if (status === "available") {
+                  cellClass = [styles.cell, styles.clickableCell, styles.available].join(" ");
+                } else if (localRole === "student" && !teacherHasSchedule) {
+                  // For students: show unscheduled (teacher hasn't set availability) in orange
+                  cellClass = [styles.cell, styles.clickableCell, styles.unscheduled].join(" ");
+                } else {
+                  cellClass = [styles.cell, styles.clickableCell].join(" ");
+                }
+                
+                if (isTodayCell) cellClass += " " + styles.today;
+                if (isSelected) cellClass += " " + styles.selected;
+                
+                let tooltipText = "";
+                if (d) {
+                  if (isPast) {
+                    tooltipText = "Past date";
+                  } else if (status === "unavailable") {
+                    tooltipText = "Teacher unavailable";
+                  } else if (hasClasses) {
+                    tooltipText = "Classes scheduled";
+                  } else if (status === "available") {
+                    tooltipText = "Teacher available";
+                  } else if (localRole === "student" && !teacherHasSchedule) {
+                    tooltipText = "Teacher schedule not set";
+                  }
+                }
+                
                 return (
                   <button
                     key={idx}
                     type="button"
-                    className={[
-                      styles.cell,
-                      !d && styles.empty,
-                      styles.clickableCell,         // interactive for teacher
-                      status === "available" && styles.available,
-                      hasClasses && styles.available,
-                      isTodayCell && styles.today,
-                      isSelected && styles.selected,
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
+                    className={cellClass}
                     onClick={() => handleCellClick(d)}
                     disabled={!d}
-                    title={
-                      !d
-                        ? ""
-                        : "Click to view scheduled classes"
-                    }
+                    title={tooltipText}
                   >
                     {d ? d.getDate() : ""}
                   </button>
@@ -2417,22 +2469,37 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
             )}
 
             <div className={styles.legendBlock}>
-              <div className={styles.legendRow}>
-                <span className={`${styles.legendDot}`} style={{ background:"#0b6909"}} />
-                <span>Today</span>
-              </div>
-
+              <div style={{ fontSize: "0.9rem", fontWeight: 600, marginBottom: 8 }}>Calendar Color Guide:</div>
+              
               <div className={styles.legendRow}>
                 <span className={`${styles.legendDot} ${styles.legendAvail}`} />
-                <span>Classes</span>
+                <span>Available</span>
               </div>
 
               <div className={styles.legendRow}>
-                <span className={`${styles.legendDot}`} style={{ background: "#fff" }} />
-                <span>Clear</span>
+                <span className={`${styles.legendDot} ${styles.legendClasses}`} />
+                <span>Classes Scheduled</span>
               </div>
-              <div className={styles.legendRow} style={{ marginTop: 6, fontSize: 12, color: "#666" }}>
-                Click a day to view classes, then click a class to see student info
+
+              <div className={styles.legendRow}>
+                <span className={`${styles.legendDot} ${styles.legendUnavail}`} />
+                <span>Teacher Unavailable</span>
+              </div>
+
+              {localRole === "student" && (
+                <div className={styles.legendRow}>
+                  <span className={`${styles.legendDot} ${styles.legendUnscheduled}`} />
+                  <span>Schedule Not Set</span>
+                </div>
+              )}
+
+              <div className={styles.legendRow}>
+                <span className={`${styles.legendDot} ${styles.legendPast}`} />
+                <span>Past Date</span>
+              </div>
+
+              <div className={styles.legendRow} style={{ marginTop: 8, fontSize: 12, color: "#666" }}>
+                Click a day to view details
               </div>
             </div>
           </aside>

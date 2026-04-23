@@ -128,8 +128,10 @@
 
 /* status */
 .available { background: #c9f2c9; }
+.hasClasses { background: #c9e4ff; }
 .unavailable { background: #ffd6d6; }
 .pastCell { background: #f1f1f1; color: #999; }
+.unscheduled { background: #ffe8cc; } /* Teacher hasn't set schedule yet */
 
 /* interactions */
 .clickableCell { cursor: pointer; }
@@ -219,8 +221,10 @@
   border: 1px solid #d0d0d0;
 }
 .legendAvail { background: #c9f2c9; }
+.legendClasses { background: #c9e4ff; }
 .legendUnavail { background: #ffd6d6; }
 .legendPast { background: #f1f1f1; }
+.legendUnscheduled { background: #ffe8cc; }
 
 /* FOOTER */
 .footer {

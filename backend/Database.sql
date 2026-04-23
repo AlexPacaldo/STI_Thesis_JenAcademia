@@ -445,7 +445,7 @@ CREATE TABLE `student_profiles` (
   `user_id` int NOT NULL,
   `proficiency_level` enum('beginner','elementary','intermediate','upper-intermediate','advanced','proficient') DEFAULT 'beginner',
   `assigned_teacher_id` int DEFAULT NULL,
-  `course_id` int DEFAULT NULL,
+  `course_id` int NOT NULL,
   `trial_notes` text,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
