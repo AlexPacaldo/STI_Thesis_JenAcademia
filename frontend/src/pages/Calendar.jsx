@@ -2199,13 +2199,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                       type="button"
                       className={styles.bookBtn}
                       onClick={() => {
-                        // Fetch counterparty's (student's) booked dates
-                        const studentId = selectedClass.student_id;
-                        setCounterpartyId(studentId);
+                        // Fetch counterparty's booked dates
+                        const otherPartyId = localRole === "student" ? selectedClass.teacher_id : selectedClass.student_id;
+                        setCounterpartyId(otherPartyId);
                         
-                        // Load the student's booked dates
+                        // Load the other party's booked dates
                         axios
-                          .get(`${API}/api/calendar/booked-dates/${studentId}`)
+                          .get(`${API}/api/calendar/booked-dates/${otherPartyId}`)
                           .then(r => {
                             if (r.data && r.data.bookedDates) {
                               // Normalize dates to YYYY-MM-DD format
