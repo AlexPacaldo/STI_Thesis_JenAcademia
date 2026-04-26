@@ -1,13 +1,13 @@
 // server.js (ESM)
-import express from "express";
-import cors from "cors";
-import mysql from "mysql2/promise";
 import bcrypt from "bcryptjs";
+import cors from "cors";
+import express from "express";
+import mysql from "mysql2/promise";
 //hi
 const PORT = process.env.PORT || 3001;
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USER || "root";
-const DB_PASSWORD = process.env.DB_PASSWORD || "Aj1182014";    // <- your password here
+const DB_PASSWORD = process.env.DB_PASSWORD || "LORAKLANG0405++";    // <- your password here
 const DB_NAME = process.env.DB_NAME || "jen_academia"; // your schema
 
 const app = express();
@@ -841,10 +841,92 @@ app.post("/api/calendar/remarks", async (req, res) => {
       [class_id, teacher_id, student_id, remarks, rating, remarks, rating]
     );
 
+    const [classRows] = await pool.query(
+      `SELECT class_name, scheduled_date, start_time FROM classes WHERE class_id = ? LIMIT 1`,
+      [class_id]
+    );
+    const className = classRows.length ? classRows[0].class_name : "your class";
+    const scheduleDate = classRows.length ? classRows[0].scheduled_date : null;
+    const startTime = classRows.length ? classRows[0].start_time : null;
+
+    const formatDate = (dateValue) => {
+      if (!dateValue) return null;
+      const date = new Date(dateValue);
+      return date.toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      });
+    };
+
+    const formatTime = (timeValue) => {
+      if (!timeValue) return null;
+      const [hour, minute] = timeValue.split(":");
+      if (hour == null || minute == null) return timeValue;
+      const hourNumber = parseInt(hour, 10);
+      const ampm = hourNumber >= 12 ? "PM" : "AM";
+      const hour12 = ((hourNumber + 11) % 12) + 1;
+      return `${hour12}:${minute}${ampm}`;
+    };
+
+    const dateText = scheduleDate ? formatDate(scheduleDate) : null;
+    const timeText = startTime ? formatTime(startTime) : null;
+    const scheduleText = dateText && timeText ? ` on ${dateText} at ${timeText}` : dateText ? ` on ${dateText}` : timeText ? ` at ${timeText}` : "";
+
+    await pool.query(
+      `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        student_id,
+        "remark",
+        "New teacher remark",
+        `Your teacher left a new remark for ${className}${scheduleText}`,
+        class_id,
+        "class_remarks",
+        "/remarks"
+      ]
+    );
+
     res.json({ message: "Remarks saved successfully" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error saving remarks" });
+  }
+});
+
+// Get all remarks for a student
+app.get("/api/student/:student_id/remarks", async (req, res) => {
+  try {
+    const { student_id } = req.params;
+
+    const [rows] = await pool.query(
+      `SELECT cr.*, c.class_name, c.scheduled_date, c.start_time, c.end_time,
+              t.first_name AS teacher_first, t.last_name AS teacher_last
+       FROM class_remarks cr
+       JOIN classes c ON cr.class_id = c.class_id
+       JOIN users t ON cr.teacher_id = t.user_id
+       WHERE cr.student_id = ?
+       ORDER BY cr.created_at DESC`,
+      [student_id]
+    );
+
+    const remarks = rows.map((row) => ({
+      remark_id: row.remark_id,
+      class_id: row.class_id,
+      class_name: row.class_name,
+      teacher_name: `${row.teacher_first} ${row.teacher_last}`,
+      remarks: row.remarks,
+      rating: row.rating,
+      created_at: row.created_at,
+      scheduled_date: row.scheduled_date,
+      start_time: row.start_time,
+      end_time: row.end_time,
+    }));
+
+    res.json({ remarks });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching student remarks" });
   }
 });
 
@@ -1240,6 +1322,63 @@ app.get("/api/student/assigned-teacher/:student_id", async (req, res) => {
   } catch (err) {
     console.error("GET /api/student/assigned-teacher/:student_id error:", err);
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Get all students assigned to a teacher
+app.get("/api/teacher/:teacher_id/students", async (req, res) => {
+  try {
+    const { teacher_id } = req.params;
+
+    const [rows] = await pool.query(
+      `SELECT u.user_id, u.first_name, u.last_name, u.email, u.contact_number AS contact,
+              sp.proficiency_level, sp.assigned_teacher_id, sp.course_id, sp.trial_notes
+       FROM users u
+       JOIN student_profiles sp ON u.user_id = sp.user_id
+       WHERE sp.assigned_teacher_id = ?`,
+      [teacher_id]
+    );
+
+    const students = rows.map((student) => ({
+      user_id: student.user_id,
+      first_name: student.first_name,
+      last_name: student.last_name,
+      email: student.email,
+      contact: student.contact,
+      proficiency_level: student.proficiency_level,
+      assigned_teacher_id: student.assigned_teacher_id,
+      course_id: student.course_id,
+      trial_notes: student.trial_notes,
+    }));
+
+    res.json({ students });
+  } catch (err) {
+    console.error("GET /api/teacher/:teacher_id/students error:", err);
+    res.status(500).json({ message: "Error fetching assigned students" });
+  }
+});
+
+// Get latest class for a teacher and student pair
+app.get("/api/teacher/:teacher_id/student/:student_id/latest-class", async (req, res) => {
+  try {
+    const { teacher_id, student_id } = req.params;
+    const [rows] = await pool.query(
+      `SELECT class_id, class_name, scheduled_date, start_time, end_time, status
+       FROM classes
+       WHERE teacher_id = ? AND student_id = ?
+       ORDER BY scheduled_date DESC, class_id DESC
+       LIMIT 1`,
+      [teacher_id, student_id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "No class found for this student" });
+    }
+
+    res.json({ class: rows[0] });
+  } catch (err) {
+    console.error("GET /api/teacher/:teacher_id/student/:student_id/latest-class error:", err);
+    res.status(500).json({ message: "Error fetching latest class" });
   }
 });
 
