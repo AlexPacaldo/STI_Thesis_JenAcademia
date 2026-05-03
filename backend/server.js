@@ -7,7 +7,7 @@ import mysql from "mysql2/promise";
 const PORT = process.env.PORT || 3001;
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USER || "root";
-const DB_PASSWORD = process.env.DB_PASSWORD || "LORAKLANG0405++";    // <- your password here
+const DB_PASSWORD = process.env.DB_PASSWORD || "Aj1182014";    // <- your password here
 const DB_NAME = process.env.DB_NAME || "jen_academia"; // your schema
 
 const app = express();
@@ -471,6 +471,24 @@ app.post("/api/calendar/class", async (req, res) => {
       `INSERT INTO classes (class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, class_link, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')`,
       [class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, class_link]
+    );
+
+    const [studentRows] = await pool.query(
+      `SELECT first_name, last_name FROM users WHERE user_id = ?`,
+      [student_id]
+    );
+    const [teacherRows] = await pool.query(
+      `SELECT first_name, last_name FROM users WHERE user_id = ?`,
+      [teacher_id]
+    );
+
+    const studentName = studentRows.length > 0 ? `${studentRows[0].first_name} ${studentRows[0].last_name}` : "A student";
+    const notificationMessage = `${studentName} booked "${class_name}" for ${scheduled_date} at ${start_time}.`;
+
+    await pool.query(
+      `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [teacher_id, "general", "New Class Booked", notificationMessage, result.insertId, "class"]
     );
 
     res.status(201).json({ class_id: result.insertId, message: "Class created successfully" });

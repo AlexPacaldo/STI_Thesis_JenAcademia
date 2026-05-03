@@ -15,10 +15,23 @@ const fmtDate = (d) => {
   return `${year}-${month}-${day}`;
 };
 
-// convert 24‑hour time string (HH:MM:SS) to human format e.g. "2:30 PM"
+// convert 24‑hour time string (HH:MM:SS or ISO datetime) to human format e.g. "2:30 PM"
 const humanTime = (t24) => {
   if (!t24) return "";
-  const [h, m] = t24.split(":");
+  const trimmed = t24.trim();
+  const isoMatch = trimmed.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/);
+  if (isoMatch) {
+    const date = new Date(trimmed);
+    if (!isNaN(date.getTime())) {
+      let hour = date.getHours();
+      const mins = String(date.getMinutes()).padStart(2, '0');
+      const ampm = hour >= 12 ? "PM" : "AM";
+      if (hour > 12) hour -= 12;
+      if (hour === 0) hour = 12;
+      return `${hour}:${mins} ${ampm}`;
+    }
+  }
+  const [h, m] = trimmed.split(":");
   let hour = parseInt(h, 10);
   const mins = m || "00";
   const ampm = hour >= 12 ? "PM" : "AM";
@@ -26,6 +39,39 @@ const humanTime = (t24) => {
   if (hour === 0) hour = 12;
   return `${hour}:${mins} ${ampm}`;
 };
+
+const normalizeTime = (timeStr) => {
+  if (!timeStr) return "";
+  const t = timeStr.trim();
+  const isoMatch = t.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/);
+  if (isoMatch) {
+    const date = new Date(t);
+    if (!isNaN(date.getTime())) {
+      const hour = String(date.getHours()).padStart(2, '0');
+      const mins = String(date.getMinutes()).padStart(2, '0');
+      return `${hour}:${mins}`;
+    }
+  }
+
+  const ampmMatch = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
+  if (ampmMatch) {
+    let hour = parseInt(ampmMatch[1], 10);
+    const mins = ampmMatch[2];
+    const period = ampmMatch[3].toUpperCase();
+    if (period === "PM" && hour < 12) hour += 12;
+    if (period === "AM" && hour === 12) hour = 0;
+    return `${String(hour).padStart(2, "0")}:${mins}`;
+  }
+  const plainMatch = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (plainMatch) {
+    const hour = String(parseInt(plainMatch[1], 10)).padStart(2, "0");
+    const mins = plainMatch[2];
+    return `${hour}:${mins}`;
+  }
+  return "";
+};
+
+const parse24HourTime = (timeStr) => normalizeTime(timeStr);
 
 // Helper: calculate end time from start time and duration in minutes
 const getEndTime = (startTime, durationMins) => {
@@ -349,7 +395,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
             teacherEmail: c.teacherEmail || c.teacher_email,
             classLink: c.classLink || c.class_link,
             time: c.time || humanTime(c.start_time),
+            start_time: c.start_time || parse24HourTime(c.time) || "",
             duration: c.duration || c.duration,
+            teacher_id: c.teacher_id,
+            student_id: c.student_id,
           }));
           setClassesCache(prev => ({ ...prev, [dateStr]: formatted }));
         }
@@ -412,7 +461,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
     
     // Check if teacher is explicitly unavailable on this date
-    const dateStatus = availability[dateKey] || "";
+    const dateStatus = getAvailabilityStatusForDate(dateKey);
     if (dateStatus === "unavailable") {
       setAvailableTimeSlots([]);
       return;
@@ -565,6 +614,60 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
   }, [studentBookingMode, studentBookingDate, assignedTeacherId, localRole]);
 
+  // Load teacher's own availability records when entering reschedule request mode
+  useEffect(() => {
+    if (!requestMode) return;
+
+    let targetYear = year;
+    let targetMonth = month + 1; // month is 0-based
+    if (requestDate) {
+      const requestDateObj = new Date(requestDate + "T00:00:00");
+      if (!isNaN(requestDateObj.getTime())) {
+        targetYear = requestDateObj.getFullYear();
+        targetMonth = requestDateObj.getMonth() + 1;
+      }
+    }
+
+    console.log(`🔄 Reschedule mode activated. Loading availability for year=${targetYear}, month=${targetMonth}, role=${localRole}, localUserId=${localUserId}, assignedTeacherId=${assignedTeacherId}, requestDate=${requestDate}`);
+
+    let teacherIdToLoad;
+    if (localRole === "teacher" && localUserId) {
+      teacherIdToLoad = localUserId;
+    } else if (localRole === "admin" && teacherId) {
+      teacherIdToLoad = teacherId;
+    } else if (localRole === "student" && assignedTeacherId) {
+      teacherIdToLoad = assignedTeacherId;
+    }
+
+    if (teacherIdToLoad) {
+      console.log(`📡 Fetching availability records for teacher_id=${teacherIdToLoad}, year=${targetYear}, month=${targetMonth}`);
+      axios
+        .get(`${API}/api/calendar/teacher-availability-records`, {
+          params: { teacher_id: teacherIdToLoad, year: targetYear, month: targetMonth }
+        })
+        .then(r => {
+          console.log(`✅ Raw API response:`, r.data);
+          if (r.data && r.data.records) {
+            const normalized = r.data.records.map(record => ({
+              ...record,
+              available_date: normalizeDate(record.available_date),
+            }));
+            setTeacherAvailabilityList(normalized);
+            console.log("✅ Loaded teacher availability records for reschedule validation:", normalized);
+          } else {
+            console.log("⚠️ No records in response");
+            setTeacherAvailabilityList([]);
+          }
+        })
+        .catch(err => {
+          console.error("❌ Error loading teacher availability records:", err);
+          setTeacherAvailabilityList([]);
+        });
+    } else {
+      console.log("⚠️ No teacherId to load. localUserId=" + localUserId + ", role=" + localRole);
+    }
+  }, [requestMode, requestDate, localRole, localUserId, teacherId, assignedTeacherId, year, month]);
+
   // Load available time slots AFTER classes are loaded for the selected date or student booking date
   useEffect(() => {
     if (selectedDate && teacherId && classesCache[selectedDate] !== undefined) {
@@ -647,6 +750,18 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     });
   };
 
+  // Helper: Check if reschedule date/time is the same as current schedule (not allowed)
+  const isRescheduleToSameDateTime = (dateStr, timeStr) => {
+    if (!selectedClass) return false;
+
+    const normalizedSelectedDate = normalizeDate(dateStr);
+    const normalizedCurrentDate = normalizeDate(selectedClass.scheduled_date || selectedDate || "");
+    const currentTime = normalizeTime(selectedClass.start_time || selectedClass.time || "");
+    const requestedTime = normalizeTime(timeStr);
+
+    return normalizedSelectedDate === normalizedCurrentDate && requestedTime && currentTime && requestedTime === currentTime;
+  };
+
   // Helper: Check if a specific date/time is booked (for reschedule requests)
   // For students: checks all classes on the teacher's schedule, excluding the current class
   // For teachers: checks all classes they have, excluding the current class
@@ -655,6 +770,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     
     const dateKey = normalizeDate(dateStr);
     const classesOnDate = classesCache[dateKey] || [];
+    const requestedTime = normalizeTime(timeStr);
     
     // Filter classes: 
     // - Exclude the current class being rescheduled
@@ -662,17 +778,30 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     return classesOnDate.some(cls => 
       cls.id !== selectedClass.id &&  // Not the current class being rescheduled
       cls.teacher_id === selectedClass.teacher_id &&  // Same teacher
-      (cls.start_time || cls.time || "").substring(0, 5) === timeStr  // Same time
+      normalizeTime(cls.start_time || cls.time || "") === requestedTime  // Same time
     );
   };
 
   // Helper: Check if counterparty has this date/time booked
   const isCounterpartyDateTimeBooked = (dateStr, timeStr) => {
     const normalizedDate = normalizeDate(dateStr);
+    const requestedTime = normalizeTime(timeStr);
     return counterpartyBookedDates.some(bd => 
       normalizeDate(bd.scheduled_date) === normalizedDate && 
-      bd.start_time.slice(0, 5) === timeStr
+      normalizeTime(bd.start_time || bd.time || "") === requestedTime
     );
+  };
+
+  const getBookedSlotErrorMessage = () => {
+    return localRole === "teacher"
+      ? "This time slot is already booked on your schedule. Please choose another time."
+      : "This time slot is already booked with your teacher. Please choose another time.";
+  };
+
+  const getCounterpartyUnavailableMessage = () => {
+    return localRole === "teacher"
+      ? "Student is not available at this time. Please choose another time."
+      : "Teacher is not available at this time. Please choose another time.";
   };
 
   // Helper: Check if a time falls within teacher's break on the selected date
@@ -688,10 +817,72 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       return false;
     }
     
+    // Ensure break times are valid (break_start < break_end)
     const breakStart = availabilityRecord.break_start.substring(0, 5);
     const breakEnd = availabilityRecord.break_end.substring(0, 5);
     
+    if (breakStart >= breakEnd) {
+      return false; // Invalid break times
+    }
+    
     return timeStr >= breakStart && timeStr < breakEnd;
+  };
+
+  // Helper: Check if a time falls within teacher's availability window (start_time to end_time)
+  // This should NOT penalize times within the break - let isTimeConflictingWithTeacherBreak handle breaks
+  const isTimeOutsideTeacherAvailability = (dateStr, timeStr) => {
+    if (!dateStr || !timeStr || !teacherAvailabilityList) {
+      console.log(`⚠️ isTimeOutsideTeacherAvailability: Missing data - dateStr=${dateStr}, timeStr=${timeStr}, listExists=${!!teacherAvailabilityList}`);
+      return false;
+    }
+    
+    const normalizedDate = normalizeDate(dateStr);
+    console.log(`🔍 Looking for availability record for date: ${normalizedDate}`);
+    console.log(`📊 Available records:`, teacherAvailabilityList.map(r => ({ date: r.available_date, status: r.status })));
+    
+    const availabilityRecord = teacherAvailabilityList.find(record => 
+      normalizeDate(record.available_date) === normalizedDate
+    );
+    
+    console.log(`📌 Found availability record for ${normalizedDate}:`, availabilityRecord);
+    
+    // If no record or status is unavailable, return true (time is outside availability)
+    if (!availabilityRecord || availabilityRecord.status !== "available") {
+      console.log(`❌ No record or unavailable status`);
+      return true;
+    }
+    
+    // If no start/end time set, assume available all day
+    if (!availabilityRecord.start_time || !availabilityRecord.end_time) {
+      console.log(`✅ All-day availability (no specific times set)`);
+      return false;
+    }
+    
+    const availStart = availabilityRecord.start_time.substring(0, 5);
+    const availEnd = availabilityRecord.end_time.substring(0, 5);
+    
+    console.log(`⏰ Availability window: ${availStart} - ${availEnd}, Requested time: ${timeStr}`);
+    
+    // Ensure times are properly ordered (start < end)
+    if (availStart >= availEnd) {
+      console.log(`⚠️ Invalid availability window: start ${availStart} >= end ${availEnd}`);
+      return true; // Invalid availability window
+    }
+    
+    // Check if time is within the availability window (including break time - break is checked separately)
+    const isWithinWindow = timeStr >= availStart && timeStr < availEnd;
+    console.log(`📍 Is ${timeStr} within ${availStart}-${availEnd}? ${isWithinWindow}`);
+    
+    // Return true if OUTSIDE the window
+    return !isWithinWindow;
+  };
+
+  const getAvailabilityStatusForDate = (dateStr) => {
+    const dateKey = normalizeDate(dateStr);
+    if (!dateKey) return "";
+    if (availability[dateKey]) return availability[dateKey];
+    const record = teacherAvailabilityList.find(record => normalizeDate(record.available_date) === dateKey);
+    return record?.status || "";
   };
 
   // month navigation
@@ -741,27 +932,49 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   };
 
   // Fetch a specific teacher's availability records (used by students for reschedule validation)
-  const loadSpecificTeacherAvailability = (teacherId) => {
-    if (!teacherId) return;
+  const loadSpecificTeacherAvailability = (teacherId, yearOverride = null, monthOverride = null) => {
+    if (!teacherId) {
+      console.warn(`⚠️ loadSpecificTeacherAvailability called with null/undefined teacherId`);
+      return;
+    }
 
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth() + 1;
+    let targetYear = yearOverride;
+    let targetMonth = monthOverride;
+    if (!targetYear || !targetMonth) {
+      const refDate = requestDate ? new Date(requestDate + "T00:00:00") : today;
+      if (!isNaN(refDate.getTime())) {
+        targetYear = refDate.getFullYear();
+        targetMonth = refDate.getMonth() + 1;
+      } else {
+        targetYear = today.getFullYear();
+        targetMonth = today.getMonth() + 1;
+      }
+    }
+
+    console.log(`🔄 Loading teacher availability for teacher_id=${teacherId}, year=${targetYear}, month=${targetMonth}`);
 
     axios
       .get(`${API}/api/calendar/teacher-availability-records`, {
-        params: { teacher_id: teacherId, year: currentYear, month: currentMonth }
+        params: { teacher_id: teacherId, year: targetYear, month: targetMonth }
       })
       .then(r => {
-        if (r.data && r.data.records) {
+        console.log(`✅ Full API response:`, r.data);
+        console.log(`📦 Records array:`, r.data?.records);
+        console.log(`📊 Number of records:`, r.data?.records?.length || 0);
+        if (r.data && r.data.records && r.data.records.length > 0) {
           const normalized = r.data.records.map(record => ({
             ...record,
             available_date: normalizeDate(record.available_date),
           }));
+          console.log(`✨ Setting normalized availability list:`, normalized);
           setTeacherAvailabilityList(normalized);
+        } else {
+          console.warn(`⚠️ No records returned from API for teacher_id ${teacherId}`);
+          setTeacherAvailabilityList([]);
         }
       })
       .catch(err => {
-        console.error("Error loading teacher availability:", err);
+        console.error("❌ Error loading teacher availability:", err);
         setTeacherAvailabilityList([]);
       });
   };
@@ -1332,9 +1545,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           });
                         
                         setRequestMode(true);
-                        // preload fields with current class date/time
+                        // preload date only; clear time so user chooses a new slot
                         setRequestDate(selectedClass.scheduled_date || selectedDate);
-                        setRequestTime(selectedClass.start_time ? selectedClass.start_time.slice(0, 5) : "");
+                        setRequestTime("");
                       }}
                       style={{ marginTop: "8px" }}
                     >
@@ -1370,9 +1583,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         />
                         {requestDate && (
                           <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
-                            {availability[requestDate] === "unavailable" ? (
+                            {getAvailabilityStatusForDate(requestDate) === "unavailable" ? (
                               <p style={{ margin: 0, color: "#f44336" }}>✕ You are unavailable on this date</p>
-                            ) : availability[requestDate] === "available" ? (
+                            ) : getAvailabilityStatusForDate(requestDate) === "available" ? (
                               <p style={{ margin: 0, color: "#4caf50" }}>✓ You are available on this date</p>
                             ) : (
                               <p style={{ margin: 0, color: "#999" }}>• Your availability not set</p>
@@ -1398,31 +1611,34 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                             const roundedTime = `${hours}:00`;
                             setRequestTime(roundedTime);
                             setRequestError("");
+                            // Check if reschedule is to the same date/time as current schedule
+                            if (requestDate && isRescheduleToSameDateTime(requestDate, roundedTime)) {
+                              setRequestError("Cannot reschedule to the same date and time. Please choose a different time.");
+                            }
                             // Check if this time is already booked with the same teacher
-                            if (requestDate && isTimeBookedForReschedule(requestDate, roundedTime)) {
-                              setRequestError("This time slot is already booked with your teacher. Please choose another time.");
+                            else if (requestDate && isTimeBookedForReschedule(requestDate, roundedTime)) {
+                              setRequestError(getBookedSlotErrorMessage());
                             }
                             // Check if time conflicts with break
-                            if (requestDate && isTimeConflictingWithTeacherBreak(requestDate, roundedTime)) {
+                            else if (requestDate && isTimeConflictingWithTeacherBreak(requestDate, roundedTime)) {
                               setRequestError("This time conflicts with your break. Please choose another time.");
                             }
+                            // Check if time is outside availability window
+                            else if (requestDate && isTimeOutsideTeacherAvailability(requestDate, roundedTime)) {
+                              setRequestError("This time is outside your availability window. Please choose another time.");
+                            }
                           }}
-                          disabled={requestDate && availability[requestDate] === "unavailable"}
-                          style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", opacity: requestDate && availability[requestDate] === "unavailable" ? 0.5 : 1, cursor: requestDate && availability[requestDate] === "unavailable" ? "not-allowed" : "auto" }}
+                          disabled={requestDate && getAvailabilityStatusForDate(requestDate) === "unavailable"}
+                          style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", opacity: requestDate && getAvailabilityStatusForDate(requestDate) === "unavailable" ? 0.5 : 1, cursor: requestDate && getAvailabilityStatusForDate(requestDate) === "unavailable" ? "not-allowed" : "auto" }}
                         />
-                        {requestDate && availability[requestDate] === "unavailable" && (
+                        {requestDate && getAvailabilityStatusForDate(requestDate) === "unavailable" && (
                           <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
                             ✕ Cannot select time - you are unavailable on this date
                           </div>
                         )}
-                        {requestDate && requestTime && isTimeBookedForReschedule(requestDate, requestTime) && (
+                        {requestError && (
                           <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
-                            ✕ This time slot is already booked by another student
-                          </div>
-                        )}
-                        {requestDate && requestTime && isTimeConflictingWithTeacherBreak(requestDate, requestTime) && (
-                          <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
-                            ✕ This time conflicts with your break
+                            ✕ {requestError}
                           </div>
                         )}
                       </div>
@@ -1456,8 +1672,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         <button 
                           type="button"
                           onClick={submitRequest}
-                          disabled={isSubmittingRequest || (requestDate && requestTime && isTimeBookedForReschedule(requestDate, requestTime)) || (requestDate && availability[requestDate] !== "available") || (requestDate && requestTime && isTimeConflictingWithTeacherBreak(requestDate, requestTime))}
-                          style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || (requestDate && requestTime && isTimeBookedForReschedule(requestDate, requestTime)) || (requestDate && availability[requestDate] !== "available") || (requestDate && requestTime && isTimeConflictingWithTeacherBreak(requestDate, requestTime))) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || (requestDate && requestTime && isTimeBookedForReschedule(requestDate, requestTime)) || (requestDate && availability[requestDate] !== "available") || (requestDate && requestTime && isTimeConflictingWithTeacherBreak(requestDate, requestTime))) ? "not-allowed" : "pointer" }}
+                          disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getAvailabilityStatusForDate(requestDate) !== "available" || !!requestError}
+                          style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getAvailabilityStatusForDate(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getAvailabilityStatusForDate(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}
                         >
                           {isSubmittingRequest ? "Sending..." : "Send Request"}
                         </button>
@@ -2269,6 +2485,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         const otherPartyId = localRole === "student" ? selectedClass.teacher_id : selectedClass.student_id;
                         setCounterpartyId(otherPartyId);
                         
+                        console.log(`🔍 Request Reschedule clicked - localRole: ${localRole}, selectedClass:`, selectedClass);
+                        console.log(`👨‍🏫 selectedClass.teacher_id = ${selectedClass.teacher_id}`);
+                        console.log(`👤 otherPartyId = ${otherPartyId}`);
+                        
                         // Load the other party's booked dates
                         axios
                           .get(`${API}/api/calendar/booked-dates/${otherPartyId}`)
@@ -2284,9 +2504,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           })
                           .catch(() => setCounterpartyBookedDates([]));
                         
-                        // If student, load teacher's availability for break time validation
-                        if (localRole === "student") {
-                          loadSpecificTeacherAvailability(otherPartyId);
+                        // Always load teacher's availability (for both student and teacher making reschedule)
+                        const teacherIdToLoad = selectedClass.teacher_id;
+                        console.log(`🎯 teacherIdToLoad = ${teacherIdToLoad}`);
+                        if (teacherIdToLoad) {
+                          console.log(`📚 Calling loadSpecificTeacherAvailability with teacherId: ${teacherIdToLoad}`);
+                          loadSpecificTeacherAvailability(teacherIdToLoad);
+                        } else {
+                          console.warn(`⚠️ teacherIdToLoad is null/undefined, skipping availability fetch`);
                         }
                         
                         setRequestMode(true);
@@ -2326,9 +2551,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           />
                           {requestDate && (
                             <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
-                              {availability[requestDate] === "unavailable" ? (
+                              {getAvailabilityStatusForDate(requestDate) === "unavailable" ? (
                                 <p style={{ margin: 0, color: "#f44336" }}>✕ Teacher is unavailable on this date</p>
-                              ) : availability[requestDate] === "available" ? (
+                              ) : getAvailabilityStatusForDate(requestDate) === "available" ? (
                                 <p style={{ margin: 0, color: "#4caf50" }}>✓ Teacher is available on this date</p>
                               ) : (
                                 <p style={{ margin: 0, color: "#999" }}>• Availability not set</p>
@@ -2354,31 +2579,34 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                               const roundedTime = `${hours}:00`;
                               setRequestTime(roundedTime);
                               setRequestError("");
-                              // Check if student has this time booked
-                              if (requestDate && isCounterpartyDateTimeBooked(requestDate, roundedTime)) {
-                                setRequestError("Student is not available at this time. Please choose another time.");
+                              // Check if reschedule is to the same date/time as current schedule
+                              if (requestDate && isRescheduleToSameDateTime(requestDate, roundedTime)) {
+                                setRequestError("Cannot reschedule to the same date and time. Please choose a different time.");
+                              }
+                              // Check if counterparty has this time booked
+                              else if (requestDate && isCounterpartyDateTimeBooked(requestDate, roundedTime)) {
+                                setRequestError(getCounterpartyUnavailableMessage());
                               }
                               // Check if time conflicts with teacher's break
-                              if (requestDate && isTimeConflictingWithTeacherBreak(requestDate, roundedTime)) {
+                              else if (requestDate && isTimeConflictingWithTeacherBreak(requestDate, roundedTime)) {
                                 setRequestError("This time conflicts with teacher's break. Please choose another time.");
                               }
+                              // Check if time is outside teacher's availability window
+                              else if (requestDate && isTimeOutsideTeacherAvailability(requestDate, roundedTime)) {
+                                setRequestError("This time is outside the teacher's availability window. Please choose another time.");
+                              }
                             }}
-                            disabled={requestDate && availability[requestDate] === "unavailable"}
-                            style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", opacity: requestDate && availability[requestDate] === "unavailable" ? 0.5 : 1, cursor: requestDate && availability[requestDate] === "unavailable" ? "not-allowed" : "auto" }}
+                            disabled={requestDate && getAvailabilityStatusForDate(requestDate) === "unavailable"}
+                            style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", opacity: requestDate && getAvailabilityStatusForDate(requestDate) === "unavailable" ? 0.5 : 1, cursor: requestDate && getAvailabilityStatusForDate(requestDate) === "unavailable" ? "not-allowed" : "auto" }}
                           />
-                          {requestDate && availability[requestDate] === "unavailable" && (
+                          {requestDate && getAvailabilityStatusForDate(requestDate) === "unavailable" && (
                             <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
                               ✕ Cannot select time - teacher is unavailable on this date
                             </div>
                           )}
-                          {requestDate && requestTime && isCounterpartyDateTimeBooked(requestDate, requestTime) && (
+                          {requestError && (
                             <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
-                              ✕ Student is already booked at this time
-                            </div>
-                          )}
-                          {requestDate && requestTime && isTimeConflictingWithTeacherBreak(requestDate, requestTime) && (
-                            <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
-                              ✕ This time conflicts with teacher's break
+                              ✕ {requestError}
                             </div>
                           )}
                         </div>
@@ -2412,8 +2640,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           <button 
                             type="button"
                             onClick={submitRequest}
-                            disabled={isSubmittingRequest || (requestDate && requestTime && isCounterpartyDateTimeBooked(requestDate, requestTime)) || (requestDate && availability[requestDate] !== "available") || (requestDate && requestTime && isTimeConflictingWithTeacherBreak(requestDate, requestTime))}
-                            style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || (requestDate && requestTime && isCounterpartyDateTimeBooked(requestDate, requestTime)) || (requestDate && availability[requestDate] !== "available") || (requestDate && requestTime && isTimeConflictingWithTeacherBreak(requestDate, requestTime))) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || (requestDate && requestTime && isCounterpartyDateTimeBooked(requestDate, requestTime)) || (requestDate && availability[requestDate] !== "available") || (requestDate && requestTime && isTimeConflictingWithTeacherBreak(requestDate, requestTime))) ? "not-allowed" : "pointer" }}
+                            disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getAvailabilityStatusForDate(requestDate) !== "available" || !!requestError}
+                            style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getAvailabilityStatusForDate(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getAvailabilityStatusForDate(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}
                           >
                             {isSubmittingRequest ? "Sending..." : "Send Request"}
                           </button>
