@@ -15,10 +15,23 @@ const fmtDate = (d) => {
   return `${year}-${month}-${day}`;
 };
 
-// convert 24‑hour time string (HH:MM:SS) to human format e.g. "2:30 PM"
+// convert 24‑hour time string (HH:MM:SS or ISO datetime) to human format e.g. "2:30 PM"
 const humanTime = (t24) => {
   if (!t24) return "";
-  const [h, m] = t24.split(":");
+  const trimmed = t24.trim();
+  const isoMatch = trimmed.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/);
+  if (isoMatch) {
+    const date = new Date(trimmed);
+    if (!isNaN(date.getTime())) {
+      let hour = date.getHours();
+      const mins = String(date.getMinutes()).padStart(2, '0');
+      const ampm = hour >= 12 ? "PM" : "AM";
+      if (hour > 12) hour -= 12;
+      if (hour === 0) hour = 12;
+      return `${hour}:${mins} ${ampm}`;
+    }
+  }
+  const [h, m] = trimmed.split(":");
   let hour = parseInt(h, 10);
   const mins = m || "00";
   const ampm = hour >= 12 ? "PM" : "AM";
@@ -26,6 +39,39 @@ const humanTime = (t24) => {
   if (hour === 0) hour = 12;
   return `${hour}:${mins} ${ampm}`;
 };
+
+const normalizeTime = (timeStr) => {
+  if (!timeStr) return "";
+  const t = timeStr.trim();
+  const isoMatch = t.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/);
+  if (isoMatch) {
+    const date = new Date(t);
+    if (!isNaN(date.getTime())) {
+      const hour = String(date.getHours()).padStart(2, '0');
+      const mins = String(date.getMinutes()).padStart(2, '0');
+      return `${hour}:${mins}`;
+    }
+  }
+
+  const ampmMatch = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
+  if (ampmMatch) {
+    let hour = parseInt(ampmMatch[1], 10);
+    const mins = ampmMatch[2];
+    const period = ampmMatch[3].toUpperCase();
+    if (period === "PM" && hour < 12) hour += 12;
+    if (period === "AM" && hour === 12) hour = 0;
+    return `${String(hour).padStart(2, "0")}:${mins}`;
+  }
+  const plainMatch = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (plainMatch) {
+    const hour = String(parseInt(plainMatch[1], 10)).padStart(2, "0");
+    const mins = plainMatch[2];
+    return `${hour}:${mins}`;
+  }
+  return "";
+};
+
+const parse24HourTime = (timeStr) => normalizeTime(timeStr);
 
 // Helper: calculate end time from start time and duration in minutes
 const getEndTime = (startTime, durationMins) => {
@@ -349,6 +395,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
             teacherEmail: c.teacherEmail || c.teacher_email,
             classLink: c.classLink || c.class_link,
             time: c.time || humanTime(c.start_time),
+            start_time: c.start_time || parse24HourTime(c.time) || "",
             duration: c.duration || c.duration,
             teacher_id: c.teacher_id,
             student_id: c.student_id,
@@ -704,12 +751,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   // Helper: Check if reschedule date/time is the same as current schedule (not allowed)
   const isRescheduleToSameDateTime = (dateStr, timeStr) => {
     if (!selectedClass) return false;
-    
+
     const normalizedSelectedDate = normalizeDate(dateStr);
-    const normalizedCurrentDate = normalizeDate(selectedClass.scheduled_date);
-    const currentTime = selectedClass.start_time ? selectedClass.start_time.substring(0, 5) : "";
-    
-    return normalizedSelectedDate === normalizedCurrentDate && timeStr === currentTime;
+    const normalizedCurrentDate = normalizeDate(selectedClass.scheduled_date || selectedDate || "");
+    const currentTime = normalizeTime(selectedClass.start_time || selectedClass.time || "");
+    const requestedTime = normalizeTime(timeStr);
+
+    return normalizedSelectedDate === normalizedCurrentDate && requestedTime && currentTime && requestedTime === currentTime;
   };
 
   // Helper: Check if a specific date/time is booked (for reschedule requests)
@@ -720,6 +768,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     
     const dateKey = normalizeDate(dateStr);
     const classesOnDate = classesCache[dateKey] || [];
+    const requestedTime = normalizeTime(timeStr);
     
     // Filter classes: 
     // - Exclude the current class being rescheduled
@@ -727,16 +776,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     return classesOnDate.some(cls => 
       cls.id !== selectedClass.id &&  // Not the current class being rescheduled
       cls.teacher_id === selectedClass.teacher_id &&  // Same teacher
-      (cls.start_time || cls.time || "").substring(0, 5) === timeStr  // Same time
+      normalizeTime(cls.start_time || cls.time || "") === requestedTime  // Same time
     );
   };
 
   // Helper: Check if counterparty has this date/time booked
   const isCounterpartyDateTimeBooked = (dateStr, timeStr) => {
     const normalizedDate = normalizeDate(dateStr);
+    const requestedTime = normalizeTime(timeStr);
     return counterpartyBookedDates.some(bd => 
       normalizeDate(bd.scheduled_date) === normalizedDate && 
-      bd.start_time.slice(0, 5) === timeStr
+      normalizeTime(bd.start_time || bd.time || "") === requestedTime
     );
   };
 
@@ -1463,9 +1513,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           });
                         
                         setRequestMode(true);
-                        // preload fields with current class date/time
+                        // preload date only; clear time so user chooses a new slot
                         setRequestDate(selectedClass.scheduled_date || selectedDate);
-                        setRequestTime(selectedClass.start_time ? selectedClass.start_time.slice(0, 5) : "");
+                        setRequestTime("");
                       }}
                       style={{ marginTop: "8px" }}
                     >
