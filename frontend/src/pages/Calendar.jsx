@@ -461,7 +461,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
     
     // Check if teacher is explicitly unavailable on this date
-    const dateStatus = availability[dateKey] || "";
+    const dateStatus = getAvailabilityStatusForDate(dateKey);
     if (dateStatus === "unavailable") {
       setAvailableTimeSlots([]);
       return;
@@ -616,55 +616,57 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
   // Load teacher's own availability records when entering reschedule request mode
   useEffect(() => {
-    if (requestMode) {
-      const targetYear = year;
-      const targetMonth = month + 1; // month is 0-based
-      
-      console.log(`🔄 Reschedule mode activated. Loading availability for year=${targetYear}, month=${targetMonth}, role=${localRole}, localUserId=${localUserId}, assignedTeacherId=${assignedTeacherId}`);
-      
-      let teacherIdToLoad;
-      
-      // For teacher: load their own availability (use localUserId since they're the logged-in teacher)
-      if (localRole === "teacher" && localUserId) {
-        teacherIdToLoad = localUserId;
-      }
-      // For admin viewing a teacher's schedule: use teacherId prop
-      else if (localRole === "admin" && teacherId) {
-        teacherIdToLoad = teacherId;
-      }
-      // For student: load their assigned teacher's availability
-      else if (localRole === "student" && assignedTeacherId) {
-        teacherIdToLoad = assignedTeacherId;
-      }
-      
-      if (teacherIdToLoad) {
-        console.log(`📡 Fetching availability records for teacher_id=${teacherIdToLoad}, year=${targetYear}, month=${targetMonth}`);
-        axios
-          .get(`${API}/api/calendar/teacher-availability-records`, {
-            params: { teacher_id: teacherIdToLoad, year: targetYear, month: targetMonth }
-          })
-          .then(r => {
-            console.log(`✅ Raw API response:`, r.data);
-            if (r.data && r.data.records) {
-              const normalized = r.data.records.map(record => ({
-                ...record,
-                available_date: normalizeDate(record.available_date),
-              }));
-              setTeacherAvailabilityList(normalized);
-              console.log("✅ Loaded teacher availability records for reschedule validation:", normalized);
-            } else {
-              console.log("⚠️ No records in response");
-            }
-          })
-          .catch(err => {
-            console.error("❌ Error loading teacher availability records:", err);
-            setTeacherAvailabilityList([]);
-          });
-      } else {
-        console.log("⚠️ No teacherId to load. localUserId=" + localUserId + ", role=" + localRole);
+    if (!requestMode) return;
+
+    let targetYear = year;
+    let targetMonth = month + 1; // month is 0-based
+    if (requestDate) {
+      const requestDateObj = new Date(requestDate + "T00:00:00");
+      if (!isNaN(requestDateObj.getTime())) {
+        targetYear = requestDateObj.getFullYear();
+        targetMonth = requestDateObj.getMonth() + 1;
       }
     }
-  }, [requestMode, localRole, localUserId, teacherId, assignedTeacherId, year, month]);
+
+    console.log(`🔄 Reschedule mode activated. Loading availability for year=${targetYear}, month=${targetMonth}, role=${localRole}, localUserId=${localUserId}, assignedTeacherId=${assignedTeacherId}, requestDate=${requestDate}`);
+
+    let teacherIdToLoad;
+    if (localRole === "teacher" && localUserId) {
+      teacherIdToLoad = localUserId;
+    } else if (localRole === "admin" && teacherId) {
+      teacherIdToLoad = teacherId;
+    } else if (localRole === "student" && assignedTeacherId) {
+      teacherIdToLoad = assignedTeacherId;
+    }
+
+    if (teacherIdToLoad) {
+      console.log(`📡 Fetching availability records for teacher_id=${teacherIdToLoad}, year=${targetYear}, month=${targetMonth}`);
+      axios
+        .get(`${API}/api/calendar/teacher-availability-records`, {
+          params: { teacher_id: teacherIdToLoad, year: targetYear, month: targetMonth }
+        })
+        .then(r => {
+          console.log(`✅ Raw API response:`, r.data);
+          if (r.data && r.data.records) {
+            const normalized = r.data.records.map(record => ({
+              ...record,
+              available_date: normalizeDate(record.available_date),
+            }));
+            setTeacherAvailabilityList(normalized);
+            console.log("✅ Loaded teacher availability records for reschedule validation:", normalized);
+          } else {
+            console.log("⚠️ No records in response");
+            setTeacherAvailabilityList([]);
+          }
+        })
+        .catch(err => {
+          console.error("❌ Error loading teacher availability records:", err);
+          setTeacherAvailabilityList([]);
+        });
+    } else {
+      console.log("⚠️ No teacherId to load. localUserId=" + localUserId + ", role=" + localRole);
+    }
+  }, [requestMode, requestDate, localRole, localUserId, teacherId, assignedTeacherId, year, month]);
 
   // Load available time slots AFTER classes are loaded for the selected date or student booking date
   useEffect(() => {
@@ -863,6 +865,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     return !isWithinWindow;
   };
 
+  const getAvailabilityStatusForDate = (dateStr) => {
+    const dateKey = normalizeDate(dateStr);
+    if (!dateKey) return "";
+    if (availability[dateKey]) return availability[dateKey];
+    const record = teacherAvailabilityList.find(record => normalizeDate(record.available_date) === dateKey);
+    return record?.status || "";
+  };
+
   // month navigation
   const prevMonth = () => {
     if (month === 0) {
@@ -910,20 +920,30 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   };
 
   // Fetch a specific teacher's availability records (used by students for reschedule validation)
-  const loadSpecificTeacherAvailability = (teacherId) => {
+  const loadSpecificTeacherAvailability = (teacherId, yearOverride = null, monthOverride = null) => {
     if (!teacherId) {
       console.warn(`⚠️ loadSpecificTeacherAvailability called with null/undefined teacherId`);
       return;
     }
 
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth() + 1;
+    let targetYear = yearOverride;
+    let targetMonth = monthOverride;
+    if (!targetYear || !targetMonth) {
+      const refDate = requestDate ? new Date(requestDate + "T00:00:00") : today;
+      if (!isNaN(refDate.getTime())) {
+        targetYear = refDate.getFullYear();
+        targetMonth = refDate.getMonth() + 1;
+      } else {
+        targetYear = today.getFullYear();
+        targetMonth = today.getMonth() + 1;
+      }
+    }
 
-    console.log(`🔄 Loading teacher availability for teacher_id=${teacherId}, year=${currentYear}, month=${currentMonth}`);
+    console.log(`🔄 Loading teacher availability for teacher_id=${teacherId}, year=${targetYear}, month=${targetMonth}`);
 
     axios
       .get(`${API}/api/calendar/teacher-availability-records`, {
-        params: { teacher_id: teacherId, year: currentYear, month: currentMonth }
+        params: { teacher_id: teacherId, year: targetYear, month: targetMonth }
       })
       .then(r => {
         console.log(`✅ Full API response:`, r.data);
@@ -1551,9 +1571,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         />
                         {requestDate && (
                           <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
-                            {availability[requestDate] === "unavailable" ? (
+                            {getAvailabilityStatusForDate(requestDate) === "unavailable" ? (
                               <p style={{ margin: 0, color: "#f44336" }}>✕ You are unavailable on this date</p>
-                            ) : availability[requestDate] === "available" ? (
+                            ) : getAvailabilityStatusForDate(requestDate) === "available" ? (
                               <p style={{ margin: 0, color: "#4caf50" }}>✓ You are available on this date</p>
                             ) : (
                               <p style={{ margin: 0, color: "#999" }}>• Your availability not set</p>
@@ -1596,10 +1616,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                               setRequestError("This time is outside your availability window. Please choose another time.");
                             }
                           }}
-                          disabled={requestDate && availability[requestDate] === "unavailable"}
-                          style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", opacity: requestDate && availability[requestDate] === "unavailable" ? 0.5 : 1, cursor: requestDate && availability[requestDate] === "unavailable" ? "not-allowed" : "auto" }}
+                          disabled={requestDate && getAvailabilityStatusForDate(requestDate) === "unavailable"}
+                          style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", opacity: requestDate && getAvailabilityStatusForDate(requestDate) === "unavailable" ? 0.5 : 1, cursor: requestDate && getAvailabilityStatusForDate(requestDate) === "unavailable" ? "not-allowed" : "auto" }}
                         />
-                        {requestDate && availability[requestDate] === "unavailable" && (
+                        {requestDate && getAvailabilityStatusForDate(requestDate) === "unavailable" && (
                           <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
                             ✕ Cannot select time - you are unavailable on this date
                           </div>
@@ -1640,8 +1660,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         <button 
                           type="button"
                           onClick={submitRequest}
-                          disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || availability[requestDate] !== "available" || !!requestError}
-                          style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || availability[requestDate] !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || availability[requestDate] !== "available" || !!requestError) ? "not-allowed" : "pointer" }}
+                          disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getAvailabilityStatusForDate(requestDate) !== "available" || !!requestError}
+                          style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getAvailabilityStatusForDate(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getAvailabilityStatusForDate(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}
                         >
                           {isSubmittingRequest ? "Sending..." : "Send Request"}
                         </button>
@@ -2519,9 +2539,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           />
                           {requestDate && (
                             <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
-                              {availability[requestDate] === "unavailable" ? (
+                              {getAvailabilityStatusForDate(requestDate) === "unavailable" ? (
                                 <p style={{ margin: 0, color: "#f44336" }}>✕ Teacher is unavailable on this date</p>
-                              ) : availability[requestDate] === "available" ? (
+                              ) : getAvailabilityStatusForDate(requestDate) === "available" ? (
                                 <p style={{ margin: 0, color: "#4caf50" }}>✓ Teacher is available on this date</p>
                               ) : (
                                 <p style={{ margin: 0, color: "#999" }}>• Availability not set</p>
@@ -2564,10 +2584,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                                 setRequestError("This time is outside the teacher's availability window. Please choose another time.");
                               }
                             }}
-                            disabled={requestDate && availability[requestDate] === "unavailable"}
-                            style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", opacity: requestDate && availability[requestDate] === "unavailable" ? 0.5 : 1, cursor: requestDate && availability[requestDate] === "unavailable" ? "not-allowed" : "auto" }}
+                            disabled={requestDate && getAvailabilityStatusForDate(requestDate) === "unavailable"}
+                            style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", opacity: requestDate && getAvailabilityStatusForDate(requestDate) === "unavailable" ? 0.5 : 1, cursor: requestDate && getAvailabilityStatusForDate(requestDate) === "unavailable" ? "not-allowed" : "auto" }}
                           />
-                          {requestDate && availability[requestDate] === "unavailable" && (
+                          {requestDate && getAvailabilityStatusForDate(requestDate) === "unavailable" && (
                             <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
                               ✕ Cannot select time - teacher is unavailable on this date
                             </div>
@@ -2608,8 +2628,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           <button 
                             type="button"
                             onClick={submitRequest}
-                            disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || availability[requestDate] !== "available" || !!requestError}
-                            style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || availability[requestDate] !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || availability[requestDate] !== "available" || !!requestError) ? "not-allowed" : "pointer" }}
+                            disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getAvailabilityStatusForDate(requestDate) !== "available" || !!requestError}
+                            style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getAvailabilityStatusForDate(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getAvailabilityStatusForDate(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}
                           >
                             {isSubmittingRequest ? "Sending..." : "Send Request"}
                           </button>
