@@ -473,6 +473,24 @@ app.post("/api/calendar/class", async (req, res) => {
       [class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, class_link]
     );
 
+    const [studentRows] = await pool.query(
+      `SELECT first_name, last_name FROM users WHERE user_id = ?`,
+      [student_id]
+    );
+    const [teacherRows] = await pool.query(
+      `SELECT first_name, last_name FROM users WHERE user_id = ?`,
+      [teacher_id]
+    );
+
+    const studentName = studentRows.length > 0 ? `${studentRows[0].first_name} ${studentRows[0].last_name}` : "A student";
+    const notificationMessage = `${studentName} booked "${class_name}" for ${scheduled_date} at ${start_time}.`;
+
+    await pool.query(
+      `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [teacher_id, "general", "New Class Booked", notificationMessage, result.insertId, "class"]
+    );
+
     res.status(201).json({ class_id: result.insertId, message: "Class created successfully" });
   } catch (err) {
     console.error(err);
