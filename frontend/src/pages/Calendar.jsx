@@ -792,6 +792,18 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     );
   };
 
+  const getBookedSlotErrorMessage = () => {
+    return localRole === "teacher"
+      ? "This time slot is already booked on your schedule. Please choose another time."
+      : "This time slot is already booked with your teacher. Please choose another time.";
+  };
+
+  const getCounterpartyUnavailableMessage = () => {
+    return localRole === "teacher"
+      ? "Student is not available at this time. Please choose another time."
+      : "Teacher is not available at this time. Please choose another time.";
+  };
+
   // Helper: Check if a time falls within teacher's break on the selected date
   const isTimeConflictingWithTeacherBreak = (dateStr, timeStr) => {
     if (!dateStr || !timeStr || !teacherAvailabilityList) return false;
@@ -1605,7 +1617,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                             }
                             // Check if this time is already booked with the same teacher
                             else if (requestDate && isTimeBookedForReschedule(requestDate, roundedTime)) {
-                              setRequestError("This time slot is already booked with your teacher. Please choose another time.");
+                              setRequestError(getBookedSlotErrorMessage());
                             }
                             // Check if time conflicts with break
                             else if (requestDate && isTimeConflictingWithTeacherBreak(requestDate, roundedTime)) {
@@ -2571,9 +2583,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                               if (requestDate && isRescheduleToSameDateTime(requestDate, roundedTime)) {
                                 setRequestError("Cannot reschedule to the same date and time. Please choose a different time.");
                               }
-                              // Check if student has this time booked
+                              // Check if counterparty has this time booked
                               else if (requestDate && isCounterpartyDateTimeBooked(requestDate, roundedTime)) {
-                                setRequestError("Student is not available at this time. Please choose another time.");
+                                setRequestError(getCounterpartyUnavailableMessage());
                               }
                               // Check if time conflicts with teacher's break
                               else if (requestDate && isTimeConflictingWithTeacherBreak(requestDate, roundedTime)) {
