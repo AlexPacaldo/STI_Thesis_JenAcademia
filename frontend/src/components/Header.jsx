@@ -1,8 +1,9 @@
+import axios from "axios";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import axios from "axios";
 import styles from "../assets/header.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
+import { getLocalUnreadCount } from "../utils/localNotificationStore.js";
 import NotificationPanel from "./NotificationPanel";
 
 const API = "http://localhost:3001";
@@ -71,11 +72,15 @@ function Header() {
   }, [user?.id, role]);
 
   const fetchUnreadCount = async () => {
+    const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
+    const localCount = getLocalUnreadCount({ userId: user?.id, userName });
     try {
       const response = await axios.get(`${API}/api/notifications/unread/${user.id}`);
-      setUnreadCount(response.data.unreadCount || 0);
+      setUnreadCount((response.data.unreadCount || 0) + localCount);
     } catch (err) {
       console.error("Error fetching unread count:", err);
+      setUnreadCount(localCount);
     }
   };
 

@@ -20,3 +20,24 @@
     .Icon{
       color: black;
     }
+
+    .submitButton {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
+      border-radius: 999px;
+      background-color: #0b5ed7;
+      color: white;
+      text-decoration: none;
+      font-size: 0.95rem;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    .submitButton:hover,
+    .submitButton:focus {
+      background-color: #084298;
+      outline: none;
+    }

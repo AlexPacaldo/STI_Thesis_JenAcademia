@@ -1,6 +1,13 @@
-import { useState, useEffect } from "react";
 import axios from "axios";
+import { useEffect, useState } from "react";
 import styles from "../assets/notificationPanel.module.css";
+import {
+  clearLocalNotificationsForUser,
+  getLocalNotificationsForUser,
+  markAllLocalNotificationsReadForUser,
+  markLocalNotificationRead,
+  mergeNotifications,
+} from "../utils/localNotificationStore.js";
 import { useNotification } from "./NotificationContainer";
 
 const API = "http://localhost:3001";
@@ -18,16 +25,28 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
   const loadNotifications = async (pageNum = 1, type = "all") => {
     if (!userId) return;
     setLoading(true);
+    const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
+    let localNotifications = getLocalNotificationsForUser({ userId, userName });
+    if (type !== "all") {
+      localNotifications = localNotifications.filter((notif) => notif.type === type);
+    }
+
     try {
       const params = { page: pageNum, limit: 15 };
       if (type !== "all") params.type = type;
 
       const response = await axios.get(`${API}/api/notifications/${userId}`, { params });
-      setNotifications(response.data.notifications || []);
-      setTotalNotifications(response.data.total || 0);
+      const apiNotifications = response.data.notifications || [];
+      const merged = mergeNotifications(apiNotifications, localNotifications);
+      setNotifications(merged);
+      setTotalNotifications((response.data.total || 0) + localNotifications.length);
       setPage(pageNum);
     } catch (err) {
       console.error("Error loading notifications:", err);
+      setNotifications(localNotifications);
+      setTotalNotifications(localNotifications.length);
+      setPage(pageNum);
     } finally {
       setLoading(false);
     }
@@ -43,36 +62,52 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
   const handleMarkAsRead = async (notificationId) => {
     try {
       await axios.put(`${API}/api/notifications/${notificationId}/read`);
+      markLocalNotificationRead(notificationId);
       setNotifications(prev =>
         prev.map(n => n.notification_id === notificationId ? { ...n, is_read: true } : n)
       );
     } catch (err) {
       console.error("Error marking as read:", err);
+      markLocalNotificationRead(notificationId);
+      setNotifications(prev =>
+        prev.map(n => n.notification_id === notificationId ? { ...n, is_read: true } : n)
+      );
     }
   };
 
   // Mark all as read
   const handleMarkAllAsRead = async () => {
+    const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
     try {
       await axios.put(`${API}/api/users/${userId}/notifications/read-all`);
+      markAllLocalNotificationsReadForUser({ userId, userName });
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       notify("All notifications marked as read", "success");
     } catch (err) {
       console.error("Error marking all as read:", err);
-      notify("Failed to mark notifications as read", "error");
+      markAllLocalNotificationsReadForUser({ userId, userName });
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      notify("All notifications marked as read", "success");
     }
   };
 
   // Delete all notifications
   const handleClearAll = async () => {
+    const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
     try {
       await axios.delete(`${API}/api/notifications/user/${userId}`);
+      clearLocalNotificationsForUser({ userId, userName });
       setNotifications([]);
       setTotalNotifications(0);
       notify("All notifications cleared", "success");
     } catch (err) {
       console.error("Error clearing notifications:", err);
-      notify("Failed to clear notifications", "error");
+      clearLocalNotificationsForUser({ userId, userName });
+      setNotifications([]);
+      setTotalNotifications(0);
+      notify("All notifications cleared", "success");
     }
   };
 

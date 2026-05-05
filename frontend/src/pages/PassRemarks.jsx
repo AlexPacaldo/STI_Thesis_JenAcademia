@@ -12,6 +12,7 @@ export default function PassRemarks() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [teacherId, setTeacherId] = useState(null);
+  const [teacherName, setTeacherName] = useState("");
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -31,6 +32,9 @@ export default function PassRemarks() {
     }
 
     const currentUserId = user.id || user.user_id || null;
+    const fullName = user.first_name || user.last_name
+      ? `${user.first_name || ""} ${user.last_name || ""}`.trim()
+      : user.name || user.fullName || "";
     if (!currentUserId || user.role !== "teacher") {
       setError("Remarks are available only for teachers.");
       setLoading(false);
@@ -38,6 +42,7 @@ export default function PassRemarks() {
     }
 
     setTeacherId(currentUserId);
+    setTeacherName(fullName);
     fetch(`http://localhost:3001/api/teacher/${currentUserId}/students`)
       .then(async (res) => {
         if (!res.ok) {
@@ -144,6 +149,9 @@ export default function PassRemarks() {
             >
               <h1>{`${student.first_name} ${student.last_name}`}</h1>
               <p style={{ fontSize: "0.9rem", marginTop: 6 }}>{student.email}</p>
+              <p style={{ fontSize: "0.8rem", marginTop: 6, color: "#4b5563" }}>
+                Enrolled with you
+              </p>
             </div>
           ))}
         </div>
@@ -164,6 +172,7 @@ export default function PassRemarks() {
                     <p>Contact: {selectedStudent.contact || "Not provided"}</p>
                     <p>Level: {selectedStudent.proficiency_level || "Unknown"}</p>
                     <p>Course ID: {selectedStudent.course_id || "N/A"}</p>
+                    <p>Enrolled with: {teacherName || "You"}</p>
                   </div>
 
                   <div className={styles.remarksBox}>
