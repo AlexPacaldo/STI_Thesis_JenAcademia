@@ -247,6 +247,30 @@
       font-size: 0.85rem;
     }
 
+    .submissionInstructions {
+      margin: 0.75rem 0;
+      padding: 0.75rem;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 0.75rem;
+    }
+
+    .submissionInstructions span,
+    .submissionLabel {
+      display: block;
+      margin-bottom: 0.25rem;
+      color: #6b7280;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .submissionInstructions p {
+      margin: 0;
+      color: #374151;
+      overflow-wrap: anywhere;
+    }
+
     .submissionActions {
       display: flex;
       align-items: center;
