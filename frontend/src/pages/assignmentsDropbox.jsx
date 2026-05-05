@@ -1,52 +1,92 @@
 // src/pages/AssignmentDetail.jsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import styles from "../assets/assignmentsDropbox.module.css";
 import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 
+const API = "http://localhost:3001";
+
+function getCurrentUser() {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function getUserName(user) {
+  return user.firstName || user.first_name
+    ? `${user.firstName || user.first_name || ""} ${user.lastName || user.last_name || ""}`.trim()
+    : user.name || user.fullName || "Student";
+}
+
 export default function AssignmentsDropbox() {
   const { notify } = useNotification() || {};
   const [comment, setComment] = useState("");
   const [submitMessage, setSubmitMessage] = useState("");
+  const [selectedAssignment, setSelectedAssignment] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const assignmentId = searchParams.get("assignmentId");
 
-  const assignmentList = useMemo(() => {
-    const stored = localStorage.getItem("teacherAssignments");
-    if (!stored) return [];
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return [];
-    }
-  }, []);
+  const currentUser = useMemo(getCurrentUser, []);
+  const currentStudentId = currentUser.id ?? currentUser.user_id ?? null;
+  const currentStudent = getUserName(currentUser);
 
-  const selectedAssignment = useMemo(
-    () => assignmentList.find((item) => String(item.id) === String(assignmentId)),
-    [assignmentId, assignmentList]
-  );
+  useEffect(() => {
+    if (!assignmentId) return;
+
+    let ignore = false;
+    setIsLoading(true);
+    setSubmitMessage("");
+
+    fetch(`${API}/api/assignments/${assignmentId}`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || "Could not load assignment");
+        }
+        return data.assignment;
+      })
+      .then((assignment) => {
+        if (ignore) return;
+        setSelectedAssignment(assignment);
+        setComment(assignment.comments || "");
+        if (assignment.submissionId) {
+          setSubmitMessage(`Submitted on ${assignment.submittedAt}.`);
+        }
+      })
+      .catch((err) => {
+        console.error("Load assignment detail error:", err);
+        if (!ignore) {
+          setSelectedAssignment(null);
+          setSubmitMessage(err.message || "Could not load assignment.");
+        }
+      })
+      .finally(() => {
+        if (!ignore) setIsLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [assignmentId]);
 
   const assignmentInstructions =
     selectedAssignment?.instructions ||
     selectedAssignment?.description ||
     "";
 
-  const currentStudent = useMemo(() => {
-    try {
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
-      return user.firstName || user.first_name
-        ? `${user.firstName || user.first_name || ""} ${user.lastName || user.last_name || ""}`.trim()
-        : user.name || user.fullName || selectedAssignment?.student || "Student";
-    } catch {
-      return selectedAssignment?.student || "Student";
-    }
-  }, [selectedAssignment?.student]);
-
-  const onSubmitComment = () => {
+  const onSubmitComment = async () => {
     if (!selectedAssignment) {
       setSubmitMessage("Please open an assignment before submitting.");
+      return;
+    }
+
+    if (!currentStudentId) {
+      setSubmitMessage("Please log in as a student before submitting.");
       return;
     }
 
@@ -55,47 +95,44 @@ export default function AssignmentsDropbox() {
       return;
     }
 
-    let storedSubmissions = [];
     try {
-      storedSubmissions = JSON.parse(localStorage.getItem("studentSubmissions") || "[]");
-    } catch {
-      storedSubmissions = [];
+      const res = await fetch(`${API}/api/assignments/${selectedAssignment.id}/submissions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId: currentStudentId,
+          submissionText: comment,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Could not submit assignment");
+      }
+
+      const submittedAt = data.submission?.submittedAt || new Date().toLocaleString();
+      setSelectedAssignment((prev) => ({
+        ...prev,
+        submissionId: data.submission?.submissionId,
+        comments: data.submission?.comments || comment.trim(),
+        submittedAt,
+        status: "submitted",
+      }));
+      notify?.("Assignment has been submitted!", "success");
+      setSubmitMessage(`Submitted on ${submittedAt}.`);
+      setComment("");
+    } catch (err) {
+      console.error("Submit assignment error:", err);
+      setSubmitMessage(err.message || "Could not submit assignment.");
+      notify?.(err.message || "Could not submit assignment.", "error");
     }
-
-    const submittedAt = new Date().toLocaleString();
-    const submission = {
-      id: `${selectedAssignment.id}-${currentStudent}`,
-      assignmentId: selectedAssignment.id,
-      assignmentName: selectedAssignment.name,
-      assignedStudent: selectedAssignment.student || currentStudent,
-      student: currentStudent,
-      teacherId: selectedAssignment.teacherId ?? null,
-      teacherName: selectedAssignment.teacherName || "Teacher Jen",
-      file: "Comment submission",
-      comments: comment.trim(),
-      status: "Submitted",
-      submittedAt,
-    };
-
-    const nextSubmissions = storedSubmissions.filter(
-      (item) =>
-        !(
-          String(item.assignmentId) === String(selectedAssignment.id) &&
-          (item.student === currentStudent || item.assignedStudent === selectedAssignment.student)
-        )
-    );
-
-    localStorage.setItem("studentSubmissions", JSON.stringify([...nextSubmissions, submission]));
-    notify("Assignment has been submitted!", "success");
-    setSubmitMessage(`Submitted on ${submittedAt}.`);
-    setComment("");
   };
 
   return (
     <div className={styles.cont}>
       <div className={styles.center}>
         <div className={styles.centerContent}>
-          <h1><b>{selectedAssignment?.name || "Activity 1"}</b></h1>
+          <h1><b>{selectedAssignment?.name || (isLoading ? "Loading assignment..." : "Assignment")}</b></h1>
         </div>
         <br />
 
@@ -147,7 +184,7 @@ export default function AssignmentsDropbox() {
               </div>
             ) : (
               <p>
-                No assignment is currently selected. Please return to the assignments list and open your assigned task.
+                {submitMessage || "No assignment is currently selected. Please return to the assignments list and open your assigned task."}
               </p>
             )}
           </div>
@@ -159,9 +196,12 @@ export default function AssignmentsDropbox() {
                 <b>{selectedAssignment?.teacherName || "Teacher Jen"}</b>
               </span>
               <br /><br />
-              <h2>{selectedAssignment?.subject || "English 101"}</h2>
+              <h2>{selectedAssignment?.subject || "General"}</h2>
               <p>
-                <strong>Due Date:</strong> {selectedAssignment?.due || "November 10, 2025"}
+                <strong>Student:</strong> {selectedAssignment?.student || currentStudent}
+              </p>
+              <p>
+                <strong>Due Date:</strong> {selectedAssignment?.due || "No due date"}
               </p>
             </div>
           </div>

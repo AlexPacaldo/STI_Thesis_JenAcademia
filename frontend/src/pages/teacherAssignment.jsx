@@ -4,15 +4,36 @@ import styles from "../assets/teacherAssignment.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { addLocalNotification } from "../utils/localNotificationStore.js";
 
+const API = "http://localhost:3001";
+
+function getUserName(user) {
+  return user.firstName || user.first_name
+    ? `${user.firstName || user.first_name || ""} ${user.lastName || user.last_name || ""}`.trim()
+    : user.name || user.fullName || "";
+}
+
+function formatStudent(student) {
+  return {
+    id: student.user_id ?? student.id ?? student.studentId,
+    name:
+      student.name ||
+      `${student.first_name || student.firstName || ""} ${student.last_name || student.lastName || ""}`.trim(),
+    courseId: student.course_id ?? student.courseId ?? null,
+  };
+}
+
 export default function AssignTask() {
   const { notify } = useNotification() || {};
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState("");
+  const [selectedStudentId, setSelectedStudentId] = useState("");
   const [due, setDue] = useState("");
   const [instructions, setInstructions] = useState("");
   const [activeTab, setActiveTab] = useState("assign");
   const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [enrolledStudents, setEnrolledStudents] = useState([]);
+  const [teacherAssignments, setTeacherAssignments] = useState([]);
+  const [submissions, setSubmissions] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   const currentUser = useMemo(() => {
     try {
@@ -22,186 +43,129 @@ export default function AssignTask() {
     }
   }, []);
 
-  const teacherName = currentUser.firstName
-    ? `${currentUser.firstName} ${currentUser.lastName || ""}`.trim()
-    : currentUser.name || currentUser.fullName || "You";
+  const currentTeacherId = currentUser.id ?? currentUser.user_id ?? null;
+  const teacherName = getUserName(currentUser) || "You";
 
-  // Fetch enrolled students from API
   useEffect(() => {
-    const currentUserId = currentUser.id ?? currentUser.user_id ?? null;
-    if (!currentUserId) return;
+    if (!currentTeacherId) return;
 
-    fetch(`http://localhost:3001/api/teacher/${currentUserId}/students`)
-      .then(async (res) => {
-        if (!res.ok) {
-          console.warn("Failed to fetch enrolled students");
-          return;
-        }
-        return res.json();
-      })
-      .then((data) => {
-        const studentNames = (data.students || []).map(
-          (s) => `${s.first_name || ""} ${s.last_name || ""}`.trim()
-        );
-        setEnrolledStudents(studentNames);
+    let ignore = false;
+    setIsLoading(true);
+
+    Promise.all([
+      fetch(`${API}/api/teacher/${currentTeacherId}/students`).then((res) => res.json()),
+      fetch(`${API}/api/teacher/${currentTeacherId}/assignments`).then((res) => res.json()),
+      fetch(`${API}/api/teacher/${currentTeacherId}/submissions`).then((res) => res.json()),
+    ])
+      .then(([studentsData, assignmentsData, submissionsData]) => {
+        if (ignore) return;
+        setEnrolledStudents((studentsData.students || []).map(formatStudent).filter((student) => student.id));
+        setTeacherAssignments(assignmentsData.assignments || []);
+        setSubmissions(submissionsData.submissions || []);
       })
       .catch((err) => {
-        console.error("Error fetching enrolled students:", err);
+        console.error("Error loading assignment data:", err);
+        notify?.("Could not load assignment data from the database.", "error");
+      })
+      .finally(() => {
+        if (!ignore) setIsLoading(false);
       });
-  }, [currentUser.id, currentUser.user_id]);
 
-  const [teacherAssignments, setTeacherAssignments] = useState(() => {
-    const stored = localStorage.getItem("teacherAssignments");
-    return stored ? JSON.parse(stored) : [];
-  });
-
-  useEffect(() => {
-    localStorage.setItem("teacherAssignments", JSON.stringify(teacherAssignments));
-  }, [teacherAssignments]);
-
-  // ✅ No hardcoded fallback — always read real student submissions
-  const [submissions, setSubmissions] = useState(() => {
-    const stored = localStorage.getItem("studentSubmissions");
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  });
-
-  useEffect(() => {
-    localStorage.setItem("studentSubmissions", JSON.stringify(submissions));
-  }, [submissions]);
-
-  // ✅ Cross-tab sync via storage event
-  useEffect(() => {
-    const handleStorage = (event) => {
-      if (event.key === "studentSubmissions") {
-        if (event.newValue) {
-          try {
-            setSubmissions(JSON.parse(event.newValue));
-          } catch {
-            setSubmissions([]);
-          }
-        } else {
-          setSubmissions([]);
-        }
-      }
+    return () => {
+      ignore = true;
     };
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
-  }, []);
-
-  // ✅ Same-tab polling — catches submissions made within the same browser session
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const stored = localStorage.getItem("studentSubmissions");
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          // Only update if data actually changed (avoid unnecessary re-renders)
-          setSubmissions((prev) => {
-            const prevStr = JSON.stringify(prev);
-            const nextStr = JSON.stringify(parsed);
-            return prevStr === nextStr ? prev : parsed;
-          });
-        } catch {
-          // ignore
-        }
-      }
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const currentSubmissions = submissions.filter((item) => {
-    const submittedFor = item.assignedStudent || item.student;
-    return submittedFor === selected;
-  });
+  }, [currentTeacherId, notify]);
 
   const students = useMemo(() => {
-    const currentTeacherId = currentUser.id ?? currentUser.user_id ?? null;
-    const names = new Set();
+    const map = new Map();
 
-    // Add all enrolled students from API
-    enrolledStudents.forEach((name) => {
-      if (name) names.add(name);
+    enrolledStudents.forEach((student) => {
+      if (student.id && student.name) map.set(String(student.id), student);
     });
 
-    // Add students from teacher assignments
     teacherAssignments.forEach((assignment) => {
-      if (currentTeacherId && assignment.teacherId === currentTeacherId) {
-        if (assignment.student) names.add(assignment.student);
+      if (assignment.studentId && assignment.student) {
+        map.set(String(assignment.studentId), {
+          id: assignment.studentId,
+          name: assignment.student,
+          courseId: assignment.courseId ?? null,
+        });
       }
     });
 
-    // Add students from submissions
-    submissions.forEach((item) => {
-      const submittedFor = item.assignedStudent || item.student;
-      if (submittedFor) {
-        if (currentTeacherId) {
-          if (item.teacherId === currentTeacherId || item.teacherName === teacherName) {
-            names.add(submittedFor);
-          }
-        } else {
-          names.add(submittedFor);
-        }
+    submissions.forEach((submission) => {
+      if (submission.studentId && submission.student) {
+        map.set(String(submission.studentId), {
+          id: submission.studentId,
+          name: submission.student,
+          courseId: null,
+        });
       }
     });
 
-    return Array.from(names);
-  }, [teacherAssignments, submissions, currentUser.id, currentUser.user_id, teacherName, enrolledStudents]);
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [enrolledStudents, teacherAssignments, submissions]);
 
-  const filtered = students.filter((s) =>
-    s.toLowerCase().includes(query.toLowerCase())
+  const selectedStudent = students.find((student) => String(student.id) === String(selectedStudentId));
+  const selected = selectedStudent?.name || "";
+
+  const currentSubmissions = submissions.filter(
+    (item) => String(item.studentId) === String(selectedStudentId)
   );
 
-  const onSubmit = () => {
-    if (!selected || !due || !instructions.trim()) {
-      notify("Please select a student, set a due date, and add instructions.", "warning");
+  const filtered = students.filter((student) =>
+    student.name.toLowerCase().includes(query.toLowerCase())
+  );
+
+  const onSubmit = async () => {
+    if (!selectedStudent || !due || !instructions.trim()) {
+      notify?.("Please select a student, set a due date, and add instructions.", "warning");
       return;
     }
 
-    const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
-    const teacherName = currentUser.firstName
-      ? `${currentUser.firstName} ${currentUser.lastName}`
-      : "Teacher Jen";
+    try {
+      const res = await fetch(`${API}/api/assignments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teacherId: currentTeacherId,
+          studentId: selectedStudent.id,
+          courseId: selectedStudent.courseId,
+          title: `Task for ${selectedStudent.name}`,
+          instructions,
+          due,
+        }),
+      });
 
-    const assignment = {
-      id: Date.now(),
-      student: selected,
-      teacherName,
-      teacherId: currentUser.id ?? null,
-      name: `Task for ${selected}`,
-      subject: "Assigned by Teacher",
-      due,
-      instructions,
-      description: instructions,
-      postedAt: new Date().toLocaleString(),
-      score: "Pending",
-    };
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Could not create assignment");
+      }
 
-    setTeacherAssignments((prev) => [...prev, assignment]);
+      setTeacherAssignments((prev) => [data.assignment, ...prev]);
 
-    addLocalNotification({
-      recipientName: selected,
-      senderName: teacherName,
-      message: `New assignment posted by ${teacherName}: "${assignment.name}" due ${due}.`,
-      type: "assignment",
-      title: "New Assignment",
-    });
+      addLocalNotification({
+        recipientId: selectedStudent.id,
+        recipientName: selectedStudent.name,
+        senderName: teacherName,
+        message: `New assignment posted by ${teacherName}: "${data.assignment.name}" due ${data.assignment.due}.`,
+        type: "assignment",
+        title: "New Assignment",
+        relatedId: data.assignment.id,
+      });
 
-    notify("Assignment posted to student!", "success");
-    setInstructions("");
-    setDue("");
+      notify?.("Assignment posted to student!", "success");
+      setInstructions("");
+      setDue("");
+    } catch (err) {
+      console.error("Create assignment error:", err);
+      notify?.(err.message || "Could not create assignment.", "error");
+    }
   };
 
   return (
     <div className={styles.cont}>
       <div className={styles.Center}>
-        {/* Left column */}
         <div className={styles.leftCard}>
           <div className={styles.searchContainer}>
             <i className="bi bi-search" aria-hidden="true" />
@@ -215,27 +179,26 @@ export default function AssignTask() {
           </div>
 
           {filtered.length > 0 ? (
-            filtered.map((name) => (
+            filtered.map((student) => (
               <button
-                key={name}
+                key={student.id}
                 type="button"
-                className={`${styles.boxCard} ${selected === name ? styles.Active : ""}`}
+                className={`${styles.boxCard} ${String(selectedStudentId) === String(student.id) ? styles.Active : ""}`}
                 onClick={() => {
-                  setSelected(name);
-                  setSelectedSubmission(null); // ✅ clear detail panel when switching students
+                  setSelectedStudentId(student.id);
+                  setSelectedSubmission(null);
                 }}
               >
-                <h1>{name}</h1>
+                <h1>{student.name}</h1>
               </button>
             ))
           ) : (
             <div className={styles.emptyState} style={{ padding: 18 }}>
-              No students are currently assigned to this teacher.
+              {isLoading ? "Loading students..." : "No students are currently assigned to this teacher."}
             </div>
           )}
         </div>
 
-        {/* Right column */}
         <div className={styles.rightCard}>
           <div className={styles.rightContent}>
             <div className={styles.tabBar} role="tablist">
@@ -296,11 +259,11 @@ export default function AssignTask() {
               </>
             ) : (
               <div className={styles.submissionsPanel}>
-                <h2>{selected}'s Submissions</h2>
+                <h2>{selected || "Selected student"}'s Submissions</h2>
                 <div className={styles.submissionList}>
                   {currentSubmissions.length === 0 ? (
                     <div className={styles.emptyState}>
-                      No submissions found for {selected}.
+                      No submissions found for {selected || "this student"}.
                     </div>
                   ) : (
                     currentSubmissions.map((item) => (

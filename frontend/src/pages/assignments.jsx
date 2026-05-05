@@ -1,93 +1,57 @@
 // src/pages/Assignments.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import styles from "../assets/assignments.module.css";
 
-function PenIcon(props) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="16" height="16" viewBox="0 0 16 16"
-      fill="currentColor" aria-hidden="true" {...props}
-    >
-      <path d="M13.498.795l.149-.149a1.207 1.207 0 1 1 1.707 1.708l-.149.148a1.5 1.5 0 0 1-.059 2.059L4.854 14.854a.5.5 0 0 1-.233.131l-4 1a.5.5 0 0 1-.606-.606l1-4a.5.5 0 0 1 .131-.232l9.642-9.642a.5.5 0 0 0-.642.056L6.854 4.854a.5.5 0 1 1-.708-.708L9.44.854A1.5 1.5 0 0 1 11.5.796 1.5 1.5 0 0 1 13.498.795Zm-.644.766a.5.5 0 0 0-.707 0L1.95 11.756l-.764 3.057 3.057-.764L14.44 3.854a.5.5 0 0 0 0-.708z" />
-    </svg>
-  );
-}
+const API = "http://localhost:3001";
 
 export default function Assignments() {
-  const [currentStudent, setCurrentStudent] = useState("");
+  const [rows, setRows] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  // Get current logged-in student from localStorage
-  useEffect(() => {
+  const currentStudentId = useMemo(() => {
     try {
       const user = JSON.parse(localStorage.getItem("user") || "{}");
-      const studentName = user.firstName || user.first_name
-        ? `${user.firstName || user.first_name || ""} ${user.lastName || user.last_name || ""}`.trim()
-        : user.name || user.fullName || "";
-      setCurrentStudent(studentName);
+      return user.id ?? user.user_id ?? null;
     } catch {
-      setCurrentStudent("");
+      return null;
     }
   }, []);
 
-  // ✅ Changed from useMemo to useState + useEffect so the list
-  //    updates reactively when the teacher posts a new assignment.
-  const [rows, setRows] = useState([]);
-
-  // Initialize rows when currentStudent is set
   useEffect(() => {
-    if (!currentStudent) return;
-    const stored = localStorage.getItem("teacherAssignments");
-    if (!stored) {
-      setRows([]);
-      return;
-    }
-    try {
-      const parsed = JSON.parse(stored);
-      setRows(parsed.filter((a) => a.student === currentStudent));
-    } catch {
-      setRows([]);
-    }
-  }, [currentStudent]);
+    if (!currentStudentId) return;
 
-  // Cross-tab sync
-  useEffect(() => {
-    const handleStorage = (e) => {
-      if (e.key === "teacherAssignments" && e.newValue && currentStudent) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          setRows(parsed.filter((a) => a.student === currentStudent));
-        } catch {
+    let ignore = false;
+    setIsLoading(true);
+    setError("");
+
+    fetch(`${API}/api/student/${currentStudentId}/assignments`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || "Could not load assignments");
+        }
+        return data;
+      })
+      .then((data) => {
+        if (!ignore) setRows(data.assignments || []);
+      })
+      .catch((err) => {
+        console.error("Load assignments error:", err);
+        if (!ignore) {
           setRows([]);
+          setError(err.message || "Could not load assignments.");
         }
-      }
-    };
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
-  }, [currentStudent]);
+      })
+      .finally(() => {
+        if (!ignore) setIsLoading(false);
+      });
 
-  // Same-tab polling
-  useEffect(() => {
-    if (!currentStudent) return;
-    const interval = setInterval(() => {
-      const stored = localStorage.getItem("teacherAssignments");
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          const filtered = parsed.filter((a) => a.student === currentStudent);
-          setRows((prev) => {
-            const prevStr = JSON.stringify(prev);
-            const nextStr = JSON.stringify(filtered);
-            return prevStr === nextStr ? prev : filtered;
-          });
-        } catch {
-          // ignore
-        }
-      }
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [currentStudent]);
+    return () => {
+      ignore = true;
+    };
+  }, [currentStudentId]);
 
   return (
     <>
@@ -104,7 +68,19 @@ export default function Assignments() {
           </thead>
 
           <tbody>
-            {rows.length === 0 ? (
+            {isLoading ? (
+              <tr>
+                <td colSpan="5" style={{ textAlign: "center", padding: "2rem" }}>
+                  Loading assignments...
+                </td>
+              </tr>
+            ) : error ? (
+              <tr>
+                <td colSpan="5" style={{ textAlign: "center", padding: "2rem" }}>
+                  {error}
+                </td>
+              </tr>
+            ) : rows.length === 0 ? (
               <tr>
                 <td colSpan="5" style={{ textAlign: "center", padding: "2rem" }}>
                   No assignments have been posted to you yet.
