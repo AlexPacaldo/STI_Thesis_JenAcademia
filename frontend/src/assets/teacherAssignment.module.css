@@ -192,3 +192,121 @@
       color: black;
       box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
     }
+
+    .tabBar {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .tabButton {
+      padding: 0.9rem 1.2rem;
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      border-radius: 999px;
+      cursor: pointer;
+      color: #333;
+      font-weight: 600;
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    .tabButton:hover {
+      background: #e8e8e8;
+    }
+
+    .activeTab {
+      background: black;
+      color: white;
+      border-color: black;
+    }
+
+    .submissionsPanel {
+      width: 100%;
+    }
+
+    .submissionList {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .submissionRow {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem;
+      background: #f7f7f7;
+      border-radius: 1rem;
+      border: 1px solid #e0e0e0;
+    }
+
+    .submissionMeta {
+      margin: 0.25rem 0 0;
+      color: #666;
+      font-size: 0.85rem;
+    }
+
+    .submissionActions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .submissionStatus {
+      padding: 0.4rem 0.75rem;
+      border-radius: 999px;
+      background: #d9edf7;
+      color: #0c5460;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .submissionAction {
+      background: black;
+      color: white;
+      border: none;
+      border-radius: 999px;
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    .submissionAction:hover {
+      background: #333;
+    }
+
+    .submissionDetail {
+      margin-top: 1.5rem;
+      padding: 1.2rem;
+      background: #ffffff;
+      border-radius: 1rem;
+      border: 1px solid #e5e7eb;
+      box-shadow: rgba(149, 157, 165, 0.08) 0px 6px 20px;
+    }
+
+    .submissionDetail h3 {
+      margin-top: 0;
+      margin-bottom: 0.75rem;
+    }
+
+    .submissionDetail p {
+      margin: 0.5rem 0;
+      color: #374151;
+    }
+
+    .closeDetail {
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      border: none;
+      background: #111827;
+      color: white;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+
+    .emptyState {
+      color: #6b7280;
+      padding: 1rem 0;
+      text-align: center;
+    }

@@ -1,6 +1,7 @@
 // src/pages/Assignments.jsx
-import { Link } from "react-router-dom"; // remove if not using Router
-import styles from "../assets/Assignments.module.css";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import styles from "../assets/assignments.module.css";
 
 function PenIcon(props) {
   return (
@@ -15,16 +16,78 @@ function PenIcon(props) {
 }
 
 export default function Assignments() {
-  const rows = [
-    { id: 1, name: "Activity 1", due: "June 09, 2025", subject: "Business English", score: "50/60" },
-    { id: 2, name: "Activity 1", due: "June 09, 2025", subject: "Business English", score: "50/60" },
-    { id: 3, name: "Activity 1", due: "June 09, 2025", subject: "Business English", score: "50/60" },
-    { id: 4, name: "Activity 1", due: "June 09, 2025", subject: "Business English", score: "50/60" },
-    { id: 5, name: "Activity 1", due: "June 09, 2025", subject: "Business English", score: "50/60" },
-    { id: 6, name: "Activity 1", due: "June 09, 2025", subject: "Business English", score: "50/60" },
-    { id: 7, name: "Activity 1", due: "June 09, 2025", subject: "Business English", score: "50/60" },
-    { id: 8, name: "Activity 1", due: "June 09, 2025", subject: "Business English", score: "50/60" },
-  ];
+  const [currentStudent, setCurrentStudent] = useState("");
+
+  // Get current logged-in student from localStorage
+  useEffect(() => {
+    try {
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      const studentName = user.firstName || user.first_name
+        ? `${user.firstName || user.first_name || ""} ${user.lastName || user.last_name || ""}`.trim()
+        : user.name || user.fullName || "";
+      setCurrentStudent(studentName);
+    } catch {
+      setCurrentStudent("");
+    }
+  }, []);
+
+  // ✅ Changed from useMemo to useState + useEffect so the list
+  //    updates reactively when the teacher posts a new assignment.
+  const [rows, setRows] = useState([]);
+
+  // Initialize rows when currentStudent is set
+  useEffect(() => {
+    if (!currentStudent) return;
+    const stored = localStorage.getItem("teacherAssignments");
+    if (!stored) {
+      setRows([]);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(stored);
+      setRows(parsed.filter((a) => a.student === currentStudent));
+    } catch {
+      setRows([]);
+    }
+  }, [currentStudent]);
+
+  // Cross-tab sync
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (e.key === "teacherAssignments" && e.newValue && currentStudent) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setRows(parsed.filter((a) => a.student === currentStudent));
+        } catch {
+          setRows([]);
+        }
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [currentStudent]);
+
+  // Same-tab polling
+  useEffect(() => {
+    if (!currentStudent) return;
+    const interval = setInterval(() => {
+      const stored = localStorage.getItem("teacherAssignments");
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          const filtered = parsed.filter((a) => a.student === currentStudent);
+          setRows((prev) => {
+            const prevStr = JSON.stringify(prev);
+            const nextStr = JSON.stringify(filtered);
+            return prevStr === nextStr ? prev : filtered;
+          });
+        } catch {
+          // ignore
+        }
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [currentStudent]);
 
   return (
     <>
@@ -35,26 +98,37 @@ export default function Assignments() {
               <th scope="col">Assignments</th>
               <th scope="col">Due</th>
               <th scope="col">Subject</th>
-              <th scope="col">Submitted</th>
+              <th scope="col">Action</th>
               <th scope="col">Score</th>
             </tr>
           </thead>
 
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td>{r.name}</td>
-                <td>{r.due}</td>
-                <td>{r.subject}</td>
-                <td>
-                  {/* If not using Router, replace Link with <a href="/assignments-dropbox" ...> */}
-                  <Link to="/assignmentsDropbox" className={styles.Icon} aria-label="Submit assignment">
-                    <PenIcon />
-                  </Link>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={{ textAlign: "center", padding: "2rem" }}>
+                  No assignments have been posted to you yet.
                 </td>
-                <td>{r.score}</td>
               </tr>
-            ))}
+            ) : (
+              rows.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.name}</td>
+                  <td>{r.due}</td>
+                  <td>{r.subject || "General"}</td>
+                  <td>
+                    <Link
+                      to={`/assignmentsDropbox?assignmentId=${r.id}`}
+                      className={styles.submitButton}
+                      aria-label="View assignment"
+                    >
+                      View
+                    </Link>
+                  </td>
+                  <td>{r.score || "Pending"}</td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

@@ -33,6 +33,27 @@
     margin-top: 4%;
     }
 
+    .tabContainer {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .tabButton {
+      background: #f0f0f0;
+      border: 1px solid #ccc;
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .activeTab {
+      background: black;
+      color: white;
+      border-color: black;
+    }
+
     .instructionContent {
     height: min-content;
     width: 100%;
@@ -53,6 +74,30 @@
     
     .leftSide p{
         font-size: 100%;
+    }
+
+    .instructionsPanel {
+    width: 100%;
+    }
+
+    .instructionsPanel h4 {
+    margin: 0 0 10px;
+    font-size: 24px;
+    font-weight: 700;
+    }
+
+    .instructionsBox {
+    width: 100%;
+    min-height: 25vh;
+    border: 1px solid #ccc;
+    border-radius: 1rem;
+    padding: 24px;
+    font-family: 'Poppins', sans-serif;
+    font-size: 16px;
+    background-color: white;
+    color: #333;
+    resize: none;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
     }
 
     .rightSide {
@@ -86,15 +131,26 @@
     margin: 3px 0;
     }
 
+    .responsePanel {
+    margin-top: 24px;
+    }
+
+    .responseLabel {
+    display: block;
+    width: 100%;
+    margin: 0 0 8px;
+    }
+
     .commentBox {
     width: 100%;
-    min-height: 15vh;
-    border: none;
+    min-height: 20vh;
+    border: 1px solid #ccc;
     border-radius: 1rem;
     box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-    padding: 17px;
+    padding: 24px;
+    font-family: 'Poppins', sans-serif;
+    font-size: 16px;
     resize: none;
-    margin-top: 8px;
     }
 
     .submitComment {
@@ -106,32 +162,23 @@
     cursor: pointer;
     margin-top: 10px;
     transition: 0.3s;
-    width: 100%;
+    width: 180px;
     box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
     }
 
-    .submitComment:hover {
+    .submitComment:hover:not(:disabled) {
     background-color: white;
     color: black;
     box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
     }
 
-    .uploadBtn {
-    background-color: black;
-    color: white;
-    padding: 8px;
-    border-radius: 1rem;
-    cursor: pointer;
-    transition: 0.3s;
-    margin-top: 5%;
-    width: 100%;
-    border: none;
-    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+    .submitComment:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
     }
 
-    .uploadBtn:hover {
-    background-color: white;
-    color: black;
-    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-    border: none;
+    .submitMessage {
+    color: #374151;
+    font-size: 0.85rem;
+    margin-top: 10px;
     }
