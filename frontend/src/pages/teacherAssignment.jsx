@@ -22,6 +22,14 @@ function formatStudent(student) {
   };
 }
 
+function getAssignmentInstructions(submission, assignments) {
+  if (submission.assignmentInstructions) return submission.assignmentInstructions;
+  const assignment = assignments.find(
+    (item) => String(item.id ?? item.assignmentId) === String(submission.assignmentId)
+  );
+  return assignment?.instructions || assignment?.description || "";
+}
+
 export default function AssignTask() {
   const { notify } = useNotification() || {};
   const [query, setQuery] = useState("");
@@ -59,9 +67,15 @@ export default function AssignTask() {
     ])
       .then(([studentsData, assignmentsData, submissionsData]) => {
         if (ignore) return;
+        const assignments = assignmentsData.assignments || [];
         setEnrolledStudents((studentsData.students || []).map(formatStudent).filter((student) => student.id));
-        setTeacherAssignments(assignmentsData.assignments || []);
-        setSubmissions(submissionsData.submissions || []);
+        setTeacherAssignments(assignments);
+        setSubmissions(
+          (submissionsData.submissions || []).map((submission) => ({
+            ...submission,
+            assignmentInstructions: getAssignmentInstructions(submission, assignments),
+          }))
+        );
       })
       .catch((err) => {
         console.error("Error loading assignment data:", err);
@@ -271,6 +285,11 @@ export default function AssignTask() {
                         <div>
                           <strong>{item.student}</strong>
                           <p>{item.assignmentName || "Assignment"}</p>
+                          <div className={styles.submissionInstructions}>
+                            <span>Instructions</span>
+                            <p>{item.assignmentInstructions || "No instructions recorded for this assignment."}</p>
+                          </div>
+                          <span className={styles.submissionLabel}>Student answer</span>
                           <p>{item.comments || item.file || "Comment submission"}</p>
                           <p className={styles.submissionMeta}>{item.submittedAt}</p>
                         </div>
@@ -296,7 +315,8 @@ export default function AssignTask() {
                     <h3>Submission Details</h3>
                     <p><strong>Student:</strong> {selectedSubmission.student}</p>
                     <p><strong>Assignment:</strong> {selectedSubmission.assignmentName || "Assignment"}</p>
-                    <p><strong>Submission:</strong> {selectedSubmission.comments || selectedSubmission.file || "Comment submission"}</p>
+                    <p><strong>Instructions:</strong> {selectedSubmission.assignmentInstructions || "No instructions recorded for this assignment."}</p>
+                    <p><strong>Student answer:</strong> {selectedSubmission.comments || selectedSubmission.file || "Comment submission"}</p>
                     <p><strong>Status:</strong> {selectedSubmission.status}</p>
                     <p><strong>Submitted at:</strong> {selectedSubmission.submittedAt}</p>
                     <button

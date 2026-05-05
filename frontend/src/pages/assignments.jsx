@@ -5,6 +5,37 @@ import styles from "../assets/assignments.module.css";
 
 const API = "http://localhost:3001";
 
+function getAssignmentDisplayText(row) {
+  return row.instructions || row.description || row.name || "Assignment";
+}
+
+function formatDueDate(row) {
+  const dueDate = row.dueDate || "";
+  const dueTime = row.dueTime || "";
+
+  if (dueDate) {
+    const [year, month, day] = dueDate.split("-").map(Number);
+    const [hour = 0, minute = 0] = dueTime.split(":").map(Number);
+    const date = new Date(year, month - 1, day, hour, minute);
+
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: dueTime ? "numeric" : undefined,
+        minute: dueTime ? "2-digit" : undefined,
+      });
+    }
+  }
+
+  if (row.due) {
+    return String(row.due).replace("T", " ");
+  }
+
+  return "No due date";
+}
+
 export default function Assignments() {
   const [rows, setRows] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -89,8 +120,8 @@ export default function Assignments() {
             ) : (
               rows.map((r) => (
                 <tr key={r.id}>
-                  <td>{r.name}</td>
-                  <td>{r.due}</td>
+                  <td>{getAssignmentDisplayText(r)}</td>
+                  <td>{formatDueDate(r)}</td>
                   <td>{r.subject || "General"}</td>
                   <td>
                     <Link

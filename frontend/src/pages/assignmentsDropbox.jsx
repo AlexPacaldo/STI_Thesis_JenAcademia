@@ -21,6 +21,37 @@ function getUserName(user) {
     : user.name || user.fullName || "Student";
 }
 
+function getAssignmentDisplayText(assignment) {
+  return assignment?.instructions || assignment?.description || assignment?.name || "Assignment";
+}
+
+function formatDueDate(assignment) {
+  const dueDate = assignment?.dueDate || "";
+  const dueTime = assignment?.dueTime || "";
+
+  if (dueDate) {
+    const [year, month, day] = dueDate.split("-").map(Number);
+    const [hour = 0, minute = 0] = dueTime.split(":").map(Number);
+    const date = new Date(year, month - 1, day, hour, minute);
+
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: dueTime ? "numeric" : undefined,
+        minute: dueTime ? "2-digit" : undefined,
+      });
+    }
+  }
+
+  if (assignment?.due) {
+    return String(assignment.due).replace("T", " ");
+  }
+
+  return "No due date";
+}
+
 export default function AssignmentsDropbox() {
   const { notify } = useNotification() || {};
   const [comment, setComment] = useState("");
@@ -132,7 +163,7 @@ export default function AssignmentsDropbox() {
     <div className={styles.cont}>
       <div className={styles.center}>
         <div className={styles.centerContent}>
-          <h1><b>{selectedAssignment?.name || (isLoading ? "Loading assignment..." : "Assignment")}</b></h1>
+          <h1><b>{selectedAssignment ? getAssignmentDisplayText(selectedAssignment) : (isLoading ? "Loading assignment..." : "Assignment")}</b></h1>
         </div>
         <br />
 
@@ -201,7 +232,7 @@ export default function AssignmentsDropbox() {
                 <strong>Student:</strong> {selectedAssignment?.student || currentStudent}
               </p>
               <p>
-                <strong>Due Date:</strong> {selectedAssignment?.due || "No due date"}
+                <strong>Due Date:</strong> {formatDueDate(selectedAssignment)}
               </p>
             </div>
           </div>

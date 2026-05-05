@@ -105,6 +105,7 @@ const submissionSelect = `
          s.submission_id AS submissionId,
          s.assignment_id AS assignmentId,
          a.title AS assignmentName,
+         a.instructions AS assignmentInstructions,
          a.teacher_id AS teacherId,
          a.student_id AS studentId,
          CONCAT(student.first_name, ' ', student.last_name) AS student,
