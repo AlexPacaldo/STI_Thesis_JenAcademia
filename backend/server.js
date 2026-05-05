@@ -33,6 +33,16 @@ function toMySQLDateTime(isoLike) {
   return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
+function splitAssignmentDue(due) {
+  if (!due) return { dueDate: null, dueTime: null };
+  const [datePart, timePart = ""] = String(due).split("T");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+    return { dueDate: null, dueTime: null };
+  }
+  const dueTime = timePart ? `${timePart.slice(0, 5)}:00` : null;
+  return { dueDate: datePart, dueTime };
+}
+
 async function resolveCourseIdByIdOrName(value) {
   if (!value) return null;
   // numeric id?
@@ -52,6 +62,66 @@ async function resolveCourseIdByIdOrName(value) {
   );
   return ins.insertId;
 }
+
+const assignmentSelect = `
+  SELECT a.assignment_id AS id,
+         a.assignment_id AS assignmentId,
+         a.teacher_id AS teacherId,
+         a.student_id AS studentId,
+         CONCAT(student.first_name, ' ', student.last_name) AS student,
+         CONCAT(teacher.first_name, ' ', teacher.last_name) AS teacherName,
+         a.course_id AS courseId,
+         c.course_name AS subject,
+         a.title AS name,
+         a.title,
+         a.instructions,
+         a.instructions AS description,
+         DATE_FORMAT(a.due_date, '%Y-%m-%d') AS dueDate,
+         TIME_FORMAT(a.due_time, '%H:%i') AS dueTime,
+         CASE
+           WHEN a.due_time IS NULL THEN DATE_FORMAT(a.due_date, '%Y-%m-%d')
+           ELSE CONCAT(DATE_FORMAT(a.due_date, '%Y-%m-%d'), 'T', TIME_FORMAT(a.due_time, '%H:%i'))
+         END AS due,
+         a.status,
+         DATE_FORMAT(a.created_at, '%Y-%m-%d %H:%i') AS postedAt,
+         CASE
+           WHEN s.grade IS NULL THEN 'Pending'
+           ELSE CAST(s.grade AS CHAR)
+         END AS score,
+         s.submission_id AS submissionId,
+         s.submission_text AS comments,
+         s.file_url AS fileUrl,
+         DATE_FORMAT(s.submitted_at, '%Y-%m-%d %H:%i') AS submittedAt,
+         s.feedback
+  FROM assignments a
+  JOIN users student ON student.user_id = a.student_id
+  JOIN users teacher ON teacher.user_id = a.teacher_id
+  LEFT JOIN courses c ON c.course_id = a.course_id
+  LEFT JOIN assignment_submissions s ON s.assignment_id = a.assignment_id
+`;
+
+const submissionSelect = `
+  SELECT s.submission_id AS id,
+         s.submission_id AS submissionId,
+         s.assignment_id AS assignmentId,
+         a.title AS assignmentName,
+         a.teacher_id AS teacherId,
+         a.student_id AS studentId,
+         CONCAT(student.first_name, ' ', student.last_name) AS student,
+         CONCAT(student.first_name, ' ', student.last_name) AS assignedStudent,
+         CONCAT(teacher.first_name, ' ', teacher.last_name) AS teacherName,
+         s.submission_text AS comments,
+         s.file_url AS fileUrl,
+         COALESCE(s.file_url, 'Comment submission') AS file,
+         CASE WHEN s.grade IS NULL THEN 'Submitted' ELSE 'Graded' END AS status,
+         DATE_FORMAT(s.submitted_at, '%Y-%m-%d %H:%i') AS submittedAt,
+         s.grade,
+         s.feedback
+  FROM assignment_submissions s
+  JOIN assignments a ON a.assignment_id = s.assignment_id
+  JOIN users student ON student.user_id = s.student_id
+  JOIN users teacher ON teacher.user_id = a.teacher_id
+`;
 
 // ---------- courses ----------
 app.get("/api/courses", async (_req, res) => {
@@ -1373,6 +1443,211 @@ app.get("/api/teacher/:teacher_id/students", async (req, res) => {
   } catch (err) {
     console.error("GET /api/teacher/:teacher_id/students error:", err);
     res.status(500).json({ message: "Error fetching assigned students" });
+  }
+});
+
+// ==================== ASSIGNMENTS ====================
+
+app.get("/api/teacher/:teacher_id/assignments", async (req, res) => {
+  try {
+    const { teacher_id } = req.params;
+    const [rows] = await pool.query(
+      `${assignmentSelect}
+       WHERE a.teacher_id = ?
+       ORDER BY a.created_at DESC, a.assignment_id DESC`,
+      [teacher_id]
+    );
+
+    res.json({ assignments: rows });
+  } catch (err) {
+    console.error("GET /api/teacher/:teacher_id/assignments error:", err);
+    res.status(500).json({ message: "Error fetching teacher assignments" });
+  }
+});
+
+app.get("/api/teacher/:teacher_id/submissions", async (req, res) => {
+  try {
+    const { teacher_id } = req.params;
+    const [rows] = await pool.query(
+      `${submissionSelect}
+       WHERE a.teacher_id = ?
+       ORDER BY s.submitted_at DESC, s.submission_id DESC`,
+      [teacher_id]
+    );
+
+    res.json({ submissions: rows });
+  } catch (err) {
+    console.error("GET /api/teacher/:teacher_id/submissions error:", err);
+    res.status(500).json({ message: "Error fetching assignment submissions" });
+  }
+});
+
+app.get("/api/student/:student_id/assignments", async (req, res) => {
+  try {
+    const { student_id } = req.params;
+    const [rows] = await pool.query(
+      `${assignmentSelect}
+       WHERE a.student_id = ?
+       ORDER BY a.due_date ASC, a.due_time ASC, a.created_at DESC`,
+      [student_id]
+    );
+
+    res.json({ assignments: rows });
+  } catch (err) {
+    console.error("GET /api/student/:student_id/assignments error:", err);
+    res.status(500).json({ message: "Error fetching student assignments" });
+  }
+});
+
+app.get("/api/assignments/:assignment_id", async (req, res) => {
+  try {
+    const { assignment_id } = req.params;
+    const [rows] = await pool.query(
+      `${assignmentSelect}
+       WHERE a.assignment_id = ?
+       LIMIT 1`,
+      [assignment_id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Assignment not found" });
+    }
+
+    res.json({ assignment: rows[0] });
+  } catch (err) {
+    console.error("GET /api/assignments/:assignment_id error:", err);
+    res.status(500).json({ message: "Error fetching assignment" });
+  }
+});
+
+app.post("/api/assignments", async (req, res) => {
+  try {
+    const { teacherId, teacher_id, studentId, student_id, title, name, instructions, due, courseId, course_id } = req.body;
+    const resolvedTeacherId = teacherId ?? teacher_id;
+    const resolvedStudentId = studentId ?? student_id;
+    const assignmentTitle = (title || name || "").trim();
+    const assignmentInstructions = (instructions || "").trim();
+    const { dueDate, dueTime } = splitAssignmentDue(due);
+
+    if (!resolvedTeacherId || !resolvedStudentId || !assignmentTitle || !assignmentInstructions || !dueDate) {
+      return res.status(400).json({
+        message: "Teacher, student, title, instructions, and due date are required",
+      });
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO assignments (teacher_id, student_id, course_id, title, instructions, due_date, due_time)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [resolvedTeacherId, resolvedStudentId, courseId ?? course_id ?? null, assignmentTitle, assignmentInstructions, dueDate, dueTime]
+    );
+
+    await pool.query(
+      `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+       VALUES (?, 'assignment', 'New Assignment', ?, ?, 'assignment', ?)`,
+      [
+        resolvedStudentId,
+        `New assignment posted: "${assignmentTitle}" due ${dueDate}${dueTime ? ` ${dueTime.slice(0, 5)}` : ""}.`,
+        result.insertId,
+        `/assignmentsDropbox?assignmentId=${result.insertId}`,
+      ]
+    );
+
+    const [rows] = await pool.query(
+      `${assignmentSelect}
+       WHERE a.assignment_id = ?
+       LIMIT 1`,
+      [result.insertId]
+    );
+
+    res.status(201).json({ assignment: rows[0], message: "Assignment created" });
+  } catch (err) {
+    console.error("POST /api/assignments error:", err);
+    res.status(500).json({ message: "Error creating assignment" });
+  }
+});
+
+app.post("/api/assignments/:assignment_id/submissions", async (req, res) => {
+  const conn = await pool.getConnection();
+  let transactionStarted = false;
+  try {
+    const { assignment_id } = req.params;
+    const { studentId, student_id, submissionText, comments, fileUrl, file_url } = req.body;
+    const resolvedStudentId = studentId ?? student_id;
+    const text = (submissionText ?? comments ?? "").trim();
+
+    if (!resolvedStudentId || !text) {
+      return res.status(400).json({ message: "Student and submission text are required" });
+    }
+
+    await conn.beginTransaction();
+    transactionStarted = true;
+
+    const [assignmentRows] = await conn.query(
+      `SELECT assignment_id, teacher_id, student_id, title
+       FROM assignments
+       WHERE assignment_id = ?
+       LIMIT 1`,
+      [assignment_id]
+    );
+
+    if (!assignmentRows.length) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Assignment not found" });
+    }
+
+    const assignment = assignmentRows[0];
+    if (String(assignment.student_id) !== String(resolvedStudentId)) {
+      await conn.rollback();
+      return res.status(403).json({ message: "This assignment is not assigned to the selected student" });
+    }
+
+    const [result] = await conn.query(
+      `INSERT INTO assignment_submissions (assignment_id, student_id, submission_text, file_url)
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE submission_text = VALUES(submission_text),
+                               file_url = VALUES(file_url),
+                               submitted_at = CURRENT_TIMESTAMP,
+                               grade = NULL,
+                               feedback = NULL,
+                               graded_at = NULL`,
+      [assignment_id, resolvedStudentId, text, fileUrl ?? file_url ?? null]
+    );
+
+    await conn.query(
+      `UPDATE assignments SET status = 'submitted' WHERE assignment_id = ?`,
+      [assignment_id]
+    );
+
+    await conn.query(
+      `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+       VALUES (?, 'assignment', 'Assignment Submitted', ?, ?, 'assignment', ?)`,
+      [
+        assignment.teacher_id,
+        `A student submitted "${assignment.title}".`,
+        assignment_id,
+        `/teacherAssignment`,
+      ]
+    );
+
+    await conn.commit();
+    transactionStarted = false;
+
+    const [rows] = await conn.query(
+      `${submissionSelect}
+       WHERE s.assignment_id = ? AND s.student_id = ?
+       LIMIT 1`,
+      [assignment_id, resolvedStudentId]
+    );
+
+    res.status(result.insertId ? 201 : 200).json({ submission: rows[0], message: "Assignment submitted" });
+  } catch (err) {
+    if (transactionStarted) {
+      await conn.rollback();
+    }
+    console.error("POST /api/assignments/:assignment_id/submissions error:", err);
+    res.status(500).json({ message: "Error submitting assignment" });
+  } finally {
+    conn.release();
   }
 });
 
