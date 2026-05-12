@@ -52,9 +52,19 @@ function formatDueDate(assignment) {
   return "No due date";
 }
 
+function getAttemptsUsed(assignment) {
+  return Number(assignment?.attemptsUsed ?? assignment?.attemptCount ?? 0);
+}
+
+function getAttemptLimit(assignment) {
+  const limit = Number(assignment?.attemptLimit);
+  return Number.isInteger(limit) && limit > 0 ? limit : null;
+}
+
 export default function AssignmentsDropbox() {
   const { notify } = useNotification() || {};
   const [comment, setComment] = useState("");
+  const [selectedFile, setSelectedFile] = useState(null);
   const [submitMessage, setSubmitMessage] = useState("");
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -110,6 +120,24 @@ export default function AssignmentsDropbox() {
     selectedAssignment?.description ||
     "";
 
+  const isAssignmentPastDue = () => {
+    if (!selectedAssignment?.dueDate) return false;
+    const now = new Date();
+    const [year, month, day] = selectedAssignment.dueDate.split("-").map(Number);
+    let dueDateTime;
+    if (selectedAssignment.dueTime) {
+      const [hour, minute] = selectedAssignment.dueTime.split(":").map(Number);
+      dueDateTime = new Date(year, month - 1, day, hour, minute, 0);
+    } else {
+      dueDateTime = new Date(year, month - 1, day, 23, 59, 59);
+    }
+    return dueDateTime < now;
+  };
+
+  const attemptLimit = getAttemptLimit(selectedAssignment);
+  const attemptsUsed = getAttemptsUsed(selectedAssignment);
+  const isAttemptLimitReached = attemptLimit !== null && attemptsUsed >= attemptLimit;
+
   const onSubmitComment = async () => {
     if (!selectedAssignment) {
       setSubmitMessage("Please open an assignment before submitting.");
@@ -121,19 +149,34 @@ export default function AssignmentsDropbox() {
       return;
     }
 
-    if (!comment.trim()) {
-      setSubmitMessage("Please write your comment before submitting.");
+    if (isAssignmentPastDue()) {
+      setSubmitMessage("This assignment is past due and can no longer be submitted.");
+      return;
+    }
+
+    if (isAttemptLimitReached) {
+      setSubmitMessage("Attempt limit reached. You can no longer submit this assignment.");
+      return;
+    }
+
+    if (!comment.trim() && !selectedFile) {
+      setSubmitMessage("Please write a comment or attach a file before submitting.");
       return;
     }
 
     try {
+      const formData = new FormData();
+      formData.append("studentId", currentStudentId);
+      if (comment.trim()) {
+        formData.append("submissionText", comment.trim());
+      }
+      if (selectedFile) {
+        formData.append("file", selectedFile);
+      }
+
       const res = await fetch(`${API}/api/assignments/${selectedAssignment.id}/submissions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studentId: currentStudentId,
-          submissionText: comment,
-        }),
+        body: formData,
       });
 
       const data = await res.json();
@@ -146,12 +189,17 @@ export default function AssignmentsDropbox() {
         ...prev,
         submissionId: data.submission?.submissionId,
         comments: data.submission?.comments || comment.trim(),
+        fileUrl: data.submission?.fileUrl || prev?.fileUrl,
+        attemptLimit: data.submission?.attemptLimit ?? prev?.attemptLimit,
+        attemptsUsed: data.submission?.attemptsUsed ?? data.submission?.attemptCount ?? (getAttemptsUsed(prev) + 1),
+        attemptCount: data.submission?.attemptCount ?? data.submission?.attemptsUsed ?? (getAttemptsUsed(prev) + 1),
         submittedAt,
         status: "submitted",
       }));
       notify?.("Assignment has been submitted!", "success");
       setSubmitMessage(`Submitted on ${submittedAt}.`);
       setComment("");
+      setSelectedFile(null);
     } catch (err) {
       console.error("Submit assignment error:", err);
       setSubmitMessage(err.message || "Could not submit assignment.");
@@ -165,6 +213,15 @@ export default function AssignmentsDropbox() {
         <div className={styles.centerContent}>
           <h1><b>{selectedAssignment ? getAssignmentDisplayText(selectedAssignment) : (isLoading ? "Loading assignment..." : "Assignment")}</b></h1>
         </div>
+        {selectedAssignment && isAssignmentPastDue() ? (
+          <div className={styles.pastDueAlert}>
+            ⚠️ This assignment is past due and cannot be submitted
+          </div>
+        ) : selectedAssignment && isAttemptLimitReached ? (
+          <div className={styles.pastDueAlert}>
+            Attempt limit reached. You can no longer submit this assignment.
+          </div>
+        ) : null}
         <br />
 
         <div className={styles.tabContainer}>
@@ -200,16 +257,37 @@ export default function AssignmentsDropbox() {
                       setSubmitMessage("");
                     }}
                   />
+                  <label htmlFor="submissionFile" className={styles.fileLabel}>
+                    Upload file (any type)
+                  </label>
+                  <input
+                    id="submissionFile"
+                    type="file"
+                    className={styles.fileInput}
+                    onChange={(e) => {
+                      setSelectedFile(e.target.files?.[0] ?? null);
+                      setSubmitMessage("");
+                    }}
+                  />
+                  {selectedFile ? (
+                    <p className={styles.fileInfo}>Attached: {selectedFile.name}</p>
+                  ) : selectedAssignment?.fileUrl ? (
+                    <p className={styles.fileInfo}>
+                      Current file: <a href={selectedAssignment.fileUrl} target="_blank" rel="noreferrer">{selectedAssignment.fileUrl.split("/").pop()}</a>
+                    </p>
+                  ) : null}
                   <button
                     type="button"
                     className={styles.submitComment}
                     onClick={onSubmitComment}
-                    disabled={!selectedAssignment}
+                    disabled={!selectedAssignment || isAssignmentPastDue() || isAttemptLimitReached}
                   >
                     Submit
                   </button>
                   {submitMessage ? (
-                    <p className={styles.submitMessage}>{submitMessage}</p>
+                    <p className={styles.submitMessage} style={{ color: isAssignmentPastDue() || isAttemptLimitReached ? "#dc2626" : "#374151" }}>
+                      {submitMessage}
+                    </p>
                   ) : null}
                 </div>
               </div>
@@ -233,6 +311,10 @@ export default function AssignmentsDropbox() {
               </p>
               <p>
                 <strong>Due Date:</strong> {formatDueDate(selectedAssignment)}
+              </p>
+              <p>
+                <strong>Attempts:</strong> {attemptsUsed}
+                {attemptLimit !== null ? ` / ${attemptLimit}` : " / Unlimited"}
               </p>
             </div>
           </div>

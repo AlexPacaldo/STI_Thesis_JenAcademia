@@ -22,6 +22,26 @@ function formatStudent(student) {
   };
 }
 
+function getSubmissionFileName(url) {
+  if (!url) return "";
+  return url.split("/").pop();
+}
+
+function renderSubmissionPreview(url) {
+  if (!url) return null;
+  const ext = url.split(".").pop().split("?")[0].toLowerCase();
+  if (["mp3", "wav", "ogg", "m4a"].includes(ext)) {
+    return <audio controls src={url} className={styles.filePlayer} />;
+  }
+  if (["mp4", "webm", "ogg", "mov"].includes(ext)) {
+    return <video controls src={url} className={styles.filePlayer} />;
+  }
+  if (["png", "jpg", "jpeg", "gif", "svg", "webp"].includes(ext)) {
+    return <img src={url} alt="Submitted file" className={styles.submissionImage} />;
+  }
+  return null;
+}
+
 function getAssignmentInstructions(submission, assignments) {
   if (submission.assignmentInstructions) return submission.assignmentInstructions;
   const assignment = assignments.find(
@@ -36,6 +56,8 @@ export default function AssignTask() {
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [due, setDue] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [hasAttemptLimit, setHasAttemptLimit] = useState(false);
+  const [attemptLimit, setAttemptLimit] = useState("1");
   const [activeTab, setActiveTab] = useState("assign");
   const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [enrolledStudents, setEnrolledStudents] = useState([]);
@@ -99,20 +121,22 @@ export default function AssignTask() {
 
     teacherAssignments.forEach((assignment) => {
       if (assignment.studentId && assignment.student) {
+        const existing = map.get(String(assignment.studentId));
         map.set(String(assignment.studentId), {
           id: assignment.studentId,
           name: assignment.student,
-          courseId: assignment.courseId ?? null,
+          courseId: assignment.courseId ?? existing?.courseId ?? null,
         });
       }
     });
 
     submissions.forEach((submission) => {
       if (submission.studentId && submission.student) {
+        const existing = map.get(String(submission.studentId));
         map.set(String(submission.studentId), {
           id: submission.studentId,
           name: submission.student,
-          courseId: null,
+          courseId: submission.courseId ?? existing?.courseId ?? null,
         });
       }
     });
@@ -131,9 +155,38 @@ export default function AssignTask() {
     student.name.toLowerCase().includes(query.toLowerCase())
   );
 
+  const getDueDateTime = () => {
+    if (!due) return null;
+    const [datePart, timePart] = due.split("T");
+    const [year, month, day] = datePart.split("-").map(Number);
+    if (timePart) {
+      const [hour, minute] = timePart.split(":").map(Number);
+      return new Date(year, month - 1, day, hour, minute, 0);
+    } else {
+      return new Date(year, month - 1, day, 23, 59, 59);
+    }
+  };
+
+  const isDueDateValid = () => {
+    const dueDateTime = getDueDateTime();
+    if (!dueDateTime) return false;
+    return dueDateTime >= new Date();
+  };
+
   const onSubmit = async () => {
-    if (!selectedStudent || !due || !instructions.trim()) {
-      notify?.("Please select a student, set a due date, and add instructions.", "warning");
+    if (!selectedStudent || !instructions.trim()) {
+      notify?.("Please select a student and add instructions.", "warning");
+      return;
+    }
+
+    if (due && !isDueDateValid()) {
+      notify?.("Due date must be in the future. Please select a current or future date and time.", "error");
+      return;
+    }
+
+    const parsedAttemptLimit = hasAttemptLimit ? Number(attemptLimit) : null;
+    if (hasAttemptLimit && (!Number.isInteger(parsedAttemptLimit) || parsedAttemptLimit < 1)) {
+      notify?.("Attempt limit must be a whole number greater than 0.", "warning");
       return;
     }
 
@@ -148,6 +201,7 @@ export default function AssignTask() {
           title: `Task for ${selectedStudent.name}`,
           instructions,
           due,
+          attemptLimit: parsedAttemptLimit,
         }),
       });
 
@@ -162,7 +216,7 @@ export default function AssignTask() {
         recipientId: selectedStudent.id,
         recipientName: selectedStudent.name,
         senderName: teacherName,
-        message: `New assignment posted by ${teacherName}: "${data.assignment.name}" due ${data.assignment.due}.`,
+        message: `New assignment posted by ${teacherName}: "${data.assignment.name}"${data.assignment.due ? ` due ${data.assignment.due}` : ""}.`,
         type: "assignment",
         title: "New Assignment",
         relatedId: data.assignment.id,
@@ -171,6 +225,8 @@ export default function AssignTask() {
       notify?.("Assignment posted to student!", "success");
       setInstructions("");
       setDue("");
+      setHasAttemptLimit(false);
+      setAttemptLimit("1");
     } catch (err) {
       console.error("Create assignment error:", err);
       notify?.(err.message || "Could not create assignment.", "error");
@@ -244,7 +300,7 @@ export default function AssignTask() {
                   <div className={styles.infoCard}>
                     <div className={styles.Date}>
                       <label htmlFor="due" className={styles.label}>
-                        <b>Due Date:</b>
+                        <b>Due Date (optional):</b>
                       </label>
                       <input
                         id="due"
@@ -252,7 +308,35 @@ export default function AssignTask() {
                         className={styles.dateBox}
                         value={due}
                         onChange={(e) => setDue(e.target.value)}
+                        min={new Date().toISOString().slice(0, 16)}
                       />
+                      {due && !isDueDateValid() ? (
+                        <p className={styles.dateError}>
+                          Due date must be in the future
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className={styles.AttemptLimit}>
+                      <label htmlFor="hasAttemptLimit" className={styles.checkboxLabel}>
+                        <input
+                          id="hasAttemptLimit"
+                          type="checkbox"
+                          checked={hasAttemptLimit}
+                          onChange={(e) => setHasAttemptLimit(e.target.checked)}
+                        />
+                        Limit attempts
+                      </label>
+                      {hasAttemptLimit ? (
+                        <input
+                          type="number"
+                          className={styles.attemptInput}
+                          min="1"
+                          step="1"
+                          value={attemptLimit}
+                          onChange={(e) => setAttemptLimit(e.target.value)}
+                          aria-label="Maximum submission attempts"
+                        />
+                      ) : null}
                     </div>
                     <br />
                     <div className={styles.Instructions}>
@@ -289,9 +373,32 @@ export default function AssignTask() {
                             <span>Instructions</span>
                             <p>{item.assignmentInstructions || "No instructions recorded for this assignment."}</p>
                           </div>
-                          <span className={styles.submissionLabel}>Student answer</span>
-                          <p>{item.comments || item.file || "Comment submission"}</p>
+                          {item.comments ? (
+                            <>
+                              <span className={styles.submissionLabel}>Student answer</span>
+                              <p>{item.comments}</p>
+                            </>
+                          ) : null}
+                          {item.fileUrl ? (
+                            <div className={styles.submissionFilePreview}>
+                              <span className={styles.submissionLabel}>Submitted file</span>
+                              <p>
+                                <a href={item.fileUrl} target="_blank" rel="noreferrer">
+                                  {getSubmissionFileName(item.fileUrl)}
+                                </a>
+                              </p>
+                            </div>
+                          ) : null}
+                          {renderSubmissionPreview(item.fileUrl)}
+                          {!item.comments && !item.fileUrl ? (
+                            <p>Comment submission</p>
+                          ) : null}
                           <p className={styles.submissionMeta}>{item.submittedAt}</p>
+                          {item.attemptsUsed ? (
+                            <p className={styles.submissionMeta}>
+                              Attempts: {item.attemptsUsed}{item.attemptLimit ? ` / ${item.attemptLimit}` : ""}
+                            </p>
+                          ) : null}
                         </div>
                         <div className={styles.submissionActions}>
                           <span className={styles.submissionStatus}>{item.status}</span>
@@ -316,8 +423,28 @@ export default function AssignTask() {
                     <p><strong>Student:</strong> {selectedSubmission.student}</p>
                     <p><strong>Assignment:</strong> {selectedSubmission.assignmentName || "Assignment"}</p>
                     <p><strong>Instructions:</strong> {selectedSubmission.assignmentInstructions || "No instructions recorded for this assignment."}</p>
-                    <p><strong>Student answer:</strong> {selectedSubmission.comments || selectedSubmission.file || "Comment submission"}</p>
+                    {selectedSubmission.comments ? (
+                      <p><strong>Student answer:</strong> {selectedSubmission.comments}</p>
+                    ) : null}
+                    {selectedSubmission.fileUrl ? (
+                      <div className={styles.submissionFilePreview}>
+                        <p>
+                          <strong>Submitted file: </strong>
+                          <a href={selectedSubmission.fileUrl} target="_blank" rel="noreferrer">
+                            {getSubmissionFileName(selectedSubmission.fileUrl)}
+                          </a>
+                        </p>
+                        {renderSubmissionPreview(selectedSubmission.fileUrl)}
+                      </div>
+                    ) : null}
+                    {!selectedSubmission.comments && !selectedSubmission.fileUrl ? (
+                      <p><strong>Student answer:</strong> Comment submission</p>
+                    ) : null}
                     <p><strong>Status:</strong> {selectedSubmission.status}</p>
+                    <p>
+                      <strong>Attempts:</strong> {selectedSubmission.attemptsUsed || 1}
+                      {selectedSubmission.attemptLimit ? ` / ${selectedSubmission.attemptLimit}` : ""}
+                    </p>
                     <p><strong>Submitted at:</strong> {selectedSubmission.submittedAt}</p>
                     <button
                       type="button"

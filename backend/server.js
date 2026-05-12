@@ -2,7 +2,10 @@
 import bcrypt from "bcryptjs";
 import cors from "cors";
 import express from "express";
+import fs from "fs";
+import multer from "multer";
 import mysql from "mysql2/promise";
+import path from "path";
 //hi
 const PORT = process.env.PORT || 3001;
 const DB_HOST = process.env.DB_HOST || "localhost";
@@ -13,6 +16,20 @@ const DB_NAME = process.env.DB_NAME || "jen_academia"; // your schema
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const uploadDir = path.join(process.cwd(), "uploads", "assignments");
+fs.mkdirSync(uploadDir, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: uploadDir,
+  filename: (req, file, cb) => {
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+    cb(null, `${Date.now()}-${safeName}`);
+  },
+});
+
+const upload = multer({ storage });
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // MySQL pool
 export const pool = mysql.createPool({
@@ -41,6 +58,55 @@ function splitAssignmentDue(due) {
   }
   const dueTime = timePart ? `${timePart.slice(0, 5)}:00` : null;
   return { dueDate: datePart, dueTime };
+}
+
+function isDueDatePast(dueDate, dueTime) {
+  if (!dueDate) return false;
+  const now = new Date();
+  const datePart = dueDate instanceof Date
+    ? `${dueDate.getFullYear()}-${pad(dueDate.getMonth() + 1)}-${pad(dueDate.getDate())}`
+    : String(dueDate).slice(0, 10);
+  const [year, month, day] = datePart.split("-").map(Number);
+  let dueDateObj;
+  
+  if (dueTime) {
+    const [hour, minute] = String(dueTime).split(":").map(Number);
+    dueDateObj = new Date(year, month - 1, day, hour, minute, 0);
+  } else {
+    dueDateObj = new Date(year, month - 1, day, 23, 59, 59);
+  }
+  
+  return dueDateObj < now;
+}
+
+async function columnExists(tableName, columnName) {
+  const [rows] = await pool.query(
+    `SELECT COLUMN_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?
+     LIMIT 1`,
+    [DB_NAME, tableName, columnName]
+  );
+  return rows.length > 0;
+}
+
+async function ensureAssignmentAttemptColumns() {
+  await pool.query("ALTER TABLE assignments MODIFY COLUMN due_date DATE NULL");
+
+  if (!(await columnExists("assignments", "attempt_limit"))) {
+    await pool.query("ALTER TABLE assignments ADD COLUMN attempt_limit INT DEFAULT NULL AFTER due_time");
+  }
+
+  if (!(await columnExists("assignment_submissions", "attempt_count"))) {
+    await pool.query("ALTER TABLE assignment_submissions ADD COLUMN attempt_count INT NOT NULL DEFAULT 1 AFTER file_url");
+  }
+}
+
+try {
+  await ensureAssignmentAttemptColumns();
+} catch (err) {
+  console.error("Error preparing assignment attempt columns:", err);
+  process.exit(1);
 }
 
 async function resolveCourseIdByIdOrName(value) {
@@ -78,6 +144,7 @@ const assignmentSelect = `
          a.instructions AS description,
          DATE_FORMAT(a.due_date, '%Y-%m-%d') AS dueDate,
          TIME_FORMAT(a.due_time, '%H:%i') AS dueTime,
+         a.attempt_limit AS attemptLimit,
          CASE
            WHEN a.due_time IS NULL THEN DATE_FORMAT(a.due_date, '%Y-%m-%d')
            ELSE CONCAT(DATE_FORMAT(a.due_date, '%Y-%m-%d'), 'T', TIME_FORMAT(a.due_time, '%H:%i'))
@@ -91,6 +158,8 @@ const assignmentSelect = `
          s.submission_id AS submissionId,
          s.submission_text AS comments,
          s.file_url AS fileUrl,
+         COALESCE(s.attempt_count, 0) AS attemptsUsed,
+         COALESCE(s.attempt_count, 0) AS attemptCount,
          DATE_FORMAT(s.submitted_at, '%Y-%m-%d %H:%i') AS submittedAt,
          s.feedback
   FROM assignments a
@@ -108,11 +177,14 @@ const submissionSelect = `
          a.instructions AS assignmentInstructions,
          a.teacher_id AS teacherId,
          a.student_id AS studentId,
+         a.attempt_limit AS attemptLimit,
          CONCAT(student.first_name, ' ', student.last_name) AS student,
          CONCAT(student.first_name, ' ', student.last_name) AS assignedStudent,
          CONCAT(teacher.first_name, ' ', teacher.last_name) AS teacherName,
          s.submission_text AS comments,
          s.file_url AS fileUrl,
+         s.attempt_count AS attemptsUsed,
+         s.attempt_count AS attemptCount,
          COALESCE(s.file_url, 'Comment submission') AS file,
          CASE WHEN s.grade IS NULL THEN 'Submitted' ELSE 'Graded' END AS status,
          DATE_FORMAT(s.submitted_at, '%Y-%m-%d %H:%i') AS submittedAt,
@@ -1523,23 +1595,72 @@ app.get("/api/assignments/:assignment_id", async (req, res) => {
 
 app.post("/api/assignments", async (req, res) => {
   try {
-    const { teacherId, teacher_id, studentId, student_id, title, name, instructions, due, courseId, course_id } = req.body;
+    const {
+      teacherId,
+      teacher_id,
+      studentId,
+      student_id,
+      title,
+      name,
+      instructions,
+      due,
+      courseId,
+      course_id,
+      attemptLimit,
+      attempt_limit,
+    } = req.body;
     const resolvedTeacherId = teacherId ?? teacher_id;
     const resolvedStudentId = studentId ?? student_id;
     const assignmentTitle = (title || name || "").trim();
     const assignmentInstructions = (instructions || "").trim();
     const { dueDate, dueTime } = splitAssignmentDue(due);
+    const rawAttemptLimit = attemptLimit ?? attempt_limit ?? null;
+    const parsedAttemptLimit =
+      rawAttemptLimit === null || rawAttemptLimit === "" ? null : Number(rawAttemptLimit);
+    let resolvedCourseId = courseId ?? course_id ?? null;
 
-    if (!resolvedTeacherId || !resolvedStudentId || !assignmentTitle || !assignmentInstructions || !dueDate) {
+    if (!resolvedTeacherId || !resolvedStudentId || !assignmentTitle || !assignmentInstructions) {
       return res.status(400).json({
-        message: "Teacher, student, title, instructions, and due date are required",
+        message: "Teacher, student, title, and instructions are required",
       });
     }
 
+    if (isDueDatePast(dueDate, dueTime)) {
+      return res.status(400).json({
+        message: "Due date must be in the future. Please select a current or future date and time.",
+      });
+    }
+
+    if (
+      parsedAttemptLimit !== null &&
+      (!Number.isInteger(parsedAttemptLimit) || parsedAttemptLimit < 1)
+    ) {
+      return res.status(400).json({
+        message: "Attempt limit must be a whole number greater than 0.",
+      });
+    }
+
+    if (!resolvedCourseId) {
+      const [profileRows] = await pool.query(
+        "SELECT course_id FROM student_profiles WHERE user_id = ? LIMIT 1",
+        [resolvedStudentId]
+      );
+      resolvedCourseId = profileRows[0]?.course_id ?? null;
+    }
+
     const [result] = await pool.query(
-      `INSERT INTO assignments (teacher_id, student_id, course_id, title, instructions, due_date, due_time)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [resolvedTeacherId, resolvedStudentId, courseId ?? course_id ?? null, assignmentTitle, assignmentInstructions, dueDate, dueTime]
+      `INSERT INTO assignments (teacher_id, student_id, course_id, title, instructions, due_date, due_time, attempt_limit)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        resolvedTeacherId,
+        resolvedStudentId,
+        resolvedCourseId,
+        assignmentTitle,
+        assignmentInstructions,
+        dueDate,
+        dueTime,
+        parsedAttemptLimit,
+      ]
     );
 
     await pool.query(
@@ -1547,7 +1668,7 @@ app.post("/api/assignments", async (req, res) => {
        VALUES (?, 'assignment', 'New Assignment', ?, ?, 'assignment', ?)`,
       [
         resolvedStudentId,
-        `New assignment posted: "${assignmentTitle}" due ${dueDate}${dueTime ? ` ${dueTime.slice(0, 5)}` : ""}.`,
+        `New assignment posted: "${assignmentTitle}"${dueDate ? ` due ${dueDate}${dueTime ? ` ${dueTime.slice(0, 5)}` : ""}` : ""}.`,
         result.insertId,
         `/assignmentsDropbox?assignmentId=${result.insertId}`,
       ]
@@ -1567,24 +1688,40 @@ app.post("/api/assignments", async (req, res) => {
   }
 });
 
-app.post("/api/assignments/:assignment_id/submissions", async (req, res) => {
+const submissionUploader = (req, res, next) => {
+  if (req.is("multipart/form-data")) {
+    upload.single("file")(req, res, (err) => {
+      if (err) {
+        console.error("Upload error:", err);
+        return res.status(500).json({ message: "Error uploading file" });
+      }
+      next();
+    });
+  } else {
+    next();
+  }
+};
+
+app.post("/api/assignments/:assignment_id/submissions", submissionUploader, async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {
     const { assignment_id } = req.params;
-    const { studentId, student_id, submissionText, comments, fileUrl, file_url } = req.body;
+    const { studentId, student_id, submissionText, comments, fileUrl, file_url } = req.body || {};
     const resolvedStudentId = studentId ?? student_id;
     const text = (submissionText ?? comments ?? "").trim();
+    const uploadedFile = req.file ? `${req.protocol}://${req.get("host")}/uploads/assignments/${encodeURIComponent(req.file.filename)}` : null;
+    const finalFileUrl = uploadedFile ?? fileUrl ?? file_url ?? null;
 
-    if (!resolvedStudentId || !text) {
-      return res.status(400).json({ message: "Student and submission text are required" });
+    if (!resolvedStudentId || (!text && !finalFileUrl)) {
+      return res.status(400).json({ message: "Student and submission text or file are required" });
     }
 
     await conn.beginTransaction();
     transactionStarted = true;
 
     const [assignmentRows] = await conn.query(
-      `SELECT assignment_id, teacher_id, student_id, title
+      `SELECT assignment_id, teacher_id, student_id, title, due_date, due_time, attempt_limit
        FROM assignments
        WHERE assignment_id = ?
        LIMIT 1`,
@@ -1602,16 +1739,40 @@ app.post("/api/assignments/:assignment_id/submissions", async (req, res) => {
       return res.status(403).json({ message: "This assignment is not assigned to the selected student" });
     }
 
+    if (isDueDatePast(assignment.due_date, assignment.due_time)) {
+      await conn.rollback();
+      return res.status(400).json({ message: "This assignment is past due and can no longer be submitted." });
+    }
+
+    const [existingSubmissionRows] = await conn.query(
+      `SELECT submission_id, attempt_count
+       FROM assignment_submissions
+       WHERE assignment_id = ? AND student_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [assignment_id, resolvedStudentId]
+    );
+    const attemptsUsed = Number(existingSubmissionRows[0]?.attempt_count || 0);
+    const attemptLimit = assignment.attempt_limit === null ? null : Number(assignment.attempt_limit);
+
+    if (attemptLimit !== null && attemptsUsed >= attemptLimit) {
+      await conn.rollback();
+      return res.status(400).json({
+        message: `Attempt limit reached. This assignment only allows ${attemptLimit} submission${attemptLimit === 1 ? "" : "s"}.`,
+      });
+    }
+
     const [result] = await conn.query(
       `INSERT INTO assignment_submissions (assignment_id, student_id, submission_text, file_url)
        VALUES (?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE submission_text = VALUES(submission_text),
-                               file_url = VALUES(file_url),
-                               submitted_at = CURRENT_TIMESTAMP,
-                               grade = NULL,
-                               feedback = NULL,
+                                file_url = VALUES(file_url),
+                                attempt_count = attempt_count + 1,
+                                submitted_at = CURRENT_TIMESTAMP,
+                                grade = NULL,
+                                feedback = NULL,
                                graded_at = NULL`,
-      [assignment_id, resolvedStudentId, text, fileUrl ?? file_url ?? null]
+      [assignment_id, resolvedStudentId, text || null, finalFileUrl]
     );
 
     await conn.query(
