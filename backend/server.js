@@ -188,6 +188,18 @@ async function columnExists(tableName, columnName) {
   return rows.length > 0;
 }
 
+async function deletePastTeacherAvailability(teacherId = null) {
+  if (teacherId) {
+    await pool.query(
+      "DELETE FROM teacher_availability WHERE teacher_id = ? AND available_date < CURDATE()",
+      [teacherId]
+    );
+    return;
+  }
+
+  await pool.query("DELETE FROM teacher_availability WHERE available_date < CURDATE()");
+}
+
 async function ensureAssignmentAttemptColumns() {
   await pool.query("ALTER TABLE assignments MODIFY COLUMN due_date DATE NULL");
 
@@ -202,6 +214,7 @@ async function ensureAssignmentAttemptColumns() {
 
 try {
   await ensureAssignmentAttemptColumns();
+  await deletePastTeacherAvailability();
 } catch (err) {
   console.error("Error preparing assignment attempt columns:", err);
   process.exit(1);
@@ -820,6 +833,8 @@ app.get("/api/calendar/teacher-availability", async (req, res) => {
     if (!teacher_id || !year || !month) {
       return res.status(400).json({ message: "Missing teacher_id, year, or month" });
     }
+
+    await deletePastTeacherAvailability(teacher_id);
 
     const monthIndex = parseInt(month, 10);
     const yearValue = parseInt(year, 10);
@@ -2280,6 +2295,8 @@ app.get("/api/calendar/teacher-availability-records", async (req, res) => {
       return res.status(400).json({ message: "Missing required parameters" });
     }
 
+    await deletePastTeacherAvailability(teacher_id);
+
     const monthIndex = parseInt(month, 10);
     const yearValue = parseInt(year, 10);
     const daysInMonth = new Date(yearValue, monthIndex, 0).getDate();
@@ -2308,6 +2325,8 @@ app.get("/api/calendar/teacher-availability-record", async (req, res) => {
     if (!teacher_id || !available_date) {
       return res.status(400).json({ message: "Missing required parameters" });
     }
+
+    await deletePastTeacherAvailability(teacher_id);
 
     const [rows] = await pool.query(
       `SELECT availability_id as id, teacher_id, DATE_FORMAT(available_date, '%Y-%m-%d') as available_date, status, notes, start_time, end_time, break_start, break_end

@@ -9,7 +9,7 @@ import Login from "./pages/login.jsx";
 import Account from "./pages/account.jsx"
 import "./index.css";
 
-import VideoCall from "./components/VideoCall.jsx"
+
 
 import LoginChoice from "./pages/loginChoice.jsx"
 
@@ -60,7 +60,7 @@ const router = createBrowserRouter([
       // { path: "loginChoice", element: <LoginChoice /> },
       
       // in your router
-      { path: "/call/:classId", element: <VideoCall /> },
+      
 
       { path: "AdminDashboard", element: <AdminDashboard /> },
 

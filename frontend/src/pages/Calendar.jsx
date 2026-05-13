@@ -762,9 +762,15 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   }, [year, month]);
 
   const statusOf = (d) => (d ? availability[fmtDate(d)] || "" : "");
+  const isPastDate = (d) => {
+    if (!d) return false;
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    return d < todayMidnight;
+  };
 
   const handleCellClick = (d) => {
-    if (!d) return;
+    if (!d || isPastDate(d)) return;
     setSelectedDate(fmtDate(d));
   };
 
@@ -954,6 +960,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     setSelectedDate(fmtDate(today));
   };
 
+  const isPastDateString = (dateStr) => {
+    const normalized = normalizeDate(dateStr);
+    return Boolean(normalized) && normalized < fmtDate(new Date());
+  };
+
   // Fetch teacher availability records for current month
   const loadTeacherAvailabilityForMonth = () => {
     if (localRole !== "teacher" || !localUserId) return;
@@ -967,10 +978,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       })
       .then(r => {
         if (r.data && r.data.records) {
-          const normalized = r.data.records.map(record => ({
-            ...record,
-            available_date: normalizeDate(record.available_date),
-          }));
+          const normalized = r.data.records
+            .map(record => ({
+              ...record,
+              available_date: normalizeDate(record.available_date),
+            }))
+            .filter(record => !isPastDateString(record.available_date));
           setTeacherAvailabilityList(normalized);
         }
       })
@@ -1011,10 +1024,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         console.log(`📦 Records array:`, r.data?.records);
         console.log(`📊 Number of records:`, r.data?.records?.length || 0);
         if (r.data && r.data.records && r.data.records.length > 0) {
-          const normalized = r.data.records.map(record => ({
-            ...record,
-            available_date: normalizeDate(record.available_date),
-          }));
+          const normalized = r.data.records
+            .map(record => ({
+              ...record,
+              available_date: normalizeDate(record.available_date),
+            }))
+            .filter(record => !isPastDateString(record.available_date));
           console.log(`✨ Setting normalized availability list:`, normalized);
           setTeacherAvailabilityList(normalized);
         } else {
@@ -1459,25 +1474,24 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                 const isSelected = formatted === selectedDate;
                 
                 // Check if date is in the past
-                const isPast = d && d < new Date(new Date().setHours(0, 0, 0, 0));
+                const isPast = isPastDate(d);
                 
                 // Check if teacher has set schedule for this date (status exists)
                 const teacherHasSchedule = d && (status === "available" || status === "unavailable");
                 
-                // Determine color coding for student view
+                // Determine color coding for the calendar
                 let cellClass = styles.cell;
                 if (!d) {
                   cellClass = [styles.cell, styles.empty].join(" ");
                 } else if (isPast) {
-                  cellClass = [styles.cell, styles.clickableCell, styles.pastCell].join(" ");
+                  cellClass = [styles.cell, styles.pastCell].join(" ");
                 } else if (status === "unavailable") {
                   cellClass = [styles.cell, styles.clickableCell, styles.unavailable].join(" ");
                 } else if (hasClasses) {
                   cellClass = [styles.cell, styles.clickableCell, styles.hasClasses].join(" ");
                 } else if (status === "available") {
                   cellClass = [styles.cell, styles.clickableCell, styles.available].join(" ");
-                } else if (localRole === "student" && !teacherHasSchedule) {
-                  // For students: show unscheduled (teacher hasn't set availability) in orange
+                } else if (!teacherHasSchedule) {
                   cellClass = [styles.cell, styles.clickableCell, styles.unscheduled].join(" ");
                 } else {
                   cellClass = [styles.cell, styles.clickableCell].join(" ");
@@ -1496,7 +1510,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                     tooltipText = "Classes scheduled";
                   } else if (status === "available") {
                     tooltipText = "Teacher available";
-                  } else if (localRole === "student" && !teacherHasSchedule) {
+                  } else if (!teacherHasSchedule) {
                     tooltipText = "Teacher schedule not set";
                   }
                 }
@@ -1507,7 +1521,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                     type="button"
                     className={cellClass}
                     onClick={() => handleCellClick(d)}
-                    disabled={!d}
+                    disabled={!d || isPast}
                     title={tooltipText}
                   >
                     {d ? d.getDate() : ""}
@@ -2965,12 +2979,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                 <span>Teacher Unavailable</span>
               </div>
 
-              {localRole === "student" && (
-                <div className={styles.legendRow}>
-                  <span className={`${styles.legendDot} ${styles.legendUnscheduled}`} />
-                  <span>Schedule Not Set</span>
-                </div>
-              )}
+              <div className={styles.legendRow}>
+                <span className={`${styles.legendDot} ${styles.legendUnscheduled}`} />
+                <span>Schedule Not Set</span>
+              </div>
 
               <div className={styles.legendRow}>
                 <span className={`${styles.legendDot} ${styles.legendPast}`} />
