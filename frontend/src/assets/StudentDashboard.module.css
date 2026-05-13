@@ -152,6 +152,21 @@
   border: 1px solid #cfe6cf;
   border-radius: 8px;
   box-shadow: 0 6px 20px rgba(149, 157, 165, 0.15);
+  color: inherit;
+  margin-bottom: 10px;
+  text-decoration: none;
+}
+
+.noteCard:hover {
+  border-color: #9dcc9d;
+}
+
+.emptyCard {
+  padding: 14px 16px;
+  background: #f7f7f7;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  color: #6b7280;
 }
 
 .noteDate {

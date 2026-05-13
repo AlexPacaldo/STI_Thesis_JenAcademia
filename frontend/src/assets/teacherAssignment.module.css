@@ -132,12 +132,56 @@
 
    .Date{
     display: flex;
-    justify-content: center;
     align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+   }
+
+   .label {
+    flex: 0 0 170px;
+    margin-right: 0;
+    width: auto;
+   }
+
+   .dateError {
+    flex-basis: 100%;
+    color: #dc2626;
+    font-size: 0.9rem;
+    margin: 0.5rem 0 0 182px;
+   }
+
+   .AttemptLimit {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+   }
+
+   .checkboxLabel {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: auto;
+    margin-right: 0;
+    cursor: pointer;
+   }
+
+   .checkboxLabel input {
+    width: auto;
+   }
+
+   .attemptInput {
+    width: 110px;
+    height: 5vh;
+    border: 1px solid #ccc;
+    border-radius: 1rem;
+    padding: 5px 10px;
+    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
    }
 
    .dateBox{
-    width: 60%;
+    flex: 1;
+    min-width: 220px;
     height: 5vh;
     border-radius: 1rem;
     box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
@@ -333,4 +377,27 @@
       color: #6b7280;
       padding: 1rem 0;
       text-align: center;
+    }
+
+    .submissionFilePreview {
+      margin-top: 0.75rem;
+      padding: 0.75rem;
+      border: 1px solid #e5e7eb;
+      border-radius: 0.75rem;
+      background: #f8fafc;
+    }
+
+    .filePlayer {
+      width: 100%;
+      max-width: 100%;
+      margin-top: 0.5rem;
+      border-radius: 0.75rem;
+    }
+
+    .submissionImage {
+      width: 100%;
+      max-width: 100%;
+      display: block;
+      margin-top: 0.5rem;
+      border-radius: 0.75rem;
     }
