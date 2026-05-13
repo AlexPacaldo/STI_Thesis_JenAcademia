@@ -1,4 +1,5 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/studentSchedule.module.css";
@@ -103,38 +104,58 @@ const getEndTime = (startTime, durationMins) => {
   return `${endHours}:${String(endMins).padStart(2, "0")} ${endPeriod}`;
 };
 
-// Helper: check if a class is joinable (within 30 mins before start time)
+// Helper: check if a class is joinable (30 mins before start until class end)
 const isClassJoinable = (classObj, selectedDate) => {
-  if (!classObj || !classObj.time || !selectedDate) return false;
-  
+  if (!classObj || !selectedDate) return false;
+
   try {
-    // Parse time format "HH:MM AM/PM" to minutes since midnight
-    const timeMatch = classObj.time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-    if (!timeMatch) return false;
-    
-    let hours = parseInt(timeMatch[1]);
-    const mins = parseInt(timeMatch[2]);
-    const period = timeMatch[3].toUpperCase();
-    
-    // Convert to 24-hour format
-    if (period === 'PM' && hours !== 12) hours += 12;
-    if (period === 'AM' && hours === 12) hours = 0;
-    
-    const classStartMins = hours * 60 + mins;
-    
-    // Get current time for the selected date
     const now = new Date();
     const currentDate = fmtDate(now);
-    const currentHours = now.getHours();
-    const currentMins = now.getMinutes();
-    const currentTotalMins = currentHours * 60 + currentMins;
-    
-    // If it's not the class date, return false
     if (currentDate !== selectedDate) return false;
-    
-    // Class is joinable if current time is within 30 mins before start
-    const thirtyMinsBefore = classStartMins - 30;
-    return currentTotalMins >= thirtyMinsBefore && currentTotalMins < classStartMins;
+
+    const parseTimeString = (timeStr) => {
+      if (!timeStr) return null;
+      const ampmMatch = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+      if (ampmMatch) {
+        let hours = parseInt(ampmMatch[1], 10);
+        const mins = parseInt(ampmMatch[2], 10);
+        const period = ampmMatch[3].toUpperCase();
+        if (period === 'PM' && hours !== 12) hours += 12;
+        if (period === 'AM' && hours === 12) hours = 0;
+        return hours * 60 + mins;
+      }
+
+      const twentyFourMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
+      if (twentyFourMatch) {
+        const hours = parseInt(twentyFourMatch[1], 10);
+        const mins = parseInt(twentyFourMatch[2], 10);
+        return hours * 60 + mins;
+      }
+
+      return null;
+    };
+
+    const classStartMins = parseTimeString(classObj.time || classObj.start_time);
+    if (classStartMins == null) return false;
+
+    let classEndMins = null;
+
+    if (classObj.duration && !Number.isNaN(Number(classObj.duration))) {
+      classEndMins = classStartMins + Number(classObj.duration);
+    }
+
+    if (classEndMins == null && classObj.end_time) {
+      classEndMins = parseTimeString(classObj.end_time);
+    }
+
+    if (classEndMins == null) {
+      classEndMins = classStartMins + 60;
+    }
+
+    const currentTotalMins = now.getHours() * 60 + now.getMinutes();
+    const windowStart = classStartMins - 30;
+
+    return currentTotalMins >= windowStart && currentTotalMins < classEndMins;
   } catch (e) {
     return false;
   }
@@ -163,6 +184,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [classesCache, setClassesCache] = useState({}); // map date->classes array
   const [studentPackage, setStudentPackage] = useState(null);
 
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const initialDateApplied = useRef(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedClassId, setSelectedClassId] = useState(null);
   // reschedule request form
@@ -567,10 +591,35 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
   // whenever selectedDate changes we fetch if necessary
   useEffect(() => {
+    if (!initialDateApplied.current) {
+      const dateFromState = location.state?.selectedDate || location.state?.date || searchParams.get("date");
+      const normalizedDate = dateFromState ? normalizeDate(dateFromState) : null;
+
+      if (normalizedDate) {
+        setSelectedDate(normalizedDate);
+        setSelectedClassId(null);
+      }
+
+      initialDateApplied.current = true;
+      return;
+    }
+
     if (selectedDate) {
       loadClassesForDate(selectedDate);
     }
-  }, [selectedDate, localRole, localUserId, teacherId, studentId]);
+  }, [selectedDate, localRole, localUserId, teacherId, studentId, searchParams]);
+
+  useEffect(() => {
+    if (selectedDate) {
+      const [yearPart, monthPart] = selectedDate.split("-");
+      const parsedYear = Number(yearPart);
+      const parsedMonth = Number(monthPart) - 1;
+      if (!Number.isNaN(parsedYear) && !Number.isNaN(parsedMonth)) {
+        setYear(parsedYear);
+        setMonth(parsedMonth);
+      }
+    }
+  }, [selectedDate]);
 
   useEffect(() => {
     if (studentBookingMode && studentBookingDate && assignedTeacherId) {
@@ -713,9 +762,15 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   }, [year, month]);
 
   const statusOf = (d) => (d ? availability[fmtDate(d)] || "" : "");
+  const isPastDate = (d) => {
+    if (!d) return false;
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    return d < todayMidnight;
+  };
 
   const handleCellClick = (d) => {
-    if (!d) return;
+    if (!d || isPastDate(d)) return;
     setSelectedDate(fmtDate(d));
   };
 
@@ -905,6 +960,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     setSelectedDate(fmtDate(today));
   };
 
+  const isPastDateString = (dateStr) => {
+    const normalized = normalizeDate(dateStr);
+    return Boolean(normalized) && normalized < fmtDate(new Date());
+  };
+
   // Fetch teacher availability records for current month
   const loadTeacherAvailabilityForMonth = () => {
     if (localRole !== "teacher" || !localUserId) return;
@@ -918,10 +978,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       })
       .then(r => {
         if (r.data && r.data.records) {
-          const normalized = r.data.records.map(record => ({
-            ...record,
-            available_date: normalizeDate(record.available_date),
-          }));
+          const normalized = r.data.records
+            .map(record => ({
+              ...record,
+              available_date: normalizeDate(record.available_date),
+            }))
+            .filter(record => !isPastDateString(record.available_date));
           setTeacherAvailabilityList(normalized);
         }
       })
@@ -962,10 +1024,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         console.log(`📦 Records array:`, r.data?.records);
         console.log(`📊 Number of records:`, r.data?.records?.length || 0);
         if (r.data && r.data.records && r.data.records.length > 0) {
-          const normalized = r.data.records.map(record => ({
-            ...record,
-            available_date: normalizeDate(record.available_date),
-          }));
+          const normalized = r.data.records
+            .map(record => ({
+              ...record,
+              available_date: normalizeDate(record.available_date),
+            }))
+            .filter(record => !isPastDateString(record.available_date));
           console.log(`✨ Setting normalized availability list:`, normalized);
           setTeacherAvailabilityList(normalized);
         } else {
@@ -979,117 +1043,134 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       });
   };
 
-  // Submit teacher availability
-  const submitTeacherAvailability = async () => {
-    setAvailabilityError("");
-
-    // Validation
-    if (!availabilityDate) {
-      setAvailabilityError("Please select a date");
-      return;
+  const validateAvailabilityInputs = ({
+    availabilityDate: date = availabilityDate,
+    availabilityStatus: status = availabilityStatus,
+    availabilityStartTime: startTime = availabilityStartTime,
+    availabilityEndTime: endTime = availabilityEndTime,
+    availabilityBreakStart: breakStart = availabilityBreakStart,
+    availabilityBreakEnd: breakEnd = availabilityBreakEnd,
+  } = {}) => {
+    if (!date) {
+      return "Please select a date";
     }
 
-    // Only allow current month
     const currentYear = today.getFullYear();
     const currentMonth = today.getMonth();
-    
-    // Parse availabilityDate (YYYY-MM-DD format from date input) without timezone issues
-    const [selYear, selMonth, selDay] = availabilityDate.split('-').map(Number);
+    const [selYear, selMonth, selDay] = date.split('-').map(Number);
     const selectedDateObj = new Date(selYear, selMonth - 1, selDay, 0, 0, 0, 0);
-    
+
     if (
       selectedDateObj.getFullYear() !== currentYear ||
       selectedDateObj.getMonth() !== currentMonth
     ) {
-      setAvailabilityError("You can only set availability for the current month");
-      return;
+      return "You can only set availability for the current month";
     }
 
-    // Validate times if available status
-    if (availabilityStatus === "available") {
-      if (!availabilityStartTime) {
-        setAvailabilityError("Please select a start time");
-        return;
+    if (status === "available") {
+      if (!startTime) {
+        return "Please select a start time";
       }
-      if (!availabilityEndTime) {
-        setAvailabilityError("Please select an end time");
-        return;
+      if (!endTime) {
+        return "Please select an end time";
       }
 
-      // Validate end time is after start time
-      const start = new Date(`2000-01-01T${availabilityStartTime}`);
-      const end = new Date(`2000-01-01T${availabilityEndTime}`);
+      const start = new Date(`2000-01-01T${startTime}`);
+      const end = new Date(`2000-01-01T${endTime}`);
       if (end <= start) {
-        setAvailabilityError("End time must be after start time");
-        return;
+        return "End time must be after start time";
       }
 
-      // If setting availability for today, check that times are after current time
       const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
       if (selectedDateObj.getTime() === todayMidnight.getTime()) {
         const currentHours = today.getHours();
         const currentMins = today.getMinutes();
         const currentTotalMins = currentHours * 60 + currentMins;
 
-        const [startHours, startMins] = availabilityStartTime.split(":").map(Number);
+        const [startHours, startMins] = startTime.split(":").map(Number);
         const startTotalMins = startHours * 60 + startMins;
-
         if (startTotalMins <= currentTotalMins) {
-          setAvailabilityError("Start time must be after the current time");
-          return;
+          return "Start time must be after the current time";
         }
 
-        const [endHours, endMins] = availabilityEndTime.split(":").map(Number);
+        const [endHours, endMins] = endTime.split(":").map(Number);
         const endTotalMins = endHours * 60 + endMins;
-
         if (endTotalMins <= currentTotalMins) {
-          setAvailabilityError("End time must be after the current time");
-          return;
+          return "End time must be after the current time";
         }
       }
 
-      // Validate break times if provided
-      if (availabilityBreakStart || availabilityBreakEnd) {
-        if (!availabilityBreakStart) {
-          setAvailabilityError("Please select a break start time");
-          return;
+      if (breakStart || breakEnd) {
+        if (!breakStart) {
+          return "Please select a break start time";
         }
-        if (!availabilityBreakEnd) {
-          setAvailabilityError("Please select a break end time");
-          return;
+        if (!breakEnd) {
+          return "Please select a break end time";
         }
 
-        const breakStart = new Date(`2000-01-01T${availabilityBreakStart}`);
-        const breakEnd = new Date(`2000-01-01T${availabilityBreakEnd}`);
-
-        // Break end must be after break start
-        if (breakEnd <= breakStart) {
-          setAvailabilityError("Break end time must be after break start time");
-          return;
+        const breakStartDate = new Date(`2000-01-01T${breakStart}`);
+        const breakEndDate = new Date(`2000-01-01T${breakEnd}`);
+        if (breakEndDate <= breakStartDate) {
+          return "Break end time must be after break start time";
         }
-
-        // Break must be within availability window
-        if (breakStart < start || breakEnd > end) {
-          setAvailabilityError("Break time must be within your availability window");
-          return;
+        if (breakStartDate < start || breakEndDate > end) {
+          return "Break time must be within your availability window";
         }
       }
 
-      // Check if there's already a booked class during this time
-      const bookedClasses = classesCache[availabilityDate] || [];
+      const bookedClasses = classesCache[date] || [];
       const hasConflict = bookedClasses.some(cls => {
         if (cls.teacher_id !== localUserId) return false;
         const classStart = new Date(`2000-01-01T${(cls.start_time || cls.time || "").substring(0, 5)}`);
         const classEnd = new Date(`2000-01-01T${(cls.end_time || "").substring(0, 5)}`);
-        
-        // Check if class overlaps with availability window
         return classStart < end && classEnd > start;
       });
-
       if (hasConflict) {
-        setAvailabilityError("You have a booked class during this time period");
-        return;
+        return "You have a booked class during this time period";
       }
+    }
+
+    return "";
+  };
+
+  const getAvailabilityFieldError = (field) => {
+    const error = validateAvailabilityInputs();
+    if (!error) return "";
+
+    const fieldErrors = {
+      availabilityDate: [
+        "Please select a date",
+        "You can only set availability for the current month",
+      ],
+      availabilityStartTime: [
+        "Please select a start time",
+        "Start time must be after the current time",
+      ],
+      availabilityEndTime: [
+        "Please select an end time",
+        "End time must be after start time",
+        "End time must be after the current time",
+      ],
+      availabilityBreakStart: [
+        "Please select a break start time",
+        "Break time must be within your availability window",
+      ],
+      availabilityBreakEnd: [
+        "Please select a break end time",
+        "Break end time must be after break start time",
+        "Break time must be within your availability window",
+      ],
+    };
+
+    return fieldErrors[field]?.includes(error) ? error : "";
+  };
+
+  // Submit teacher availability
+  const submitTeacherAvailability = async () => {
+    const error = validateAvailabilityInputs();
+    if (error) {
+      setAvailabilityError(error);
+      return;
     }
 
     setIsSubmittingAvailability(true);
@@ -1393,25 +1474,24 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                 const isSelected = formatted === selectedDate;
                 
                 // Check if date is in the past
-                const isPast = d && d < new Date(new Date().setHours(0, 0, 0, 0));
+                const isPast = isPastDate(d);
                 
                 // Check if teacher has set schedule for this date (status exists)
                 const teacherHasSchedule = d && (status === "available" || status === "unavailable");
                 
-                // Determine color coding for student view
+                // Determine color coding for the calendar
                 let cellClass = styles.cell;
                 if (!d) {
                   cellClass = [styles.cell, styles.empty].join(" ");
                 } else if (isPast) {
-                  cellClass = [styles.cell, styles.clickableCell, styles.pastCell].join(" ");
+                  cellClass = [styles.cell, styles.pastCell].join(" ");
                 } else if (status === "unavailable") {
                   cellClass = [styles.cell, styles.clickableCell, styles.unavailable].join(" ");
                 } else if (hasClasses) {
                   cellClass = [styles.cell, styles.clickableCell, styles.hasClasses].join(" ");
                 } else if (status === "available") {
                   cellClass = [styles.cell, styles.clickableCell, styles.available].join(" ");
-                } else if (localRole === "student" && !teacherHasSchedule) {
-                  // For students: show unscheduled (teacher hasn't set availability) in orange
+                } else if (!teacherHasSchedule) {
                   cellClass = [styles.cell, styles.clickableCell, styles.unscheduled].join(" ");
                 } else {
                   cellClass = [styles.cell, styles.clickableCell].join(" ");
@@ -1430,7 +1510,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                     tooltipText = "Classes scheduled";
                   } else if (status === "available") {
                     tooltipText = "Teacher available";
-                  } else if (localRole === "student" && !teacherHasSchedule) {
+                  } else if (!teacherHasSchedule) {
                     tooltipText = "Teacher schedule not set";
                   }
                 }
@@ -1441,7 +1521,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                     type="button"
                     className={cellClass}
                     onClick={() => handleCellClick(d)}
-                    disabled={!d}
+                    disabled={!d || isPast}
                     title={tooltipText}
                   >
                     {d ? d.getDate() : ""}
@@ -1491,6 +1571,16 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                       <div><strong>Time:</strong></div>
                       <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration)}</div>
                     </div>
+                    {selectedClass.classLink && (
+                      <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
+                        <div><strong>Meeting Link:</strong></div>
+                        <div style={{ fontSize: "0.75em", marginTop: "4px", wordBreak: "break-all" }}>
+                          <a href={selectedClass.classLink} target="_blank" rel="noreferrer" style={{ color: "#0052cc", textDecoration: "underline" }}>
+                            Open Teams Meeting
+                          </a>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -2190,14 +2280,20 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                             max={fmtDate(new Date(today.getFullYear(), today.getMonth() + 1, 0))}
                             value={availabilityDate}
                             onChange={e => {
-                              setAvailabilityDate(e.target.value);
-                              setAvailabilityError("");
+                              const nextDate = e.target.value;
+                              setAvailabilityDate(nextDate);
+                              setAvailabilityError(validateAvailabilityInputs({ availabilityDate: nextDate }));
                             }}
                             style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
                           />
                           <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666" }}>
                             Only current month dates allowed
                           </div>
+                          {getAvailabilityFieldError("availabilityDate") && (
+                            <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#d32f2f" }}>
+                              {getAvailabilityFieldError("availabilityDate")}
+                            </div>
+                          )}
                         </div>
 
                         <div>
@@ -2207,7 +2303,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                               type="button"
                               onClick={() => {
                                 setAvailabilityStatus("available");
-                                setAvailabilityError("");
+                                setAvailabilityError(validateAvailabilityInputs({ availabilityStatus: "available" }));
                               }}
                               style={{
                                 flex: 1,
@@ -2227,7 +2323,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                               type="button"
                               onClick={() => {
                                 setAvailabilityStatus("unavailable");
-                                setAvailabilityError("");
+                                setAvailabilityError(validateAvailabilityInputs({ availabilityStatus: "unavailable" }));
                               }}
                               style={{
                                 flex: 1,
@@ -2256,13 +2352,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                                 value={availabilityStartTime}
                                 onChange={e => {
                                   const time = e.target.value;
-                                  const [hours] = time.split(':');
-                                  const roundedTime = `${hours}:00`;
+                                  const roundedTime = time ? `${time.split(':')[0]}:00` : "";
                                   setAvailabilityStartTime(roundedTime);
-                                  setAvailabilityError("");
+                                  setAvailabilityError(validateAvailabilityInputs({ availabilityStartTime: roundedTime }));
                                 }}
                                 style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
                               />
+                              {getAvailabilityFieldError("availabilityStartTime") && (
+                                <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#d32f2f" }}>
+                                  {getAvailabilityFieldError("availabilityStartTime")}
+                                </div>
+                              )}
                             </div>
 
                             <div>
@@ -2273,13 +2373,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                                 value={availabilityEndTime}
                                 onChange={e => {
                                   const time = e.target.value;
-                                  const [hours] = time.split(':');
-                                  const roundedTime = `${hours}:00`;
+                                  const roundedTime = time ? `${time.split(':')[0]}:00` : "";
                                   setAvailabilityEndTime(roundedTime);
-                                  setAvailabilityError("");
+                                  setAvailabilityError(validateAvailabilityInputs({ availabilityEndTime: roundedTime }));
                                 }}
                                 style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
                               />
+                              {getAvailabilityFieldError("availabilityEndTime") && (
+                                <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#d32f2f" }}>
+                                  {getAvailabilityFieldError("availabilityEndTime")}
+                                </div>
+                              )}
                               {availabilityStartTime && availabilityEndTime && (
                                 <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666" }}>
                                   Duration: {(() => {
@@ -2307,13 +2411,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                                     value={availabilityBreakStart}
                                     onChange={e => {
                                       const time = e.target.value;
-                                      const [hours] = time.split(':');
-                                      const roundedTime = `${hours}:00`;
+                                      const roundedTime = time ? `${time.split(':')[0]}:00` : "";
                                       setAvailabilityBreakStart(roundedTime);
-                                      setAvailabilityError("");
+                                      setAvailabilityError(validateAvailabilityInputs({ availabilityBreakStart: roundedTime }));
                                     }}
                                     style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
                                   />
+                                  {getAvailabilityFieldError("availabilityBreakStart") && (
+                                    <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#d32f2f" }}>
+                                      {getAvailabilityFieldError("availabilityBreakStart")}
+                                    </div>
+                                  )}
                                 </div>
                                 <div>
                                   <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 500, marginBottom: 3, color: "#666" }}>Break End</label>
@@ -2323,13 +2431,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                                     value={availabilityBreakEnd}
                                     onChange={e => {
                                       const time = e.target.value;
-                                      const [hours] = time.split(':');
-                                      const roundedTime = `${hours}:00`;
+                                      const roundedTime = time ? `${time.split(':')[0]}:00` : "";
                                       setAvailabilityBreakEnd(roundedTime);
-                                      setAvailabilityError("");
+                                      setAvailabilityError(validateAvailabilityInputs({ availabilityBreakEnd: roundedTime }));
                                     }}
                                     style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
                                   />
+                                  {getAvailabilityFieldError("availabilityBreakEnd") && (
+                                    <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#d32f2f" }}>
+                                      {getAvailabilityFieldError("availabilityBreakEnd")}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
@@ -2867,12 +2979,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                 <span>Teacher Unavailable</span>
               </div>
 
-              {localRole === "student" && (
-                <div className={styles.legendRow}>
-                  <span className={`${styles.legendDot} ${styles.legendUnscheduled}`} />
-                  <span>Schedule Not Set</span>
-                </div>
-              )}
+              <div className={styles.legendRow}>
+                <span className={`${styles.legendDot} ${styles.legendUnscheduled}`} />
+                <span>Schedule Not Set</span>
+              </div>
 
               <div className={styles.legendRow}>
                 <span className={`${styles.legendDot} ${styles.legendPast}`} />
