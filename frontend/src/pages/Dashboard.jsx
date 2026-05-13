@@ -154,8 +154,7 @@ export default function Dashboard({ mode }) {
       navigate("/Calendar", { state: { selectedDate: cls.raw.scheduled_date } });
       return;
     }
-
-    navigate(`/call/${cls.id}`, { state: { cls } });
+    navigate("/Calendar");
   };
 
   if (isTeacher) {

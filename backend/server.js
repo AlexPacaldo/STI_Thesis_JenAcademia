@@ -227,6 +227,138 @@ async function resolveCourseIdByIdOrName(value) {
   return ins.insertId;
 }
 
+const aiCriterionLabels = {
+  learningGoal: "Learning goal",
+  learningStyle: "Learning style",
+  personality: "Student personality",
+  focusArea: "Focus area",
+  pace: "Learning pace",
+};
+
+function normalizeCriteria(criteria = {}) {
+  return Object.fromEntries(
+    Object.entries(aiCriterionLabels).map(([key]) => [key, String(criteria[key] || "").trim()])
+  );
+}
+
+function buildCriteriaNotes(criteria) {
+  const lines = Object.entries(criteria)
+    .filter(([, value]) => value)
+    .map(([key, value]) => `${aiCriterionLabels[key]}: ${value}`);
+
+  return lines.length ? `AI matching criteria:\n${lines.join("\n")}` : "";
+}
+
+function buildTeacherAiBio({ bio, teachingStyle, personalityStrength, idealStudentPace }) {
+  const aiTags = [
+    teachingStyle ? `Teaching style: ${teachingStyle}` : "",
+    personalityStrength ? `Teacher strength: ${personalityStrength}` : "",
+    idealStudentPace ? `Best student pace: ${idealStudentPace}` : "",
+  ].filter(Boolean);
+
+  return [bio || "", aiTags.length ? `AI matching profile:\n${aiTags.join("\n")}` : ""]
+    .filter((part) => String(part).trim())
+    .join("\n\n");
+}
+
+function scoreTeacherForStudent(teacher, criteria, trialNotes, courseId) {
+  const profileText = [
+    teacher.first_name,
+    teacher.last_name,
+    teacher.bio,
+    teacher.specialization,
+  ].filter(Boolean).join(" ").toLowerCase();
+  const notes = String(trialNotes || "").toLowerCase();
+  let score = Number(teacher.experience_years || 0) * 2;
+  const reasons = [];
+
+  if (courseId && Number(teacher.selected_course_match || 0) > 0) {
+    score += 12;
+    reasons.push("matches the selected course");
+  }
+
+  const weightedCriteria = [
+    ["learningGoal", 14],
+    ["focusArea", 12],
+    ["learningStyle", 10],
+    ["personality", 8],
+    ["pace", 8],
+  ];
+
+  for (const [key, weight] of weightedCriteria) {
+    const value = String(criteria[key] || "").toLowerCase();
+    if (!value) continue;
+
+    const words = value.split(/[\s-]+/).filter((word) => word.length > 2);
+    const matched = words.some((word) => profileText.includes(word) || notes.includes(word));
+    if (matched) {
+      score += weight;
+      reasons.push(`${aiCriterionLabels[key].toLowerCase()} fit`);
+    }
+  }
+
+  if (criteria.learningStyle === "structured") score += profileText.includes("grammar") ? 5 : 0;
+  if (criteria.learningStyle === "conversational") score += profileText.includes("conversation") || profileText.includes("speaking") ? 5 : 0;
+  if (criteria.focusArea === "speaking") score += profileText.includes("speaking") || profileText.includes("conversation") ? 5 : 0;
+  if (criteria.focusArea === "grammar") score += profileText.includes("grammar") ? 5 : 0;
+  if (criteria.personality === "shy") score += profileText.includes("patient") || profileText.includes("supportive") ? 5 : 0;
+  if (criteria.pace === "slow") score += profileText.includes("patient") ? 4 : 0;
+
+  score -= Number(teacher.assigned_student_count || 0);
+
+  return {
+    ...teacher,
+    score,
+    reasons: reasons.length ? reasons : ["balanced match based on teacher profile and current load"],
+  };
+}
+
+async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = null, preferredTeacherId = null }) {
+  const normalizedCriteria = normalizeCriteria(criteria);
+  const [teachers] = await pool.query(
+    `SELECT u.user_id, u.first_name, u.last_name, u.email,
+            tp.bio, tp.specialization, tp.experience_years,
+            COUNT(student.user_id) AS assigned_student_count,
+            MAX(CASE WHEN student.user_id IS NOT NULL AND sp.course_id = ? THEN 1 ELSE 0 END) AS selected_course_match
+     FROM users u
+     LEFT JOIN teacher_profiles tp ON tp.user_id = u.user_id
+     LEFT JOIN student_profiles sp ON sp.assigned_teacher_id = u.user_id
+     LEFT JOIN users student ON student.user_id = sp.user_id AND student.status = 'active'
+     WHERE u.role = 'teacher' AND u.status = 'active'
+     GROUP BY u.user_id, u.first_name, u.last_name, u.email, tp.bio, tp.specialization, tp.experience_years
+     ORDER BY u.first_name ASC, u.last_name ASC`,
+    [courseId || 0]
+  );
+
+  const ranked = teachers
+    .map((teacher) => scoreTeacherForStudent(teacher, normalizedCriteria, trialNotes, courseId))
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return Number(a.assigned_student_count || 0) - Number(b.assigned_student_count || 0);
+    });
+
+  const underBalanceLimit = ranked.filter((teacher) => Number(teacher.assigned_student_count || 0) < 5);
+  const leastLoaded = [...ranked].sort((a, b) => {
+    const loadDiff = Number(a.assigned_student_count || 0) - Number(b.assigned_student_count || 0);
+    if (loadDiff !== 0) return loadDiff;
+    return b.score - a.score;
+  })[0];
+  const preferred = preferredTeacherId
+    ? ranked.find((teacher) => String(teacher.user_id) === String(preferredTeacherId))
+    : null;
+  const assigned = preferred && Number(preferred.assigned_student_count || 0) < 5
+    ? preferred
+    : underBalanceLimit[0] || leastLoaded;
+
+  return {
+    teacher: assigned || null,
+    rankedTeachers: ranked,
+    criteria: normalizedCriteria,
+    overBalanceTeachers: ranked.filter((teacher) => Number(teacher.assigned_student_count || 0) >= 5),
+    usedLeastLoadedFallback: underBalanceLimit.length === 0 && Boolean(leastLoaded),
+  };
+}
+
 const assignmentSelect = `
   SELECT a.assignment_id AS id,
          a.assignment_id AS assignmentId,
@@ -495,10 +627,53 @@ app.put("/api/users/:id/password", async (req, res) => {
 
 //ADMIN
 
+app.post("/api/admin/recommend-teacher", async (req, res) => {
+  try {
+    const { criteria, trialNotes, courseId, teacherId } = req.body || {};
+    const recommendation = await recommendTeacher({
+      criteria,
+      trialNotes,
+      courseId,
+      preferredTeacherId: teacherId,
+    });
+
+    res.json({
+      teacher: recommendation.teacher,
+      rankedTeachers: recommendation.rankedTeachers,
+      overBalanceTeachers: recommendation.overBalanceTeachers,
+      usedLeastLoadedFallback: recommendation.usedLeastLoadedFallback,
+      criteria: recommendation.criteria,
+    });
+  } catch (err) {
+    console.error("POST /api/admin/recommend-teacher error:", err);
+    res.status(500).json({ message: "Error recommending teacher" });
+  }
+});
+
 //Create Teacher Account
 app.post("/api/admin/users", async (req, res) => {
   try {
-    const { firstName, lastName, email, password, contact, role = "teacher", classesAvailed, level, teacherId, trialNotes, courseId } = req.body;
+    const {
+      firstName,
+      lastName,
+      email,
+      password,
+      contact,
+      role = "teacher",
+      classesAvailed,
+      level,
+      teacherId,
+      trialNotes,
+      courseId,
+      aiCriteria,
+      specialization,
+      experienceYears,
+      experience_years,
+      teachingStyle,
+      personalityStrength,
+      idealStudentPace,
+      bio,
+    } = req.body;
 
     const [exist] = await pool.query("SELECT user_id FROM users WHERE email = ?", [email]);
     if (exist.length) return res.status(409).json({ message: "Email already exists" });
@@ -518,19 +693,48 @@ app.post("/api/admin/users", async (req, res) => {
     
     // Create teacher profile if role is teacher
     if (role === "teacher") {
-      await pool.query(`INSERT INTO teacher_profiles (user_id, bio) VALUES (?, '')`, [userId]);
+      const rawExperienceYears = experienceYears ?? experience_years ?? null;
+      const parsedExperienceYears =
+        rawExperienceYears === null || rawExperienceYears === "" ? null : Number(rawExperienceYears);
+      const teacherBio = buildTeacherAiBio({
+        bio,
+        teachingStyle,
+        personalityStrength,
+        idealStudentPace,
+      });
+
+      await pool.query(
+        `INSERT INTO teacher_profiles (user_id, bio, specialization, experience_years)
+         VALUES (?, ?, ?, ?)`,
+        [
+          userId,
+          teacherBio || "",
+          specialization || null,
+          Number.isFinite(parsedExperienceYears) ? parsedExperienceYears : null,
+        ]
+      );
     }
     
     // Create student profile if role is student
     if (role === "student") {
-      const assignedTeacherId = teacherId ? parseInt(teacherId, 10) : null;
+      const recommendation = await recommendTeacher({
+        criteria: aiCriteria,
+        trialNotes,
+        courseId,
+        preferredTeacherId: teacherId,
+      });
+      const assignedTeacherId = recommendation.teacher?.user_id || null;
       const proficiencyLevel = level || "beginner";
       const courseIdValue = courseId ? parseInt(courseId, 10) : null;
+      const criteriaNotes = buildCriteriaNotes(recommendation.criteria);
+      const finalTrialNotes = [trialNotes || "", criteriaNotes]
+        .filter((part) => String(part).trim())
+        .join("\n\n");
       
       await pool.query(`
         INSERT INTO student_profiles (user_id, proficiency_level, assigned_teacher_id, course_id, trial_notes)
         VALUES (?, ?, ?, ?, ?)
-      `, [userId, proficiencyLevel, assignedTeacherId, courseIdValue, trialNotes || null]);
+      `, [userId, proficiencyLevel, assignedTeacherId, courseIdValue, finalTrialNotes || null]);
       
       // Create student class package if classesAvailed is provided
       if (classesAvailed && parseInt(classesAvailed, 10) > 0) {
