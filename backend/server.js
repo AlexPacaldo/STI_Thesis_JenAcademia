@@ -1,16 +1,20 @@
 // server.js (ESM)
 import bcrypt from "bcryptjs";
 import cors from "cors";
+import dotenv from "dotenv";
 import express from "express";
 import fs from "fs";
 import multer from "multer";
 import mysql from "mysql2/promise";
 import path from "path";
-//hi
+import crypto from "crypto";
+
+dotenv.config();
+
 const PORT = process.env.PORT || 3001;
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USER || "root";
-const DB_PASSWORD = process.env.DB_PASSWORD || "LORAKLANG0405++";    // <- your password here
+const DB_PASSWORD = process.env.DB_PASSWORD || "Aj1182014";    // <- your password here
 const DB_NAME = process.env.DB_NAME || "jen_academia"; // your schema
 
 const app = express();
@@ -77,6 +81,100 @@ function isDueDatePast(dueDate, dueTime) {
   }
   
   return dueDateObj < now;
+}
+
+const MS_TENANT_ID = process.env.MS_TENANT_ID || "";
+const MS_CLIENT_ID = process.env.MS_CLIENT_ID || "";
+const MS_CLIENT_SECRET = process.env.MS_CLIENT_SECRET || "";
+const MS_TEAMS_ORGANIZER_UPN = process.env.MS_TEAMS_ORGANIZER_UPN || "";
+
+async function getMicrosoftGraphAccessToken() {
+  if (!MS_TENANT_ID || !MS_CLIENT_ID || !MS_CLIENT_SECRET) {
+    return null;
+  }
+
+  const tokenUrl = `https://login.microsoftonline.com/${MS_TENANT_ID}/oauth2/v2.0/token`;
+  const form = new URLSearchParams({
+    client_id: MS_CLIENT_ID,
+    scope: "https://graph.microsoft.com/.default",
+    client_secret: MS_CLIENT_SECRET,
+    grant_type: "client_credentials",
+  });
+
+  const response = await fetch(tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: form.toString(),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Graph token error: ${response.status} ${body}`);
+  }
+
+  const data = await response.json();
+  return data.access_token;
+}
+
+function formatMeetingDateTime(date, time) {
+  if (!date || !time) return null;
+  const [hours, minutes] = time.split(":").map(Number);
+  const dt = new Date(`${date}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`);
+  return dt.toISOString();
+}
+
+async function createTeamsMeeting(subject, date, startTime, endTime, organizerEmail) {
+  const accessToken = await getMicrosoftGraphAccessToken();
+  if (!accessToken) {
+    throw new Error("Microsoft Graph credentials not configured");
+  }
+
+  const organizer = organizerEmail || MS_TEAMS_ORGANIZER_UPN;
+  if (!organizer) {
+    throw new Error("No organizer email configured for Teams meeting creation");
+  }
+
+  const startDateTime = formatMeetingDateTime(date, startTime);
+  const endDateTime = formatMeetingDateTime(date, endTime);
+  if (!startDateTime || !endDateTime) {
+    throw new Error("Invalid meeting start or end time");
+  }
+
+  const meetingBody = {
+    subject: subject || "Jen Academia Class",
+    startDateTime,
+    endDateTime,
+  };
+
+  const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(organizer)}/onlineMeetings`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(meetingBody),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Graph meeting creation error: ${response.status} ${body}`);
+  }
+
+  const data = await response.json();
+  if (!data.joinUrl) {
+    throw new Error("Graph meeting response missing joinUrl");
+  }
+
+  return data.joinUrl;
+}
+
+function generateTeamsMeetingLink() {
+  const uuid = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString("hex");
+  const safeMeetingId = encodeURIComponent(`19:meeting_${uuid}@thread.v2`);
+  return `https://teams.microsoft.com/l/meetup-join/${safeMeetingId}/0?context=%7B%22Tid%22%3A%22placeholder%22%2C%22Oid%22%3A%22placeholder%22%7D`;
 }
 
 async function columnExists(tableName, columnName) {
@@ -577,8 +675,10 @@ app.get("/api/calendar/classes-by-date", async (req, res) => {
                        stu.first_name as student_name,
                        stu.email as student_email,
                        tea.first_name as teacher_name,
-                       tea.email as teacher_email
+                       tea.email as teacher_email,
+                       COALESCE(c.class_link, vs.teams_meeting_link) as class_link
                  FROM classes c
+                 LEFT JOIN video_sessions vs ON vs.class_id = c.class_id
                  JOIN users stu ON c.student_id = stu.user_id
                  JOIN users tea ON c.teacher_id = tea.user_id
                  WHERE c.scheduled_date = ?`;
@@ -601,6 +701,49 @@ app.get("/api/calendar/classes-by-date", async (req, res) => {
   }
 });
 
+// Get upcoming classes for a teacher or student
+app.get("/api/calendar/upcoming-classes", async (req, res) => {
+  try {
+    const { teacher_id, student_id, limit = 10 } = req.query;
+    if (!teacher_id && !student_id) {
+      return res.status(400).json({ message: "Missing teacher_id or student_id" });
+    }
+
+    let query = `SELECT c.*, \
+                       stu.first_name as student_name, \
+                       stu.last_name as student_last_name, \
+                       stu.email as student_email, \
+                       tea.first_name as teacher_name, \
+                       tea.last_name as teacher_last_name, \
+                       tea.email as teacher_email, \
+                       COALESCE(c.class_link, vs.teams_meeting_link) as class_link \
+                 FROM classes c \
+                 LEFT JOIN video_sessions vs ON vs.class_id = c.class_id \
+                 JOIN users stu ON c.student_id = stu.user_id \
+                 JOIN users tea ON c.teacher_id = tea.user_id \
+                 WHERE c.scheduled_date >= CURDATE()`;
+    const params = [];
+
+    if (teacher_id) {
+      query += ` AND c.teacher_id = ?`;
+      params.push(teacher_id);
+    }
+    if (student_id) {
+      query += ` AND c.student_id = ?`;
+      params.push(student_id);
+    }
+
+    query += ` ORDER BY c.scheduled_date ASC, c.start_time ASC LIMIT ?`;
+    params.push(parseInt(limit, 10) || 10);
+
+    const [rows] = await pool.query(query, params);
+    res.json({ classes: rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching upcoming classes" });
+  }
+});
+
 // Create a new class
 app.post("/api/calendar/class", async (req, res) => {
   try {
@@ -610,19 +753,43 @@ app.post("/api/calendar/class", async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
+    const [teacherRows] = await pool.query(
+      `SELECT first_name, last_name, email FROM users WHERE user_id = ?`,
+      [teacher_id]
+    );
+    const teacherEmail = teacherRows.length > 0 ? teacherRows[0].email : null;
+
+    let classLinkToSave = class_link?.trim();
+    if (!classLinkToSave) {
+      try {
+        classLinkToSave = await createTeamsMeeting(
+          class_name,
+          scheduled_date,
+          start_time,
+          end_time,
+          teacherEmail || MS_TEAMS_ORGANIZER_UPN
+        );
+      } catch (meetingErr) {
+        console.error("Teams meeting creation failed", meetingErr);
+        classLinkToSave = generateTeamsMeetingLink();
+      }
+    }
+
     const [result] = await pool.query(
       `INSERT INTO classes (class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, class_link, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')`,
-      [class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, class_link]
+      [class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, classLinkToSave]
+    );
+
+    await pool.query(
+      `INSERT INTO video_sessions (class_id, teacher_id, student_id, teams_meeting_link)
+       VALUES (?, ?, ?, ?)`,
+      [result.insertId, teacher_id, student_id, classLinkToSave]
     );
 
     const [studentRows] = await pool.query(
       `SELECT first_name, last_name FROM users WHERE user_id = ?`,
       [student_id]
-    );
-    const [teacherRows] = await pool.query(
-      `SELECT first_name, last_name FROM users WHERE user_id = ?`,
-      [teacher_id]
     );
 
     const studentName = studentRows.length > 0 ? `${studentRows[0].first_name} ${studentRows[0].last_name}` : "A student";
@@ -634,7 +801,7 @@ app.post("/api/calendar/class", async (req, res) => {
       [teacher_id, "general", "New Class Booked", notificationMessage, result.insertId, "class"]
     );
 
-    res.status(201).json({ class_id: result.insertId, message: "Class created successfully" });
+    res.status(201).json({ class_id: result.insertId, class_link: classLinkToSave, message: "Class created successfully" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error creating class" });

@@ -14,15 +14,13 @@ import VideoCall from "./components/VideoCall.jsx"
 import LoginChoice from "./pages/loginChoice.jsx"
 
 import AdminDashboard from "./pages/AdminDashboard.jsx";
-
-import StudentDashboard from "./pages/StudentDashboard.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
 import AssignmentsDropbox from "./pages/assignmentsDropbox.jsx";
 import Assignments from "./pages/assignments.jsx";
 import Remarks from "./pages/remarks.jsx";
 import BooksLessons from "./pages/booksLessons.jsx";
 import BooksContent from "./pages/booksContent.jsx";
 
-import TeacherDashboard from "./pages/TeacherDashboard.jsx";
 import PassRemarks from "./pages/PassRemarks.jsx";
 import TeacherAssignment from "./pages/teacherAssignment.jsx";
 import TeacherBooksLessons from "./pages/teacherBooksLessons.jsx";
@@ -68,7 +66,7 @@ const router = createBrowserRouter([
 
       { path: "account", element: <Account /> },
       
-      { path: "StudentDashboard", element: <StudentDashboard /> },
+      { path: "StudentDashboard", element: <Dashboard mode="student" /> },
       
       { path: "assignmentsDropbox", element: <AssignmentsDropbox /> },
       { path: "assignments", element: <Assignments /> },
@@ -76,7 +74,7 @@ const router = createBrowserRouter([
       { path: "booksLessons", element: <BooksLessons /> },
       { path: "booksContent", element: <BooksContent /> },
 
-      { path: "TeacherDashboard", element: <TeacherDashboard /> },
+      { path: "TeacherDashboard", element: <Dashboard mode="teacher" /> },
       {
         path: "Calendar",element: <Calendar/>},
       { path: "PassRemarks", element: <PassRemarks /> },
