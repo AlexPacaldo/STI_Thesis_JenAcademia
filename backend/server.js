@@ -202,6 +202,7 @@ async function deletePastTeacherAvailability(teacherId = null) {
 
 async function ensureAssignmentAttemptColumns() {
   await pool.query("ALTER TABLE assignments MODIFY COLUMN due_date DATE NULL");
+  await pool.query("ALTER TABLE assignment_submissions MODIFY COLUMN file_url VARCHAR(1000) DEFAULT NULL");
 
   if (!(await columnExists("assignments", "attempt_limit"))) {
     await pool.query("ALTER TABLE assignments ADD COLUMN attempt_limit INT DEFAULT NULL AFTER due_time");
@@ -212,11 +213,31 @@ async function ensureAssignmentAttemptColumns() {
   }
 }
 
+async function ensureBooksColumns() {
+  if (!(await columnExists("books", "teacher_id"))) {
+    await pool.query("ALTER TABLE books ADD COLUMN teacher_id INT DEFAULT NULL AFTER course_id");
+    await pool.query("ALTER TABLE books ADD INDEX idx_teacher_id (teacher_id)");
+  }
+
+  if (!(await columnExists("books", "cover_url"))) {
+    await pool.query("ALTER TABLE books ADD COLUMN cover_url VARCHAR(1000) DEFAULT NULL AFTER teacher_id");
+  }
+}
+
+async function ensureLessonsColumns() {
+  if (!(await columnExists("lessons", "file_path"))) {
+    await pool.query("ALTER TABLE lessons ADD COLUMN file_path VARCHAR(500) DEFAULT NULL AFTER content");
+  }
+}
+
 try {
   await ensureAssignmentAttemptColumns();
+  await ensureBooksColumns();
+  await ensureLessonsColumns();
   await deletePastTeacherAvailability();
+  
 } catch (err) {
-  console.error("Error preparing assignment attempt columns:", err);
+  console.error("Error preparing database columns:", err);
   process.exit(1);
 }
 
@@ -2482,6 +2503,503 @@ app.delete("/api/calendar/availability/:availability_id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error deleting availability" });
+  }
+});
+
+// ========== BOOKS/LESSONS MODULE ==========
+
+// Create multer storage for lessons (separate from assignments)
+const lessonUploadDir = path.join(process.cwd(), "uploads", "lessons");
+fs.mkdirSync(lessonUploadDir, { recursive: true });
+
+const lessonStorage = multer.diskStorage({
+  destination: lessonUploadDir,
+  filename: (req, file, cb) => {
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+    cb(null, `${Date.now()}-${safeName}`);
+  },
+});
+
+const lessonUpload = multer({ 
+  storage: lessonStorage,
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF, DOC, DOCX, and TXT files are allowed'), false);
+    }
+  }
+});
+
+// Create multer storage for book covers
+const bookCoverUploadDir = path.join(process.cwd(), "uploads", "books");
+fs.mkdirSync(bookCoverUploadDir, { recursive: true });
+
+const bookCoverStorage = multer.diskStorage({
+  destination: bookCoverUploadDir,
+  filename: (req, file, cb) => {
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+    cb(null, `${Date.now()}-${safeName}`);
+  },
+});
+
+const bookCoverUpload = multer({
+  storage: bookCoverStorage,
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image/jpeg, image/png, and image/webp are allowed for book covers'), false);
+    }
+  },
+});
+
+
+
+// ===== BOOKS ENDPOINTS =====
+
+// GET all books (filtered by course or teacher)
+app.get("/api/books", async (req, res) => {
+  try {
+    const { course_id, teacher_id } = req.query;
+
+    let query = "SELECT * FROM books";
+    let params = [];
+
+    if (course_id) {
+      query += " WHERE course_id = ?";
+      params.push(course_id);
+    } else if (teacher_id) {
+      query += " WHERE teacher_id = ?";
+      params.push(teacher_id);
+    }
+
+    query += " ORDER BY created_at DESC";
+
+    const [books] = await pool.query(query, params);
+    res.json({ books });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching books" });
+  }
+});
+
+// GET single book with lesson count
+app.get("/api/books/:book_id", async (req, res) => {
+  try {
+    const { book_id } = req.params;
+
+    const [books] = await pool.query(
+      "SELECT * FROM books WHERE book_id = ?",
+      [book_id]
+    );
+
+
+    if (books.length === 0) {
+      return res.status(404).json({ message: "Book not found" });
+    }
+
+    const [lessons] = await pool.query(
+      "SELECT COUNT(*) as lesson_count FROM lessons WHERE book_id = ?",
+      [book_id]
+    );
+
+    res.json({ 
+      book: {
+        ...books[0],
+        lesson_count: lessons[0].lesson_count
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching book" });
+  }
+});
+
+// CREATE new book
+app.post("/api/books", bookCoverUpload.single("cover"), async (req, res) => {
+  try {
+    const { title, description, course_id, teacher_id } = req.body;
+
+    console.log('DEBUG create book inputs:', { title, description, course_id, teacher_id, file: req.file && req.file.filename });
+
+    if (!title || !course_id || !teacher_id) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const cover_url = req.file ? `/uploads/books/${req.file.filename}` : null;
+
+    try {
+      const [result] = await pool.query(
+        "INSERT INTO books (title, description, course_id, teacher_id, cover_url) VALUES (?, ?, ?, ?, ?)",
+        [title, description || null, course_id, teacher_id, cover_url]
+      );
+
+      res.status(201).json({
+        message: "Book created successfully",
+        book_id: result.insertId,
+        cover_url,
+      });
+    } catch (dbErr) {
+      console.error('DB ERROR creating book:', dbErr && dbErr.message, dbErr);
+      return res.status(500).json({ message: "DB error creating book", error: dbErr.message });
+    }
+  } catch (err) {
+    console.error('CREATE BOOK ERROR', err && err.stack || err);
+    res.status(500).json({ message: "Error creating book", error: err && err.message });
+  }
+});
+
+
+// UPDATE book
+app.put("/api/books/:book_id", bookCoverUpload.single("cover"), async (req, res) => {
+  try {
+    const { book_id } = req.params;
+    const { title, description } = req.body;
+
+    console.log('DEBUG update book inputs:', { book_id, title, description, file: req.file && req.file.filename });
+
+    const cover_url = req.file ? `/uploads/books/${req.file.filename}` : null;
+
+    const updates = [];
+    const params = [];
+
+    if (title !== undefined) {
+      updates.push("title = ?");
+      params.push(title);
+    }
+    if (description !== undefined) {
+      updates.push("description = ?");
+      params.push(description || null);
+    }
+    if (cover_url !== null) {
+      updates.push("cover_url = ?");
+      params.push(cover_url);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ message: "No update fields provided" });
+    }
+
+    const query = `UPDATE books SET ${updates.join(", ")} WHERE book_id = ?`;
+    params.push(book_id);
+
+    try {
+      const [result] = await pool.query(query, params);
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "Book not found" });
+      }
+
+      res.json({ message: "Book updated successfully" });
+    } catch (dbErr) {
+      console.error('DB ERROR updating book:', dbErr && dbErr.message, dbErr);
+      return res.status(500).json({ message: "DB error updating book", error: dbErr.message });
+    }
+  } catch (err) {
+    console.error('UPDATE BOOK ERROR', err && err.stack || err);
+    res.status(500).json({ message: "Error updating book", error: err && err.message });
+  }
+});
+
+// DELETE book (cascade delete lessons and progress)
+app.delete("/api/books/:book_id", async (req, res) => {
+  try {
+    const { book_id } = req.params;
+
+    // Get all lesson IDs for this book
+    const [lessons] = await pool.query(
+      "SELECT lesson_id FROM lessons WHERE book_id = ?",
+      [book_id]
+    );
+
+    // Delete lesson progress for all lessons in this book
+    for (const lesson of lessons) {
+      await pool.query(
+        "DELETE FROM lesson_progress WHERE lesson_id = ?",
+        [lesson.lesson_id]
+      );
+    }
+
+    // Delete all lessons
+    await pool.query("DELETE FROM lessons WHERE book_id = ?", [book_id]);
+
+    // Delete the book
+    const [result] = await pool.query(
+      "DELETE FROM books WHERE book_id = ?",
+      [book_id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Book not found" });
+    }
+
+    res.json({ message: "Book deleted successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error deleting book" });
+  }
+});
+
+// ===== LESSONS ENDPOINTS =====
+
+// GET all lessons for a book
+app.get("/api/lessons", async (req, res) => {
+  try {
+    const { book_id } = req.query;
+
+    if (!book_id) {
+      return res.status(400).json({ message: "book_id is required" });
+    }
+
+    const [lessons] = await pool.query(
+      "SELECT * FROM lessons WHERE book_id = ? ORDER BY order_number ASC, lesson_number ASC",
+      [book_id]
+    );
+
+    res.json({ lessons });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching lessons" });
+  }
+});
+
+// GET single lesson with progress info
+app.get("/api/lessons/:lesson_id", async (req, res) => {
+  try {
+    const { lesson_id } = req.params;
+    const { student_id } = req.query;
+
+    const [lessons] = await pool.query(
+      "SELECT * FROM lessons WHERE lesson_id = ?",
+      [lesson_id]
+    );
+
+    if (lessons.length === 0) {
+      return res.status(404).json({ message: "Lesson not found" });
+    }
+
+    let progress = null;
+    if (student_id) {
+      const [progressRows] = await pool.query(
+        "SELECT * FROM lesson_progress WHERE lesson_id = ? AND student_id = ?",
+        [lesson_id, student_id]
+      );
+      progress = progressRows[0] || null;
+    }
+
+    res.json({ 
+      lesson: lessons[0],
+      progress
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching lesson" });
+  }
+});
+
+// CREATE new lesson (with file upload)
+app.post("/api/lessons", lessonUpload.single("file"), async (req, res) => {
+  try {
+    const { book_id, lesson_number, title, content, order_number, is_published } = req.body;
+
+    if (!book_id || !lesson_number || !title) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const file_path = req.file ? `/uploads/lessons/${req.file.filename}` : null;
+
+    const [result] = await pool.query(
+      `INSERT INTO lessons (book_id, lesson_number, title, content, file_path, order_number, is_published)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [book_id, lesson_number, title, content || null, file_path, order_number || lesson_number, is_published || 1]
+    );
+
+    res.status(201).json({ 
+      message: "Lesson created successfully",
+      lesson_id: result.insertId,
+      file_path
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error creating lesson" });
+  }
+});
+
+// UPDATE lesson (with optional file replacement)
+app.put("/api/lessons/:lesson_id", lessonUpload.single("file"), async (req, res) => {
+  try {
+    const { lesson_id } = req.params;
+    const { lesson_number, title, content, order_number, is_published } = req.body;
+
+    // Get current lesson to check for old file
+    const [lessons] = await pool.query(
+      "SELECT * FROM lessons WHERE lesson_id = ?",
+      [lesson_id]
+    );
+
+    if (lessons.length === 0) {
+      return res.status(404).json({ message: "Lesson not found" });
+    }
+
+    let file_path = lessons[0].file_path;
+    if (req.file) {
+      file_path = `/uploads/lessons/${req.file.filename}`;
+    }
+
+    const [result] = await pool.query(
+      `UPDATE lessons SET lesson_number = ?, title = ?, content = ?, file_path = ?, order_number = ?, is_published = ? WHERE lesson_id = ?`,
+      [lesson_number, title, content || null, file_path, order_number || lesson_number, is_published, lesson_id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Lesson not found" });
+    }
+
+    res.json({ 
+      message: "Lesson updated successfully",
+      file_path
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error updating lesson" });
+  }
+});
+
+// DELETE lesson
+app.delete("/api/lessons/:lesson_id", async (req, res) => {
+  try {
+    const { lesson_id } = req.params;
+
+    // Delete lesson progress records
+    await pool.query(
+      "DELETE FROM lesson_progress WHERE lesson_id = ?",
+      [lesson_id]
+    );
+
+    // Delete lesson
+    const [result] = await pool.query(
+      "DELETE FROM lessons WHERE lesson_id = ?",
+      [lesson_id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Lesson not found" });
+    }
+
+    res.json({ message: "Lesson deleted successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error deleting lesson" });
+  }
+});
+
+// ===== LESSON PROGRESS ENDPOINTS =====
+
+// GET student's lesson progress
+app.get("/api/lesson-progress", async (req, res) => {
+  try {
+    const { student_id, book_id } = req.query;
+
+    if (!student_id) {
+      return res.status(400).json({ message: "student_id is required" });
+    }
+
+    let query = `
+      SELECT lp.* FROM lesson_progress lp
+      JOIN lessons l ON lp.lesson_id = l.lesson_id
+    `;
+    let params = [student_id];
+
+    if (book_id) {
+      query += " WHERE lp.student_id = ? AND l.book_id = ?";
+      params.push(book_id);
+    } else {
+      query += " WHERE lp.student_id = ?";
+    }
+
+    query += " ORDER BY lp.updated_at DESC";
+
+    const [progress] = await pool.query(query, params);
+    res.json({ progress });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching lesson progress" });
+  }
+});
+
+// MARK lesson as complete (or toggle completion)
+app.post("/api/lesson-progress", async (req, res) => {
+  try {
+    const { student_id, lesson_id, is_completed, time_spent_minutes } = req.body;
+
+    if (!student_id || !lesson_id) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Check if record exists
+    const [existing] = await pool.query(
+      "SELECT progress_id FROM lesson_progress WHERE student_id = ? AND lesson_id = ?",
+      [student_id, lesson_id]
+    );
+
+    if (existing.length > 0) {
+      // Update existing
+      const [result] = await pool.query(
+        `UPDATE lesson_progress 
+         SET is_completed = ?, time_spent_minutes = ?, completion_date = ?
+         WHERE student_id = ? AND lesson_id = ?`,
+        [is_completed ?? 1, time_spent_minutes || 0, is_completed ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null, student_id, lesson_id]
+      );
+
+      res.json({ 
+        message: "Lesson progress updated",
+        progress_id: existing[0].progress_id
+      });
+    } else {
+      // Create new
+      const [result] = await pool.query(
+        `INSERT INTO lesson_progress (student_id, lesson_id, is_completed, time_spent_minutes, completion_date)
+         VALUES (?, ?, ?, ?, ?)`,
+        [student_id, lesson_id, is_completed ?? 1, time_spent_minutes || 0, is_completed ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null]
+      );
+
+      res.status(201).json({ 
+        message: "Lesson progress created",
+        progress_id: result.insertId
+      });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error updating lesson progress" });
+  }
+});
+
+// GET teacher's books with lesson stats
+app.get("/api/teacher/books", async (req, res) => {
+  try {
+    const { teacher_id } = req.query;
+
+    if (!teacher_id) {
+      return res.status(400).json({ message: "teacher_id is required" });
+    }
+
+    const [books] = await pool.query(
+      `SELECT b.*, COUNT(l.lesson_id) as lesson_count
+       FROM books b
+       LEFT JOIN lessons l ON b.book_id = l.book_id
+       WHERE b.teacher_id = ?
+       GROUP BY b.book_id
+       ORDER BY b.created_at DESC`,
+      [teacher_id]
+    );
+
+    res.json({ books });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching teacher books" });
   }
 });
 

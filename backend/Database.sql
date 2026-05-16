@@ -27,7 +27,7 @@ CREATE TABLE `assignment_submissions` (
   `assignment_id` int NOT NULL,
   `student_id` int NOT NULL,
   `submission_text` text,
-  `file_url` varchar(500) DEFAULT NULL,
+  `file_url` varchar(1000) DEFAULT NULL,
   `attempt_count` int NOT NULL DEFAULT '1',
   `submitted_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `grade` int DEFAULT NULL,
@@ -85,13 +85,16 @@ DROP TABLE IF EXISTS `books`;
 CREATE TABLE `books` (
   `book_id` int NOT NULL AUTO_INCREMENT,
   `course_id` int NOT NULL,
+  `teacher_id` int DEFAULT NULL,
   `title` varchar(255) NOT NULL,
   `description` text,
   `author` varchar(255) DEFAULT NULL,
+  `cover_url` varchar(1000) DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`book_id`),
   KEY `idx_course_id` (`course_id`),
+  KEY `idx_teacher_id` (`teacher_id`),
   CONSTRAINT `books_ibfk_1` FOREIGN KEY (`course_id`) REFERENCES `courses` (`course_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -268,6 +271,7 @@ CREATE TABLE `lessons` (
   `lesson_number` int NOT NULL,
   `title` varchar(255) NOT NULL,
   `content` longtext,
+  `file_path` varchar(500) DEFAULT NULL,
   `order_number` int DEFAULT NULL,
   `is_published` tinyint(1) DEFAULT '1',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,

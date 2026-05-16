@@ -6,6 +6,15 @@ import { addLocalNotification } from "../utils/localNotificationStore.js";
 
 const API = "http://localhost:3001";
 
+function normalizeFileUrl(url) {
+  if (!url) return "";
+  const cleaned = String(url).replace(/\\/g, "/");
+  if (/^https?:\/\//i.test(cleaned)) return cleaned;
+  if (cleaned.startsWith("/uploads/")) return `${API}${cleaned}`;
+  if (cleaned.startsWith("uploads/")) return `${API}/${cleaned}`;
+  return cleaned;
+}
+
 function getUserName(user) {
   return user.firstName || user.first_name
     ? `${user.firstName || user.first_name || ""} ${user.lastName || user.last_name || ""}`.trim()
@@ -24,22 +33,58 @@ function formatStudent(student) {
 
 function getSubmissionFileName(url) {
   if (!url) return "";
-  return url.split("/").pop();
+  return decodeURIComponent(String(url).split("/").pop() || "Submitted file");
 }
 
 function renderSubmissionPreview(url) {
-  if (!url) return null;
-  const ext = url.split(".").pop().split("?")[0].toLowerCase();
+  const fileUrl = normalizeFileUrl(url);
+  if (!fileUrl) return null;
+
+  const ext = fileUrl.split(".").pop().split("?")[0].toLowerCase();
   if (["mp3", "wav", "ogg", "m4a"].includes(ext)) {
-    return <audio controls src={url} className={styles.filePlayer} />;
+    return <audio controls src={fileUrl} className={styles.filePlayer} />;
   }
   if (["mp4", "webm", "ogg", "mov"].includes(ext)) {
-    return <video controls src={url} className={styles.filePlayer} />;
+    return <video controls src={fileUrl} className={styles.filePlayer} />;
   }
   if (["png", "jpg", "jpeg", "gif", "svg", "webp"].includes(ext)) {
-    return <img src={url} alt="Submitted file" className={styles.submissionImage} />;
+    return <img src={fileUrl} alt="Submitted file" className={styles.submissionImage} />;
   }
-  return null;
+  if (["pdf", "txt"].includes(ext)) {
+    return (
+      <iframe
+        title="Submitted file preview"
+        src={fileUrl}
+        className={styles.submissionDocument}
+      />
+    );
+  }
+  return (
+    <div className={styles.unsupportedPreview}>
+      This file type cannot be previewed here. Use Open file or Download.
+    </div>
+  );
+}
+
+function renderSubmissionFile(url) {
+  const fileUrl = normalizeFileUrl(url);
+  if (!fileUrl) return null;
+
+  return (
+    <div className={styles.submissionFilePreview}>
+      <span className={styles.submissionLabel}>Submitted file</span>
+      <p className={styles.fileName}>{getSubmissionFileName(fileUrl)}</p>
+      <div className={styles.fileActions}>
+        <a href={fileUrl} target="_blank" rel="noreferrer">
+          Open file
+        </a>
+        <a href={fileUrl} download>
+          Download
+        </a>
+      </div>
+      {renderSubmissionPreview(fileUrl)}
+    </div>
+  );
 }
 
 function getAssignmentInstructions(submission, assignments) {
@@ -380,16 +425,8 @@ export default function AssignTask() {
                             </>
                           ) : null}
                           {item.fileUrl ? (
-                            <div className={styles.submissionFilePreview}>
-                              <span className={styles.submissionLabel}>Submitted file</span>
-                              <p>
-                                <a href={item.fileUrl} target="_blank" rel="noreferrer">
-                                  {getSubmissionFileName(item.fileUrl)}
-                                </a>
-                              </p>
-                            </div>
+                            renderSubmissionFile(item.fileUrl)
                           ) : null}
-                          {renderSubmissionPreview(item.fileUrl)}
                           {!item.comments && !item.fileUrl ? (
                             <p>Comment submission</p>
                           ) : null}
@@ -427,15 +464,7 @@ export default function AssignTask() {
                       <p><strong>Student answer:</strong> {selectedSubmission.comments}</p>
                     ) : null}
                     {selectedSubmission.fileUrl ? (
-                      <div className={styles.submissionFilePreview}>
-                        <p>
-                          <strong>Submitted file: </strong>
-                          <a href={selectedSubmission.fileUrl} target="_blank" rel="noreferrer">
-                            {getSubmissionFileName(selectedSubmission.fileUrl)}
-                          </a>
-                        </p>
-                        {renderSubmissionPreview(selectedSubmission.fileUrl)}
-                      </div>
+                      renderSubmissionFile(selectedSubmission.fileUrl)
                     ) : null}
                     {!selectedSubmission.comments && !selectedSubmission.fileUrl ? (
                       <p><strong>Student answer:</strong> Comment submission</p>
