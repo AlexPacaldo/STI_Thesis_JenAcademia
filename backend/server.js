@@ -108,6 +108,10 @@ async function ensureBooksColumns() {
     await pool.query("ALTER TABLE books ADD COLUMN teacher_id INT DEFAULT NULL AFTER course_id");
     await pool.query("ALTER TABLE books ADD INDEX idx_teacher_id (teacher_id)");
   }
+
+  if (!(await columnExists("books", "cover_url"))) {
+    await pool.query("ALTER TABLE books ADD COLUMN cover_url VARCHAR(1000) DEFAULT NULL AFTER teacher_id");
+  }
 }
 
 async function ensureLessonsColumns() {
@@ -2264,30 +2268,48 @@ app.put("/api/books/:book_id", bookCoverUpload.single("cover"), async (req, res)
     const { book_id } = req.params;
     const { title, description } = req.body;
 
+    console.log('DEBUG update book inputs:', { book_id, title, description, file: req.file && req.file.filename });
+
     const cover_url = req.file ? `/uploads/books/${req.file.filename}` : null;
 
-    let query = "UPDATE books SET title = ?, description = ?";
-    const params = [title, description || null];
+    const updates = [];
+    const params = [];
 
+    if (title !== undefined) {
+      updates.push("title = ?");
+      params.push(title);
+    }
+    if (description !== undefined) {
+      updates.push("description = ?");
+      params.push(description || null);
+    }
     if (cover_url !== null) {
-      query += ", cover_url = ?";
+      updates.push("cover_url = ?");
       params.push(cover_url);
     }
 
-    query += " WHERE book_id = ?";
-    params.push(book_id);
-
-    const [result] = await pool.query(query, params);
-
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Book not found" });
+    if (updates.length === 0) {
+      return res.status(400).json({ message: "No update fields provided" });
     }
 
-    res.json({ message: "Book updated successfully" });
+    const query = `UPDATE books SET ${updates.join(", ")} WHERE book_id = ?`;
+    params.push(book_id);
+
+    try {
+      const [result] = await pool.query(query, params);
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "Book not found" });
+      }
+
+      res.json({ message: "Book updated successfully" });
+    } catch (dbErr) {
+      console.error('DB ERROR updating book:', dbErr && dbErr.message, dbErr);
+      return res.status(500).json({ message: "DB error updating book", error: dbErr.message });
+    }
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Error updating book" });
+    console.error('UPDATE BOOK ERROR', err && err.stack || err);
+    res.status(500).json({ message: "Error updating book", error: err && err.message });
   }
 });
 

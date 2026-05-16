@@ -83,7 +83,7 @@ export default function StudentBooksLessons() {
                 {book.cover_url ? (
                   <img
                     className={styles.bookCover}
-                    src={`${API_BASE}/${book.cover_url}`}
+                    src={`${API_BASE}${book.cover_url}`}
                     alt="Book cover"
                   />
                 ) : (

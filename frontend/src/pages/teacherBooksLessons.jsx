@@ -138,7 +138,7 @@ export default function TeacherBooksLessons() {
             {books.map((book) => (
               <div key={book.book_id} className={styles.LessonsCard}>
                 {book.cover_url ? (
-                  <img className={styles.bookCover} src={`${API_BASE}/${book.cover_url}`} alt="Book cover" />
+                  <img className={styles.bookCover} src={`${API_BASE}${book.cover_url}`} alt="Book cover" />
                 ) : (
                   <div className={styles.bookImagePlaceholder}>
                     <span className={styles.placeholder}>Book</span>
@@ -164,13 +164,13 @@ export default function TeacherBooksLessons() {
                   >
                     Delete
                   </button>
-+                 <button
-+                    type="button"
-+                    className={styles.viewBtn}
-+                    onClick={() => { setEditingBookId(book.book_id); setShowCoverModal(true); }}
-+                  >
-+                    Edit Cover
-+                  </button>
+                  <button
+                    type="button"
+                    className={styles.viewBtn}
+                    onClick={() => { setEditingBookId(book.book_id); setShowCoverModal(true); }}
+                  >
+                    Edit Cover
+                  </button>
                 </div>
               </div>
             ))}
@@ -233,50 +233,51 @@ export default function TeacherBooksLessons() {
           </div>
         </div>
       )}
-+
-+      {/* Edit Cover Modal */}
-+      {showCoverModal && (
-+        <div className={styles.modal}>
-+          <div className={styles.modalContent}>
-+            <h2>Edit Book Cover</h2>
-+            <label>
-+              Select image:
-+              <input type="file" accept="image/*" onChange={(e) => setCoverFile(e.target.files?.[0] || null)} />
-+            </label>
-+
-+            <div className={styles.modalButtons}>
-+              <button
-+                className={styles.confirmBtn}
-+                onClick={async () => {
-+                  if (!coverFile || !editingBookId) {
-+                    notify?.("Please select an image", "error");
-+                    return;
-+                  }
-+                  try {
-+                    const fd = new FormData();
-+                    fd.append('cover', coverFile);
-+                    const res = await fetch(`${API_BASE}/api/books/${editingBookId}`, {
-+                      method: 'PUT',
-+                      body: fd,
-+                    });
-+                    if (!res.ok) throw new Error('Failed to update cover');
-+                    notify?.('Cover updated', 'success');
-+                    setShowCoverModal(false);
-+                    setCoverFile(null);
-+                    setEditingBookId(null);
-+                    fetchBooks();
-+                  } catch (err) {
-+                    console.error(err);
-+                    notify?.(`Error: ${err.message}`, 'error');
-+                  }
-+                }}
-+              >Save</button>
-+              <button className={styles.cancelBtn} onClick={() => { setShowCoverModal(false); setCoverFile(null); setEditingBookId(null); }}>Cancel</button>
-+            </div>
-+          </div>
-+        </div>
-+      )}
-*** End Patch
+
+      {/* Edit Cover Modal */}
+      {showCoverModal && (
+        <div className={styles.modal}>
+          <div className={styles.modalContent}>
+            <h2>Edit Book Cover</h2>
+            <label>
+              Select image:
+              <input type="file" accept="image/*" onChange={(e) => setCoverFile(e.target.files?.[0] || null)} />
+            </label>
+
+            <div className={styles.modalButtons}>
+              <button
+                className={styles.confirmBtn}
+                onClick={async () => {
+                  if (!coverFile || !editingBookId) {
+                    notify?.("Please select an image", "error");
+                    return;
+                  }
+                  try {
+                    const fd = new FormData();
+                    fd.append('cover', coverFile);
+                    const res = await fetch(`${API_BASE}/api/books/${editingBookId}`, {
+                      method: 'PUT',
+                      body: fd,
+                    });
+                    if (!res.ok) throw new Error('Failed to update cover');
+                    notify?.('Cover updated', 'success');
+                    setShowCoverModal(false);
+                    setCoverFile(null);
+                    setEditingBookId(null);
+                    fetchBooks();
+                  } catch (err) {
+                    console.error(err);
+                    notify?.(`Error: ${err.message}`, 'error');
+                  }
+                }}
+              >
+                Save
+              </button>
+              <button className={styles.cancelBtn} onClick={() => { setShowCoverModal(false); setCoverFile(null); setEditingBookId(null); }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

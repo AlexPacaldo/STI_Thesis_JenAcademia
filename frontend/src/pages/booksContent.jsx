@@ -340,6 +340,8 @@ export default function BooksContent({ mode = "student" }) {
                   try {
                     const fd = new FormData();
                     fd.append("cover", coverFile);
+                    fd.append("title", book.title);
+                    fd.append("description", book.description || "");
 
                     const res = await fetch(`${API_BASE}/api/books/${book.book_id}`, {
                       method: "PUT",

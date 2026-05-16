@@ -268,6 +268,36 @@
       width: 100%;
     }
 
+    .historyHeader {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .historyClear {
+      background: #111827;
+      color: white;
+      border: none;
+      border-radius: 999px;
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      font-weight: 700;
+      transition: background-color 0.2s ease;
+    }
+
+    .historyClear:hover {
+      background: #333;
+    }
+
+    .submissionSummary {
+      margin: 0.5rem 0 1rem;
+      color: #4b5563;
+      font-size: 0.95rem;
+    }
+
     .submissionList {
       display: flex;
       flex-direction: column;
