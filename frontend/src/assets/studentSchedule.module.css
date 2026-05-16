@@ -136,6 +136,12 @@
 /* interactions */
 .clickableCell { cursor: pointer; }
 .clickableCell:hover { outline: 2px solid rgba(0,0,0,.25); }
+.cell:disabled {
+  cursor: default;
+}
+.pastCell:disabled {
+  opacity: 1;
+}
 .selected { outline: 3px solid #111; }
 
 /* BOOKING PANEL */

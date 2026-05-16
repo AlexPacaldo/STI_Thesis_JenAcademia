@@ -1,16 +1,20 @@
 // server.js (ESM)
 import bcrypt from "bcryptjs";
 import cors from "cors";
+import dotenv from "dotenv";
 import express from "express";
 import fs from "fs";
 import multer from "multer";
 import mysql from "mysql2/promise";
 import path from "path";
-//hi
+import crypto from "crypto";
+
+dotenv.config();
+
 const PORT = process.env.PORT || 3001;
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USER || "root";
-const DB_PASSWORD = process.env.DB_PASSWORD || "LORAKLANG0405++";    // <- your password here
+const DB_PASSWORD = process.env.DB_PASSWORD || "Aj1182014";    // <- your password here
 const DB_NAME = process.env.DB_NAME || "jen_academia"; // your schema
 
 const app = express();
@@ -79,6 +83,100 @@ function isDueDatePast(dueDate, dueTime) {
   return dueDateObj < now;
 }
 
+const MS_TENANT_ID = process.env.MS_TENANT_ID || "";
+const MS_CLIENT_ID = process.env.MS_CLIENT_ID || "";
+const MS_CLIENT_SECRET = process.env.MS_CLIENT_SECRET || "";
+const MS_TEAMS_ORGANIZER_UPN = process.env.MS_TEAMS_ORGANIZER_UPN || "";
+
+async function getMicrosoftGraphAccessToken() {
+  if (!MS_TENANT_ID || !MS_CLIENT_ID || !MS_CLIENT_SECRET) {
+    return null;
+  }
+
+  const tokenUrl = `https://login.microsoftonline.com/${MS_TENANT_ID}/oauth2/v2.0/token`;
+  const form = new URLSearchParams({
+    client_id: MS_CLIENT_ID,
+    scope: "https://graph.microsoft.com/.default",
+    client_secret: MS_CLIENT_SECRET,
+    grant_type: "client_credentials",
+  });
+
+  const response = await fetch(tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: form.toString(),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Graph token error: ${response.status} ${body}`);
+  }
+
+  const data = await response.json();
+  return data.access_token;
+}
+
+function formatMeetingDateTime(date, time) {
+  if (!date || !time) return null;
+  const [hours, minutes] = time.split(":").map(Number);
+  const dt = new Date(`${date}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`);
+  return dt.toISOString();
+}
+
+async function createTeamsMeeting(subject, date, startTime, endTime, organizerEmail) {
+  const accessToken = await getMicrosoftGraphAccessToken();
+  if (!accessToken) {
+    throw new Error("Microsoft Graph credentials not configured");
+  }
+
+  const organizer = organizerEmail || MS_TEAMS_ORGANIZER_UPN;
+  if (!organizer) {
+    throw new Error("No organizer email configured for Teams meeting creation");
+  }
+
+  const startDateTime = formatMeetingDateTime(date, startTime);
+  const endDateTime = formatMeetingDateTime(date, endTime);
+  if (!startDateTime || !endDateTime) {
+    throw new Error("Invalid meeting start or end time");
+  }
+
+  const meetingBody = {
+    subject: subject || "Jen Academia Class",
+    startDateTime,
+    endDateTime,
+  };
+
+  const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(organizer)}/onlineMeetings`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(meetingBody),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Graph meeting creation error: ${response.status} ${body}`);
+  }
+
+  const data = await response.json();
+  if (!data.joinUrl) {
+    throw new Error("Graph meeting response missing joinUrl");
+  }
+
+  return data.joinUrl;
+}
+
+function generateTeamsMeetingLink() {
+  const uuid = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString("hex");
+  const safeMeetingId = encodeURIComponent(`19:meeting_${uuid}@thread.v2`);
+  return `https://teams.microsoft.com/l/meetup-join/${safeMeetingId}/0?context=%7B%22Tid%22%3A%22placeholder%22%2C%22Oid%22%3A%22placeholder%22%7D`;
+}
+
 async function columnExists(tableName, columnName) {
   const [rows] = await pool.query(
     `SELECT COLUMN_NAME
@@ -88,6 +186,18 @@ async function columnExists(tableName, columnName) {
     [DB_NAME, tableName, columnName]
   );
   return rows.length > 0;
+}
+
+async function deletePastTeacherAvailability(teacherId = null) {
+  if (teacherId) {
+    await pool.query(
+      "DELETE FROM teacher_availability WHERE teacher_id = ? AND available_date < CURDATE()",
+      [teacherId]
+    );
+    return;
+  }
+
+  await pool.query("DELETE FROM teacher_availability WHERE available_date < CURDATE()");
 }
 
 async function ensureAssignmentAttemptColumns() {
@@ -124,6 +234,8 @@ try {
   await ensureAssignmentAttemptColumns();
   await ensureBooksColumns();
   await ensureLessonsColumns();
+  await deletePastTeacherAvailability();
+  
 } catch (err) {
   console.error("Error preparing database columns:", err);
   process.exit(1);
@@ -147,6 +259,138 @@ async function resolveCourseIdByIdOrName(value) {
     [value]
   );
   return ins.insertId;
+}
+
+const aiCriterionLabels = {
+  learningGoal: "Learning goal",
+  learningStyle: "Learning style",
+  personality: "Student personality",
+  focusArea: "Focus area",
+  pace: "Learning pace",
+};
+
+function normalizeCriteria(criteria = {}) {
+  return Object.fromEntries(
+    Object.entries(aiCriterionLabels).map(([key]) => [key, String(criteria[key] || "").trim()])
+  );
+}
+
+function buildCriteriaNotes(criteria) {
+  const lines = Object.entries(criteria)
+    .filter(([, value]) => value)
+    .map(([key, value]) => `${aiCriterionLabels[key]}: ${value}`);
+
+  return lines.length ? `AI matching criteria:\n${lines.join("\n")}` : "";
+}
+
+function buildTeacherAiBio({ bio, teachingStyle, personalityStrength, idealStudentPace }) {
+  const aiTags = [
+    teachingStyle ? `Teaching style: ${teachingStyle}` : "",
+    personalityStrength ? `Teacher strength: ${personalityStrength}` : "",
+    idealStudentPace ? `Best student pace: ${idealStudentPace}` : "",
+  ].filter(Boolean);
+
+  return [bio || "", aiTags.length ? `AI matching profile:\n${aiTags.join("\n")}` : ""]
+    .filter((part) => String(part).trim())
+    .join("\n\n");
+}
+
+function scoreTeacherForStudent(teacher, criteria, trialNotes, courseId) {
+  const profileText = [
+    teacher.first_name,
+    teacher.last_name,
+    teacher.bio,
+    teacher.specialization,
+  ].filter(Boolean).join(" ").toLowerCase();
+  const notes = String(trialNotes || "").toLowerCase();
+  let score = Number(teacher.experience_years || 0) * 2;
+  const reasons = [];
+
+  if (courseId && Number(teacher.selected_course_match || 0) > 0) {
+    score += 12;
+    reasons.push("matches the selected course");
+  }
+
+  const weightedCriteria = [
+    ["learningGoal", 14],
+    ["focusArea", 12],
+    ["learningStyle", 10],
+    ["personality", 8],
+    ["pace", 8],
+  ];
+
+  for (const [key, weight] of weightedCriteria) {
+    const value = String(criteria[key] || "").toLowerCase();
+    if (!value) continue;
+
+    const words = value.split(/[\s-]+/).filter((word) => word.length > 2);
+    const matched = words.some((word) => profileText.includes(word) || notes.includes(word));
+    if (matched) {
+      score += weight;
+      reasons.push(`${aiCriterionLabels[key].toLowerCase()} fit`);
+    }
+  }
+
+  if (criteria.learningStyle === "structured") score += profileText.includes("grammar") ? 5 : 0;
+  if (criteria.learningStyle === "conversational") score += profileText.includes("conversation") || profileText.includes("speaking") ? 5 : 0;
+  if (criteria.focusArea === "speaking") score += profileText.includes("speaking") || profileText.includes("conversation") ? 5 : 0;
+  if (criteria.focusArea === "grammar") score += profileText.includes("grammar") ? 5 : 0;
+  if (criteria.personality === "shy") score += profileText.includes("patient") || profileText.includes("supportive") ? 5 : 0;
+  if (criteria.pace === "slow") score += profileText.includes("patient") ? 4 : 0;
+
+  score -= Number(teacher.assigned_student_count || 0);
+
+  return {
+    ...teacher,
+    score,
+    reasons: reasons.length ? reasons : ["balanced match based on teacher profile and current load"],
+  };
+}
+
+async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = null, preferredTeacherId = null }) {
+  const normalizedCriteria = normalizeCriteria(criteria);
+  const [teachers] = await pool.query(
+    `SELECT u.user_id, u.first_name, u.last_name, u.email,
+            tp.bio, tp.specialization, tp.experience_years,
+            COUNT(student.user_id) AS assigned_student_count,
+            MAX(CASE WHEN student.user_id IS NOT NULL AND sp.course_id = ? THEN 1 ELSE 0 END) AS selected_course_match
+     FROM users u
+     LEFT JOIN teacher_profiles tp ON tp.user_id = u.user_id
+     LEFT JOIN student_profiles sp ON sp.assigned_teacher_id = u.user_id
+     LEFT JOIN users student ON student.user_id = sp.user_id AND student.status = 'active'
+     WHERE u.role = 'teacher' AND u.status = 'active'
+     GROUP BY u.user_id, u.first_name, u.last_name, u.email, tp.bio, tp.specialization, tp.experience_years
+     ORDER BY u.first_name ASC, u.last_name ASC`,
+    [courseId || 0]
+  );
+
+  const ranked = teachers
+    .map((teacher) => scoreTeacherForStudent(teacher, normalizedCriteria, trialNotes, courseId))
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return Number(a.assigned_student_count || 0) - Number(b.assigned_student_count || 0);
+    });
+
+  const underBalanceLimit = ranked.filter((teacher) => Number(teacher.assigned_student_count || 0) < 5);
+  const leastLoaded = [...ranked].sort((a, b) => {
+    const loadDiff = Number(a.assigned_student_count || 0) - Number(b.assigned_student_count || 0);
+    if (loadDiff !== 0) return loadDiff;
+    return b.score - a.score;
+  })[0];
+  const preferred = preferredTeacherId
+    ? ranked.find((teacher) => String(teacher.user_id) === String(preferredTeacherId))
+    : null;
+  const assigned = preferred && Number(preferred.assigned_student_count || 0) < 5
+    ? preferred
+    : underBalanceLimit[0] || leastLoaded;
+
+  return {
+    teacher: assigned || null,
+    rankedTeachers: ranked,
+    criteria: normalizedCriteria,
+    overBalanceTeachers: ranked.filter((teacher) => Number(teacher.assigned_student_count || 0) >= 5),
+    usedLeastLoadedFallback: underBalanceLimit.length === 0 && Boolean(leastLoaded),
+  };
 }
 
 const assignmentSelect = `
@@ -417,10 +661,53 @@ app.put("/api/users/:id/password", async (req, res) => {
 
 //ADMIN
 
+app.post("/api/admin/recommend-teacher", async (req, res) => {
+  try {
+    const { criteria, trialNotes, courseId, teacherId } = req.body || {};
+    const recommendation = await recommendTeacher({
+      criteria,
+      trialNotes,
+      courseId,
+      preferredTeacherId: teacherId,
+    });
+
+    res.json({
+      teacher: recommendation.teacher,
+      rankedTeachers: recommendation.rankedTeachers,
+      overBalanceTeachers: recommendation.overBalanceTeachers,
+      usedLeastLoadedFallback: recommendation.usedLeastLoadedFallback,
+      criteria: recommendation.criteria,
+    });
+  } catch (err) {
+    console.error("POST /api/admin/recommend-teacher error:", err);
+    res.status(500).json({ message: "Error recommending teacher" });
+  }
+});
+
 //Create Teacher Account
 app.post("/api/admin/users", async (req, res) => {
   try {
-    const { firstName, lastName, email, password, contact, role = "teacher", classesAvailed, level, teacherId, trialNotes, courseId } = req.body;
+    const {
+      firstName,
+      lastName,
+      email,
+      password,
+      contact,
+      role = "teacher",
+      classesAvailed,
+      level,
+      teacherId,
+      trialNotes,
+      courseId,
+      aiCriteria,
+      specialization,
+      experienceYears,
+      experience_years,
+      teachingStyle,
+      personalityStrength,
+      idealStudentPace,
+      bio,
+    } = req.body;
 
     const [exist] = await pool.query("SELECT user_id FROM users WHERE email = ?", [email]);
     if (exist.length) return res.status(409).json({ message: "Email already exists" });
@@ -440,19 +727,48 @@ app.post("/api/admin/users", async (req, res) => {
     
     // Create teacher profile if role is teacher
     if (role === "teacher") {
-      await pool.query(`INSERT INTO teacher_profiles (user_id, bio) VALUES (?, '')`, [userId]);
+      const rawExperienceYears = experienceYears ?? experience_years ?? null;
+      const parsedExperienceYears =
+        rawExperienceYears === null || rawExperienceYears === "" ? null : Number(rawExperienceYears);
+      const teacherBio = buildTeacherAiBio({
+        bio,
+        teachingStyle,
+        personalityStrength,
+        idealStudentPace,
+      });
+
+      await pool.query(
+        `INSERT INTO teacher_profiles (user_id, bio, specialization, experience_years)
+         VALUES (?, ?, ?, ?)`,
+        [
+          userId,
+          teacherBio || "",
+          specialization || null,
+          Number.isFinite(parsedExperienceYears) ? parsedExperienceYears : null,
+        ]
+      );
     }
     
     // Create student profile if role is student
     if (role === "student") {
-      const assignedTeacherId = teacherId ? parseInt(teacherId, 10) : null;
+      const recommendation = await recommendTeacher({
+        criteria: aiCriteria,
+        trialNotes,
+        courseId,
+        preferredTeacherId: teacherId,
+      });
+      const assignedTeacherId = recommendation.teacher?.user_id || null;
       const proficiencyLevel = level || "beginner";
       const courseIdValue = courseId ? parseInt(courseId, 10) : null;
+      const criteriaNotes = buildCriteriaNotes(recommendation.criteria);
+      const finalTrialNotes = [trialNotes || "", criteriaNotes]
+        .filter((part) => String(part).trim())
+        .join("\n\n");
       
       await pool.query(`
         INSERT INTO student_profiles (user_id, proficiency_level, assigned_teacher_id, course_id, trial_notes)
         VALUES (?, ?, ?, ?, ?)
-      `, [userId, proficiencyLevel, assignedTeacherId, courseIdValue, trialNotes || null]);
+      `, [userId, proficiencyLevel, assignedTeacherId, courseIdValue, finalTrialNotes || null]);
       
       // Create student class package if classesAvailed is provided
       if (classesAvailed && parseInt(classesAvailed, 10) > 0) {
@@ -539,6 +855,8 @@ app.get("/api/calendar/teacher-availability", async (req, res) => {
       return res.status(400).json({ message: "Missing teacher_id, year, or month" });
     }
 
+    await deletePastTeacherAvailability(teacher_id);
+
     const monthIndex = parseInt(month, 10);
     const yearValue = parseInt(year, 10);
     const daysInMonth = new Date(yearValue, monthIndex, 0).getDate();
@@ -597,8 +915,10 @@ app.get("/api/calendar/classes-by-date", async (req, res) => {
                        stu.first_name as student_name,
                        stu.email as student_email,
                        tea.first_name as teacher_name,
-                       tea.email as teacher_email
+                       tea.email as teacher_email,
+                       COALESCE(c.class_link, vs.teams_meeting_link) as class_link
                  FROM classes c
+                 LEFT JOIN video_sessions vs ON vs.class_id = c.class_id
                  JOIN users stu ON c.student_id = stu.user_id
                  JOIN users tea ON c.teacher_id = tea.user_id
                  WHERE c.scheduled_date = ?`;
@@ -621,6 +941,49 @@ app.get("/api/calendar/classes-by-date", async (req, res) => {
   }
 });
 
+// Get upcoming classes for a teacher or student
+app.get("/api/calendar/upcoming-classes", async (req, res) => {
+  try {
+    const { teacher_id, student_id, limit = 10 } = req.query;
+    if (!teacher_id && !student_id) {
+      return res.status(400).json({ message: "Missing teacher_id or student_id" });
+    }
+
+    let query = `SELECT c.*, \
+                       stu.first_name as student_name, \
+                       stu.last_name as student_last_name, \
+                       stu.email as student_email, \
+                       tea.first_name as teacher_name, \
+                       tea.last_name as teacher_last_name, \
+                       tea.email as teacher_email, \
+                       COALESCE(c.class_link, vs.teams_meeting_link) as class_link \
+                 FROM classes c \
+                 LEFT JOIN video_sessions vs ON vs.class_id = c.class_id \
+                 JOIN users stu ON c.student_id = stu.user_id \
+                 JOIN users tea ON c.teacher_id = tea.user_id \
+                 WHERE c.scheduled_date >= CURDATE()`;
+    const params = [];
+
+    if (teacher_id) {
+      query += ` AND c.teacher_id = ?`;
+      params.push(teacher_id);
+    }
+    if (student_id) {
+      query += ` AND c.student_id = ?`;
+      params.push(student_id);
+    }
+
+    query += ` ORDER BY c.scheduled_date ASC, c.start_time ASC LIMIT ?`;
+    params.push(parseInt(limit, 10) || 10);
+
+    const [rows] = await pool.query(query, params);
+    res.json({ classes: rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching upcoming classes" });
+  }
+});
+
 // Create a new class
 app.post("/api/calendar/class", async (req, res) => {
   try {
@@ -630,19 +993,43 @@ app.post("/api/calendar/class", async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
+    const [teacherRows] = await pool.query(
+      `SELECT first_name, last_name, email FROM users WHERE user_id = ?`,
+      [teacher_id]
+    );
+    const teacherEmail = teacherRows.length > 0 ? teacherRows[0].email : null;
+
+    let classLinkToSave = class_link?.trim();
+    if (!classLinkToSave) {
+      try {
+        classLinkToSave = await createTeamsMeeting(
+          class_name,
+          scheduled_date,
+          start_time,
+          end_time,
+          teacherEmail || MS_TEAMS_ORGANIZER_UPN
+        );
+      } catch (meetingErr) {
+        console.error("Teams meeting creation failed", meetingErr);
+        classLinkToSave = generateTeamsMeetingLink();
+      }
+    }
+
     const [result] = await pool.query(
       `INSERT INTO classes (class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, class_link, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')`,
-      [class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, class_link]
+      [class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, classLinkToSave]
+    );
+
+    await pool.query(
+      `INSERT INTO video_sessions (class_id, teacher_id, student_id, teams_meeting_link)
+       VALUES (?, ?, ?, ?)`,
+      [result.insertId, teacher_id, student_id, classLinkToSave]
     );
 
     const [studentRows] = await pool.query(
       `SELECT first_name, last_name FROM users WHERE user_id = ?`,
       [student_id]
-    );
-    const [teacherRows] = await pool.query(
-      `SELECT first_name, last_name FROM users WHERE user_id = ?`,
-      [teacher_id]
     );
 
     const studentName = studentRows.length > 0 ? `${studentRows[0].first_name} ${studentRows[0].last_name}` : "A student";
@@ -654,7 +1041,7 @@ app.post("/api/calendar/class", async (req, res) => {
       [teacher_id, "general", "New Class Booked", notificationMessage, result.insertId, "class"]
     );
 
-    res.status(201).json({ class_id: result.insertId, message: "Class created successfully" });
+    res.status(201).json({ class_id: result.insertId, class_link: classLinkToSave, message: "Class created successfully" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error creating class" });
@@ -1929,6 +2316,8 @@ app.get("/api/calendar/teacher-availability-records", async (req, res) => {
       return res.status(400).json({ message: "Missing required parameters" });
     }
 
+    await deletePastTeacherAvailability(teacher_id);
+
     const monthIndex = parseInt(month, 10);
     const yearValue = parseInt(year, 10);
     const daysInMonth = new Date(yearValue, monthIndex, 0).getDate();
@@ -1957,6 +2346,8 @@ app.get("/api/calendar/teacher-availability-record", async (req, res) => {
     if (!teacher_id || !available_date) {
       return res.status(400).json({ message: "Missing required parameters" });
     }
+
+    await deletePastTeacherAvailability(teacher_id);
 
     const [rows] = await pool.query(
       `SELECT availability_id as id, teacher_id, DATE_FORMAT(available_date, '%Y-%m-%d') as available_date, status, notes, start_time, end_time, break_start, break_end

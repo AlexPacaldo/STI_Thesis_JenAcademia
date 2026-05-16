@@ -6,6 +6,85 @@ import Calendar from "./Calendar.jsx"; // admin calendar view
 
 const API = "http://localhost:3001";
 
+const AI_CRITERIA_OPTIONS = {
+  learningGoal: [
+    ["", "Select Learning Goal"],
+    ["school-support", "School Support"],
+    ["conversation", "Conversation"],
+    ["exam-prep", "Exam Preparation"],
+    ["business", "Business English"],
+    ["confidence", "Confidence Building"],
+  ],
+  learningStyle: [
+    ["", "Select Learning Style"],
+    ["structured", "Structured Lessons"],
+    ["conversational", "Conversational Practice"],
+    ["visual", "Visual Activities"],
+    ["interactive", "Interactive Activities"],
+    ["independent", "Independent Practice"],
+  ],
+  personality: [
+    ["", "Select Personality"],
+    ["shy", "Shy / Needs Encouragement"],
+    ["outgoing", "Outgoing"],
+    ["focused", "Focused"],
+    ["energetic", "Energetic"],
+    ["anxious", "Anxious / Needs Patience"],
+  ],
+  focusArea: [
+    ["", "Select Focus Area"],
+    ["speaking", "Speaking"],
+    ["grammar", "Grammar"],
+    ["reading", "Reading"],
+    ["writing", "Writing"],
+    ["listening", "Listening"],
+    ["vocabulary", "Vocabulary"],
+  ],
+  pace: [
+    ["", "Select Pace"],
+    ["slow", "Slow and Guided"],
+    ["balanced", "Balanced"],
+    ["fast", "Fast-paced"],
+    ["review-heavy", "Review-heavy"],
+  ],
+};
+
+const TEACHER_AI_OPTIONS = {
+  specialization: [
+    ["", "Select Specialization"],
+    ["speaking and conversation", "Speaking and Conversation"],
+    ["grammar and writing", "Grammar and Writing"],
+    ["reading and vocabulary", "Reading and Vocabulary"],
+    ["listening and pronunciation", "Listening and Pronunciation"],
+    ["exam preparation", "Exam Preparation"],
+    ["business english", "Business English"],
+    ["kids and beginner english", "Kids and Beginner English"],
+  ],
+  teachingStyle: [
+    ["", "Select Teaching Style"],
+    ["structured", "Structured"],
+    ["conversational", "Conversational"],
+    ["visual", "Visual"],
+    ["interactive", "Interactive"],
+    ["independent", "Independent Practice"],
+  ],
+  personalityStrength: [
+    ["", "Select Teacher Strength"],
+    ["patient and supportive", "Patient and Supportive"],
+    ["energetic and engaging", "Energetic and Engaging"],
+    ["calm and encouraging", "Calm and Encouraging"],
+    ["strict and focused", "Strict and Focused"],
+    ["friendly and confidence-building", "Friendly and Confidence-building"],
+  ],
+  idealStudentPace: [
+    ["", "Select Best Pace"],
+    ["slow", "Slow and Guided"],
+    ["balanced", "Balanced"],
+    ["fast", "Fast-paced"],
+    ["review-heavy", "Review-heavy"],
+  ],
+};
+
 // Helper to safely parse date strings
 const parseDate = (dateString) => {
   if (!dateString) return null;
@@ -62,6 +141,12 @@ export default function AdminDashboard() {
     email: "",
     password: "",
     contact: "",
+    specialization: "",
+    experienceYears: "",
+    teachingStyle: "",
+    personalityStrength: "",
+    idealStudentPace: "",
+    bio: "",
   });
   // create-student form
   const [sForm, setSForm] = useState({
@@ -75,9 +160,18 @@ export default function AdminDashboard() {
     teacherId: "",
     courseId: "",
     classesAvailed: "",
+    aiCriteria: {
+      learningGoal: "",
+      learningStyle: "",
+      personality: "",
+      focusArea: "",
+      pace: "",
+    },
   });
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiRecommendation, setAiRecommendation] = useState(null);
   const [archiveRefresh, setArchiveRefresh] = useState(0); // bump to reload archived list
   const [requestFilter, setRequestFilter] = useState("all"); // 'all', 'pending', 'approved', 'declined'
   const [requestsLoading, setRequestsLoading] = useState(false);
@@ -152,7 +246,19 @@ export default function AdminDashboard() {
       const payload = { ...tForm, role: "teacher" };
       await axios.post(`${API}/api/admin/users`, payload); // creates teacher
       notify("Teacher created successfully!", "success");
-      setTForm({ firstName: "", lastName: "", email: "", password: "", contact: "" });
+      setTForm({
+        firstName: "",
+        lastName: "",
+        email: "",
+        password: "",
+        contact: "",
+        specialization: "",
+        experienceYears: "",
+        teachingStyle: "",
+        personalityStrength: "",
+        idealStudentPace: "",
+        bio: "",
+      });
       loadUsers();
     } catch (e) {
       console.error(e);
@@ -170,13 +276,79 @@ export default function AdminDashboard() {
       const payload = { ...sForm, role: "student" };
       await axios.post(`${API}/api/admin/users`, payload); // creates student
       notify("Student created successfully!", "success");
-      setSForm({ firstName: "", lastName: "", email: "", password: "", contact: "", trialNotes: "", level: "", teacherId: "", courseId: "", classesAvailed: "" });
+      setSForm({
+        firstName: "",
+        lastName: "",
+        email: "",
+        password: "",
+        contact: "",
+        trialNotes: "",
+        level: "",
+        teacherId: "",
+        courseId: "",
+        classesAvailed: "",
+        aiCriteria: {
+          learningGoal: "",
+          learningStyle: "",
+          personality: "",
+          focusArea: "",
+          pace: "",
+        },
+      });
+      setAiRecommendation(null);
       loadUsers();
     } catch (e) {
       console.error(e);
       notify(e?.response?.data?.message || "Failed to create student", "error");
     } finally {
       setLoading(false);
+    }
+  }
+
+  function updateAiCriterion(key, value) {
+    setSForm((prev) => ({
+      ...prev,
+      aiCriteria: {
+        ...prev.aiCriteria,
+        [key]: value,
+      },
+    }));
+    setAiRecommendation(null);
+  }
+
+  async function analyzeStudentMatch() {
+    const hasCriteria = Object.values(sForm.aiCriteria).some(Boolean);
+    if (!sForm.trialNotes.trim() && !hasCriteria) {
+      notify("Please add trial notes or choose matching criteria before analyzing.", "error");
+      return;
+    }
+
+    setAiLoading(true);
+    try {
+      const r = await axios.post(`${API}/api/admin/recommend-teacher`, {
+        trialNotes: sForm.trialNotes,
+        criteria: sForm.aiCriteria,
+        courseId: sForm.courseId,
+        teacherId: sForm.teacherId,
+      });
+      const teacher = r.data?.teacher;
+      if (!teacher) {
+        notify("No teacher found for this student.", "error");
+        return;
+      }
+
+      setSForm((prev) => ({
+        ...prev,
+        teacherId: teacher.user_id,
+        level: prev.level || "beginner",
+      }));
+      setAiRecommendation(r.data);
+      notify(`AI matched ${teacher.first_name} ${teacher.last_name}.`, "success");
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || "AI teacher matching failed", "error");
+    } finally {
+      setAiLoading(false);
     }
   }
 
@@ -310,6 +482,64 @@ export default function AdminDashboard() {
                   <input value={tForm.contact} onChange={(e)=>setTForm({...tForm, contact:e.target.value})} />
                 </div>
               </div>
+              <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
+                <div style={{ display: "flex", alignItems: "center", marginBottom: "8px" }}>
+                  <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>AI Matching Profile</h3>
+                </div>
+                <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
+                  These details help the AI match this teacher with students based on the student's trial notes and selected criteria.
+                </p>
+                <div className={styles.grid2}>
+                  <div>
+                    <label>Specialization</label>
+                    <select value={tForm.specialization} onChange={(e)=>setTForm({...tForm, specialization:e.target.value})}>
+                      {TEACHER_AI_OPTIONS.specialization.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label>Experience Years</label>
+                    <input type="number" min="0" value={tForm.experienceYears} onChange={(e)=>setTForm({...tForm, experienceYears:e.target.value})} />
+                  </div>
+                  <div>
+                    <label>Teaching Style</label>
+                    <select value={tForm.teachingStyle} onChange={(e)=>setTForm({...tForm, teachingStyle:e.target.value})}>
+                      {TEACHER_AI_OPTIONS.teachingStyle.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label>Teacher Strength</label>
+                    <select value={tForm.personalityStrength} onChange={(e)=>setTForm({...tForm, personalityStrength:e.target.value})}>
+                      {TEACHER_AI_OPTIONS.personalityStrength.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label>Best Student Pace</label>
+                    <select value={tForm.idealStudentPace} onChange={(e)=>setTForm({...tForm, idealStudentPace:e.target.value})}>
+                      {TEACHER_AI_OPTIONS.idealStudentPace.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div style={{ marginTop: "12px" }}>
+                  <label>Teacher Bio / Notes</label>
+                  <textarea
+                    value={tForm.bio}
+                    onChange={(e)=>setTForm({...tForm, bio:e.target.value})}
+                    rows={4}
+                    placeholder="Add teaching strengths, student types handled well, and any notes useful for matching..."
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      border: "1px solid #d0d0d0",
+                      borderRadius: "6px",
+                      fontFamily: "inherit",
+                      fontSize: "0.9em",
+                      resize: "vertical",
+                      lineHeight: "1.5",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+              </div>
               <br />
               <br />
               <button className={styles.primary} disabled={loading}>
@@ -354,13 +584,48 @@ export default function AdminDashboard() {
                   <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>Trial Class Assessment</h3>
                 </div>
                 <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
-                  Enter detailed notes from the student's trial class session. Our AI system will analyze these notes to assess the student's proficiency level and automatically recommend the most suitable teacher for their learning needs.
+                  Add trial notes and choose the student's learning criteria. The AI matcher will prioritize teachers below 5 active students, then choose the least-loaded teacher if everyone already has 5 or more.
                 </p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
+                  <div>
+                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Learning Goal</label>
+                    <select value={sForm.aiCriteria.learningGoal} onChange={(e)=>updateAiCriterion("learningGoal", e.target.value)} style={{ width: "100%", padding: "10px", border: "1px solid #d0d0d0", borderRadius: "6px", fontFamily: "inherit", fontSize: "0.9em", background: "#fff" }}>
+                      {AI_CRITERIA_OPTIONS.learningGoal.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Learning Style</label>
+                    <select value={sForm.aiCriteria.learningStyle} onChange={(e)=>updateAiCriterion("learningStyle", e.target.value)} style={{ width: "100%", padding: "10px", border: "1px solid #d0d0d0", borderRadius: "6px", fontFamily: "inherit", fontSize: "0.9em", background: "#fff" }}>
+                      {AI_CRITERIA_OPTIONS.learningStyle.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Student Personality</label>
+                    <select value={sForm.aiCriteria.personality} onChange={(e)=>updateAiCriterion("personality", e.target.value)} style={{ width: "100%", padding: "10px", border: "1px solid #d0d0d0", borderRadius: "6px", fontFamily: "inherit", fontSize: "0.9em", background: "#fff" }}>
+                      {AI_CRITERIA_OPTIONS.personality.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Focus Area</label>
+                    <select value={sForm.aiCriteria.focusArea} onChange={(e)=>updateAiCriterion("focusArea", e.target.value)} style={{ width: "100%", padding: "10px", border: "1px solid #d0d0d0", borderRadius: "6px", fontFamily: "inherit", fontSize: "0.9em", background: "#fff" }}>
+                      {AI_CRITERIA_OPTIONS.focusArea.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Learning Pace</label>
+                    <select value={sForm.aiCriteria.pace} onChange={(e)=>updateAiCriterion("pace", e.target.value)} style={{ width: "100%", padding: "10px", border: "1px solid #d0d0d0", borderRadius: "6px", fontFamily: "inherit", fontSize: "0.9em", background: "#fff" }}>
+                      {AI_CRITERIA_OPTIONS.pace.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </div>
+                </div>
                 <div>
                   <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Trial Class Notes</label>
                   <textarea
                     value={sForm.trialNotes}
-                    onChange={(e)=>setSForm({...sForm, trialNotes:e.target.value})}
+                    onChange={(e)=>{
+                      setSForm({...sForm, trialNotes:e.target.value});
+                      setAiRecommendation(null);
+                    }}
                     rows={5}
                     placeholder="Describe the student's performance, strengths, weaknesses, communication style, learning pace, and any specific areas of focus identified during the trial class..."
                     style={{
@@ -378,29 +643,11 @@ export default function AdminDashboard() {
                   <div style={{ marginTop: "12px", textAlign: "center" }}>
                     <button
                       type="button"
-                      onClick={() => {
-                        // AI analysis simulation - in real implementation, this would call an API
-                        if (!sForm.trialNotes.trim()) {
-                          notify("Please enter trial class notes before analyzing", "error");
-                          return;
-                        }
-                        notify("AI analysis in progress... (This is a placeholder - actual AI integration needed)", "info");
-                        // Simulate AI analysis delay
-                        setTimeout(() => {
-                          // For demo: set to intermediate level and first available teacher
-                          const recommendedLevel = "intermediate";
-                          const recommendedTeacher = teachers.length > 0 ? teachers[0].user_id : "";
-                          setSForm(prev => ({
-                            ...prev,
-                            level: recommendedLevel,
-                            teacherId: recommendedTeacher
-                          }));
-                          notify("AI analysis complete! Recommendations applied.", "success");
-                        }, 2000);
-                      }}
+                      onClick={analyzeStudentMatch}
+                      disabled={aiLoading}
                       style={{
                         padding: "10px 20px",
-                        background: "black",
+                        background: aiLoading ? "#555" : "black",
                         color: "#fff",
                         border: "none",
                         borderRadius: "8px",
@@ -423,9 +670,25 @@ export default function AdminDashboard() {
                       }}
                     >
                       <span style={{ fontSize: "1.1em" }}>🤖</span>
-                      Analyze with AI
+                      {aiLoading ? "Analyzing..." : "Analyze with AI"}
                     </button>
                   </div>
+                  {aiRecommendation?.teacher && (
+                    <div style={{ marginTop: "12px", padding: "12px", border: "1px solid #e0e0e0", borderRadius: "8px", background: "#fafafa", color: "#333", fontSize: "0.9em" }}>
+                      Recommended teacher: <strong>{aiRecommendation.teacher.first_name} {aiRecommendation.teacher.last_name}</strong>
+                      <span style={{ color: "#666" }}> ({aiRecommendation.teacher.assigned_student_count} active students)</span>
+                      {aiRecommendation.usedLeastLoadedFallback && (
+                        <div style={{ marginTop: "6px", color: "#666" }}>
+                          All teachers are at 5 or more students, so the least-loaded suitable teacher was selected.
+                        </div>
+                      )}
+                      {aiRecommendation.teacher.reasons?.length > 0 && (
+                        <div style={{ marginTop: "6px", color: "#666" }}>
+                          Reason: {aiRecommendation.teacher.reasons.join(", ")}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               <br />
@@ -435,7 +698,7 @@ export default function AdminDashboard() {
                   <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>AI Recommendations</h3>
                 </div>
                 <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
-                  Based on the trial class notes, the AI has analyzed the student's proficiency level and recommended the most suitable teacher.
+                  Review the recommended level, teacher, and course before creating the student account.
                 </p>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                   <div>
@@ -466,7 +729,10 @@ export default function AdminDashboard() {
                     <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Assigned Teacher</label>
                     <select
                       value={sForm.teacherId}
-                      onChange={(e)=>setSForm({...sForm, teacherId:e.target.value})}
+                      onChange={(e)=>{
+                        setSForm({...sForm, teacherId:e.target.value});
+                        setAiRecommendation(null);
+                      }}
                       style={{
                         width: "100%",
                         padding: "10px",
@@ -490,7 +756,10 @@ export default function AdminDashboard() {
                   <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Enroll in Course</label>
                   <select
                     value={sForm.courseId}
-                    onChange={(e)=>setSForm({...sForm, courseId:e.target.value})}
+                    onChange={(e)=>{
+                      setSForm({...sForm, courseId:e.target.value});
+                      setAiRecommendation(null);
+                    }}
                     style={{
                       width: "100%",
                       padding: "10px",
