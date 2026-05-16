@@ -29,28 +29,6 @@ import TeacherBooksLessons from "./pages/teacherBooksLessons.jsx";
 import TeacherBooksDropbox from "./pages/teacherBooksDropbox.jsx";
 import Calendar from "./pages/Calendar.jsx";
 
-
-// Optional: seed from backend/localStorage
-const initialTeacherAvailability =
-  JSON.parse(localStorage.getItem("teacherAvailability") || "{}");
-
-async function saveTeacherAvailability(availObj) {
-  // TODO: replace with your API call
-  localStorage.setItem("teacherAvailability", JSON.stringify(availObj));
-  // Notification will be called from the component using the hook
-}
-
-
-const availability = {
-  "2025-11-05": "available",
-  "2025-11-11": "available",
-  "2025-11-18": "unavailable",
-};
-
-function saveBooking(date, slot) {
-  console.log("BOOK:", date, slot);
-}
-
 const router = createBrowserRouter([
   {
     path: "/",
@@ -75,6 +53,7 @@ const router = createBrowserRouter([
       { path: "remarks", element: <Remarks /> },
       { path: "booksLessons", element: <BooksLessons /> },
       { path: "booksContent", element: <BooksContent /> },
+      { path: "booksContent/:bookId", element: <BooksContent mode="student" /> },
 
       { path: "TeacherDashboard", element: <TeacherDashboard /> },
       {
@@ -82,6 +61,7 @@ const router = createBrowserRouter([
       { path: "PassRemarks", element: <PassRemarks /> },
       { path: "teacherAssignment", element: <TeacherAssignment /> },
       { path: "TeacherBooksLessons", element: <TeacherBooksLessons /> },
+      { path: "teacherBooksLessons/:bookId", element: <BooksContent mode="teacher" /> },
       { path: "TeacherBooksDropbox", element: <TeacherBooksDropbox /> },
 
 

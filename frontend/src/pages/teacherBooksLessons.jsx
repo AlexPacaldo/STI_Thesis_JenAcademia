@@ -1,93 +1,282 @@
 // src/pages/BooksLessons.jsx
-import styles from "../assets/teacherBooksLessons.module.css";
+import { useEffect, useState } from "react";
 import topImage from "../assets/img/Books-Lessons/top.jpg";
-import lesson1 from "../assets/img/Books-Lessons/lesson1.jpg";
-import lesson2 from "../assets/img/Books-Lessons/lesson2.jpg";
-import lesson3 from "../assets/img/Books-Lessons/card-lesson3.jpg";
-import card1 from "../assets/img/Books-Lessons/card-lesson1.jpg";
-import card2 from "../assets/img/Books-Lessons/card-lesson2.jpg";
-import card3 from "../assets/img/Books-Lessons/card-lesson3.jpg";
 import userPic from "../assets/img/Navbar/user.jpg";
+import styles from "../assets/teacherBooksLessons.module.css";
+import { useNotification } from "../components/NotificationContainer.jsx";
 
-export default function booksLessons() {
+export default function TeacherBooksLessons() {
+  const { notify } = useNotification() || {};
+  const [books, setBooks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newBook, setNewBook] = useState({ title: "", description: "", coverFile: null });
+  const [showCoverModal, setShowCoverModal] = useState(false);
+  const [coverFile, setCoverFile] = useState(null);
+  const [editingBookId, setEditingBookId] = useState(null);
+
+  const API_BASE = "http://localhost:3001";
+
+
+
+  const teacherId = localStorage.getItem("teacher_id") || "1"; // Get from session
+  const courseId = localStorage.getItem("course_id") || "1"; // Get from session
+
+  useEffect(() => {
+    fetchBooks();
+  }, []);
+
+  const fetchBooks = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`http://localhost:3001/api/teacher/books?teacher_id=${teacherId}`);
+      if (!response.ok) throw new Error("Failed to fetch books");
+      
+      const data = await response.json();
+      setBooks(data.books || []);
+    } catch (err) {
+      console.error("Error fetching books:", err);
+      setError(err.message);
+      notify?.(`Error: ${err.message}`, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateBook = async () => {
+    if (!newBook.title.trim()) {
+      notify?.("Book title is required", "error");
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("title", newBook.title);
+      formData.append("description", newBook.description || "");
+      formData.append("course_id", courseId);
+      formData.append("teacher_id", teacherId);
+      if (newBook.coverFile) {
+        formData.append("cover", newBook.coverFile);
+      }
+
+      const response = await fetch("http://localhost:3001/api/books", {
+        method: "POST",
+        body: formData,
+      });
+
+
+      if (!response.ok) throw new Error("Failed to create book");
+
+      notify?.("Book created successfully!", "success");
+      setNewBook({ title: "", description: "", coverFile: null });
+      setShowCreateModal(false);
+      fetchBooks();
+
+    } catch (err) {
+      console.error("Error creating book:", err);
+      notify?.(`Error: ${err.message}`, "error");
+    }
+  };
+
+  const handleDeleteBook = async (bookId) => {
+    if (!window.confirm("Are you sure you want to delete this book?")) return;
+
+    try {
+      const response = await fetch(`http://localhost:3001/api/books/${bookId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) throw new Error("Failed to delete book");
+
+      notify?.("Book deleted successfully", "success");
+      fetchBooks();
+    } catch (err) {
+      console.error("Error deleting book:", err);
+      notify?.(`Error: ${err.message}`, "error");
+    }
+  };
+
   return (
     <div className={styles.cont}>
-    <div className={styles.center}>
-      {/* Top Section */}
-      <div className={styles.TopSegment}>
-        <div className={styles.TopContent}>
-          <h1><b>Books & Lessons</b></h1>
-          <p>Explore the resources uploaded by your teachers.</p>
-          <div className={styles.CourseCard}>
-            <button type="button">Business English</button>
+      <div className={styles.center}>
+        {/* Top Section */}
+        <div className={styles.TopSegment}>
+          <div className={styles.TopContent}>
+            <h1><b>Books & Lessons</b></h1>
+            <p>Manage your course materials and resources.</p>
+            <button 
+              className={styles.createBookBtn}
+              onClick={() => setShowCreateModal(true)}
+            >
+              + Create New Book
+            </button>
           </div>
-        </div>
         </div>
         <br />
-        
-      {/* Available Lessons Segment */}
-      <div className={styles.AvailableLessonSegment}>
-        <img src={topImage} alt="Top banner" />
-        <div className={styles.ContentAvailable}>
-          <h1><b>Available Lessons</b></h1>
-          <p>
-            You’ll find a collection of lessons and books here designed to help
-            you learn the English language. Whether you’re just starting or
-            looking to improve your skills, these resources will guide you step
-            by step and make learning simple and enjoyable.
-          </p>
-          <a href="/teacherBooksDropbox">Upload New Lesson</a>
+
+        {/* Available Lessons Segment */}
+        <div className={styles.AvailableLessonSegment}>
+          <img src={topImage} alt="Top banner" />
+          <div className={styles.ContentAvailable}>
+            <h1><b>Your Published Books</b></h1>
+            <p>
+              Manage your books and lessons. Upload new lessons or edit existing ones
+              to keep your course materials up to date.
+            </p>
+            <a href="/teacherBooksDropbox">+ Upload New Lesson</a>
+          </div>
         </div>
+
+        {/* Loading/Error State */}
+        {loading && <p className={styles.loading}>Loading books...</p>}
+        {error && <p className={styles.error}>Error: {error}</p>}
+
+        {/* Books Grid */}
+        {!loading && books.length > 0 && (
+          <div className={styles.AvailableLessons}>
+            {books.map((book) => (
+              <div key={book.book_id} className={styles.LessonsCard}>
+                {book.cover_url ? (
+                  <img className={styles.bookCover} src={`${API_BASE}/${book.cover_url}`} alt="Book cover" />
+                ) : (
+                  <div className={styles.bookImagePlaceholder}>
+                    <span className={styles.placeholder}>Book</span>
+                  </div>
+                )}
+
+                <br />
+                <h1><b>{book.title}</b></h1>
+                <p className={styles.description}>{book.description || "No description"}</p>
+                <div className={styles.Uploaded}>
+                  <img src={userPic} alt="Teacher" />
+                  <h3>You</h3>
+                </div>
+                <p className={styles.lessonCount}>{book.lesson_count || 0} lessons</p>
+                <div className={styles.bookActions}>
+                  <a href={`/teacherBooksLessons/${book.book_id}`}>
+                    <button type="button" className={styles.viewBtn}>View</button>
+                  </a>
+                  <button 
+                    type="button"
+                    className={styles.deleteBtn}
+                    onClick={() => handleDeleteBook(book.book_id)}
+                  >
+                    Delete
+                  </button>
++                 <button
++                    type="button"
++                    className={styles.viewBtn}
++                    onClick={() => { setEditingBookId(book.book_id); setShowCoverModal(true); }}
++                  >
++                    Edit Cover
++                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && books.length === 0 && (
+          <div className={styles.noBooks}>
+            <p>No books yet. Create your first book to get started!</p>
+            <button 
+              className={styles.createBookBtn}
+              onClick={() => setShowCreateModal(true)}
+            >
+              + Create Your First Book
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Carousel Section */}
-      <div className={styles.carouselSegment}>
-        <div id="carouselExampleIndicators" className={`carousel slide`} data-bs-ride="carousel">
-          <div className={`carousel-indicators`}>
-            <button type="button" data-bs-target="#carouselExampleIndicators" data-bs-slide-to="0" className="active"></button>
-            <button type="button" data-bs-target="#carouselExampleIndicators" data-bs-slide-to="1"></button>
-            <button type="button" data-bs-target="#carouselExampleIndicators" data-bs-slide-to="2"></button>
-          </div>
+      {/* Create Book Modal */}
+      {showCreateModal && (
+        <div className={styles.modal}>
+          <div className={styles.modalContent}>
+            <h2>Create New Book</h2>
+            <label>
+              Title:
+              <input
+                type="text"
+                placeholder="Enter book title..."
+                value={newBook.title}
+                onChange={(e) => setNewBook({ ...newBook, title: e.target.value })}
+              />
+            </label>
+            <label>
+              Description (optional):
+              <textarea
+                placeholder="Enter book description..."
+                value={newBook.description}
+                onChange={(e) => setNewBook({ ...newBook, description: e.target.value })}
+              />
+            </label>
 
-          <div className="carousel-inner">
-            <div className={`carousel-item active ${styles.imgEdit}`}>
-              <img src={lesson1} alt="First slide" />
-            </div>
-            <div className={`carousel-item ${styles.imgEdit}`}>
-              <img src={lesson2} alt="Second slide" />
-            </div>
-            <div className={`carousel-item ${styles.imgEdit}`}>
-              <img src={lesson3} alt="Third slide" />
+            <label>
+              Cover (optional):
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setNewBook({ ...newBook, coverFile: file });
+                }}
+              />
+            </label>
+
+            <div className={styles.modalButtons}>
+
+              <button onClick={handleCreateBook} className={styles.confirmBtn}>Create</button>
+              <button onClick={() => setShowCreateModal(false)} className={styles.cancelBtn}>Cancel</button>
             </div>
           </div>
-
-          <button className="carousel-control-prev" type="button" data-bs-target="#carouselExampleIndicators" data-bs-slide="prev">
-            <span className="carousel-control-prev-icon" aria-hidden="true"></span>
-          </button>
-          <button className="carousel-control-next" type="button" data-bs-target="#carouselExampleIndicators" data-bs-slide="next">
-            <span className="carousel-control-next-icon" aria-hidden="true"></span>
-          </button>
         </div>
-      </div>
-    <br />
-      {/* Lesson Cards Section */}
-      <div className={styles.AvailableLessons}>
-        {[card1, card2, card3].map((card, index) => (
-          <div key={index} className={styles.LessonsCard}>
-            <img src={card} alt={`Lesson ${index + 1}`} />
-            <br />
-            <h1><b>Business English</b></h1>
-            <div className={styles.Uploaded}>
-              <img src={userPic} alt="Teacher" />
-              <h3>Teacher Jen</h3>
-            </div>
-            <a href="/booksContent">
-              <button type="button">Check it out!</button>
-            </a>
-          </div>
-        ))}
-      </div>
-    </div>
+      )}
++
++      {/* Edit Cover Modal */}
++      {showCoverModal && (
++        <div className={styles.modal}>
++          <div className={styles.modalContent}>
++            <h2>Edit Book Cover</h2>
++            <label>
++              Select image:
++              <input type="file" accept="image/*" onChange={(e) => setCoverFile(e.target.files?.[0] || null)} />
++            </label>
++
++            <div className={styles.modalButtons}>
++              <button
++                className={styles.confirmBtn}
++                onClick={async () => {
++                  if (!coverFile || !editingBookId) {
++                    notify?.("Please select an image", "error");
++                    return;
++                  }
++                  try {
++                    const fd = new FormData();
++                    fd.append('cover', coverFile);
++                    const res = await fetch(`${API_BASE}/api/books/${editingBookId}`, {
++                      method: 'PUT',
++                      body: fd,
++                    });
++                    if (!res.ok) throw new Error('Failed to update cover');
++                    notify?.('Cover updated', 'success');
++                    setShowCoverModal(false);
++                    setCoverFile(null);
++                    setEditingBookId(null);
++                    fetchBooks();
++                  } catch (err) {
++                    console.error(err);
++                    notify?.(`Error: ${err.message}`, 'error');
++                  }
++                }}
++              >Save</button>
++              <button className={styles.cancelBtn} onClick={() => { setShowCoverModal(false); setCoverFile(null); setEditingBookId(null); }}>Cancel</button>
++            </div>
++          </div>
++        </div>
++      )}
+*** End Patch
     </div>
   );
 }
