@@ -15,6 +15,8 @@ function Header() {
   const [profileCompleted, setProfileCompleted] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [studentPackage, setStudentPackage] = useState(null);
+  const currentUserId = user?.id || user?.user_id || user?.userId;
 
   useEffect(() => {
     try {
@@ -63,20 +65,32 @@ function Header() {
 
   // Fetch unread notification count
   useEffect(() => {
-    if (user?.id && (role === "student" || role === "teacher")) {
+    if (currentUserId && (role === "student" || role === "teacher" || role === "admin")) {
       fetchUnreadCount();
       // Poll for new notifications every 30 seconds
       const interval = setInterval(fetchUnreadCount, 30000);
       return () => clearInterval(interval);
     }
-  }, [user?.id, role]);
+  }, [currentUserId, role]);
+
+  useEffect(() => {
+    if (role !== "student" || !currentUserId) {
+      setStudentPackage(null);
+      return;
+    }
+
+    axios
+      .get(`${API}/api/calendar/student-package/${currentUserId}`)
+      .then((response) => setStudentPackage(response.data.package || null))
+      .catch(() => setStudentPackage(null));
+  }, [currentUserId, role, location]);
 
   const fetchUnreadCount = async () => {
     const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
     const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
-    const localCount = getLocalUnreadCount({ userId: user?.id, userName });
+    const localCount = getLocalUnreadCount({ userId: currentUserId, userName });
     try {
-      const response = await axios.get(`${API}/api/notifications/unread/${user.id}`);
+      const response = await axios.get(`${API}/api/notifications/unread/${currentUserId}`);
       setUnreadCount((response.data.unreadCount || 0) + localCount);
     } catch (err) {
       console.error("Error fetching unread count:", err);
@@ -93,6 +107,7 @@ function Header() {
   const isCallPage = path.startsWith("/call");
 
   const isAdminDashboardPage = path === "/AdminDashboard";
+  const studentHasNoClassesLeft = role === "student" && studentPackage && Number(studentPackage.classes_left) <= 0;
 
   const isStudentDashboardPage = path === "/StudentDashboard";
   const isAssignmentsDropbox = path === "/assignmentsDropbox";
@@ -197,11 +212,13 @@ function Header() {
               >
                 Remarks
               </Link>
-              <Link 
-                to="/booksLessons"
-              >
-                Books / Lessons
-              </Link>
+              {!studentHasNoClassesLeft && (
+                <Link
+                  to="/booksLessons"
+                >
+                  Books / Lessons
+                </Link>
+              )}
 
               {/* Notification Bell */}
               <button
@@ -283,6 +300,16 @@ function Header() {
 
           {role === "admin" && isAdminArea && (
             <>
+              <button
+                className={styles.notificationBell}
+                onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+                title="Notifications"
+              >
+                🔔
+                {unreadCount > 0 && (
+                  <span className={styles.badge}>{unreadCount}</span>
+                )}
+              </button>
 
               <Link to="/account" className={styles.TeacherAccount}>
                 <img
@@ -311,7 +338,7 @@ function Header() {
 
     {/* Notification Panel */}
     <NotificationPanel 
-      userId={user?.id} 
+      userId={currentUserId}
       isOpen={isNotificationOpen} 
       onClose={() => setIsNotificationOpen(false)}
     />

@@ -230,10 +230,69 @@ async function ensureLessonsColumns() {
   }
 }
 
+async function ensureStudentContractRequestsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS student_contract_requests (
+      request_id INT NOT NULL AUTO_INCREMENT,
+      student_id INT NOT NULL,
+      course_id INT DEFAULT NULL,
+      requested_classes INT NOT NULL,
+      status ENUM('pending','approved','declined') NOT NULL DEFAULT 'pending',
+      admin_response VARCHAR(500) DEFAULT NULL,
+      requested_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+      resolved_at TIMESTAMP NULL DEFAULT NULL,
+      PRIMARY KEY (request_id),
+      KEY idx_student_contract_requests_student (student_id),
+      KEY idx_student_contract_requests_course (course_id),
+      KEY idx_student_contract_requests_status (status),
+      CONSTRAINT student_contract_requests_student_fk FOREIGN KEY (student_id) REFERENCES users (user_id),
+      CONSTRAINT student_contract_requests_course_fk FOREIGN KEY (course_id) REFERENCES courses (course_id)
+    )
+  `);
+}
+
+async function removeStudentPackageDateColumns() {
+  if (await columnExists("student_class_packages", "package_start_date")) {
+    await pool.query("ALTER TABLE student_class_packages DROP COLUMN package_start_date");
+  }
+
+  if (await columnExists("student_class_packages", "package_end_date")) {
+    await pool.query("ALTER TABLE student_class_packages DROP COLUMN package_end_date");
+  }
+}
+
+async function ensureTeacherCoursesTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS teacher_courses (
+      teacher_id INT NOT NULL,
+      course_id INT NOT NULL,
+      created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (teacher_id, course_id),
+      KEY idx_teacher_courses_course (course_id),
+      CONSTRAINT teacher_courses_teacher_fk FOREIGN KEY (teacher_id) REFERENCES users (user_id) ON DELETE CASCADE,
+      CONSTRAINT teacher_courses_course_fk FOREIGN KEY (course_id) REFERENCES courses (course_id) ON DELETE CASCADE
+    )
+  `);
+
+  await pool.query(`
+    INSERT IGNORE INTO teacher_courses (teacher_id, course_id)
+    SELECT u.user_id, c.course_id
+    FROM users u
+    CROSS JOIN courses c
+    WHERE u.role = 'teacher'
+      AND NOT EXISTS (
+        SELECT 1 FROM teacher_courses tc WHERE tc.teacher_id = u.user_id
+      )
+  `);
+}
+
 try {
   await ensureAssignmentAttemptColumns();
   await ensureBooksColumns();
   await ensureLessonsColumns();
+  await ensureStudentContractRequestsTable();
+  await removeStudentPackageDateColumns();
+  await ensureTeacherCoursesTable();
   await deletePastTeacherAvailability();
   
 } catch (err) {
@@ -349,19 +408,22 @@ function scoreTeacherForStudent(teacher, criteria, trialNotes, courseId) {
 
 async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = null, preferredTeacherId = null }) {
   const normalizedCriteria = normalizeCriteria(criteria);
+  const courseFilter = courseId ? parseInt(courseId, 10) : null;
   const [teachers] = await pool.query(
     `SELECT u.user_id, u.first_name, u.last_name, u.email,
             tp.bio, tp.specialization, tp.experience_years,
             COUNT(student.user_id) AS assigned_student_count,
-            MAX(CASE WHEN student.user_id IS NOT NULL AND sp.course_id = ? THEN 1 ELSE 0 END) AS selected_course_match
+            MAX(CASE WHEN selected_tc.course_id IS NOT NULL THEN 1 ELSE 0 END) AS selected_course_match
      FROM users u
      LEFT JOIN teacher_profiles tp ON tp.user_id = u.user_id
+     LEFT JOIN teacher_courses selected_tc ON selected_tc.teacher_id = u.user_id AND selected_tc.course_id = ?
      LEFT JOIN student_profiles sp ON sp.assigned_teacher_id = u.user_id
      LEFT JOIN users student ON student.user_id = sp.user_id AND student.status = 'active'
      WHERE u.role = 'teacher' AND u.status = 'active'
+       AND (? IS NULL OR selected_tc.course_id IS NOT NULL)
      GROUP BY u.user_id, u.first_name, u.last_name, u.email, tp.bio, tp.specialization, tp.experience_years
      ORDER BY u.first_name ASC, u.last_name ASC`,
-    [courseId || 0]
+    [courseFilter || 0, courseFilter]
   );
 
   const ranked = teachers
@@ -464,6 +526,22 @@ const submissionSelect = `
 app.get("/api/courses", async (_req, res) => {
   const [rows] = await pool.query("SELECT course_id, course_name FROM courses ORDER BY course_name");
   res.json({ courses: rows });
+});
+
+app.get("/api/teacher-courses", async (_req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT tc.teacher_id, tc.course_id, c.course_name
+       FROM teacher_courses tc
+       JOIN courses c ON c.course_id = tc.course_id
+       ORDER BY tc.teacher_id ASC, c.course_name ASC`
+    );
+
+    res.json({ teacherCourses: rows });
+  } catch (err) {
+    console.error("GET /api/teacher-courses error:", err);
+    res.status(500).json({ message: "Error fetching teacher courses" });
+  }
 });
 
 // ---------- month availability ----------
@@ -707,10 +785,23 @@ app.post("/api/admin/users", async (req, res) => {
       personalityStrength,
       idealStudentPace,
       bio,
+      courseIds = [],
     } = req.body;
 
     const [exist] = await pool.query("SELECT user_id FROM users WHERE email = ?", [email]);
     if (exist.length) return res.status(409).json({ message: "Email already exists" });
+
+    const selectedTeacherCourseIds = Array.isArray(courseIds)
+      ? courseIds.map((id) => parseInt(id, 10)).filter((id) => Number.isFinite(id) && id > 0)
+      : [];
+
+    if (role === "teacher" && !selectedTeacherCourseIds.length) {
+      return res.status(400).json({ message: "Please select at least one course this teacher can teach" });
+    }
+
+    if (role === "student" && !courseId) {
+      return res.status(400).json({ message: "Please select the student's course" });
+    }
 
     const hash = await bcrypt.hash(password, 10);
     
@@ -746,6 +837,12 @@ app.post("/api/admin/users", async (req, res) => {
           specialization || null,
           Number.isFinite(parsedExperienceYears) ? parsedExperienceYears : null,
         ]
+      );
+
+      await pool.query(
+        `INSERT INTO teacher_courses (teacher_id, course_id)
+         VALUES ${selectedTeacherCourseIds.map(() => "(?, ?)").join(", ")}`,
+        selectedTeacherCourseIds.flatMap((courseId) => [userId, courseId])
       );
     }
     
@@ -813,6 +910,300 @@ app.get("/api/admin/users", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching users" });
+  }
+});
+
+app.get("/api/admin/student-contracts", async (_req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT u.user_id, u.first_name, u.last_name, u.email,
+              sp.course_id, c.course_name, sp.assigned_teacher_id,
+              CONCAT(t.first_name, ' ', t.last_name) AS teacher_name,
+              scp.package_id, scp.total_classes, scp.classes_used, scp.classes_left,
+              scp.status AS package_status
+       FROM users u
+       LEFT JOIN student_profiles sp ON sp.user_id = u.user_id
+       LEFT JOIN courses c ON c.course_id = sp.course_id
+       LEFT JOIN users t ON t.user_id = sp.assigned_teacher_id
+       LEFT JOIN student_class_packages scp
+         ON scp.student_id = u.user_id AND scp.status = 'active'
+       WHERE u.role = 'student' AND u.status = 'active'
+       ORDER BY u.first_name ASC, u.last_name ASC`
+    );
+
+    res.json({ contracts: rows });
+  } catch (err) {
+    console.error("GET /api/admin/student-contracts error:", err);
+    res.status(500).json({ message: "Error fetching student contracts" });
+  }
+});
+
+app.put("/api/admin/student-contracts/:student_id", async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const { student_id } = req.params;
+    const {
+      course_id,
+      assigned_teacher_id,
+      package_id,
+      total_classes,
+      classes_used,
+      status,
+    } = req.body;
+
+    const parsedTotal = Math.max(0, parseInt(total_classes, 10) || 0);
+    const parsedUsed = Math.min(parsedTotal, Math.max(0, parseInt(classes_used, 10) || 0));
+    const packageStatus = ["active", "expired", "cancelled"].includes(status) ? status : "active";
+    const courseIdValue = course_id ? parseInt(course_id, 10) : null;
+    const teacherIdValue = assigned_teacher_id ? parseInt(assigned_teacher_id, 10) : null;
+
+    if (courseIdValue && teacherIdValue) {
+      const [teacherCourseRows] = await connection.query(
+        `SELECT 1 FROM teacher_courses WHERE teacher_id = ? AND course_id = ? LIMIT 1`,
+        [teacherIdValue, courseIdValue]
+      );
+
+      if (!teacherCourseRows.length) {
+        return res.status(400).json({ message: "Selected teacher cannot teach the selected course" });
+      }
+    }
+
+    await connection.beginTransaction();
+
+    await connection.query(
+      `UPDATE student_profiles
+       SET course_id = COALESCE(?, course_id), assigned_teacher_id = ?
+       WHERE user_id = ?`,
+      [courseIdValue, teacherIdValue, student_id]
+    );
+
+    if (package_id) {
+      await connection.query(
+        `UPDATE student_class_packages
+         SET total_classes = ?, classes_used = ?, status = ?
+         WHERE package_id = ? AND student_id = ?`,
+        [
+          parsedTotal,
+          parsedUsed,
+          packageStatus,
+          package_id,
+          student_id,
+        ]
+      );
+    } else if (parsedTotal > 0) {
+      await connection.query(
+        `INSERT INTO student_class_packages
+         (student_id, total_classes, classes_used, status)
+         VALUES (?, ?, ?, ?)`,
+        [student_id, parsedTotal, parsedUsed, packageStatus]
+      );
+    }
+
+    await connection.commit();
+    res.json({ message: "Student contract updated" });
+  } catch (err) {
+    await connection.rollback();
+    console.error("PUT /api/admin/student-contracts/:student_id error:", err);
+    res.status(500).json({ message: "Error updating student contract" });
+  } finally {
+    connection.release();
+  }
+});
+
+app.post("/api/student/contract-requests", async (req, res) => {
+  try {
+    const { student_id, course_id, requested_classes } = req.body;
+    const parsedStudentId = parseInt(student_id, 10);
+    const parsedCourseId = course_id ? parseInt(course_id, 10) : null;
+    const parsedClasses = parseInt(requested_classes, 10);
+
+    if (!parsedStudentId || !parsedCourseId || !Number.isFinite(parsedClasses) || parsedClasses <= 0) {
+      return res.status(400).json({ message: "Please choose a course and number of classes." });
+    }
+
+    const [existing] = await pool.query(
+      `SELECT request_id
+       FROM student_contract_requests
+       WHERE student_id = ? AND status = 'pending'
+       LIMIT 1`,
+      [parsedStudentId]
+    );
+
+    if (existing.length) {
+      return res.status(409).json({ message: "You already have a pending contract request." });
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO student_contract_requests (student_id, course_id, requested_classes, status)
+       VALUES (?, ?, ?, 'pending')`,
+      [parsedStudentId, parsedCourseId, parsedClasses]
+    );
+
+    const [studentRows] = await pool.query(
+      `SELECT first_name, last_name FROM users WHERE user_id = ?`,
+      [parsedStudentId]
+    );
+    const [courseRows] = await pool.query(
+      `SELECT course_name FROM courses WHERE course_id = ?`,
+      [parsedCourseId]
+    );
+    const [adminRows] = await pool.query(
+      `SELECT user_id FROM users WHERE role = 'admin' AND status = 'active'`
+    );
+
+    const studentName = studentRows.length
+      ? `${studentRows[0].first_name} ${studentRows[0].last_name}`.trim()
+      : "A student";
+    const courseName = courseRows[0]?.course_name || "a course";
+    const notificationMessage = `${studentName} requested a new contract for ${courseName} with ${parsedClasses} classes.`;
+
+    if (adminRows.length) {
+      await pool.query(
+        `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+         VALUES ${adminRows.map(() => "(?, 'general', 'New Contract Request', ?, ?, 'contract_request', '/AdminDashboard')").join(", ")}`,
+        adminRows.flatMap((admin) => [admin.user_id, notificationMessage, result.insertId])
+      );
+    }
+
+    res.status(201).json({ message: "Contract request sent", request_id: result.insertId });
+  } catch (err) {
+    console.error("POST /api/student/contract-requests error:", err);
+    res.status(500).json({ message: "Error sending contract request" });
+  }
+});
+
+app.get("/api/student/contract-requests/:student_id", async (req, res) => {
+  try {
+    const { student_id } = req.params;
+    const [rows] = await pool.query(
+      `SELECT r.*, c.course_name
+       FROM student_contract_requests r
+       LEFT JOIN courses c ON c.course_id = r.course_id
+       WHERE r.student_id = ?
+       ORDER BY r.requested_at DESC
+       LIMIT 5`,
+      [student_id]
+    );
+
+    res.json({ requests: rows });
+  } catch (err) {
+    console.error("GET /api/student/contract-requests/:student_id error:", err);
+    res.status(500).json({ message: "Error fetching contract requests" });
+  }
+});
+
+app.get("/api/admin/contract-requests", async (_req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT r.*, c.course_name,
+              u.first_name, u.last_name, u.email
+       FROM student_contract_requests r
+       JOIN users u ON u.user_id = r.student_id
+       LEFT JOIN courses c ON c.course_id = r.course_id
+       ORDER BY FIELD(r.status, 'pending', 'approved', 'declined'), r.requested_at DESC`
+    );
+
+    res.json({ requests: rows });
+  } catch (err) {
+    console.error("GET /api/admin/contract-requests error:", err);
+    res.status(500).json({ message: "Error fetching contract requests" });
+  }
+});
+
+app.put("/api/admin/contract-requests/:request_id", async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const { request_id } = req.params;
+    const { status, admin_response } = req.body;
+
+    if (!["approved", "declined"].includes(status)) {
+      return res.status(400).json({ message: "Invalid request status" });
+    }
+
+    await connection.beginTransaction();
+
+    const [requestRows] = await connection.query(
+      `SELECT r.request_id, r.student_id, r.course_id, r.requested_classes, r.status,
+              c.course_name
+       FROM student_contract_requests r
+       LEFT JOIN courses c ON c.course_id = r.course_id
+       WHERE r.request_id = ?
+       FOR UPDATE`,
+      [request_id]
+    );
+
+    if (!requestRows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: "Contract request not found" });
+    }
+
+    const request = requestRows[0];
+    if (request.status !== "pending") {
+      await connection.rollback();
+      return res.status(409).json({ message: "This request has already been resolved" });
+    }
+
+    if (status === "approved") {
+      await connection.query(
+        `UPDATE student_profiles
+         SET course_id = COALESCE(?, course_id),
+             assigned_teacher_id = CASE
+               WHEN assigned_teacher_id IS NULL THEN NULL
+               WHEN EXISTS (
+                 SELECT 1 FROM teacher_courses tc
+                 WHERE tc.teacher_id = assigned_teacher_id AND tc.course_id = ?
+               ) THEN assigned_teacher_id
+               ELSE NULL
+             END
+         WHERE user_id = ?`,
+        [request.course_id, request.course_id, request.student_id]
+      );
+
+      await connection.query(
+        `UPDATE student_class_packages
+         SET status = 'expired'
+         WHERE student_id = ? AND status = 'active'`,
+        [request.student_id]
+      );
+
+      await connection.query(
+        `INSERT INTO student_class_packages
+         (student_id, total_classes, classes_used, status)
+         VALUES (?, ?, 0, 'active')`,
+        [request.student_id, request.requested_classes]
+      );
+    }
+
+    await connection.query(
+      `UPDATE student_contract_requests
+       SET status = ?, admin_response = ?, resolved_at = NOW()
+       WHERE request_id = ?`,
+      [status, admin_response || null, request_id]
+    );
+
+    const notificationTitle = status === "approved"
+      ? "Contract Request Approved"
+      : "Contract Request Declined";
+    const notificationMessage = status === "approved"
+      ? `Your contract request for ${request.course_name || "your selected course"} with ${request.requested_classes} classes was approved.`
+      : `Your contract request for ${request.course_name || "your selected course"} with ${request.requested_classes} classes was declined.`;
+
+    await connection.query(
+      `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+       VALUES (?, 'general', ?, ?, ?, 'contract_request', '/Calendar')`,
+      [request.student_id, notificationTitle, notificationMessage, request.request_id]
+    );
+
+    await connection.commit();
+    res.json({ message: `Contract request ${status}` });
+  } catch (err) {
+    await connection.rollback();
+    console.error("PUT /api/admin/contract-requests/:request_id error:", err);
+    res.status(500).json({ message: "Error updating contract request" });
+  } finally {
+    connection.release();
   }
 });
 
@@ -993,6 +1384,18 @@ app.post("/api/calendar/class", async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
+    const [packageRows] = await pool.query(
+      `SELECT classes_left
+       FROM student_class_packages
+       WHERE student_id = ? AND status = 'active'
+       LIMIT 1`,
+      [student_id]
+    );
+
+    if (!packageRows.length || Number(packageRows[0].classes_left) <= 0) {
+      return res.status(400).json({ message: "This student has no classes left. Please contact the admin for a new contract." });
+    }
+
     const [teacherRows] = await pool.query(
       `SELECT first_name, last_name, email FROM users WHERE user_id = ?`,
       [teacher_id]
@@ -1066,6 +1469,105 @@ app.get("/api/calendar/student-package/:student_id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching package" });
+  }
+});
+
+app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const { class_id } = req.params;
+    const { teacher_id } = req.body;
+
+    if (!class_id || !teacher_id) {
+      return res.status(400).json({ message: "Missing class_id or teacher_id" });
+    }
+
+    await connection.beginTransaction();
+
+    const [classRows] = await connection.query(
+      `SELECT class_id, teacher_id, student_id, class_name, status
+       FROM classes
+       WHERE class_id = ?
+       FOR UPDATE`,
+      [class_id]
+    );
+
+    if (!classRows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: "Class not found" });
+    }
+
+    const classInfo = classRows[0];
+    if (String(classInfo.teacher_id) !== String(teacher_id)) {
+      await connection.rollback();
+      return res.status(403).json({ message: "Only the assigned teacher can confirm this class" });
+    }
+
+    if (classInfo.status === "completed") {
+      await connection.rollback();
+      return res.status(409).json({ message: "This class has already been marked as done" });
+    }
+
+    if (classInfo.status === "cancelled") {
+      await connection.rollback();
+      return res.status(400).json({ message: "Cancelled classes cannot be marked as done" });
+    }
+
+    const [packageRows] = await connection.query(
+      `SELECT package_id, student_id, total_classes, classes_used, classes_left, status
+       FROM student_class_packages
+       WHERE student_id = ? AND status = 'active'
+       FOR UPDATE`,
+      [classInfo.student_id]
+    );
+
+    if (!packageRows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: "No active package found for this student" });
+    }
+
+    const currentPackage = packageRows[0];
+    if (Number(currentPackage.classes_left) <= 0) {
+      await connection.rollback();
+      return res.status(400).json({ message: "This student has no classes left" });
+    }
+
+    await connection.query(
+      `UPDATE classes SET status = 'completed' WHERE class_id = ?`,
+      [class_id]
+    );
+
+    await connection.query(
+      `UPDATE student_class_packages
+       SET classes_used = classes_used + 1
+       WHERE package_id = ?`,
+      [currentPackage.package_id]
+    );
+
+    const [updatedPackageRows] = await connection.query(
+      `SELECT package_id, student_id, total_classes, classes_used, classes_left, status
+       FROM student_class_packages
+       WHERE package_id = ?`,
+      [currentPackage.package_id]
+    );
+
+    await connection.commit();
+
+    res.json({
+      message: "Class marked as done",
+      class: {
+        class_id: classInfo.class_id,
+        status: "completed",
+      },
+      package: updatedPackageRows[0],
+    });
+  } catch (err) {
+    await connection.rollback();
+    console.error(err);
+    res.status(500).json({ message: "Error marking class as done" });
+  } finally {
+    connection.release();
   }
 });
 

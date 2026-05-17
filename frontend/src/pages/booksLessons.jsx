@@ -25,6 +25,21 @@ export default function StudentBooksLessons() {
   const fetchBooks = async () => {
     try {
       setLoading(true);
+      const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+      const studentId = storedUser.id || storedUser.user_id || storedUser.userId;
+
+      if (studentId) {
+        const packageResponse = await fetch(`${API_BASE}/api/calendar/student-package/${studentId}`);
+        if (packageResponse.ok) {
+          const packageData = await packageResponse.json();
+          if (Number(packageData.package?.classes_left) <= 0) {
+            notify?.("Contact the admin for a new contract to view Books / Lessons.", "error");
+            navigate("/Calendar");
+            return;
+          }
+        }
+      }
+
       const response = await fetch(
         `http://localhost:3001/api/books?course_id=${courseId}`
       );
