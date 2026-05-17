@@ -427,8 +427,6 @@ CREATE TABLE `student_class_packages` (
   `total_classes` int NOT NULL DEFAULT '0',
   `classes_used` int DEFAULT '0',
   `classes_left` int GENERATED ALWAYS AS ((`total_classes` - `classes_used`)) STORED,
-  `package_start_date` date DEFAULT NULL,
-  `package_end_date` date DEFAULT NULL,
   `status` enum('active','expired','cancelled') DEFAULT 'active',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -558,6 +556,24 @@ CREATE TABLE `users` (
   KEY `idx_role` (`role`) /*!80000 INVISIBLE */,
   KEY `idx_status` (`status`)
 ) ENGINE=InnoDB AUTO_INCREMENT=28 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `teacher_courses`
+--
+
+DROP TABLE IF EXISTS `teacher_courses`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `teacher_courses` (
+  `teacher_id` int NOT NULL,
+  `course_id` int NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`teacher_id`,`course_id`),
+  KEY `idx_teacher_courses_course` (`course_id`),
+  CONSTRAINT `teacher_courses_teacher_fk` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  CONSTRAINT `teacher_courses_course_fk` FOREIGN KEY (`course_id`) REFERENCES `courses` (`course_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --

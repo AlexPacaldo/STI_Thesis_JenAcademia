@@ -195,6 +195,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [requestTime, setRequestTime] = useState("");
   const [requestReason, setRequestReason] = useState("");
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+  const [isMarkingClassDone, setIsMarkingClassDone] = useState(false);
+  const [classDoneConfirmOpen, setClassDoneConfirmOpen] = useState(false);
   const [requestError, setRequestError] = useState("");
   const [localRole, setLocalRole] = useState("");
   const [localUserId, setLocalUserId] = useState(null);
@@ -212,6 +214,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [studentBookingSubject, setStudentBookingSubject] = useState("");
   const [studentBookingError, setStudentBookingError] = useState("");
   const [isSubmittingStudentBooking, setIsSubmittingStudentBooking] = useState(false);
+  const [courses, setCourses] = useState([]);
+  const [contractRequestOpen, setContractRequestOpen] = useState(false);
+  const [contractCourseId, setContractCourseId] = useState("");
+  const [contractClassCount, setContractClassCount] = useState("10");
+  const [contractRequestError, setContractRequestError] = useState("");
+  const [contractRequests, setContractRequests] = useState([]);
+  const [isSubmittingContractRequest, setIsSubmittingContractRequest] = useState(false);
   const isAdmin = localRole === "admin"; // helper for rendering
 
   // booking form state
@@ -337,6 +346,28 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
   }, [localRole, localUserId]);
 
+  useEffect(() => {
+    if (localRole !== "student") return;
+
+    axios
+      .get(`${API}/api/courses`)
+      .then(r => setCourses(r.data?.courses || []))
+      .catch(() => setCourses([]));
+  }, [localRole]);
+
+  const loadContractRequests = () => {
+    if (localRole !== "student" || !localUserId) return;
+
+    axios
+      .get(`${API}/api/student/contract-requests/${localUserId}`)
+      .then(r => setContractRequests(r.data?.requests || []))
+      .catch(() => setContractRequests([]));
+  };
+
+  useEffect(() => {
+    loadContractRequests();
+  }, [localRole, localUserId]);
+
   // fetch assigned teacher directly from student_profiles using the resolved local user id
   useEffect(() => {
     if (localRole !== "student" || !localUserId) return;
@@ -382,6 +413,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         if (r.data && r.data.profile) {
           setStudentProfile(r.data.profile);
         }
+        if (r.data && r.data.package) {
+          setStudentPackage(r.data.package);
+        }
       })
       .catch(() => {
         setStudentProfile(null);
@@ -421,6 +455,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
             time: c.time || humanTime(c.start_time),
             start_time: c.start_time || parse24HourTime(c.time) || "",
             duration: c.duration || c.duration,
+            status: c.status,
             teacher_id: c.teacher_id,
             student_id: c.student_id,
           }));
@@ -1308,6 +1343,50 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   }
   
   const isTeacherOrAdmin = localRole === "teacher" || isAdmin;
+  const isSelectedClassCompleted = selectedClass?.status === "completed";
+  const isClassDoneTemporarilyOpen = true; // TEMP: testing override. Set to false to restore the join-window gate.
+
+  const openClassDoneConfirmation = () => {
+    if (!selectedClass?.id || !selectedClass?.student_id) {
+      notify?.("Please select a class first.", "error");
+      return;
+    }
+
+    if (!isClassDoneTemporarilyOpen && !isClassJoinable(selectedClass, selectedDate)) {
+      notify?.("You can confirm the class 30 minutes before it starts until it ends.", "error");
+      return;
+    }
+
+    setClassDoneConfirmOpen(true);
+  };
+
+  const markSelectedClassDone = async () => {
+    setIsMarkingClassDone(true);
+    try {
+      const response = await axios.put(`${API}/api/calendar/classes/${selectedClass.id}/complete`, {
+        teacher_id: localUserId,
+      });
+
+      setClassesCache(prev => ({
+        ...prev,
+        [selectedDate]: (prev[selectedDate] || []).map(cls =>
+          cls.id === selectedClass.id ? { ...cls, status: "completed" } : cls
+        ),
+      }));
+
+      if (response.data?.package && localRole === "student") {
+        setStudentPackage(response.data.package);
+      }
+
+      setClassDoneConfirmOpen(false);
+      notify?.("Class marked as done. Student class count updated.", "success");
+    } catch (error) {
+      const message = error.response?.data?.message || "Unable to mark class as done. Please try again.";
+      notify?.(message, "error");
+    } finally {
+      setIsMarkingClassDone(false);
+    }
+  };
 
   // student package based usage calculation
   const effectiveClassesUsed = (() => {
@@ -1324,11 +1403,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     return Math.max(0, effectiveClassesLimit - effectiveClassesUsed);
   })();
   const effectivePercent = effectiveClassesLimit > 0 ? Math.min(100, Math.round((effectiveClassesUsed / effectiveClassesLimit) * 100)) : 0;
+  const hasNoClassesLeft = localRole === "student" && Number(effectiveClassesLeft) <= 0;
 
   const studentMonthMin = fmtDate(new Date(today.getFullYear(), today.getMonth(), 1));
   const studentMonthMax = fmtDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
 
   const openMonthlyBooking = () => {
+    if (hasNoClassesLeft) {
+      setStudentBookingError("Contact the admin for a new contract before booking more classes.");
+      return;
+    }
+
     setYear(today.getFullYear());
     setMonth(today.getMonth());
     setStudentBookingMode(true);
@@ -1338,6 +1423,37 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     setStudentBookingError("");
     setSelectedDate(null);
     setSelectedClassId(null);
+  };
+
+  const submitContractRequest = async () => {
+    setContractRequestError("");
+
+    if (!contractCourseId) {
+      setContractRequestError("Please choose your desired course.");
+      return;
+    }
+
+    if (!contractClassCount || Number(contractClassCount) <= 0) {
+      setContractRequestError("Please choose the number of classes.");
+      return;
+    }
+
+    setIsSubmittingContractRequest(true);
+    try {
+      await axios.post(`${API}/api/student/contract-requests`, {
+        student_id: localUserId,
+        course_id: contractCourseId,
+        requested_classes: contractClassCount,
+      });
+
+      notify?.("Contract request sent to the admin.", "success");
+      setContractRequestOpen(false);
+      loadContractRequests();
+    } catch (err) {
+      setContractRequestError(err?.response?.data?.message || "Unable to send contract request.");
+    } finally {
+      setIsSubmittingContractRequest(false);
+    }
   };
 
   const submitStudentBooking = async () => {
@@ -1352,6 +1468,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
     if (!assignedTeacherId) {
       setStudentBookingError("Unable to book because your assigned teacher is not available.");
+      return;
+    }
+    if (hasNoClassesLeft) {
+      setStudentBookingError("Contact the admin for a new contract before booking more classes.");
       return;
     }
     if (studentBookingDate < studentMonthMin || studentBookingDate > studentMonthMax) {
@@ -1584,28 +1704,28 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                   </div>
                   <button
                     type="button"
-                    disabled={!isClassJoinable(selectedClass, selectedDate)}
+                    disabled={isSelectedClassCompleted || !isClassJoinable(selectedClass, selectedDate)}
                     onClick={() => {
-                      if (isClassJoinable(selectedClass, selectedDate)) {
+                      if (!isSelectedClassCompleted && isClassJoinable(selectedClass, selectedDate)) {
                         window.open(selectedClass.classLink, "_blank");
                       }
                     }}
-                    className={styles.bookBtn}
+                    className={`${styles.bookBtn} ${styles.joinBtn}`}
                     style={{
                       textAlign: "center",
                       display: "block",
                       width: "100%",
-                      cursor: isClassJoinable(selectedClass, selectedDate) ? "pointer" : "not-allowed",
-                      opacity: isClassJoinable(selectedClass, selectedDate) ? 1 : 0.5,
-                      filter: isClassJoinable(selectedClass, selectedDate) ? "none" : "grayscale(100%)",
+                      cursor: !isSelectedClassCompleted && isClassJoinable(selectedClass, selectedDate) ? "pointer" : "not-allowed",
+                      opacity: !isSelectedClassCompleted && isClassJoinable(selectedClass, selectedDate) ? 1 : 0.5,
+                      filter: !isSelectedClassCompleted && isClassJoinable(selectedClass, selectedDate) ? "none" : "grayscale(100%)",
                     }}
-                    title={isClassJoinable(selectedClass, selectedDate) ? "" : "Available 30 mins before class starts"}
+                    title={isSelectedClassCompleted ? "This class is already done" : isClassJoinable(selectedClass, selectedDate) ? "" : "Available 30 mins before class starts"}
                   >
                     Join Class
                   </button>
                   { !isAdmin && !requestMode && (
                     <button
-                      className={styles.bookBtn}
+                      className={`${styles.bookBtn} ${styles.rescheduleBtn}`}
                       onClick={() => {
                         // Fetch counterparty's booked dates
                         const otherPartyId = localRole === "student" ? selectedClass.teacher_id : selectedClass.student_id;
@@ -1642,6 +1762,22 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                       style={{ marginTop: "8px" }}
                     >
                       Request for Reschedule
+                    </button>
+                  ) }
+                  { localRole === "teacher" && !isAdmin && !requestMode && (
+                    <button
+                      type="button"
+                      className={`${styles.bookBtn} ${styles.doneBtn}`}
+                      disabled={isSelectedClassCompleted || isMarkingClassDone || (!isClassDoneTemporarilyOpen && !isClassJoinable(selectedClass, selectedDate))}
+                      onClick={openClassDoneConfirmation}
+                      style={{
+                        marginTop: "8px",
+                        opacity: isSelectedClassCompleted || isMarkingClassDone || (!isClassDoneTemporarilyOpen && !isClassJoinable(selectedClass, selectedDate)) ? 0.6 : 1,
+                        cursor: isSelectedClassCompleted || isMarkingClassDone || (!isClassDoneTemporarilyOpen && !isClassJoinable(selectedClass, selectedDate)) ? "not-allowed" : "pointer",
+                      }}
+                      title={isClassDoneTemporarilyOpen || isClassJoinable(selectedClass, selectedDate) ? "" : "Available 30 mins before class starts until class ends"}
+                    >
+                      {isSelectedClassCompleted ? "Class Done" : isMarkingClassDone ? "Saving..." : "Confirm Class Done"}
                     </button>
                   ) }
                   { requestMode && (
@@ -2570,28 +2706,28 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                       )}
                     </div>
                     <button
-                      disabled={!isClassJoinable(selectedClass, selectedDate)}
+                      disabled={isSelectedClassCompleted || !isClassJoinable(selectedClass, selectedDate)}
                       onClick={() => {
-                        if (isClassJoinable(selectedClass, selectedDate)) {
+                        if (!isSelectedClassCompleted && isClassJoinable(selectedClass, selectedDate)) {
                           window.open(selectedClass.classLink, "_blank");
                         }
                       }}
-                      className={styles.bookBtn}
+                      className={`${styles.bookBtn} ${styles.joinBtn}`}
                       style={{
                         textAlign: "center",
                         display: "block",
                         width: "100%",
-                        cursor: isClassJoinable(selectedClass, selectedDate) ? "pointer" : "not-allowed",
-                        opacity: isClassJoinable(selectedClass, selectedDate) ? 1 : 0.5,
-                        filter: isClassJoinable(selectedClass, selectedDate) ? "none" : "grayscale(100%)",
+                        cursor: !isSelectedClassCompleted && isClassJoinable(selectedClass, selectedDate) ? "pointer" : "not-allowed",
+                        opacity: !isSelectedClassCompleted && isClassJoinable(selectedClass, selectedDate) ? 1 : 0.5,
+                        filter: !isSelectedClassCompleted && isClassJoinable(selectedClass, selectedDate) ? "none" : "grayscale(100%)",
                       }}
-                      title={isClassJoinable(selectedClass, selectedDate) ? "" : "Available 30 mins before class starts"}
+                      title={isSelectedClassCompleted ? "This class is already done" : isClassJoinable(selectedClass, selectedDate) ? "" : "Available 30 mins before class starts"}
                     >
                       Join Class
                     </button>
                     <button
                       type="button"
-                      className={styles.bookBtn}
+                      className={`${styles.bookBtn} ${styles.rescheduleBtn}`}
                       onClick={() => {
                         // Fetch counterparty's booked dates
                         const otherPartyId = localRole === "student" ? selectedClass.teacher_id : selectedClass.student_id;
@@ -2936,14 +3072,99 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         </div>
                       </div>
                     </div>
-                    <div style={{ marginTop: 12, fontSize: 12, color: "#666" }}>Tip: Contact your teacher to add or reschedule classes.</div>
+                    <div style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
+                      {hasNoClassesLeft ? "Booking is locked until a new contract is added." : "Tip: Contact your teacher to add or reschedule classes."}
+                    </div>
+                    {hasNoClassesLeft && (
+                      <div style={{ marginTop: 12, padding: 12, border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff" }}>
+                        {contractRequests[0] && (
+                          <div style={{ marginBottom: 10, fontSize: 12, color: "#4b5563" }}>
+                            Latest request: <strong style={{ textTransform: "capitalize" }}>{contractRequests[0].status}</strong>
+                            {contractRequests[0].course_name ? ` - ${contractRequests[0].course_name}` : ""}
+                            {contractRequests[0].requested_classes ? ` (${contractRequests[0].requested_classes} classes)` : ""}
+                          </div>
+                        )}
+                        {!contractRequestOpen ? (
+                          <button
+                            type="button"
+                            className={styles.slotBtn}
+                            onClick={() => {
+                              setContractRequestOpen(true);
+                              setContractRequestError("");
+                              setContractCourseId(studentProfile?.course_id || "");
+                            }}
+                            style={{ width: "100%", textAlign: "center", background: "#111827", color: "#fff" }}
+                          >
+                            Request New Contract
+                          </button>
+                        ) : (
+                          <div style={{ display: "grid", gap: 10 }}>
+                            <div>
+                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Desired Course</label>
+                              <select
+                                value={contractCourseId}
+                                onChange={(e) => setContractCourseId(e.target.value)}
+                                style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit" }}
+                              >
+                                <option value="">Select course</option>
+                                {courses.map((course) => (
+                                  <option key={course.course_id} value={course.course_id}>
+                                    {course.course_name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Number of Classes</label>
+                              <select
+                                value={contractClassCount}
+                                onChange={(e) => setContractClassCount(e.target.value)}
+                                style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit" }}
+                              >
+                                <option value="10">10 classes</option>
+                                <option value="15">15 classes</option>
+                                <option value="20">20 classes</option>
+                              </select>
+                            </div>
+                            {contractRequestError && (
+                              <div style={{ padding: 8, border: "1px solid #fecaca", borderRadius: 8, background: "#fef2f2", color: "#b91c1c", fontSize: 12 }}>
+                                {contractRequestError}
+                              </div>
+                            )}
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button
+                                type="button"
+                                onClick={() => setContractRequestOpen(false)}
+                                disabled={isSubmittingContractRequest}
+                                style={{ flex: 1, padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={submitContractRequest}
+                                disabled={isSubmittingContractRequest}
+                                style={{ flex: 1, padding: "9px 10px", border: "none", borderRadius: 8, background: "#111827", color: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
+                              >
+                                {isSubmittingContractRequest ? "Sending..." : "Send Request"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
                       <button
                         type="button"
                         className={styles.slotBtn}
                         onClick={openMonthlyBooking}
-                        disabled={!assignedTeacherId}
-                        style={{ width: "100%", textAlign: "center" }}
+                        disabled={!assignedTeacherId || hasNoClassesLeft}
+                        style={{
+                          width: "100%",
+                          textAlign: "center",
+                          opacity: !assignedTeacherId || hasNoClassesLeft ? 0.55 : 1,
+                          cursor: !assignedTeacherId || hasNoClassesLeft ? "not-allowed" : "pointer",
+                        }}
                       >
                         Book Classes for This Month
                       </button>
@@ -2997,6 +3218,116 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         </div>
       </section>
     </main>
+    {classDoneConfirmOpen && selectedClass && (
+      <div
+        role="presentation"
+        onClick={() => {
+          if (!isMarkingClassDone) setClassDoneConfirmOpen(false);
+        }}
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(15, 23, 42, 0.45)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 20,
+          zIndex: 2000,
+          animation: "fadeIn 0.2s ease-out",
+        }}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="class-done-title"
+          onClick={(event) => event.stopPropagation()}
+          style={{
+            width: "min(420px, 100%)",
+            background: "#fff",
+            borderRadius: 12,
+            boxShadow: "0 24px 60px rgba(15, 23, 42, 0.22)",
+            padding: 24,
+            animation: "slideIn 0.22s ease-out",
+          }}
+        >
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              background: "#e7f5ff",
+              color: "#1864ab",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 800,
+              fontSize: 20,
+              marginBottom: 14,
+            }}
+          >
+            OK
+          </div>
+          <h3 id="class-done-title" style={{ margin: "0 0 8px", fontSize: "1.15rem", color: "#111827" }}>
+            Confirm class completion
+          </h3>
+          <p style={{ margin: "0 0 16px", color: "#4b5563", lineHeight: 1.5, fontSize: "0.92rem" }}>
+            This will mark the class as done and count one used class from the student's package.
+          </p>
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 10,
+              background: "#f9fafb",
+              padding: "12px 14px",
+              marginBottom: 20,
+            }}
+          >
+            <div style={{ fontWeight: 700, color: "#111827", marginBottom: 4 }}>
+              {selectedClass.className || "Selected class"}
+            </div>
+            <div style={{ fontSize: "0.85rem", color: "#4b5563" }}>
+              {selectedClass.studentName ? `${selectedClass.studentName} - ` : ""}
+              {selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration)}
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button
+              type="button"
+              onClick={() => setClassDoneConfirmOpen(false)}
+              disabled={isMarkingClassDone}
+              style={{
+                border: "1px solid #d1d5db",
+                background: "#fff",
+                color: "#111827",
+                borderRadius: 8,
+                padding: "10px 14px",
+                fontWeight: 700,
+                cursor: isMarkingClassDone ? "not-allowed" : "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={markSelectedClassDone}
+              disabled={isMarkingClassDone}
+              style={{
+                border: "none",
+                background: "#1864ab",
+                color: "#fff",
+                borderRadius: 8,
+                padding: "10px 16px",
+                fontWeight: 700,
+                cursor: isMarkingClassDone ? "not-allowed" : "pointer",
+                boxShadow: "0 8px 18px rgba(24, 100, 171, 0.22)",
+              }}
+            >
+              {isMarkingClassDone ? "Confirming..." : "Confirm Done"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 }

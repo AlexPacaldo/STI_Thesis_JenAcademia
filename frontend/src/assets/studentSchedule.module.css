@@ -205,6 +205,31 @@
 }
 .bookBtn:disabled { opacity: .6; cursor: not-allowed; }
 
+.joinBtn {
+  background: #2f9e44;
+  box-shadow: 0 4px 10px rgba(47, 158, 68, .18);
+}
+
+.joinBtn:disabled {
+  background: #8f8f8f;
+  box-shadow: none;
+}
+
+.rescheduleBtn {
+  background: #f08c00;
+  box-shadow: 0 4px 10px rgba(240, 140, 0, .18);
+}
+
+.doneBtn {
+  background: #1864ab;
+  box-shadow: 0 4px 10px rgba(24, 100, 171, .18);
+}
+
+.doneBtn:disabled {
+  background: #6c757d;
+  box-shadow: none;
+}
+
 /* legend block */
 .legendBlock {
   margin-top: 10px;

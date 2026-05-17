@@ -147,6 +147,7 @@ export default function AdminDashboard() {
     personalityStrength: "",
     idealStudentPace: "",
     bio: "",
+    courseIds: [],
   });
   // create-student form
   const [sForm, setSForm] = useState({
@@ -169,6 +170,7 @@ export default function AdminDashboard() {
     },
   });
   const [courses, setCourses] = useState([]);
+  const [teacherCourses, setTeacherCourses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiRecommendation, setAiRecommendation] = useState(null);
@@ -176,6 +178,13 @@ export default function AdminDashboard() {
   const [requestFilter, setRequestFilter] = useState("all"); // 'all', 'pending', 'approved', 'declined'
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null); // { id, status, action }
+  const [contracts, setContracts] = useState([]);
+  const [contractsLoading, setContractsLoading] = useState(false);
+  const [savingContractId, setSavingContractId] = useState(null);
+  const [contractRequests, setContractRequests] = useState([]);
+  const [contractRequestsLoading, setContractRequestsLoading] = useState(false);
+  const [updatingContractRequestId, setUpdatingContractRequestId] = useState(null);
+  const [contractSubTab, setContractSubTab] = useState("packages");
 
   // ---- role gate (admin only) ----
    useEffect(() => {
@@ -199,16 +208,19 @@ export default function AdminDashboard() {
   // ---- fetchers ----
   async function loadUsers() {
     try {
-      const [s, t] = await Promise.all([
+      const [s, t, tc] = await Promise.all([
         axios.get(`${API}/api/admin/users?role=student&status=active`),
         axios.get(`${API}/api/admin/users?role=teacher&status=active`),
+        axios.get(`${API}/api/teacher-courses`),
       ]);
       setStudents(s.data || []);
       setTeachers(t.data || []);
+      setTeacherCourses(tc.data?.teacherCourses || []);
     } catch (e) {
       console.error(e);
       setStudents([]);
       setTeachers([]);
+      setTeacherCourses([]);
     }
   }
 
@@ -236,6 +248,10 @@ export default function AdminDashboard() {
     if (active === "requests") {
       loadRequests();
     }
+    if (active === "contracts") {
+      loadContracts();
+      loadContractRequests();
+    }
   }, [active]);
 
   // ---- actions: create teacher ----
@@ -258,6 +274,7 @@ export default function AdminDashboard() {
         personalityStrength: "",
         idealStudentPace: "",
         bio: "",
+        courseIds: [],
       });
       loadUsers();
     } catch (e) {
@@ -271,6 +288,11 @@ export default function AdminDashboard() {
   // ---- actions: create student ----
   async function createStudent(e) {
     e.preventDefault();
+    if (!sForm.courseId) {
+      notify("Please select the student's course.", "error");
+      return;
+    }
+
     setLoading(true);
     try {
       const payload = { ...sForm, role: "student" };
@@ -316,7 +338,25 @@ export default function AdminDashboard() {
     setAiRecommendation(null);
   }
 
+  function toggleTeacherCourse(courseId) {
+    const normalized = String(courseId);
+    setTForm((prev) => {
+      const exists = prev.courseIds.includes(normalized);
+      return {
+        ...prev,
+        courseIds: exists
+          ? prev.courseIds.filter((id) => id !== normalized)
+          : [...prev.courseIds, normalized],
+      };
+    });
+  }
+
   async function analyzeStudentMatch() {
+    if (!sForm.courseId) {
+      notify("Please select the student's course before analyzing.", "error");
+      return;
+    }
+
     const hasCriteria = Object.values(sForm.aiCriteria).some(Boolean);
     if (!sForm.trialNotes.trim() && !hasCriteria) {
       notify("Please add trial notes or choose matching criteria before analyzing.", "error");
@@ -428,6 +468,94 @@ export default function AdminDashboard() {
     }
   }
 
+  async function loadContracts() {
+    setContractsLoading(true);
+    try {
+      const r = await axios.get(`${API}/api/admin/student-contracts`);
+      setContracts((r.data.contracts || []).map((item) => ({
+        ...item,
+        course_id: item.course_id || "",
+        assigned_teacher_id: item.assigned_teacher_id || "",
+        total_classes: item.total_classes ?? "",
+        classes_used: item.classes_used ?? 0,
+        package_status: item.package_status || "active",
+      })));
+    } catch (e) {
+      console.error(e);
+      setContracts([]);
+      notify("Failed to load student contracts", "error");
+    } finally {
+      setContractsLoading(false);
+    }
+  }
+
+  function updateContractRow(studentId, field, value) {
+    setContracts((prev) => prev.map((row) => {
+      if (row.user_id !== studentId) return row;
+      const next = { ...row, [field]: value };
+      if (field === "total_classes") {
+        const total = Math.max(0, parseInt(value, 10) || 0);
+        const used = Math.max(0, parseInt(next.classes_used, 10) || 0);
+        next.classes_used = Math.min(used, total);
+      }
+      if (field === "course_id") {
+        const currentTeacherCanTeach = !next.assigned_teacher_id || !value || teacherCourseMap[String(next.assigned_teacher_id)]?.has(String(value));
+        if (!currentTeacherCanTeach) next.assigned_teacher_id = "";
+      }
+      return next;
+    }));
+  }
+
+  async function saveContract(row) {
+    setSavingContractId(row.user_id);
+    try {
+      await axios.put(`${API}/api/admin/student-contracts/${row.user_id}`, {
+        course_id: row.course_id || null,
+        assigned_teacher_id: row.assigned_teacher_id || null,
+        package_id: row.package_id || null,
+        total_classes: row.total_classes,
+        classes_used: row.classes_used,
+        status: row.package_status || "active",
+      });
+      notify("Student contract updated", "success");
+      loadContracts();
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || "Failed to update contract", "error");
+    } finally {
+      setSavingContractId(null);
+    }
+  }
+
+  async function loadContractRequests() {
+    setContractRequestsLoading(true);
+    try {
+      const r = await axios.get(`${API}/api/admin/contract-requests`);
+      setContractRequests(r.data.requests || []);
+    } catch (e) {
+      console.error(e);
+      setContractRequests([]);
+      notify("Failed to load contract requests", "error");
+    } finally {
+      setContractRequestsLoading(false);
+    }
+  }
+
+  async function updateContractRequest(requestId, status) {
+    setUpdatingContractRequestId(requestId);
+    try {
+      await axios.put(`${API}/api/admin/contract-requests/${requestId}`, { status });
+      notify(`Contract request ${status}`, "success");
+      loadContractRequests();
+      loadContracts();
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || "Failed to update contract request", "error");
+    } finally {
+      setUpdatingContractRequestId(null);
+    }
+  }
+
   // ---- UI helpers ----
   const Tab = ({ id, label }) => (
     <button
@@ -439,6 +567,27 @@ export default function AdminDashboard() {
     </button>
   );
 
+  const teacherCourseMap = teacherCourses.reduce((acc, item) => {
+    const teacherId = String(item.teacher_id);
+    if (!acc[teacherId]) acc[teacherId] = new Set();
+    acc[teacherId].add(String(item.course_id));
+    return acc;
+  }, {});
+
+  const teachersForSelectedStudentCourse = sForm.courseId
+    ? teachers.filter((teacher) => teacherCourseMap[String(teacher.user_id)]?.has(String(sForm.courseId)))
+    : teachers;
+
+  const updateStudentCourse = (courseId) => {
+    const currentTeacherCanTeach = !sForm.teacherId || !courseId || teacherCourseMap[String(sForm.teacherId)]?.has(String(courseId));
+    setSForm({
+      ...sForm,
+      courseId,
+      teacherId: currentTeacherCanTeach ? sForm.teacherId : "",
+    });
+    setAiRecommendation(null);
+  };
+
   return (
     <div className={styles.Center}>
     <div className={styles.page}>
@@ -447,6 +596,7 @@ export default function AdminDashboard() {
         <div className={styles.tabs}>
           <Tab id="calendar" label="Calendar" />
           <Tab id="requests" label="Schedule Requests" />
+          <Tab id="contracts" label="Manage Class Contracts" />
           <Tab id="createTeacher" label="Create Teacher" />
           <Tab id="createStudent" label="Create Student" />
           <Tab id="archive" label="Archive Accounts" />
@@ -480,6 +630,37 @@ export default function AdminDashboard() {
                 <div>
                   <label>Contact</label>
                   <input value={tForm.contact} onChange={(e)=>setTForm({...tForm, contact:e.target.value})} />
+                </div>
+              </div>
+              <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
+                <h3 style={{ margin: "0 0 8px 0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>Courses This Teacher Can Teach</h3>
+                <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
+                  Students can only be assigned to this teacher for the selected courses.
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
+                  {courses.map((course) => (
+                    <label
+                      key={course.course_id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "10px 12px",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 10,
+                        background: tForm.courseIds.includes(String(course.course_id)) ? "#f0fdf4" : "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={tForm.courseIds.includes(String(course.course_id))}
+                        onChange={() => toggleTeacherCourse(course.course_id)}
+                        style={{ width: "auto" }}
+                      />
+                      <span>{course.course_name}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
               <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
@@ -575,6 +756,20 @@ export default function AdminDashboard() {
                 <div>
                   <label>Contact</label>
                   <input value={sForm.contact} onChange={(e)=>setSForm({...sForm, contact:e.target.value})} />
+                </div>
+                <div>
+                  <label>Enroll in Course</label>
+                  <select
+                    value={sForm.courseId}
+                    onChange={(e)=>updateStudentCourse(e.target.value)}
+                  >
+                    <option value="">Select Course</option>
+                    {courses.map(c => (
+                      <option key={c.course_id} value={c.course_id}>
+                        {c.course_name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <br />
@@ -744,40 +939,18 @@ export default function AdminDashboard() {
                       }}
                     >
                       <option value="">Select Teacher</option>
-                      {teachers.map(t => (
+                      {teachersForSelectedStudentCourse.map(t => (
                         <option key={t.user_id} value={t.user_id}>
                           {t.first_name} {t.last_name}
                         </option>
                       ))}
                     </select>
+                    {sForm.courseId && teachersForSelectedStudentCourse.length === 0 && (
+                      <div style={{ marginTop: 6, fontSize: "0.82em", color: "#b65f00" }}>
+                        No active teacher is assigned to teach this course yet.
+                      </div>
+                    )}
                   </div>
-                </div>
-                <div style={{ marginTop: "16px" }}>
-                  <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Enroll in Course</label>
-                  <select
-                    value={sForm.courseId}
-                    onChange={(e)=>{
-                      setSForm({...sForm, courseId:e.target.value});
-                      setAiRecommendation(null);
-                    }}
-                    style={{
-                      width: "100%",
-                      padding: "10px",
-                      border: "1px solid #d0d0d0",
-                      borderRadius: "6px",
-                      fontFamily: "inherit",
-                      fontSize: "0.9em",
-                      background: "#fff",
-                      boxSizing: "border-box"
-                    }}
-                  >
-                    <option value="">Select Course (Optional)</option>
-                    {courses.map(c => (
-                      <option key={c.course_id} value={c.course_id}>
-                        {c.course_name}
-                      </option>
-                    ))}
-                  </select>
                 </div>
               </div>
               <br />
@@ -820,6 +993,247 @@ export default function AdminDashboard() {
                 {loading ? "Creating..." : "Create Student"}
               </button>
             </form>
+          </section>
+        )}
+
+        {active === "contracts" && (
+          <section className={styles.card}>
+            <div className={styles.cardHead}>
+              <div>
+                <h2>Manage Class Contracts</h2>
+                <p style={{ margin: "4px 0 0 0", fontSize: "0.9em", color: "#666" }}>
+                  Manage enrolled courses and active class packages for each student.
+                </p>
+              </div>
+              <button
+                className={styles.primary}
+                type="button"
+                onClick={contractSubTab === "packages" ? loadContracts : loadContractRequests}
+                disabled={contractsLoading || contractRequestsLoading}
+              >
+                {contractsLoading || contractRequestsLoading ? "Refreshing..." : "Refresh"}
+              </button>
+            </div>
+
+            <div className={styles.subTabs}>
+              <button
+                type="button"
+                className={`${styles.subTab} ${contractSubTab === "packages" ? styles.subTabActive : ""}`}
+                onClick={() => setContractSubTab("packages")}
+              >
+                Class Packages
+              </button>
+              <button
+                type="button"
+                className={`${styles.subTab} ${contractSubTab === "requests" ? styles.subTabActive : ""}`}
+                onClick={() => setContractSubTab("requests")}
+              >
+                Contract Requests
+              </button>
+            </div>
+
+            {contractSubTab === "requests" && (
+            <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 14, background: "#fafafa" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
+                <h3 style={{ margin: 0, fontSize: "1rem" }}>Student Contract Requests</h3>
+                <button className={styles.linkBtn} type="button" onClick={loadContractRequests}>
+                  Refresh Requests
+                </button>
+              </div>
+              {contractRequestsLoading ? (
+                <div className={styles.empty}>Loading contract requests...</div>
+              ) : contractRequests.length === 0 ? (
+                <div className={styles.empty}>No contract requests yet</div>
+              ) : (
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Student</th>
+                        <th>Requested Course</th>
+                        <th>Classes</th>
+                        <th>Status</th>
+                        <th>Requested</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {contractRequests.map((request) => (
+                        <tr key={request.request_id}>
+                          <td>
+                            <strong>{request.first_name} {request.last_name}</strong>
+                            <div style={{ fontSize: "0.8em", color: "#666" }}>{request.email}</div>
+                          </td>
+                          <td>{request.course_name || "Course not set"}</td>
+                          <td>{request.requested_classes}</td>
+                          <td>
+                            <span style={{
+                              padding: "4px 8px",
+                              borderRadius: 999,
+                              background: request.status === "pending" ? "#fef3c7" : request.status === "approved" ? "#dcfce7" : "#fee2e2",
+                              color: request.status === "pending" ? "#92400e" : request.status === "approved" ? "#166534" : "#991b1b",
+                              fontWeight: 700,
+                              textTransform: "capitalize",
+                            }}>
+                              {request.status}
+                            </span>
+                          </td>
+                          <td>{formatDate(request.requested_at)}</td>
+                          <td>
+                            {request.status === "pending" ? (
+                              <div className={styles.rowActions}>
+                                <button
+                                  className={styles.approve}
+                                  type="button"
+                                  onClick={() => updateContractRequest(request.request_id, "approved")}
+                                  disabled={updatingContractRequestId === request.request_id}
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  className={styles.decline}
+                                  type="button"
+                                  onClick={() => updateContractRequest(request.request_id, "declined")}
+                                  disabled={updatingContractRequestId === request.request_id}
+                                >
+                                  Decline
+                                </button>
+                              </div>
+                            ) : (
+                              <span style={{ color: "#666", fontSize: "0.9em" }}>
+                                {request.resolved_at ? `Resolved ${formatDate(request.resolved_at)}` : "Resolved"}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            )}
+
+            {contractSubTab === "packages" && (
+            <div className={styles.tableWrap}>
+              {contractsLoading ? (
+                <div className={styles.empty}>Loading contracts...</div>
+              ) : contracts.length === 0 ? (
+                <div className={styles.empty}>No active students found</div>
+              ) : (
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Student</th>
+                      <th>Course</th>
+                      <th>Teacher</th>
+                      <th>Total</th>
+                      <th>Used</th>
+                      <th>Left</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {contracts.map((row) => {
+                      const total = Math.max(0, parseInt(row.total_classes, 10) || 0);
+                      const used = Math.max(0, parseInt(row.classes_used, 10) || 0);
+                      const classesLeft = Math.max(0, total - used);
+                      return (
+                        <tr key={row.user_id}>
+                          <td>
+                            <strong>{row.first_name} {row.last_name}</strong>
+                            <div style={{ fontSize: "0.8em", color: "#666" }}>{row.email}</div>
+                          </td>
+                          <td>
+                            <select
+                              value={row.course_id}
+                              onChange={(e) => updateContractRow(row.user_id, "course_id", e.target.value)}
+                            >
+                              <option value="">Keep current</option>
+                              {courses.map((course) => (
+                                <option key={course.course_id} value={course.course_id}>
+                                  {course.course_name}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <select
+                              value={row.assigned_teacher_id}
+                              onChange={(e) => updateContractRow(row.user_id, "assigned_teacher_id", e.target.value)}
+                            >
+                              <option value="">Unassigned</option>
+                              {teachers
+                                .filter((teacher) => !row.course_id || teacherCourseMap[String(teacher.user_id)]?.has(String(row.course_id)))
+                                .map((teacher) => (
+                                <option key={teacher.user_id} value={teacher.user_id}>
+                                  {teacher.first_name} {teacher.last_name}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              min="0"
+                              value={row.total_classes}
+                              onChange={(e) => updateContractRow(row.user_id, "total_classes", e.target.value)}
+                              style={{ width: 78 }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              min="0"
+                              max={total}
+                              value={row.classes_used}
+                              onChange={(e) => updateContractRow(row.user_id, "classes_used", e.target.value)}
+                              style={{ width: 78 }}
+                            />
+                          </td>
+                          <td>
+                            <span style={{
+                              display: "inline-block",
+                              minWidth: 34,
+                              textAlign: "center",
+                              padding: "4px 8px",
+                              borderRadius: 999,
+                              background: classesLeft <= 0 ? "#fee2e2" : "#dcfce7",
+                              color: classesLeft <= 0 ? "#991b1b" : "#166534",
+                              fontWeight: 700,
+                            }}>
+                              {classesLeft}
+                            </span>
+                          </td>
+                          <td>
+                            <select
+                              value={row.package_status}
+                              onChange={(e) => updateContractRow(row.user_id, "package_status", e.target.value)}
+                            >
+                              <option value="active">Active</option>
+                              <option value="expired">Expired</option>
+                              <option value="cancelled">Cancelled</option>
+                            </select>
+                          </td>
+                          <td>
+                            <button
+                              className={styles.approve}
+                              type="button"
+                              onClick={() => saveContract(row)}
+                              disabled={savingContractId === row.user_id}
+                            >
+                              {savingContractId === row.user_id ? "Saving..." : row.package_id ? "Save" : "Create"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            )}
           </section>
         )}
 

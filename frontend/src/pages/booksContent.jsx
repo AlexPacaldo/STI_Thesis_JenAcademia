@@ -1,6 +1,6 @@
 // src/pages/BooksContent.jsx
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import styles from "../assets/booksContent.module.css";
 import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
@@ -9,6 +9,7 @@ const API_BASE = "http://localhost:3001";
 
 export default function BooksContent({ mode = "student" }) {
   const { bookId } = useParams();
+  const navigate = useNavigate();
   const { notify } = useNotification() || {};
   const [book, setBook] = useState(null);
   const [lessons, setLessons] = useState([]);
@@ -30,6 +31,21 @@ export default function BooksContent({ mode = "student" }) {
     const loadBookContent = async () => {
       try {
         setLoading(true);
+
+        if (!isTeacherView) {
+          const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+          const currentStudentId = storedUser.id || storedUser.user_id || storedUser.userId || studentId;
+          const packageResponse = await fetch(`${API_BASE}/api/calendar/student-package/${currentStudentId}`);
+
+          if (packageResponse.ok) {
+            const packageData = await packageResponse.json();
+            if (Number(packageData.package?.classes_left) <= 0) {
+              notify?.("Contact the admin for a new contract to view Books / Lessons.", "error");
+              navigate("/Calendar");
+              return;
+            }
+          }
+        }
 
         const [bookResponse, lessonsResponse, progressResponse] = await Promise.all([
           fetch(`${API_BASE}/api/books/${bookId}`),
@@ -68,7 +84,7 @@ export default function BooksContent({ mode = "student" }) {
     };
 
     loadBookContent();
-  }, [bookId, isTeacherView, notify, studentId]);
+  }, [bookId, isTeacherView, navigate, notify, studentId]);
 
   const selectedFileUrl = useMemo(() => {
     if (!selectedLesson?.file_path) return "";
