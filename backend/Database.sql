@@ -40,7 +40,7 @@ CREATE TABLE `assignment_submissions` (
   KEY `idx_submitted_at` (`submitted_at`),
   CONSTRAINT `assignment_submissions_ibfk_1` FOREIGN KEY (`assignment_id`) REFERENCES `assignments` (`assignment_id`),
   CONSTRAINT `assignment_submissions_ibfk_2` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -72,7 +72,7 @@ CREATE TABLE `assignments` (
   CONSTRAINT `assignments_ibfk_1` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`user_id`),
   CONSTRAINT `assignments_ibfk_2` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`),
   CONSTRAINT `assignments_ibfk_3` FOREIGN KEY (`course_id`) REFERENCES `courses` (`course_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -86,17 +86,17 @@ CREATE TABLE `books` (
   `book_id` int NOT NULL AUTO_INCREMENT,
   `course_id` int NOT NULL,
   `teacher_id` int DEFAULT NULL,
+  `cover_url` varchar(1000) DEFAULT NULL,
   `title` varchar(255) NOT NULL,
   `description` text,
   `author` varchar(255) DEFAULT NULL,
-  `cover_url` varchar(1000) DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`book_id`),
   KEY `idx_course_id` (`course_id`),
   KEY `idx_teacher_id` (`teacher_id`),
   CONSTRAINT `books_ibfk_1` FOREIGN KEY (`course_id`) REFERENCES `courses` (`course_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -151,7 +151,7 @@ CREATE TABLE `class_remarks` (
   CONSTRAINT `class_remarks_ibfk_2` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`user_id`),
   CONSTRAINT `class_remarks_ibfk_3` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`),
   CONSTRAINT `class_remarks_chk_1` CHECK (((`rating` >= 1) and (`rating` <= 5)))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -181,7 +181,7 @@ CREATE TABLE `classes` (
   KEY `idx_status` (`status`),
   CONSTRAINT `classes_ibfk_1` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`user_id`),
   CONSTRAINT `classes_ibfk_2` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=46 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -280,7 +280,7 @@ CREATE TABLE `lessons` (
   KEY `idx_book_id` (`book_id`),
   KEY `idx_is_published` (`is_published`),
   CONSTRAINT `lessons_ibfk_1` FOREIGN KEY (`book_id`) REFERENCES `books` (`book_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -385,7 +385,7 @@ CREATE TABLE `notifications` (
   KEY `idx_type` (`type`),
   KEY `idx_created_at` (`created_at`),
   CONSTRAINT `notifications_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=88 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -411,7 +411,7 @@ CREATE TABLE `reschedule_requests` (
   KEY `idx_requested_by` (`requested_by_id`),
   CONSTRAINT `reschedule_requests_ibfk_1` FOREIGN KEY (`class_id`) REFERENCES `classes` (`class_id`),
   CONSTRAINT `reschedule_requests_ibfk_2` FOREIGN KEY (`requested_by_id`) REFERENCES `users` (`user_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -434,7 +434,32 @@ CREATE TABLE `student_class_packages` (
   KEY `idx_student_id` (`student_id`),
   KEY `idx_status` (`status`),
   CONSTRAINT `student_class_packages_ibfk_1` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `student_contract_requests`
+--
+
+DROP TABLE IF EXISTS `student_contract_requests`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `student_contract_requests` (
+  `request_id` int NOT NULL AUTO_INCREMENT,
+  `student_id` int NOT NULL,
+  `course_id` int DEFAULT NULL,
+  `requested_classes` int NOT NULL,
+  `status` enum('pending','approved','declined') NOT NULL DEFAULT 'pending',
+  `admin_response` varchar(500) DEFAULT NULL,
+  `requested_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `resolved_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`request_id`),
+  KEY `idx_student_contract_requests_student` (`student_id`),
+  KEY `idx_student_contract_requests_course` (`course_id`),
+  KEY `idx_student_contract_requests_status` (`status`),
+  CONSTRAINT `student_contract_requests_course_fk` FOREIGN KEY (`course_id`) REFERENCES `courses` (`course_id`),
+  CONSTRAINT `student_contract_requests_student_fk` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -449,8 +474,8 @@ CREATE TABLE `student_profiles` (
   `user_id` int NOT NULL,
   `proficiency_level` enum('beginner','elementary','intermediate','upper-intermediate','advanced','proficient') DEFAULT 'beginner',
   `assigned_teacher_id` int DEFAULT NULL,
-  `course_id` int NOT NULL,
   `trial_notes` text,
+  `course_id` int NOT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`student_id`),
@@ -461,7 +486,7 @@ CREATE TABLE `student_profiles` (
   CONSTRAINT `student_profiles_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`),
   CONSTRAINT `student_profiles_ibfk_2` FOREIGN KEY (`assigned_teacher_id`) REFERENCES `users` (`user_id`),
   CONSTRAINT `student_profiles_ibfk_3` FOREIGN KEY (`course_id`) REFERENCES `courses` (`course_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -498,12 +523,35 @@ CREATE TABLE `teacher_availability` (
   `notes` text,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `start_time` time DEFAULT NULL,
+  `end_time` time DEFAULT NULL,
+  `break_start` time DEFAULT NULL,
+  `break_end` time DEFAULT NULL,
   PRIMARY KEY (`availability_id`),
   UNIQUE KEY `unique_teacher_date` (`teacher_id`,`available_date`),
   KEY `idx_teacher_id` (`teacher_id`),
   KEY `idx_date` (`available_date`),
+  KEY `idx_teacher_date_time` (`teacher_id`,`available_date`,`start_time`),
   CONSTRAINT `teacher_availability_ibfk_1` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`user_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=34 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=61 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `teacher_courses`
+--
+
+DROP TABLE IF EXISTS `teacher_courses`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `teacher_courses` (
+  `teacher_id` int NOT NULL,
+  `course_id` int NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`teacher_id`,`course_id`),
+  KEY `idx_teacher_courses_course` (`course_id`),
+  CONSTRAINT `teacher_courses_course_fk` FOREIGN KEY (`course_id`) REFERENCES `courses` (`course_id`) ON DELETE CASCADE,
+  CONSTRAINT `teacher_courses_teacher_fk` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -527,7 +575,7 @@ CREATE TABLE `teacher_profiles` (
   UNIQUE KEY `user_id` (`user_id`),
   KEY `idx_user_id` (`user_id`),
   CONSTRAINT `teacher_profiles_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -555,25 +603,7 @@ CREATE TABLE `users` (
   KEY `idx_email` (`email`) /*!80000 INVISIBLE */,
   KEY `idx_role` (`role`) /*!80000 INVISIBLE */,
   KEY `idx_status` (`status`)
-) ENGINE=InnoDB AUTO_INCREMENT=28 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `teacher_courses`
---
-
-DROP TABLE IF EXISTS `teacher_courses`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `teacher_courses` (
-  `teacher_id` int NOT NULL,
-  `course_id` int NOT NULL,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`teacher_id`,`course_id`),
-  KEY `idx_teacher_courses_course` (`course_id`),
-  CONSTRAINT `teacher_courses_teacher_fk` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
-  CONSTRAINT `teacher_courses_course_fk` FOREIGN KEY (`course_id`) REFERENCES `courses` (`course_id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=50 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -600,7 +630,7 @@ CREATE TABLE `video_sessions` (
   CONSTRAINT `video_sessions_ibfk_1` FOREIGN KEY (`class_id`) REFERENCES `classes` (`class_id`),
   CONSTRAINT `video_sessions_ibfk_2` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`user_id`),
   CONSTRAINT `video_sessions_ibfk_3` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -612,4 +642,4 @@ CREATE TABLE `video_sessions` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-04-09 22:06:07
+-- Dump completed on 2026-05-19  0:11:44
