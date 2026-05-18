@@ -110,8 +110,6 @@ const isClassJoinable = (classObj, selectedDate) => {
 
   try {
     const now = new Date();
-    const currentDate = fmtDate(now);
-    if (currentDate !== selectedDate) return false;
 
     const parseTimeString = (timeStr) => {
       if (!timeStr) return null;
@@ -135,27 +133,73 @@ const isClassJoinable = (classObj, selectedDate) => {
       return null;
     };
 
-    const classStartMins = parseTimeString(classObj.time || classObj.start_time);
-    if (classStartMins == null) return false;
+    const parseDateString = (dateStr) => {
+      if (dateStr instanceof Date && !Number.isNaN(dateStr.getTime())) {
+        return {
+          year: dateStr.getFullYear(),
+          month: dateStr.getMonth(),
+          day: dateStr.getDate(),
+        };
+      }
 
-    let classEndMins = null;
+      const dateMatch = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (!dateMatch) return null;
+
+      return {
+        year: Number(dateMatch[1]),
+        month: Number(dateMatch[2]) - 1,
+        day: Number(dateMatch[3]),
+      };
+    };
+
+    const selectedDateParts = parseDateString(selectedDate);
+    const classStartMins = parseTimeString(classObj.time || classObj.start_time);
+    if (!selectedDateParts || classStartMins == null) return false;
+
+    const startHour = Math.floor(classStartMins / 60);
+    const startMinute = classStartMins % 60;
+    const classStart = new Date(
+      selectedDateParts.year,
+      selectedDateParts.month,
+      selectedDateParts.day,
+      startHour,
+      startMinute,
+      0,
+      0
+    );
+
+    let classEnd = null;
 
     if (classObj.duration && !Number.isNaN(Number(classObj.duration))) {
-      classEndMins = classStartMins + Number(classObj.duration);
+      classEnd = new Date(classStart.getTime() + Number(classObj.duration) * 60 * 1000);
+    } else if (classObj.end_time) {
+      const classEndMins = parseTimeString(classObj.end_time);
+      if (classEndMins != null) {
+        const endHour = Math.floor(classEndMins / 60);
+        const endMinute = classEndMins % 60;
+        classEnd = new Date(
+          selectedDateParts.year,
+          selectedDateParts.month,
+          selectedDateParts.day,
+          endHour,
+          endMinute,
+          0,
+          0
+        );
+
+        if (classEnd <= classStart) {
+          classEnd.setDate(classEnd.getDate() + 1);
+        }
+      }
     }
 
-    if (classEndMins == null && classObj.end_time) {
-      classEndMins = parseTimeString(classObj.end_time);
+    if (!classEnd) {
+      classEnd = new Date(classStart.getTime() + 60 * 60 * 1000);
     }
 
-    if (classEndMins == null) {
-      classEndMins = classStartMins + 60;
-    }
+    const windowStart = new Date(classStart.getTime() - 30 * 60 * 1000);
 
-    const currentTotalMins = now.getHours() * 60 + now.getMinutes();
-    const windowStart = classStartMins - 30;
-
-    return currentTotalMins >= windowStart && currentTotalMins < classEndMins;
+    return now >= windowStart && now < classEnd;
   } catch (e) {
     return false;
   }
@@ -1344,7 +1388,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   
   const isTeacherOrAdmin = localRole === "teacher" || isAdmin;
   const isSelectedClassCompleted = selectedClass?.status === "completed";
-  const isClassDoneTemporarilyOpen = true; // TEMP: testing override. Set to false to restore the join-window gate.
+  const isSelectedClassConfirmable = isClassJoinable(selectedClass, selectedDate);
 
   const openClassDoneConfirmation = () => {
     if (!selectedClass?.id || !selectedClass?.student_id) {
@@ -1352,7 +1396,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       return;
     }
 
-    if (!isClassDoneTemporarilyOpen && !isClassJoinable(selectedClass, selectedDate)) {
+    if (!isSelectedClassConfirmable) {
       notify?.("You can confirm the class 30 minutes before it starts until it ends.", "error");
       return;
     }
@@ -1369,10 +1413,19 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
       setClassesCache(prev => ({
         ...prev,
-        [selectedDate]: (prev[selectedDate] || []).map(cls =>
-          cls.id === selectedClass.id ? { ...cls, status: "completed" } : cls
-        ),
+        [selectedDate]: (prev[selectedDate] || []).filter(cls => String(cls.id) !== String(selectedClass.id)),
       }));
+      setTeacherClassesCache(prev => ({
+        ...prev,
+        [selectedDate]: (prev[selectedDate] || []).filter(cls => String(cls.id || cls.class_id) !== String(selectedClass.id)),
+      }));
+      setBookedDates(prev =>
+        prev.filter(bd =>
+          normalizeDate(bd.scheduled_date) !== normalizeDate(selectedDate) ||
+          normalizeTime(bd.start_time) !== normalizeTime(selectedClass.start_time || selectedClass.time)
+        )
+      );
+      setSelectedClassId(null);
 
       if (response.data?.package && localRole === "student") {
         setStudentPackage(response.data.package);
@@ -1768,14 +1821,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                     <button
                       type="button"
                       className={`${styles.bookBtn} ${styles.doneBtn}`}
-                      disabled={isSelectedClassCompleted || isMarkingClassDone || (!isClassDoneTemporarilyOpen && !isClassJoinable(selectedClass, selectedDate))}
+                      disabled={isSelectedClassCompleted || isMarkingClassDone || !isSelectedClassConfirmable}
                       onClick={openClassDoneConfirmation}
                       style={{
                         marginTop: "8px",
-                        opacity: isSelectedClassCompleted || isMarkingClassDone || (!isClassDoneTemporarilyOpen && !isClassJoinable(selectedClass, selectedDate)) ? 0.6 : 1,
-                        cursor: isSelectedClassCompleted || isMarkingClassDone || (!isClassDoneTemporarilyOpen && !isClassJoinable(selectedClass, selectedDate)) ? "not-allowed" : "pointer",
+                        opacity: isSelectedClassCompleted || isMarkingClassDone || !isSelectedClassConfirmable ? 0.6 : 1,
+                        cursor: isSelectedClassCompleted || isMarkingClassDone || !isSelectedClassConfirmable ? "not-allowed" : "pointer",
                       }}
-                      title={isClassDoneTemporarilyOpen || isClassJoinable(selectedClass, selectedDate) ? "" : "Available 30 mins before class starts until class ends"}
+                      title={isSelectedClassConfirmable ? "" : "Available 30 mins before class starts until class ends"}
                     >
                       {isSelectedClassCompleted ? "Class Done" : isMarkingClassDone ? "Saving..." : "Confirm Class Done"}
                     </button>

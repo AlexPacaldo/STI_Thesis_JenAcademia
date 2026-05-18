@@ -83,6 +83,29 @@ function isDueDatePast(dueDate, dueTime) {
   return dueDateObj < now;
 }
 
+function humanDate(dateStr) {
+  if (!dateStr) return "";
+  const [year, month, day] = String(dateStr).slice(0, 10).split("-").map(Number);
+  if (!year || !month || !day) return String(dateStr);
+  return new Date(year, month - 1, day).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function humanTime(timeStr) {
+  if (!timeStr) return "";
+  const [hourPart, minutePart = "00"] = String(timeStr).split(":");
+  let hour = Number(hourPart);
+  if (Number.isNaN(hour)) return String(timeStr);
+  const minute = String(minutePart).padStart(2, "0").slice(0, 2);
+  const period = hour >= 12 ? "PM" : "AM";
+  hour %= 12;
+  if (hour === 0) hour = 12;
+  return `${hour}:${minute} ${period}`;
+}
+
 const MS_TENANT_ID = process.env.MS_TENANT_ID || "";
 const MS_CLIENT_ID = process.env.MS_CLIENT_ID || "";
 const MS_CLIENT_SECRET = process.env.MS_CLIENT_SECRET || "";
@@ -1312,7 +1335,9 @@ app.get("/api/calendar/classes-by-date", async (req, res) => {
                  LEFT JOIN video_sessions vs ON vs.class_id = c.class_id
                  JOIN users stu ON c.student_id = stu.user_id
                  JOIN users tea ON c.teacher_id = tea.user_id
-                 WHERE c.scheduled_date = ?`;
+                 WHERE c.scheduled_date = ?
+                 AND c.status = 'scheduled'
+                 AND c.scheduled_date >= CURDATE()`;
     const params = [scheduled_date];
 
     if (student_id) {
@@ -1323,6 +1348,8 @@ app.get("/api/calendar/classes-by-date", async (req, res) => {
       query += ` AND c.teacher_id = ?`;
       params.push(teacher_id);
     }
+
+    query += ` ORDER BY c.start_time ASC, c.class_id ASC`;
 
     const [rows] = await pool.query(query, params);
     res.json({ classes: rows });
@@ -1352,7 +1379,8 @@ app.get("/api/calendar/upcoming-classes", async (req, res) => {
                  LEFT JOIN video_sessions vs ON vs.class_id = c.class_id \
                  JOIN users stu ON c.student_id = stu.user_id \
                  JOIN users tea ON c.teacher_id = tea.user_id \
-                 WHERE c.scheduled_date >= CURDATE()`;
+                 WHERE c.status = 'scheduled' \
+                 AND c.scheduled_date >= CURDATE()`;
     const params = [];
 
     if (teacher_id) {
@@ -1633,6 +1661,7 @@ app.get("/api/calendar/booked-dates/:user_id", async (req, res) => {
        FROM classes
        WHERE (teacher_id = ? OR student_id = ?)
        AND status = 'scheduled'
+       AND scheduled_date >= CURDATE()
        ORDER BY scheduled_date ASC, start_time ASC`,
       [user_id, user_id]
     );
@@ -2979,6 +3008,58 @@ app.post("/api/calendar/set-availability", async (req, res) => {
        ON DUPLICATE KEY UPDATE status = ?, start_time = ?, end_time = ?, break_start = ?, break_end = ?, updated_at = CURRENT_TIMESTAMP`,
       [teacher_id, available_date, status, start_time || null, end_time || null, break_start || null, break_end || null, status, start_time || null, end_time || null, break_start || null, break_end || null]
     );
+
+    const [availabilityRows] = await pool.query(
+      `SELECT availability_id
+       FROM teacher_availability
+       WHERE teacher_id = ? AND available_date = ?
+       LIMIT 1`,
+      [teacher_id, available_date]
+    );
+
+    const availabilityId = availabilityRows[0]?.availability_id || result.insertId || null;
+
+    const [teacherRows] = await pool.query(
+      `SELECT first_name, last_name
+       FROM users
+       WHERE user_id = ?
+       LIMIT 1`,
+      [teacher_id]
+    );
+
+    const teacherName = teacherRows.length
+      ? `${teacherRows[0].first_name || ""} ${teacherRows[0].last_name || ""}`.trim() || "Your teacher"
+      : "Your teacher";
+
+    const [studentRows] = await pool.query(
+      `SELECT u.user_id
+       FROM student_profiles sp
+       JOIN users u ON u.user_id = sp.user_id
+       WHERE sp.assigned_teacher_id = ?
+         AND u.role = 'student'
+         AND u.status = 'active'`,
+      [teacher_id]
+    );
+
+    if (studentRows.length) {
+      const notificationTitle = status === "available"
+        ? "Teacher Availability Updated"
+        : "Teacher Availability Changed";
+      const notificationMessage = status === "available"
+        ? `${teacherName} is available on ${humanDate(available_date)} from ${humanTime(start_time)} to ${humanTime(end_time)}.`
+        : `${teacherName} marked ${humanDate(available_date)} as unavailable.`;
+
+      await pool.query(
+        `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+         VALUES ${studentRows.map(() => "(?, 'announcement', ?, ?, ?, 'teacher_availability', '/Calendar')").join(", ")}`,
+        studentRows.flatMap((student) => [
+          student.user_id,
+          notificationTitle,
+          notificationMessage,
+          availabilityId,
+        ])
+      );
+    }
 
     res.json({ message: "Availability updated successfully", id: result.insertId });
   } catch (err) {
