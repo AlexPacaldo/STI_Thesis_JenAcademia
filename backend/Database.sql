@@ -243,11 +243,12 @@ CREATE TABLE `lesson_progress` (
   `progress_id` int NOT NULL AUTO_INCREMENT,
   `student_id` int NOT NULL,
   `lesson_id` int NOT NULL,
+  `progress_percentage` int NOT NULL DEFAULT '0',
   `is_completed` tinyint(1) DEFAULT '0',
   `started_at` timestamp NULL DEFAULT NULL,
   `completed_at` timestamp NULL DEFAULT NULL,
   `time_spent_minutes` int DEFAULT NULL,
-  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`progress_id`),
   UNIQUE KEY `unique_student_lesson` (`student_id`,`lesson_id`),
   KEY `lesson_id` (`lesson_id`),
@@ -460,6 +461,36 @@ CREATE TABLE `student_contract_requests` (
   CONSTRAINT `student_contract_requests_course_fk` FOREIGN KEY (`course_id`) REFERENCES `courses` (`course_id`),
   CONSTRAINT `student_contract_requests_student_fk` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `student_course_progress`
+--
+
+DROP TABLE IF EXISTS `student_course_progress`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `student_course_progress` (
+  `progress_id` int NOT NULL AUTO_INCREMENT,
+  `student_id` int NOT NULL,
+  `book_id` int NOT NULL,
+  `course_id` int NOT NULL,
+  `status` enum('In Progress','Completed') NOT NULL DEFAULT 'In Progress',
+  `completed_lessons` int NOT NULL DEFAULT '0',
+  `total_lessons` int NOT NULL DEFAULT '0',
+  `progress_percentage` int NOT NULL DEFAULT '0',
+  `completed_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`progress_id`),
+  UNIQUE KEY `unique_student_book_progress` (`student_id`,`book_id`),
+  KEY `idx_student_course_progress_student` (`student_id`),
+  KEY `idx_student_course_progress_book` (`book_id`),
+  KEY `idx_student_course_progress_course` (`course_id`),
+  KEY `idx_student_course_progress_status` (`status`),
+  CONSTRAINT `student_course_progress_student_fk` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`),
+  CONSTRAINT `student_course_progress_book_fk` FOREIGN KEY (`book_id`) REFERENCES `books` (`book_id`) ON DELETE CASCADE,
+  CONSTRAINT `student_course_progress_course_fk` FOREIGN KEY (`course_id`) REFERENCES `courses` (`course_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --

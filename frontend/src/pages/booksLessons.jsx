@@ -40,9 +40,10 @@ export default function StudentBooksLessons() {
         }
       }
 
-      const response = await fetch(
-        `http://localhost:3001/api/books?course_id=${courseId}`
-      );
+      const bookParams = new URLSearchParams({ course_id: courseId });
+      if (studentId) bookParams.set("student_id", studentId);
+
+      const response = await fetch(`${API_BASE}/api/books?${bookParams.toString()}`);
       if (!response.ok) throw new Error("Failed to fetch books");
 
       const data = await response.json();

@@ -7,6 +7,21 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 
 const API_BASE = "http://localhost:3001";
 
+const getProgressPercentage = (item) => {
+  const value = Number(item?.progress_percentage ?? (item?.is_completed ? 100 : 0));
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
+};
+
+const isLessonCompleted = (item) => {
+  return Boolean(item?.is_completed) || getProgressPercentage(item) >= 100;
+};
+
+const getAssetUrl = (url) => {
+  if (!url) return "";
+  return String(url).startsWith("http") ? url : `${API_BASE}${url}`;
+};
+
 export default function BooksContent({ mode = "student" }) {
   const { bookId } = useParams();
   const navigate = useNavigate();
@@ -18,9 +33,18 @@ export default function BooksContent({ mode = "student" }) {
   const [loading, setLoading] = useState(true);
   const [showCoverModal, setShowCoverModal] = useState(false);
   const [coverFile, setCoverFile] = useState(null);
+  const [completingLessonId, setCompletingLessonId] = useState(null);
+  const [activeTeacherTab, setActiveTeacherTab] = useState("content");
+  const [studentProgress, setStudentProgress] = useState([]);
+  const [progressLoading, setProgressLoading] = useState(false);
+  const [progressError, setProgressError] = useState("");
+  const [accessError, setAccessError] = useState("");
 
   const isTeacherView = mode === "teacher";
-  const studentId = localStorage.getItem("student_id") || "1";
+  const studentId = useMemo(() => {
+    const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+    return storedUser.id || storedUser.user_id || storedUser.userId || localStorage.getItem("student_id") || "1";
+  }, []);
 
   useEffect(() => {
     if (!bookId) {
@@ -31,6 +55,7 @@ export default function BooksContent({ mode = "student" }) {
     const loadBookContent = async () => {
       try {
         setLoading(true);
+        setAccessError("");
 
         if (!isTeacherView) {
           const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
@@ -47,13 +72,23 @@ export default function BooksContent({ mode = "student" }) {
           }
         }
 
+        const accessQuery = !isTeacherView ? `?student_id=${encodeURIComponent(studentId)}` : "";
+        const lessonQuery = new URLSearchParams({ book_id: bookId });
+        if (!isTeacherView) lessonQuery.set("student_id", studentId);
+
         const [bookResponse, lessonsResponse, progressResponse] = await Promise.all([
-          fetch(`${API_BASE}/api/books/${bookId}`),
-          fetch(`${API_BASE}/api/lessons?book_id=${bookId}`),
+          fetch(`${API_BASE}/api/books/${bookId}${accessQuery}`),
+          fetch(`${API_BASE}/api/lessons?${lessonQuery.toString()}`),
           isTeacherView
             ? Promise.resolve(null)
             : fetch(`${API_BASE}/api/lesson-progress?student_id=${studentId}&book_id=${bookId}`),
         ]);
+
+        if (bookResponse.status === 403 || lessonsResponse.status === 403) {
+          setAccessError("You do not have access to this book.");
+          notify?.("You do not have access to this book.", "error");
+          return;
+        }
 
         if (!bookResponse.ok) throw new Error("Failed to fetch book");
         if (!lessonsResponse.ok) throw new Error("Failed to fetch lessons");
@@ -86,6 +121,30 @@ export default function BooksContent({ mode = "student" }) {
     loadBookContent();
   }, [bookId, isTeacherView, navigate, notify, studentId]);
 
+  useEffect(() => {
+    if (!isTeacherView || activeTeacherTab !== "progress" || !bookId) return;
+
+    const loadStudentProgress = async () => {
+      try {
+        setProgressLoading(true);
+        setProgressError("");
+
+        const response = await fetch(`${API_BASE}/api/teacher/book/${bookId}/progress`);
+        if (!response.ok) throw new Error("Failed to fetch student progress");
+
+        const data = await response.json();
+        setStudentProgress(data.students || []);
+      } catch (err) {
+        console.error("Error loading student progress:", err);
+        setProgressError(err.message || "Failed to load student progress.");
+      } finally {
+        setProgressLoading(false);
+      }
+    };
+
+    loadStudentProgress();
+  }, [activeTeacherTab, bookId, isTeacherView]);
+
   const selectedFileUrl = useMemo(() => {
     if (!selectedLesson?.file_path) return "";
     return `${API_BASE}${selectedLesson.file_path}`;
@@ -101,82 +160,82 @@ export default function BooksContent({ mode = "student" }) {
     return fileName.endsWith(".pdf") || fileName.endsWith(".txt");
   }, [selectedFileName]);
 
-  const handleLessonClick = async (lesson) => {
-    setSelectedLesson(lesson);
+  const selectedLessonId = selectedLesson?.lesson_id;
+  const selectedLessonCompleted = selectedLessonId ? isLessonCompleted(progress[selectedLessonId]) : false;
 
-    if (isTeacherView || progress[lesson.lesson_id]) return;
+  const handleLessonClick = (lesson) => {
+    if (!isTeacherView) {
+      const lessonIndex = lessons.findIndex((item) => item.lesson_id === lesson.lesson_id);
+      const previousLesson = lessons[lessonIndex - 1];
+      const isLocked = lessonIndex > 0 && !isLessonCompleted(progress[previousLesson?.lesson_id]);
 
-    try {
-      const response = await fetch(`${API_BASE}/api/lesson-progress`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          student_id: studentId,
-          lesson_id: lesson.lesson_id,
-          is_completed: 0,
-          time_spent_minutes: 0,
-        }),
-      });
-
-      if (response.ok) {
-        setProgress((current) => ({
-          ...current,
-          [lesson.lesson_id]: {
-            student_id: studentId,
-            lesson_id: lesson.lesson_id,
-            is_completed: 0,
-          },
-        }));
+      if (isLocked) {
+        notify?.("Please complete the previous lesson first.", "warning");
+        return;
       }
-    } catch (err) {
-      console.error("Error marking lesson as viewed:", err);
     }
+
+    setSelectedLesson(lesson);
   };
 
-  const toggleLessonCompletion = async (lesson) => {
-    const currentProgress = progress[lesson.lesson_id];
-    const isCurrentlyCompleted = currentProgress?.is_completed;
+  const markLessonComplete = async () => {
+    if (!selectedLesson || isTeacherView || selectedLessonCompleted) return;
 
     try {
+      const completedLesson = selectedLesson;
+      const currentLessonIndex = lessons.findIndex(
+        (lesson) => lesson.lesson_id === completedLesson.lesson_id
+      );
+      const nextLesson = lessons[currentLessonIndex + 1] || null;
+
+      setCompletingLessonId(completedLesson.lesson_id);
+
       const response = await fetch(`${API_BASE}/api/lesson-progress`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           student_id: studentId,
-          lesson_id: lesson.lesson_id,
-          is_completed: isCurrentlyCompleted ? 0 : 1,
-          time_spent_minutes: 0,
+          lesson_id: completedLesson.lesson_id,
+          is_completed: 1,
+          status: "Completed",
         }),
       });
 
-      if (!response.ok) throw new Error("Failed to update progress");
+      if (!response.ok) throw new Error("Failed to complete lesson");
+
+      const data = await response.json();
+      const completedProgress = data.progress || {
+        student_id: studentId,
+        lesson_id: completedLesson.lesson_id,
+        progress_percentage: 100,
+        is_completed: 1,
+      };
 
       setProgress((current) => ({
         ...current,
-        [lesson.lesson_id]: {
-          ...currentProgress,
-          student_id: studentId,
-          lesson_id: lesson.lesson_id,
-          is_completed: isCurrentlyCompleted ? 0 : 1,
-        },
+        [completedLesson.lesson_id]: completedProgress,
       }));
 
-      notify?.(
-        isCurrentlyCompleted ? "Lesson marked incomplete" : "Lesson marked complete!",
-        "success"
-      );
+      if (nextLesson) {
+        setSelectedLesson(nextLesson);
+        notify?.("Lesson completed. Next lesson unlocked.", "success");
+      } else {
+        notify?.("Lesson marked as completed.", "success");
+      }
     } catch (err) {
-      console.error("Error updating progress:", err);
+      console.error("Error completing lesson:", err);
       notify?.(`Error: ${err.message}`, "error");
+    } finally {
+      setCompletingLessonId(null);
     }
   };
 
   const getCompletionPercentage = () => {
     if (lessons.length === 0) return 0;
-    const completedCount = lessons.filter(
-      (lesson) => progress[lesson.lesson_id]?.is_completed
-    ).length;
-    return Math.round((completedCount / lessons.length) * 100);
+    const completedCount = lessons.filter((lesson) =>
+      isLessonCompleted(progress[lesson.lesson_id])
+    );
+    return Math.round((completedCount.length / lessons.length) * 100);
   };
 
   if (loading) {
@@ -190,7 +249,7 @@ export default function BooksContent({ mode = "student" }) {
   if (!bookId || !book) {
     return (
       <div className={styles.Center}>
-        <p className={styles.stateMessage}>Book not found.</p>
+        <p className={styles.stateMessage}>{accessError || "Book not found."}</p>
       </div>
     );
   }
@@ -223,7 +282,7 @@ export default function BooksContent({ mode = "student" }) {
 
         {!isTeacherView && (
           <div className={styles.progressContainer}>
-            <h3>Your Progress: {getCompletionPercentage()}%</h3>
+            <h3>Your Progress: {getCompletionPercentage()}% completed</h3>
             <div className={styles.progressBar}>
               <div
                 className={styles.progressFill}
@@ -233,6 +292,110 @@ export default function BooksContent({ mode = "student" }) {
           </div>
         )}
 
+        {isTeacherView && (
+          <div className={styles.teacherTabs} role="tablist" aria-label="Teacher book sections">
+            <button
+              type="button"
+              className={`${styles.teacherTab} ${activeTeacherTab === "content" ? styles.activeTeacherTab : ""}`}
+              onClick={() => setActiveTeacherTab("content")}
+              role="tab"
+              aria-selected={activeTeacherTab === "content"}
+            >
+              Lesson Content
+            </button>
+            <button
+              type="button"
+              className={`${styles.teacherTab} ${activeTeacherTab === "progress" ? styles.activeTeacherTab : ""}`}
+              onClick={() => setActiveTeacherTab("progress")}
+              role="tab"
+              aria-selected={activeTeacherTab === "progress"}
+            >
+              See Students Progress
+            </button>
+          </div>
+        )}
+
+        {isTeacherView && activeTeacherTab === "progress" ? (
+          <section className={styles.progressPanel}>
+            <div className={styles.progressPanelHeader}>
+              <div>
+                <h2>Students Progress</h2>
+                <p>{lessons.length} {lessons.length === 1 ? "lesson" : "lessons"} in this book</p>
+              </div>
+            </div>
+
+            {progressLoading ? (
+              <p className={styles.emptyText}>Loading student progress...</p>
+            ) : progressError ? (
+              <p className={styles.emptyText}>{progressError}</p>
+            ) : studentProgress.length === 0 ? (
+              <p className={styles.emptyText}>No active students are enrolled in this book's course yet.</p>
+            ) : (
+              <div className={styles.progressTableWrap}>
+                <table className={styles.progressTable}>
+                  <thead>
+                    <tr>
+                      <th>Student</th>
+                      <th>Completed Lessons</th>
+                      <th>Status</th>
+                      <th>Lesson Breakdown</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {studentProgress.map((student) => (
+                      <tr
+                        key={student.studentId}
+                        className={student.courseCompleted ? styles.courseCompletedRow : ""}
+                      >
+                        <td>
+                          <div className={styles.studentCell}>
+                            {student.profileImageUrl ? (
+                              <img src={getAssetUrl(student.profileImageUrl)} alt={student.name} />
+                            ) : (
+                              <div className={styles.studentInitial}>
+                                {(student.name || "S").slice(0, 1).toUpperCase()}
+                              </div>
+                            )}
+                            <div>
+                              <strong>{student.name}</strong>
+                              <span>{student.email}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <div className={styles.progressCount}>
+                            <strong>{student.completedLessons} / {student.totalLessons} Lessons</strong>
+                            {student.courseCompleted && <span>100% Complete</span>}
+                            <div className={styles.tableProgressBar}>
+                              <div style={{ width: `${student.progressPercentage}%` }} />
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <span className={`${styles.statusBadge} ${student.courseCompleted ? styles.statusDone : ""}`}>
+                            {student.status}
+                          </span>
+                        </td>
+                        <td>
+                          <div className={styles.lessonBreakdown}>
+                            {student.lessons.map((lesson) => (
+                              <span
+                                key={lesson.lessonId}
+                                className={lesson.isCompleted ? styles.lessonDone : styles.lessonPending}
+                              >
+                                L{lesson.lessonNumber}: {lesson.isCompleted ? "Done" : "Pending"}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        ) : (
         <div className={styles.bookLayout}>
           <aside className={styles.lessonsList}>
             <h3>Lessons</h3>
@@ -243,6 +406,9 @@ export default function BooksContent({ mode = "student" }) {
 
               {lessons.map((lesson) => {
                 const isCompleted = progress[lesson.lesson_id]?.is_completed;
+                const lessonIndex = lessons.findIndex((item) => item.lesson_id === lesson.lesson_id);
+                const previousLesson = lessons[lessonIndex - 1];
+                const isLocked = !isTeacherView && lessonIndex > 0 && !isLessonCompleted(progress[previousLesson?.lesson_id]);
 
                 return (
                   <button
@@ -250,12 +416,15 @@ export default function BooksContent({ mode = "student" }) {
                     key={lesson.lesson_id}
                     className={`${styles.lessonButton} ${
                       selectedLesson?.lesson_id === lesson.lesson_id ? styles.active : ""
-                    } ${isCompleted ? styles.completed : ""}`}
+                    } ${isCompleted ? styles.completed : ""} ${isLocked ? styles.locked : ""}`}
                     onClick={() => handleLessonClick(lesson)}
+                    aria-disabled={isLocked}
                   >
                     <span className={styles.lessonNumber}>Lesson {lesson.lesson_number}</span>
                     <span className={styles.lessonTitle}>{lesson.title}</span>
-                    {isCompleted && <span className={styles.checkmark}>Done</span>}
+                    <span className={styles.lessonProgressText}>
+                      {isLocked ? "Locked" : isCompleted ? "Completed" : "In Progress"}
+                    </span>
                   </button>
                 );
               })}
@@ -274,52 +443,61 @@ export default function BooksContent({ mode = "student" }) {
                   <p className={styles.lessonContent}>{selectedLesson.content}</p>
                 )}
 
-                {selectedFileUrl ? (
-                  <section className={styles.fileSection}>
-                    <div className={styles.fileInfo}>
-                      <h3>Uploaded File</h3>
-                      <p>{selectedFileName}</p>
-                    </div>
-
-                    <div className={styles.fileActions}>
-                      <a href={selectedFileUrl} target="_blank" rel="noopener noreferrer">
-                        Open file
-                      </a>
-                      <a href={selectedFileUrl} download>
-                        Download
-                      </a>
-                    </div>
-
-                    {canPreviewFile ? (
-                      <iframe
-                        title={`${selectedLesson.title} file preview`}
-                        className={styles.filePreview}
-                        src={selectedFileUrl}
-                      />
-                    ) : (
-                      <div className={styles.noPreview}>
-                        <p>This file type opens in a separate tab or downloads to your device.</p>
+                <section className={styles.readerViewport} aria-label="Lesson reading area">
+                  {selectedFileUrl ? (
+                    <section className={styles.fileSection}>
+                      <div className={styles.fileInfo}>
+                        <h3>Uploaded File</h3>
+                        <p>{selectedFileName}</p>
                       </div>
-                    )}
-                  </section>
-                ) : (
-                  <div className={styles.noPreview}>
-                    <p>No file was uploaded for this lesson.</p>
-                  </div>
-                )}
+
+                      <div className={styles.fileActions}>
+                        <a href={selectedFileUrl} target="_blank" rel="noopener noreferrer">
+                          Open file
+                        </a>
+                        <a href={selectedFileUrl} download>
+                          Download
+                        </a>
+                      </div>
+
+                      {canPreviewFile ? (
+                        <iframe
+                          title={`${selectedLesson.title} file preview`}
+                          className={styles.filePreview}
+                          src={selectedFileUrl}
+                        />
+                      ) : (
+                        <div className={styles.documentPreview}>
+                          <div>
+                            <h3>{selectedFileName}</h3>
+                            <p>This document opens in a separate tab or downloads to your device.</p>
+                          </div>
+                        </div>
+                      )}
+                    </section>
+                  ) : (
+                    <div className={styles.noPreview}>
+                      <p>No file was uploaded for this lesson.</p>
+                    </div>
+                  )}
+                </section>
 
                 {!isTeacherView && (
                   <div className={styles.lessonActions}>
+                    <div className={`${styles.lessonStatus} ${selectedLessonCompleted ? styles.statusCompleted : ""}`}>
+                      {selectedLessonCompleted ? "Completed" : "In Progress"}
+                    </div>
                     <button
                       type="button"
-                      className={`${styles.completeBtn} ${
-                        progress[selectedLesson.lesson_id]?.is_completed ? styles.completedBtn : ""
-                      }`}
-                      onClick={() => toggleLessonCompletion(selectedLesson)}
+                      className={`${styles.completeBtn} ${selectedLessonCompleted ? styles.completedBtn : ""}`}
+                      onClick={markLessonComplete}
+                      disabled={selectedLessonCompleted || completingLessonId === selectedLesson.lesson_id}
                     >
-                      {progress[selectedLesson.lesson_id]?.is_completed
+                      {selectedLessonCompleted
                         ? "Completed"
-                        : "Mark as Complete"}
+                        : completingLessonId === selectedLesson.lesson_id
+                          ? "Saving..."
+                          : "Mark as Complete"}
                     </button>
                   </div>
                 )}
@@ -329,6 +507,7 @@ export default function BooksContent({ mode = "student" }) {
             )}
           </main>
         </div>
+        )}
       </div>
 
       {/* Change Cover Modal (teacher only) */}
