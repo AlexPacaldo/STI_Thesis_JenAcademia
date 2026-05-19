@@ -8,6 +8,13 @@ import NotificationPanel from "./NotificationPanel";
 
 const API = "http://localhost:3001";
 
+function profileSrc(user) {
+  const url = user?.profileImageUrl || user?.profile_image_url;
+  if (!url) return pfp;
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API}${url}`;
+}
+
 function Header() {
   const location = useLocation();
   const [user, setUser] = useState(null);
@@ -41,6 +48,8 @@ function Header() {
     const handleProfileUpdate = (event) => {
       const updatedUser = event.detail;
       console.log('Header received profile update:', updatedUser);
+      setUser(updatedUser);
+      setRole(updatedUser.role);
       setProfileCompleted(!!updatedUser.profileCompleted);
     };
     
@@ -49,16 +58,32 @@ function Header() {
       if (stored) {
         const parsedUser = JSON.parse(stored);
         console.log('Header detected storage change:', parsedUser);
+        setUser(parsedUser);
+        setRole(parsedUser.role);
         setProfileCompleted(!!parsedUser.profileCompleted);
+      } else {
+        console.log('Header detected logout or cleared storage');
+        setUser(null);
+        setRole(null);
+        setProfileCompleted(false);
       }
     };
     
+    const handleLogoutEvent = () => {
+      console.log('Header received userLoggedOut event');
+      setUser(null);
+      setRole(null);
+      setProfileCompleted(false);
+    };
+
     window.addEventListener('userProfileUpdated', handleProfileUpdate);
+    window.addEventListener('userLoggedOut', handleLogoutEvent);
     // Also check on visibility change (when user returns to tab)
     document.addEventListener('visibilitychange', handleStorageChange);
     
     return () => {
       window.removeEventListener('userProfileUpdated', handleProfileUpdate);
+      window.removeEventListener('userLoggedOut', handleLogoutEvent);
       document.removeEventListener('visibilitychange', handleStorageChange);
     };
   }, []);
@@ -114,12 +139,13 @@ function Header() {
   const isAssignmentsPage = path === "/assignments";
   const isRemarksPage = path === "/remarks";
   const isBooksLessonsPage = path === "/booksLessons";
-  const isBooksContentPage = path === "/booksContent";
+  const isBooksContentPage = path === "/booksContent" || path.startsWith("/booksContent/");
 
   const isTeacherDashboardPage = path === "/TeacherDashboard";
   const isPassRemarksPage = path === "/PassRemarks";
   const isTeacherAssignmentPage = path === "/teacherAssignment";
   const isTeacherBooksLessonsPage = path === "/teacherBooksLessons";
+  const isTeacherBooksContentPage = path.startsWith("/teacherBooksLessons/");
   const isTeacherBooksDropboxPage = path === "/teacherBooksDropbox";
   const isCalendarPage = path === "/Calendar";
 
@@ -157,6 +183,7 @@ function Header() {
     isPassRemarksPage ||
     isTeacherAssignmentPage ||
     isTeacherBooksLessonsPage ||
+    isTeacherBooksContentPage ||
     isBooksContentPage ||
     isTeacherBooksDropboxPage;
 
@@ -234,7 +261,7 @@ function Header() {
 
               <Link to="/account" className={styles.StudentAccount}>
                 <img
-                  src={pfp}
+                  src={profileSrc(user)}
                   alt="Profile"
                   className={styles.profilePic}
                 />
@@ -285,7 +312,7 @@ function Header() {
 
               <Link to="/account" className={styles.TeacherAccount}>
                 <img
-                  src={pfp}
+                  src={profileSrc(user)}
                   alt="Profile"
                   className={styles.profilePic}
                 />
@@ -313,7 +340,7 @@ function Header() {
 
               <Link to="/account" className={styles.TeacherAccount}>
                 <img
-                  src={pfp}
+                  src={profileSrc(user)}
                   alt="Profile"
                   className={styles.profilePic}
                 />

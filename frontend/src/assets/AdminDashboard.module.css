@@ -124,6 +124,7 @@
   border: 1px solid #e7e7e7;
   border-radius: 8px;
   background: #fff;
+  color: #111;
   font: inherit;
 }
 
@@ -144,6 +145,15 @@
 .decline { background: #d64545; color: #fff; }
 .warn { background: #f59e0b; color: #111; }
 
+.primary:disabled,
+.secondaryBtn:disabled,
+.approve:disabled,
+.decline:disabled,
+.warn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .form {
   display: grid;
   gap: 12px;
@@ -152,6 +162,117 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+}
+
+.compactSearch {
+  margin: 0 0 12px;
+}
+
+.compactSearch input {
+  width: min(420px, 100%);
+  min-height: 38px;
+  padding: 9px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+}
+
+.compactSearch input:focus {
+  border-color: #111;
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.08);
+}
+
+.courseManager {
+  display: grid;
+  gap: 8px;
+}
+
+.courseTeacherRow {
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px 14px;
+}
+
+.courseTeacherHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+
+.courseTeacherHead h3 {
+  margin: 0;
+  color: #111;
+  font-size: 16px;
+}
+
+.courseTeacherHead p {
+  margin: 4px 0 0;
+  color: #666;
+  font-size: 13px;
+}
+
+.courseSummary {
+  margin-top: 8px;
+  color: #344054;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.courseTeacherActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.secondaryBtn {
+  padding: 8px 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.courseCheckboxGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f2f4f7;
+}
+
+.courseCheck {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.courseCheckActive {
+  border-color: #b7e4c7;
+  background: #f0fdf4;
+}
+
+.courseCheck input {
+  width: auto;
+  min-width: 0;
+  accent-color: #111;
 }
 .form label {
   display: block;
@@ -164,6 +285,7 @@
   border: 1px solid #e7e7e7;
   border-radius: 10px;
   background: #fff;
+  color: #111;
 }
 
 .split {
@@ -171,6 +293,28 @@
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
+
+.searchBar {
+  margin-bottom: 14px;
+}
+
+.searchBar input {
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 12px;
+  border: 1px solid #e7e7e7;
+  border-radius: 10px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+}
+
+.searchBar input:focus {
+  border-color: #111;
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.08);
+}
+
 .list {
   list-style: none;
   padding: 0;

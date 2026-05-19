@@ -23,6 +23,8 @@ app.use(express.json());
 
 const uploadDir = path.join(process.cwd(), "uploads", "assignments");
 fs.mkdirSync(uploadDir, { recursive: true });
+const profileUploadDir = path.join(process.cwd(), "uploads", "profiles");
+fs.mkdirSync(profileUploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: uploadDir,
@@ -33,6 +35,24 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+const profileStorage = multer.diskStorage({
+  destination: profileUploadDir,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    cb(null, `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`);
+  },
+});
+const profileUpload = multer({
+  storage: profileStorage,
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.mimetype)) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error("Only JPG, PNG, WEBP, and GIF profile images are allowed"));
+  },
+});
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // MySQL pool
@@ -46,6 +66,28 @@ export const pool = mysql.createPool({
 });
 
 // ---------- helpers ----------
+const COUNTRY_TIMEZONES = {
+  Australia: "Australia/Sydney",
+  Canada: "America/Toronto",
+  China: "Asia/Shanghai",
+  India: "Asia/Kolkata",
+  Indonesia: "Asia/Jakarta",
+  Japan: "Asia/Tokyo",
+  Malaysia: "Asia/Kuala_Lumpur",
+  Philippines: "Asia/Manila",
+  Singapore: "Asia/Singapore",
+  "South Korea": "Asia/Seoul",
+  Thailand: "Asia/Bangkok",
+  "United Arab Emirates": "Asia/Dubai",
+  "United Kingdom": "Europe/London",
+  "United States": "America/New_York",
+  Vietnam: "Asia/Ho_Chi_Minh",
+};
+
+function timezoneFromCountry(country) {
+  return COUNTRY_TIMEZONES[String(country || "").trim()] || "Asia/Manila";
+}
+
 const pad = (n) => String(n).padStart(2, "0");
 function toMySQLDateTime(isoLike) {
   if (!isoLike) return null;
@@ -104,6 +146,24 @@ function humanTime(timeStr) {
   hour %= 12;
   if (hour === 0) hour = 12;
   return `${hour}:${minute} ${period}`;
+}
+
+async function deleteLocalProfileImage(imageUrl) {
+  if (!imageUrl || !String(imageUrl).startsWith("/uploads/profiles/")) return;
+
+  const fileName = path.basename(decodeURIComponent(String(imageUrl)));
+  const filePath = path.resolve(profileUploadDir, fileName);
+  const profileDir = path.resolve(profileUploadDir);
+
+  if (!filePath.startsWith(profileDir + path.sep)) return;
+
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      console.warn("Could not delete old profile image:", err.message);
+    }
+  }
 }
 
 const MS_TENANT_ID = process.env.MS_TENANT_ID || "";
@@ -253,6 +313,58 @@ async function ensureLessonsColumns() {
   }
 }
 
+async function ensureUserProfileImageColumn() {
+  if (!(await columnExists("users", "profile_image_url"))) {
+    await pool.query("ALTER TABLE users ADD COLUMN profile_image_url VARCHAR(500) DEFAULT NULL AFTER contact_number");
+  }
+}
+
+async function ensureUserPasswordChangedColumn() {
+  if (!(await columnExists("users", "password_changed"))) {
+    await pool.query("ALTER TABLE users ADD COLUMN password_changed BOOLEAN DEFAULT FALSE AFTER profile_completed");
+  }
+}
+
+async function ensureUserDemographicsColumns() {
+  if (!(await columnExists("users", "country"))) {
+    await pool.query("ALTER TABLE users ADD COLUMN country VARCHAR(100) DEFAULT NULL AFTER contact_number");
+  }
+
+  if (!(await columnExists("users", "birth_date"))) {
+    await pool.query("ALTER TABLE users ADD COLUMN birth_date DATE DEFAULT NULL AFTER country");
+  }
+}
+
+async function refreshProfileCompletion(userId) {
+  await pool.query(
+    `UPDATE users
+     SET profile_completed = (
+       first_name IS NOT NULL AND TRIM(first_name) <> ''
+       AND last_name IS NOT NULL AND TRIM(last_name) <> ''
+       AND contact_number IS NOT NULL AND TRIM(contact_number) <> ''
+       AND timezone IS NOT NULL AND TRIM(timezone) <> ''
+       AND profile_image_url IS NOT NULL AND TRIM(profile_image_url) <> ''
+       AND password_changed = TRUE
+     )
+     WHERE user_id = ?`,
+    [userId]
+  );
+}
+
+async function refreshAllProfileCompletion() {
+  await pool.query(
+    `UPDATE users
+     SET profile_completed = (
+       first_name IS NOT NULL AND TRIM(first_name) <> ''
+       AND last_name IS NOT NULL AND TRIM(last_name) <> ''
+       AND contact_number IS NOT NULL AND TRIM(contact_number) <> ''
+       AND timezone IS NOT NULL AND TRIM(timezone) <> ''
+       AND profile_image_url IS NOT NULL AND TRIM(profile_image_url) <> ''
+       AND password_changed = TRUE
+     )`
+  );
+}
+
 async function ensureStudentContractRequestsTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS student_contract_requests (
@@ -313,9 +425,14 @@ try {
   await ensureAssignmentAttemptColumns();
   await ensureBooksColumns();
   await ensureLessonsColumns();
+  await ensureUserProfileImageColumn();
+  await ensureUserPasswordChangedColumn();
+  await ensureUserDemographicsColumns();
+  await refreshAllProfileCompletion();
   await ensureStudentContractRequestsTable();
   await removeStudentPackageDateColumns();
   await ensureTeacherCoursesTable();
+  await expireDepletedPackages();
   await deletePastTeacherAvailability();
   
 } catch (err) {
@@ -429,10 +546,10 @@ function scoreTeacherForStudent(teacher, criteria, trialNotes, courseId) {
   };
 }
 
-async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = null, preferredTeacherId = null }) {
+async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = null, preferredTeacherId = null, db = pool }) {
   const normalizedCriteria = normalizeCriteria(criteria);
   const courseFilter = courseId ? parseInt(courseId, 10) : null;
-  const [teachers] = await pool.query(
+  const [teachers] = await db.query(
     `SELECT u.user_id, u.first_name, u.last_name, u.email,
             tp.bio, tp.specialization, tp.experience_years,
             COUNT(student.user_id) AS assigned_student_count,
@@ -476,6 +593,21 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
     overBalanceTeachers: ranked.filter((teacher) => Number(teacher.assigned_student_count || 0) >= 5),
     usedLeastLoadedFallback: underBalanceLimit.length === 0 && Boolean(leastLoaded),
   };
+}
+
+function packageStatusFromUsage(status, totalClasses, classesUsed) {
+  const normalizedStatus = ["active", "expired", "cancelled"].includes(status) ? status : "active";
+  const total = Math.max(0, parseInt(totalClasses, 10) || 0);
+  const used = Math.max(0, parseInt(classesUsed, 10) || 0);
+  return total - used <= 0 ? "expired" : normalizedStatus;
+}
+
+async function expireDepletedPackages(db = pool) {
+  await db.query(
+    `UPDATE student_class_packages
+     SET status = 'expired'
+     WHERE status = 'active' AND classes_left <= 0`
+  );
 }
 
 const assignmentSelect = `
@@ -567,6 +699,57 @@ app.get("/api/teacher-courses", async (_req, res) => {
   }
 });
 
+app.put("/api/admin/teachers/:teacherId/courses", async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    const teacherId = parseInt(req.params.teacherId, 10);
+    const courseIds = Array.isArray(req.body?.courseIds)
+      ? [...new Set(req.body.courseIds.map((id) => parseInt(id, 10)).filter((id) => Number.isFinite(id) && id > 0))]
+      : [];
+
+    if (!teacherId) {
+      return res.status(400).json({ message: "Invalid teacher selected" });
+    }
+
+    if (!courseIds.length) {
+      return res.status(400).json({ message: "Please select at least one course for this teacher" });
+    }
+
+    const [[teacher]] = await connection.query(
+      "SELECT user_id FROM users WHERE user_id = ? AND role = 'teacher' LIMIT 1",
+      [teacherId]
+    );
+    if (!teacher) {
+      return res.status(404).json({ message: "Teacher not found" });
+    }
+
+    const [validCourses] = await connection.query(
+      `SELECT course_id FROM courses WHERE course_id IN (${courseIds.map(() => "?").join(", ")})`,
+      courseIds
+    );
+    if (validCourses.length !== courseIds.length) {
+      return res.status(400).json({ message: "One or more selected courses are invalid" });
+    }
+
+    await connection.beginTransaction();
+    await connection.query("DELETE FROM teacher_courses WHERE teacher_id = ?", [teacherId]);
+    await connection.query(
+      `INSERT INTO teacher_courses (teacher_id, course_id)
+       VALUES ${courseIds.map(() => "(?, ?)").join(", ")}`,
+      courseIds.flatMap((courseId) => [teacherId, courseId])
+    );
+    await connection.commit();
+
+    res.json({ message: "Teacher courses updated" });
+  } catch (err) {
+    await connection.rollback();
+    console.error("PUT /api/admin/teachers/:teacherId/courses error:", err);
+    res.status(500).json({ message: "Error updating teacher courses" });
+  } finally {
+    connection.release();
+  }
+});
+
 // ---------- month availability ----------
 /**
  * GET /api/trial/availability?year=2025&month=11
@@ -621,7 +804,7 @@ app.post("/api/login", async (req, res) => {
 
     // Look up the user by email
     const [rows] = await pool.query(
-      `SELECT user_id, first_name, last_name, email, password_hash, role, profile_completed
+      `SELECT user_id, first_name, last_name, email, contact_number AS contact, password_hash, role, status, profile_completed, password_changed, profile_image_url, country, birth_date
        FROM users
        WHERE email = ?
        LIMIT 1`,
@@ -640,6 +823,12 @@ app.post("/api/login", async (req, res) => {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
+    if (user.status === "archived") {
+      return res.status(403).json({
+        message: "This account is currently archived and cannot be accessed. Please contact the administrator to request account reactivation.",
+      });
+    }
+
     // Success — fetch assigned teacher for students and return a trimmed user object
     let assignedTeacherId = null;
     if (user.role === "student") {
@@ -652,6 +841,12 @@ app.post("/api/login", async (req, res) => {
       }
     }
 
+    await refreshProfileCompletion(user.user_id);
+    const [[completion]] = await pool.query(
+      "SELECT profile_completed, password_changed, profile_image_url FROM users WHERE user_id = ? LIMIT 1",
+      [user.user_id]
+    );
+
     res.json({
       message: "Login successful",
       user: {
@@ -659,8 +854,13 @@ app.post("/api/login", async (req, res) => {
         firstName: user.first_name,
         lastName: user.last_name,
         email: user.email,
+        contact: user.contact,
         role: user.role,
-        profileCompleted: user.profile_completed,
+        country: user.country,
+        birthDate: user.birth_date,
+        profileCompleted: completion?.profile_completed,
+        passwordChanged: completion?.password_changed,
+        profileImageUrl: completion?.profile_image_url,
         assignedTeacherId,
       }
     });
@@ -675,8 +875,10 @@ app.post("/api/login", async (req, res) => {
 //ACCOUNT
 app.get("/api/users/:id", async (req, res) => {
   try {
+    await refreshProfileCompletion(req.params.id);
     const [rows] = await pool.query(
-      `SELECT u.user_id, u.first_name, u.last_name, u.email, u.contact_number AS contact, u.timezone, u.role, u.profile_completed,
+      `SELECT u.user_id, u.first_name, u.last_name, u.email, u.contact_number AS contact, u.country, u.birth_date, u.profile_image_url, u.timezone, u.role, u.status,
+              u.profile_completed, u.password_changed, u.created_at,
               sp.assigned_teacher_id
        FROM users u
        LEFT JOIN student_profiles sp ON sp.user_id = u.user_id
@@ -686,6 +888,60 @@ app.get("/api/users/:id", async (req, res) => {
     if (!rows.length) return res.status(404).json({ message: "User not found" });
 
     const u = rows[0];
+    let roleDetails = {};
+
+    if (u.role === "student") {
+      const [studentRows] = await pool.query(
+        `SELECT sp.proficiency_level, sp.assigned_teacher_id, sp.trial_notes,
+                c.course_id, c.course_name, c.description AS course_description, c.duration AS course_duration,
+                t.first_name AS teacher_first_name, t.last_name AS teacher_last_name, t.email AS teacher_email,
+                scp.total_classes, scp.classes_used, scp.classes_left, scp.status AS package_status
+         FROM student_profiles sp
+         LEFT JOIN courses c ON c.course_id = sp.course_id
+         LEFT JOIN users t ON t.user_id = sp.assigned_teacher_id
+         LEFT JOIN student_class_packages scp ON scp.student_id = sp.user_id AND scp.status = 'active'
+         WHERE sp.user_id = ?
+         LIMIT 1`,
+        [req.params.id]
+      );
+      roleDetails = studentRows[0] || {};
+    } else if (u.role === "teacher") {
+      const [teacherRows] = await pool.query(
+        `SELECT tp.bio, tp.specialization, tp.experience_years, tp.hourly_rate,
+                COUNT(DISTINCT student.user_id) AS active_students,
+                GROUP_CONCAT(DISTINCT c.course_name ORDER BY c.course_name SEPARATOR ', ') AS courses
+         FROM users u
+         LEFT JOIN teacher_profiles tp ON tp.user_id = u.user_id
+         LEFT JOIN student_profiles sp ON sp.assigned_teacher_id = u.user_id
+         LEFT JOIN users student ON student.user_id = sp.user_id AND student.status = 'active'
+         LEFT JOIN teacher_courses tc ON tc.teacher_id = u.user_id
+         LEFT JOIN courses c ON c.course_id = tc.course_id
+         WHERE u.user_id = ?
+         GROUP BY tp.bio, tp.specialization, tp.experience_years, tp.hourly_rate
+         LIMIT 1`,
+        [req.params.id]
+      );
+      const [classRows] = await pool.query(
+        `SELECT COUNT(*) AS upcoming_classes
+         FROM classes
+         WHERE teacher_id = ? AND status = 'scheduled' AND scheduled_date >= CURDATE()`,
+        [req.params.id]
+      );
+      roleDetails = {
+        ...(teacherRows[0] || {}),
+        upcoming_classes: classRows[0]?.upcoming_classes || 0,
+      };
+    } else if (u.role === "admin") {
+      const [[stats]] = await pool.query(
+        `SELECT
+           SUM(role = 'student' AND status = 'active') AS active_students,
+           SUM(role = 'teacher' AND status = 'active') AS active_teachers,
+           SUM(status = 'archived') AS archived_users
+         FROM users`
+      );
+      roleDetails = stats || {};
+    }
+
     res.json({
       user: {
         id: u.user_id,
@@ -693,10 +949,17 @@ app.get("/api/users/:id", async (req, res) => {
         lastName: u.last_name,
         email: u.email,
         contact: u.contact,
+        country: u.country,
+        birthDate: u.birth_date,
+        profileImageUrl: u.profile_image_url,
         timezone: u.timezone,
         role: u.role,
+        status: u.status,
+        createdAt: u.created_at,
         profileCompleted: u.profile_completed,
+        passwordChanged: u.password_changed,
         assignedTeacherId: u.assigned_teacher_id || null,
+        roleDetails,
       },
     });
   } catch (err) {
@@ -706,10 +969,17 @@ app.get("/api/users/:id", async (req, res) => {
 });
 app.put("/api/users/:id", async (req, res) => {
   try {
-    const { firstName, lastName, email, contact, timezone } = req.body;
+    const { firstName, lastName, email, contact, country, birthDate, timezone } = req.body;
+    const normalizedBirthDate = birthDate ? String(birthDate).slice(0, 10) : null;
+    const normalizedCountry = String(country || "").trim();
+    const resolvedTimezone = String(timezone || "").trim() || timezoneFromCountry(normalizedCountry);
+
+    if (normalizedBirthDate && !/^\d{4}-\d{2}-\d{2}$/.test(normalizedBirthDate)) {
+      return res.status(400).json({ message: "Birthday must be a valid date" });
+    }
 
     // Validate required fields for profile completion
-    if (!firstName || !lastName || !contact || !timezone) {
+    if (!firstName || !lastName || !contact || !resolvedTimezone) {
       return res.status(400).json({ 
         message: "First name, last name, contact, and timezone are required to complete your profile"
       });
@@ -717,15 +987,61 @@ app.put("/api/users/:id", async (req, res) => {
 
     await pool.query(
       `UPDATE users
-       SET first_name = ?, last_name = ?, email = ?, contact_number = ?, timezone = ?, profile_completed = TRUE
+       SET first_name = ?, last_name = ?, email = ?, contact_number = ?, country = ?, birth_date = ?, timezone = ?
        WHERE user_id = ?`,
-      [firstName, lastName, email, contact, timezone, req.params.id]
+      [firstName, lastName, email, contact, normalizedCountry || null, normalizedBirthDate, resolvedTimezone, req.params.id]
     );
+    await refreshProfileCompletion(req.params.id);
 
     res.json({ message: "Profile updated successfully!" });
   } catch (err) {
     console.error("PUT /api/users/:id error:", err);
     res.status(500).json({ message: "Could not update profile" });
+  }
+});
+
+app.post("/api/users/:id/profile-picture", profileUpload.single("profile_picture"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "Please choose an image to upload" });
+    }
+
+    const imageUrl = `/uploads/profiles/${req.file.filename}`;
+    const [currentRows] = await pool.query(
+      `SELECT profile_image_url FROM users WHERE user_id = ? LIMIT 1`,
+      [req.params.id]
+    );
+
+    if (!currentRows.length) {
+      await deleteLocalProfileImage(imageUrl);
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const oldImageUrl = currentRows[0].profile_image_url;
+    const [result] = await pool.query(
+      `UPDATE users SET profile_image_url = ? WHERE user_id = ?`,
+      [imageUrl, req.params.id]
+    );
+
+    if (!result.affectedRows) {
+      await deleteLocalProfileImage(imageUrl);
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    await pool.query(
+      `UPDATE teacher_profiles SET profile_image_url = ? WHERE user_id = ?`,
+      [imageUrl, req.params.id]
+    );
+
+    if (oldImageUrl && oldImageUrl !== imageUrl) {
+      await deleteLocalProfileImage(oldImageUrl);
+    }
+    await refreshProfileCompletion(req.params.id);
+
+    res.json({ message: "Profile picture updated", profileImageUrl: imageUrl });
+  } catch (err) {
+    console.error("POST /api/users/:id/profile-picture error:", err);
+    res.status(500).json({ message: err.message || "Could not upload profile picture" });
   }
 });
 
@@ -749,9 +1065,10 @@ app.put("/api/users/:id/password", async (req, res) => {
     // Hash new password
     const newHash = await bcrypt.hash(next, 10);
     await pool.query(
-      "UPDATE users SET password_hash = ? WHERE user_id = ?",
+      "UPDATE users SET password_hash = ?, password_changed = TRUE WHERE user_id = ?",
       [newHash, userId]
     );
+    await refreshProfileCompletion(userId);
 
     res.json({ message: "Password updated successfully!" });
   } catch (err) {
@@ -794,6 +1111,9 @@ app.post("/api/admin/users", async (req, res) => {
       email,
       password,
       contact,
+      country,
+      birthDate,
+      birth_date,
       role = "teacher",
       classesAvailed,
       level,
@@ -826,16 +1146,24 @@ app.post("/api/admin/users", async (req, res) => {
       return res.status(400).json({ message: "Please select the student's course" });
     }
 
-    const hash = await bcrypt.hash(password, 10);
+    const normalizedCountry = String(country || "").trim();
+    const normalizedBirthDate = birthDate || birth_date || null;
+    if (!normalizedCountry || !normalizedBirthDate) {
+      return res.status(400).json({ message: "Country and birthday are required" });
+    }
+
+    const defaultPassword = role === "teacher" ? "teacher" : "student";
+    const hash = await bcrypt.hash(password || defaultPassword, 10);
     
     // Always mark newly created users as incomplete so they must complete their profile
     // This ensures they select their timezone and other settings
     const profileCompleted = false;
+    const detectedTimezone = timezoneFromCountry(normalizedCountry);
 
     const [ins] = await pool.query(`
-      INSERT INTO users (email, password_hash, first_name, last_name, contact_number, role, profile_completed)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [email, hash, firstName, lastName, contact, role, profileCompleted]);
+      INSERT INTO users (email, password_hash, first_name, last_name, contact_number, country, birth_date, timezone, role, profile_completed)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [email, hash, firstName, lastName, contact || null, normalizedCountry, normalizedBirthDate, detectedTimezone, role, profileCompleted]);
 
     const userId = ins.insertId;
     
@@ -938,6 +1266,8 @@ app.get("/api/admin/users", async (req, res) => {
 
 app.get("/api/admin/student-contracts", async (_req, res) => {
   try {
+    await expireDepletedPackages();
+
     const [rows] = await pool.query(
       `SELECT u.user_id, u.first_name, u.last_name, u.email,
               sp.course_id, c.course_name, sp.assigned_teacher_id,
@@ -949,7 +1279,13 @@ app.get("/api/admin/student-contracts", async (_req, res) => {
        LEFT JOIN courses c ON c.course_id = sp.course_id
        LEFT JOIN users t ON t.user_id = sp.assigned_teacher_id
        LEFT JOIN student_class_packages scp
-         ON scp.student_id = u.user_id AND scp.status = 'active'
+         ON scp.package_id = (
+           SELECT latest.package_id
+           FROM student_class_packages latest
+           WHERE latest.student_id = u.user_id
+           ORDER BY FIELD(latest.status, 'active', 'expired', 'cancelled'), latest.created_at DESC
+           LIMIT 1
+         )
        WHERE u.role = 'student' AND u.status = 'active'
        ORDER BY u.first_name ASC, u.last_name ASC`
     );
@@ -977,7 +1313,7 @@ app.put("/api/admin/student-contracts/:student_id", async (req, res) => {
 
     const parsedTotal = Math.max(0, parseInt(total_classes, 10) || 0);
     const parsedUsed = Math.min(parsedTotal, Math.max(0, parseInt(classes_used, 10) || 0));
-    const packageStatus = ["active", "expired", "cancelled"].includes(status) ? status : "active";
+    const packageStatus = packageStatusFromUsage(status, parsedTotal, parsedUsed);
     const courseIdValue = course_id ? parseInt(course_id, 10) : null;
     const teacherIdValue = assigned_teacher_id ? parseInt(assigned_teacher_id, 10) : null;
 
@@ -1169,19 +1505,41 @@ app.put("/api/admin/contract-requests/:request_id", async (req, res) => {
     }
 
     if (status === "approved") {
+      const [profileRows] = await connection.query(
+        `SELECT trial_notes, assigned_teacher_id
+         FROM student_profiles
+         WHERE user_id = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [request.student_id]
+      );
+
+      if (!profileRows.length) {
+        await connection.rollback();
+        return res.status(404).json({ message: "Student profile not found" });
+      }
+
+      const recommendation = await recommendTeacher({
+        criteria: {},
+        trialNotes: profileRows[0].trial_notes || "",
+        courseId: request.course_id,
+        preferredTeacherId: profileRows[0].assigned_teacher_id,
+        db: connection,
+      });
+      const assignedTeacherId = recommendation.teacher?.user_id || null;
+
+      if (!assignedTeacherId) {
+        await connection.rollback();
+        return res.status(400).json({
+          message: "No active teacher can currently teach the requested course. Assign a teacher to this course first.",
+        });
+      }
+
       await connection.query(
         `UPDATE student_profiles
-         SET course_id = COALESCE(?, course_id),
-             assigned_teacher_id = CASE
-               WHEN assigned_teacher_id IS NULL THEN NULL
-               WHEN EXISTS (
-                 SELECT 1 FROM teacher_courses tc
-                 WHERE tc.teacher_id = assigned_teacher_id AND tc.course_id = ?
-               ) THEN assigned_teacher_id
-               ELSE NULL
-             END
+         SET course_id = COALESCE(?, course_id), assigned_teacher_id = ?
          WHERE user_id = ?`,
-        [request.course_id, request.course_id, request.student_id]
+        [request.course_id, assignedTeacherId, request.student_id]
       );
 
       await connection.query(
@@ -1483,14 +1841,19 @@ app.post("/api/calendar/class", async (req, res) => {
 app.get("/api/calendar/student-package/:student_id", async (req, res) => {
   try {
     const { student_id } = req.params;
+    await expireDepletedPackages();
 
     const [rows] = await pool.query(
-      `SELECT * FROM student_class_packages WHERE student_id = ? AND status = 'active'`,
+      `SELECT *
+       FROM student_class_packages
+       WHERE student_id = ?
+       ORDER BY FIELD(status, 'active', 'expired', 'cancelled'), created_at DESC
+       LIMIT 1`,
       [student_id]
     );
 
     if (!rows.length) {
-      return res.status(404).json({ message: "No active package found" });
+      return res.status(404).json({ message: "No package found" });
     }
 
     res.json({ package: rows[0] });
@@ -1568,7 +1931,11 @@ app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
 
     await connection.query(
       `UPDATE student_class_packages
-       SET classes_used = classes_used + 1
+       SET classes_used = classes_used + 1,
+           status = CASE
+             WHEN total_classes - (classes_used + 1) <= 0 THEN 'expired'
+             ELSE status
+           END
        WHERE package_id = ?`,
       [currentPackage.package_id]
     );
@@ -2814,27 +3181,52 @@ app.post("/api/admin/student-profile", async (req, res) => {
 });
 
 app.put("/api/student/package/:student_id/use-class", async (req, res) => {
+  const connection = await pool.getConnection();
   try {
     const { student_id } = req.params;
 
-    const [result] = await pool.query(
-      `UPDATE student_class_packages SET classes_used = classes_used + 1 WHERE student_id = ? AND status = 'active'`,
+    await connection.beginTransaction();
+
+    const [packageRows] = await connection.query(
+      `SELECT package_id
+       FROM student_class_packages
+       WHERE student_id = ? AND status = 'active' AND classes_left > 0
+       ORDER BY created_at DESC
+       LIMIT 1
+       FOR UPDATE`,
       [student_id]
     );
 
-    if (!result.affectedRows) {
+    if (!packageRows.length) {
+      await connection.rollback();
       return res.status(404).json({ message: "No active package found" });
     }
 
-    const [packageRows] = await pool.query(
-      `SELECT * FROM student_class_packages WHERE student_id = ? AND status = 'active'`,
-      [student_id]
+    const packageId = packageRows[0].package_id;
+    await connection.query(
+      `UPDATE student_class_packages
+       SET classes_used = classes_used + 1,
+           status = CASE
+             WHEN total_classes - (classes_used + 1) <= 0 THEN 'expired'
+             ELSE status
+           END
+       WHERE package_id = ?`,
+      [packageId]
     );
 
-    res.json({ message: "Class usage recorded", package: packageRows[0] });
+    const [updatedPackageRows] = await connection.query(
+      `SELECT * FROM student_class_packages WHERE package_id = ?`,
+      [packageId]
+    );
+
+    await connection.commit();
+    res.json({ message: "Class usage recorded", package: updatedPackageRows[0] });
   } catch (err) {
+    await connection.rollback();
     console.error(err);
     res.status(500).json({ message: "Error updating package" });
+  } finally {
+    connection.release();
   }
 });
 
