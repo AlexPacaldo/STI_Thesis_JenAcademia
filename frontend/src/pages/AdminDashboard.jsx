@@ -6,6 +6,24 @@ import Calendar from "./Calendar.jsx"; // admin calendar view
 
 const API = "http://localhost:3001";
 
+const COUNTRY_OPTIONS = [
+  "Australia",
+  "Canada",
+  "China",
+  "India",
+  "Indonesia",
+  "Japan",
+  "Malaysia",
+  "Philippines",
+  "Singapore",
+  "South Korea",
+  "Thailand",
+  "United Arab Emirates",
+  "United Kingdom",
+  "United States",
+  "Vietnam",
+];
+
 const AI_CRITERIA_OPTIONS = {
   learningGoal: [
     ["", "Select Learning Goal"],
@@ -105,7 +123,7 @@ const parseDate = (dateString) => {
         return new Date(year, month - 1, day);
       }
     }
-  } catch (e) {
+  } catch {
     // fallback to null
   }
   return null;
@@ -119,7 +137,7 @@ const formatDate = (dateString) => {
   }
   try {
     return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
-  } catch (e) {
+  } catch {
     return dateString || "Invalid date";
   }
 };
@@ -139,8 +157,8 @@ export default function AdminDashboard() {
     firstName: "",
     lastName: "",
     email: "",
-    password: "",
-    contact: "",
+    country: "",
+    birthDate: "",
     specialization: "",
     experienceYears: "",
     teachingStyle: "",
@@ -154,8 +172,8 @@ export default function AdminDashboard() {
     firstName: "",
     lastName: "",
     email: "",
-    password: "",
-    contact: "",
+    country: "",
+    birthDate: "",
     trialNotes: "",
     level: "",
     teacherId: "",
@@ -171,17 +189,24 @@ export default function AdminDashboard() {
   });
   const [courses, setCourses] = useState([]);
   const [teacherCourses, setTeacherCourses] = useState([]);
+  const [teacherCourseDrafts, setTeacherCourseDrafts] = useState({});
+  const [teacherCourseSearch, setTeacherCourseSearch] = useState("");
+  const [expandedTeacherCourses, setExpandedTeacherCourses] = useState({});
+  const [savingTeacherCoursesId, setSavingTeacherCoursesId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiRecommendation, setAiRecommendation] = useState(null);
   const [archiveRefresh, setArchiveRefresh] = useState(0); // bump to reload archived list
+  const [archiveSearch, setArchiveSearch] = useState("");
   const [requestFilter, setRequestFilter] = useState("all"); // 'all', 'pending', 'approved', 'declined'
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null); // { id, status, action }
   const [contracts, setContracts] = useState([]);
+  const [contractSearch, setContractSearch] = useState("");
   const [contractsLoading, setContractsLoading] = useState(false);
   const [savingContractId, setSavingContractId] = useState(null);
   const [contractRequests, setContractRequests] = useState([]);
+  const [contractRequestSearch, setContractRequestSearch] = useState("");
   const [contractRequestsLoading, setContractRequestsLoading] = useState(false);
   const [updatingContractRequestId, setUpdatingContractRequestId] = useState(null);
   const [contractSubTab, setContractSubTab] = useState("packages");
@@ -254,20 +279,31 @@ export default function AdminDashboard() {
     }
   }, [active]);
 
+  useEffect(() => {
+    const nextDrafts = {};
+    teachers.forEach((teacher) => {
+      const teacherId = String(teacher.user_id);
+      nextDrafts[teacherId] = teacherCourses
+        .filter((item) => String(item.teacher_id) === teacherId)
+        .map((item) => String(item.course_id));
+    });
+    setTeacherCourseDrafts(nextDrafts);
+  }, [teachers, teacherCourses]);
+
   // ---- actions: create teacher ----
   async function createTeacher(e) {
     e.preventDefault();
     setLoading(true);
     try {
-      const payload = { ...tForm, role: "teacher" };
+      const payload = { ...tForm, role: "teacher", password: "teacher" };
       await axios.post(`${API}/api/admin/users`, payload); // creates teacher
       notify("Teacher created successfully!", "success");
       setTForm({
         firstName: "",
         lastName: "",
         email: "",
-        password: "",
-        contact: "",
+        country: "",
+        birthDate: "",
         specialization: "",
         experienceYears: "",
         teachingStyle: "",
@@ -295,15 +331,15 @@ export default function AdminDashboard() {
 
     setLoading(true);
     try {
-      const payload = { ...sForm, role: "student" };
+      const payload = { ...sForm, role: "student", password: "student" };
       await axios.post(`${API}/api/admin/users`, payload); // creates student
       notify("Student created successfully!", "success");
       setSForm({
         firstName: "",
         lastName: "",
         email: "",
-        password: "",
-        contact: "",
+        country: "",
+        birthDate: "",
         trialNotes: "",
         level: "",
         teacherId: "",
@@ -349,6 +385,50 @@ export default function AdminDashboard() {
           : [...prev.courseIds, normalized],
       };
     });
+  }
+
+  function toggleManagedTeacherCourse(teacherId, courseId) {
+    const teacherKey = String(teacherId);
+    const courseKey = String(courseId);
+    setTeacherCourseDrafts((current) => {
+      const selected = current[teacherKey] || [];
+      const exists = selected.includes(courseKey);
+      return {
+        ...current,
+        [teacherKey]: exists
+          ? selected.filter((id) => id !== courseKey)
+          : [...selected, courseKey],
+      };
+    });
+  }
+
+  function toggleTeacherCourseVisibility(teacherId) {
+    const teacherKey = String(teacherId);
+    setExpandedTeacherCourses((current) => ({
+      ...current,
+      [teacherKey]: !current[teacherKey],
+    }));
+  }
+
+  async function saveManagedTeacherCourses(teacherId) {
+    const teacherKey = String(teacherId);
+    const courseIds = teacherCourseDrafts[teacherKey] || [];
+    if (!courseIds.length) {
+      notify("Please select at least one course for this teacher.", "error");
+      return;
+    }
+
+    setSavingTeacherCoursesId(teacherId);
+    try {
+      await axios.put(`${API}/api/admin/teachers/${teacherId}/courses`, { courseIds });
+      notify("Teacher courses updated successfully.", "success");
+      loadUsers();
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || "Failed to update teacher courses", "error");
+    } finally {
+      setSavingTeacherCoursesId(null);
+    }
   }
 
   async function analyzeStudentMatch() {
@@ -402,7 +482,7 @@ export default function AdminDashboard() {
       notify("User archived successfully", "success");
       loadUsers(); // refresh the active lists
       setArchiveRefresh(r => r + 1); // tell archived component to reload
-    } catch (e) {
+    } catch {
       notify("Failed to archive user", "error");
     }
   }
@@ -413,7 +493,7 @@ export default function AdminDashboard() {
       loadUsers();
       setArchiveRefresh(r => r + 1);
       notify("User unarchived successfully", "success");
-    } catch (e) {
+    } catch {
       notify("Failed to unarchive user", "error");
     }
   }
@@ -578,6 +658,64 @@ export default function AdminDashboard() {
     ? teachers.filter((teacher) => teacherCourseMap[String(teacher.user_id)]?.has(String(sForm.courseId)))
     : teachers;
 
+  const teacherCourseSearchTerm = teacherCourseSearch.trim().toLowerCase();
+  const filteredTeacherCourseTeachers = teachers.filter((teacher) => {
+    if (!teacherCourseSearchTerm) return true;
+    const teacherCourseNames = teacherCourses
+      .filter((item) => String(item.teacher_id) === String(teacher.user_id))
+      .map((item) => item.course_name)
+      .join(" ");
+    return [
+      teacher.first_name,
+      teacher.last_name,
+      teacher.email,
+      teacherCourseNames,
+    ].filter(Boolean).join(" ").toLowerCase().includes(teacherCourseSearchTerm);
+  });
+
+  const contractSearchTerm = contractSearch.trim().toLowerCase();
+  const filteredContracts = contracts.filter((row) => {
+    if (!contractSearchTerm) return true;
+    const teacher = teachers.find((item) => String(item.user_id) === String(row.assigned_teacher_id));
+    return [
+      row.first_name,
+      row.last_name,
+      row.email,
+      row.course_name,
+      row.package_status,
+      teacher ? `${teacher.first_name} ${teacher.last_name}` : row.teacher_name,
+    ].filter(Boolean).join(" ").toLowerCase().includes(contractSearchTerm);
+  });
+
+  const contractRequestSearchTerm = contractRequestSearch.trim().toLowerCase();
+  const filteredContractRequests = contractRequests.filter((request) => {
+    if (!contractRequestSearchTerm) return true;
+    return [
+      request.first_name,
+      request.last_name,
+      request.email,
+      request.course_name,
+      request.status,
+      request.requested_classes,
+    ]
+      .filter((value) => value !== null && value !== undefined)
+      .join(" ")
+      .toLowerCase()
+      .includes(contractRequestSearchTerm);
+  });
+
+  const archiveSearchTerm = archiveSearch.trim().toLowerCase();
+  const matchesArchiveSearch = (user) => {
+    if (!archiveSearchTerm) return true;
+    return [user.first_name, user.last_name, user.email, user.role]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(archiveSearchTerm);
+  };
+  const filteredArchiveStudents = students.filter(matchesArchiveSearch);
+  const filteredArchiveTeachers = teachers.filter(matchesArchiveSearch);
+
   const updateStudentCourse = (courseId) => {
     const currentTeacherCanTeach = !sForm.teacherId || !courseId || teacherCourseMap[String(sForm.teacherId)]?.has(String(courseId));
     setSForm({
@@ -597,6 +735,7 @@ export default function AdminDashboard() {
           <Tab id="calendar" label="Calendar" />
           <Tab id="requests" label="Schedule Requests" />
           <Tab id="contracts" label="Manage Class Contracts" />
+          <Tab id="teacherCourses" label="Teacher Courses" />
           <Tab id="createTeacher" label="Create Teacher" />
           <Tab id="createStudent" label="Create Student" />
           <Tab id="archive" label="Archive Accounts" />
@@ -604,6 +743,102 @@ export default function AdminDashboard() {
       </div>
 
       <main className={styles.main}>
+        {active === "teacherCourses" && (
+          <section className={styles.card}>
+            <div className={styles.cardHead}>
+              <div>
+                <h2>Teacher Courses</h2>
+                <p style={{ margin: "4px 0 0 0", fontSize: "0.9em", color: "#666" }}>
+                  Edit which courses each active teacher can teach.
+                </p>
+              </div>
+              <button className={styles.linkBtn} type="button" onClick={loadUsers}>
+                Refresh
+              </button>
+            </div>
+
+            <div className={styles.compactSearch}>
+              <input
+                type="search"
+                value={teacherCourseSearch}
+                onChange={(e) => setTeacherCourseSearch(e.target.value)}
+                placeholder="Search teachers or courses"
+                aria-label="Search teacher courses"
+              />
+            </div>
+
+            {filteredTeacherCourseTeachers.length === 0 ? (
+              <div className={styles.empty}>No active teachers found</div>
+            ) : (
+              <div className={styles.courseManager}>
+                {filteredTeacherCourseTeachers.map((teacher) => {
+                  const selectedCourses = teacherCourseDrafts[String(teacher.user_id)] || [];
+                  const expanded = Boolean(expandedTeacherCourses[String(teacher.user_id)]);
+                  const selectedCourseNames = courses
+                    .filter((course) => selectedCourses.includes(String(course.course_id)))
+                    .map((course) => course.course_name);
+
+                  return (
+                    <section key={teacher.user_id} className={styles.courseTeacherRow}>
+                      <div className={styles.courseTeacherHead}>
+                        <div>
+                          <h3>{teacher.first_name} {teacher.last_name}</h3>
+                          <p>{teacher.email}</p>
+                          <div className={styles.courseSummary}>
+                            {selectedCourseNames.length
+                              ? selectedCourseNames.join(", ")
+                              : "No courses selected"}
+                          </div>
+                        </div>
+                        <div className={styles.courseTeacherActions}>
+                          <button
+                            className={styles.secondaryBtn}
+                            type="button"
+                            onClick={() => toggleTeacherCourseVisibility(teacher.user_id)}
+                          >
+                            {expanded ? "Hide Courses" : "View Courses"}
+                          </button>
+                          {expanded && (
+                            <button
+                              className={styles.primary}
+                              type="button"
+                              onClick={() => saveManagedTeacherCourses(teacher.user_id)}
+                              disabled={savingTeacherCoursesId === teacher.user_id}
+                            >
+                              {savingTeacherCoursesId === teacher.user_id ? "Saving..." : "Save"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {expanded && (
+                        <div className={styles.courseCheckboxGrid}>
+                          {courses.map((course) => {
+                            const courseId = String(course.course_id);
+                            return (
+                              <label
+                                key={course.course_id}
+                                className={`${styles.courseCheck} ${selectedCourses.includes(courseId) ? styles.courseCheckActive : ""}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedCourses.includes(courseId)}
+                                  onChange={() => toggleManagedTeacherCourse(teacher.user_id, course.course_id)}
+                                />
+                                <span>{course.course_name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
         {active === "createTeacher" && (
           <section className={styles.card}>
             <div className={styles.cardHead}>
@@ -624,12 +859,17 @@ export default function AdminDashboard() {
                   <input type="email" value={tForm.email} onChange={(e)=>setTForm({...tForm, email:e.target.value})} />
                 </div>
                 <div>
-                  <label>Password</label>
-                  <input type="password" value={tForm.password} onChange={(e)=>setTForm({...tForm, password:e.target.value})} />
+                  <label>Country</label>
+                  <select value={tForm.country} onChange={(e)=>setTForm({...tForm, country:e.target.value})} required>
+                    <option value="">Select Country</option>
+                    {COUNTRY_OPTIONS.map((country) => (
+                      <option key={country} value={country}>{country}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
-                  <label>Contact</label>
-                  <input value={tForm.contact} onChange={(e)=>setTForm({...tForm, contact:e.target.value})} />
+                  <label>Birthday</label>
+                  <input type="date" value={tForm.birthDate} onChange={(e)=>setTForm({...tForm, birthDate:e.target.value})} required />
                 </div>
               </div>
               <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
@@ -750,12 +990,17 @@ export default function AdminDashboard() {
                   <input type="email" value={sForm.email} onChange={(e)=>setSForm({...sForm, email:e.target.value})} />
                 </div>
                 <div>
-                  <label>Password</label>
-                  <input type="password" value={sForm.password} onChange={(e)=>setSForm({...sForm, password:e.target.value})} />
+                  <label>Country</label>
+                  <select value={sForm.country} onChange={(e)=>setSForm({...sForm, country:e.target.value})} required>
+                    <option value="">Select Country</option>
+                    {COUNTRY_OPTIONS.map((country) => (
+                      <option key={country} value={country}>{country}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
-                  <label>Contact</label>
-                  <input value={sForm.contact} onChange={(e)=>setSForm({...sForm, contact:e.target.value})} />
+                  <label>Birthday</label>
+                  <input type="date" value={sForm.birthDate} onChange={(e)=>setSForm({...sForm, birthDate:e.target.value})} required />
                 </div>
                 <div>
                   <label>Enroll in Course</label>
@@ -1040,10 +1285,21 @@ export default function AdminDashboard() {
                   Refresh Requests
                 </button>
               </div>
+              <div className={styles.searchBar}>
+                <input
+                  type="search"
+                  value={contractRequestSearch}
+                  onChange={(e) => setContractRequestSearch(e.target.value)}
+                  placeholder="Search requests by student, email, course, status, or classes"
+                  aria-label="Search contract requests"
+                />
+              </div>
               {contractRequestsLoading ? (
                 <div className={styles.empty}>Loading contract requests...</div>
               ) : contractRequests.length === 0 ? (
                 <div className={styles.empty}>No contract requests yet</div>
+              ) : filteredContractRequests.length === 0 ? (
+                <div className={styles.empty}>No contract requests match your search</div>
               ) : (
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
@@ -1058,7 +1314,7 @@ export default function AdminDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {contractRequests.map((request) => (
+                      {filteredContractRequests.map((request) => (
                         <tr key={request.request_id}>
                           <td>
                             <strong>{request.first_name} {request.last_name}</strong>
@@ -1115,11 +1371,23 @@ export default function AdminDashboard() {
             )}
 
             {contractSubTab === "packages" && (
+            <>
+            <div className={styles.searchBar}>
+              <input
+                type="search"
+                value={contractSearch}
+                onChange={(e) => setContractSearch(e.target.value)}
+                placeholder="Search packages by student, email, course, teacher, or status"
+                aria-label="Search class packages"
+              />
+            </div>
             <div className={styles.tableWrap}>
               {contractsLoading ? (
                 <div className={styles.empty}>Loading contracts...</div>
               ) : contracts.length === 0 ? (
                 <div className={styles.empty}>No active students found</div>
+              ) : filteredContracts.length === 0 ? (
+                <div className={styles.empty}>No class packages match your search</div>
               ) : (
                 <table className={styles.table}>
                   <thead>
@@ -1135,7 +1403,7 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {contracts.map((row) => {
+                    {filteredContracts.map((row) => {
                       const total = Math.max(0, parseInt(row.total_classes, 10) || 0);
                       const used = Math.max(0, parseInt(row.classes_used, 10) || 0);
                       const classesLeft = Math.max(0, total - used);
@@ -1233,6 +1501,7 @@ export default function AdminDashboard() {
                 </table>
               )}
             </div>
+            </>
             )}
           </section>
         )}
@@ -1240,12 +1509,21 @@ export default function AdminDashboard() {
         {active === "archive" && (
           <section className={styles.card}>
             <div className={styles.cardHead}><h2>Archive Accounts</h2></div>
+            <div className={styles.searchBar}>
+              <input
+                type="search"
+                value={archiveSearch}
+                onChange={(e) => setArchiveSearch(e.target.value)}
+                placeholder="Search by name, email, or role"
+                aria-label="Search archive accounts"
+              />
+            </div>
             <div className={styles.split}>
               <div>
                 <h3>Students</h3>
                 <ul className={styles.list}>
-                  {students.length === 0 && <li className={styles.empty}>No active students</li>}
-                  {students.map(s => (
+                  {filteredArchiveStudents.length === 0 && <li className={styles.empty}>No active students found</li>}
+                  {filteredArchiveStudents.map(s => (
                     <li key={s.user_id} className={styles.listRow}>
                       <span>{s.first_name} {s.last_name} — {s.email}</span>
                       <div>
@@ -1258,8 +1536,8 @@ export default function AdminDashboard() {
               <div>
                 <h3>Teachers</h3>
                 <ul className={styles.list}>
-                  {teachers.length === 0 && <li className={styles.empty}>No active teachers</li>}
-                  {teachers.map(t => (
+                  {filteredArchiveTeachers.length === 0 && <li className={styles.empty}>No active teachers found</li>}
+                  {filteredArchiveTeachers.map(t => (
                     <li key={t.user_id} className={styles.listRow}>
                       <span>{t.first_name} {t.last_name} — {t.email}</span>
                       <div>
@@ -1273,7 +1551,7 @@ export default function AdminDashboard() {
 
             <details className={styles.archivedBox}>
               <summary>Show Archived Users</summary>
-              <ArchivedUsers onUnarchive={unarchiveUser} refresh={archiveRefresh} />
+              <ArchivedUsers onUnarchive={unarchiveUser} refresh={archiveRefresh} search={archiveSearch} />
             </details>
           </section>
         )}
@@ -1512,7 +1790,7 @@ export default function AdminDashboard() {
 }
 
 // Lazy subcomponent to list archived users
-function ArchivedUsers({ onUnarchive, refresh }) {
+function ArchivedUsers({ onUnarchive, refresh, search = "" }) {
   const [items, setItems] = useState([]);
   useEffect(() => {
     axios
@@ -1520,10 +1798,21 @@ function ArchivedUsers({ onUnarchive, refresh }) {
       .then((r) => setItems(r.data || []))
       .catch(() => setItems([]));
   }, [refresh]);
+
+  const searchTerm = search.trim().toLowerCase();
+  const filteredItems = items.filter((user) => {
+    if (!searchTerm) return true;
+    return [user.first_name, user.last_name, user.email, user.role]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(searchTerm);
+  });
+
   return (
     <ul className={styles.list}>
-      {items.length === 0 && <li className={styles.empty}>No archived users</li>}
-      {items.map(u => (
+      {filteredItems.length === 0 && <li className={styles.empty}>No archived users found</li>}
+      {filteredItems.map(u => (
         <li key={u.user_id} className={styles.listRow}>
           <span>{u.first_name} {u.last_name} — {u.email} ({u.role})</span>
           <div>

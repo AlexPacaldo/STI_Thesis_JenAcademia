@@ -6,6 +6,7 @@ export default function Login() {
   const { notify } = useNotification() || {};
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [stayLoggedIn, setStayLoggedIn] = useState(false);
 
   async function handleLogin(e) {
   e.preventDefault();
@@ -26,10 +27,14 @@ export default function Login() {
     }
 
     // Save user and route by role
-    localStorage.setItem("user", JSON.stringify(data.user));
+    const userToStore = {
+      ...data.user,
+      stayLoggedIn: stayLoggedIn,
+    };
+    localStorage.setItem("user", JSON.stringify(userToStore));
     
     // If profile is not complete, always redirect to account page
-    if (!data.user.profileCompleted) {
+    if (!userToStore.profileCompleted) {
       window.location.href = "/account";
       return;
     }
@@ -76,6 +81,15 @@ export default function Login() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
+
+          <label className={styles.checkboxLabel}>
+            <input
+              type="checkbox"
+              checked={stayLoggedIn}
+              onChange={(e) => setStayLoggedIn(e.target.checked)}
+            />
+            Stay logged in
+          </label>
 
           <br />
           <button type="submit" className={styles.submitbtn}>
