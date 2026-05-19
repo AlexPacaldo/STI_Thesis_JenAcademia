@@ -3625,7 +3625,6 @@ async function canStudentAccessBook(studentId, bookId) {
      JOIN student_profiles sp ON sp.user_id = ?
      WHERE b.book_id = ?
        AND b.teacher_id = sp.assigned_teacher_id
-       AND b.course_id = sp.course_id
      LIMIT 1`,
     [studentId, bookId]
   );
