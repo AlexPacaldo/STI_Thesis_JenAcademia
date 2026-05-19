@@ -139,7 +139,9 @@ export default function Account() {
   const { notify } = useNotification() || {};
   const fileInputRef = useRef(null);
   const cropImageRef = useRef(null);
+  const cameraVideoRef = useRef(null);
   const dragRef = useRef({ active: false, startX: 0, startY: 0, baseX: 0, baseY: 0 });
+  const cameraStreamRef = useRef(null);
   const [user, setUser] = useState(null);
   const [isProfileIncomplete, setIsProfileIncomplete] = useState(false);
   const [form, setForm] = useState({
@@ -160,6 +162,8 @@ export default function Account() {
   const [cropModal, setCropModal] = useState(null);
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraStarting, setCameraStarting] = useState(false);
   const [crop, setCrop] = useState({ x: 0, y: 0, zoom: 1 });
   const [cropImageSize, setCropImageSize] = useState({ width: 0, height: 0 });
 
@@ -228,6 +232,52 @@ export default function Account() {
       if (cropModal?.src) URL.revokeObjectURL(cropModal.src);
     };
   }, [cropModal?.src]);
+
+  useEffect(() => {
+    if (!cameraOpen) return undefined;
+
+    let cancelled = false;
+    async function startCamera() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        notify("Camera is not available in this browser.", "error");
+        setCameraOpen(false);
+        return;
+      }
+
+      setCameraStarting(true);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+          audio: false,
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        cameraStreamRef.current = stream;
+        if (cameraVideoRef.current) {
+          cameraVideoRef.current.srcObject = stream;
+          await cameraVideoRef.current.play();
+        }
+      } catch {
+        notify("Could not open the camera. Please allow camera access or upload a file instead.", "error");
+        setCameraOpen(false);
+      } finally {
+        if (!cancelled) setCameraStarting(false);
+      }
+    }
+
+    startCamera();
+
+    return () => {
+      cancelled = true;
+      if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+        cameraStreamRef.current = null;
+      }
+    };
+  }, [cameraOpen, notify]);
 
   function handleLogout() {
     localStorage.removeItem("user");
@@ -299,6 +349,38 @@ export default function Account() {
   function chooseProfilePicture() {
     setAvatarMenuOpen(false);
     fileInputRef.current?.click();
+  }
+
+  function takeProfilePicture() {
+    setAvatarMenuOpen(false);
+    setCameraOpen(true);
+  }
+
+  function closeCameraModal() {
+    setCameraOpen(false);
+  }
+
+  function captureProfilePicture() {
+    const video = cameraVideoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      notify("Camera is still starting. Please try again.", "error");
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const photo = typeof File === "function"
+        ? new File([blob], "camera-profile-picture.png", { type: "image/png" })
+        : blob;
+      closeCameraModal();
+      handleProfileFile(photo);
+    }, "image/png", 0.95);
   }
 
   function handleProfileFile(file) {
@@ -537,7 +619,10 @@ export default function Account() {
                   See profile picture
                 </button>
                 <button type="button" onClick={chooseProfilePicture} disabled={pictureUploading}>
-                  Choose profile picture
+                  Upload file
+                </button>
+                <button type="button" onClick={takeProfilePicture} disabled={pictureUploading}>
+                  Take picture
                 </button>
               </div>
             )}
@@ -764,6 +849,29 @@ export default function Account() {
               <button type="button" className={styles.textBtn} onClick={closeCropModal}>Cancel</button>
               <button type="button" className={styles.primaryBtn} onClick={saveCroppedProfilePicture} disabled={pictureUploading}>
                 {pictureUploading ? "Saving..." : "Save Picture"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {cameraOpen && (
+        <div className={styles.modalBackdrop}>
+          <section className={styles.cameraModal}>
+            <div className={styles.modalHeader}>
+              <h2>Take profile picture</h2>
+              <button type="button" className={styles.closeBtn} onClick={closeCameraModal}>x</button>
+            </div>
+            <div className={styles.cameraBody}>
+              <div className={styles.cameraFrame}>
+                {cameraStarting && <span>Starting camera...</span>}
+                <video ref={cameraVideoRef} playsInline muted />
+              </div>
+            </div>
+            <div className={styles.modalActions}>
+              <button type="button" className={styles.textBtn} onClick={closeCameraModal}>Cancel</button>
+              <button type="button" className={styles.primaryBtn} onClick={captureProfilePicture} disabled={cameraStarting}>
+                Capture
               </button>
             </div>
           </section>
