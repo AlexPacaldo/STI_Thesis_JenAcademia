@@ -41,9 +41,13 @@ export default function BooksContent({ mode = "student" }) {
   const [accessError, setAccessError] = useState("");
 
   const isTeacherView = mode === "teacher";
+  const teacherId = useMemo(() => {
+    const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+    return localStorage.getItem("teacher_id") || storedUser.id || storedUser.user_id || storedUser.userId || null;
+  }, []);
   const studentId = useMemo(() => {
     const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
-    return storedUser.id || storedUser.user_id || storedUser.userId || localStorage.getItem("student_id") || "1";
+    return storedUser.id || storedUser.user_id || storedUser.userId || localStorage.getItem("student_id") || null;
   }, []);
 
   useEffect(() => {
@@ -72,15 +76,25 @@ export default function BooksContent({ mode = "student" }) {
           }
         }
 
-        const accessQuery = !isTeacherView ? `?student_id=${encodeURIComponent(studentId)}` : "";
+        const accessQuery = !isTeacherView
+          ? studentId
+            ? `?student_id=${encodeURIComponent(studentId)}`
+            : ""
+          : teacherId
+            ? `?teacher_id=${encodeURIComponent(teacherId)}`
+            : "";
         const lessonQuery = new URLSearchParams({ book_id: bookId });
-        if (!isTeacherView) lessonQuery.set("student_id", studentId);
+        if (!isTeacherView) {
+          lessonQuery.set("student_id", studentId);
+        } else if (teacherId) {
+          lessonQuery.set("teacher_id", teacherId);
+        }
 
         const [bookResponse, lessonsResponse, progressResponse] = await Promise.all([
           fetch(`${API_BASE}/api/books/${bookId}${accessQuery}`),
           fetch(`${API_BASE}/api/lessons?${lessonQuery.toString()}`),
           isTeacherView
-            ? Promise.resolve(null)
+            ? fetch(`${API_BASE}/api/teacher/book/${bookId}/progress?teacher_id=${encodeURIComponent(teacherId)}`)
             : fetch(`${API_BASE}/api/lesson-progress?student_id=${studentId}&book_id=${bookId}`),
         ]);
 
@@ -129,7 +143,7 @@ export default function BooksContent({ mode = "student" }) {
         setProgressLoading(true);
         setProgressError("");
 
-        const response = await fetch(`${API_BASE}/api/teacher/book/${bookId}/progress`);
+        const response = await fetch(`${API_BASE}/api/teacher/book/${bookId}/progress?teacher_id=${encodeURIComponent(teacherId)}`);
         if (!response.ok) throw new Error("Failed to fetch student progress");
 
         const data = await response.json();
@@ -537,6 +551,9 @@ export default function BooksContent({ mode = "student" }) {
                     fd.append("cover", coverFile);
                     fd.append("title", book.title);
                     fd.append("description", book.description || "");
+                    if (teacherId) {
+                      fd.append("teacher_id", teacherId);
+                    }
 
                     const res = await fetch(`${API_BASE}/api/books/${book.book_id}`, {
                       method: "PUT",
@@ -549,7 +566,8 @@ export default function BooksContent({ mode = "student" }) {
                     setShowCoverModal(false);
                     setCoverFile(null);
                     // reload book
-                    const bk = await (await fetch(`${API_BASE}/api/books/${bookId}`)).json();
+                    const bookQuery = teacherId ? `?teacher_id=${encodeURIComponent(teacherId)}` : "";
+                    const bk = await (await fetch(`${API_BASE}/api/books/${bookId}${bookQuery}`)).json();
                     setBook(bk.book);
                   } catch (err) {
                     console.error(err);

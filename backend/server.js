@@ -3608,27 +3608,100 @@ const bookCoverUpload = multer({
 
 // ===== BOOKS ENDPOINTS =====
 
-async function getStudentAssignedTeacherId(studentId) {
+async function getStudentProfile(studentId) {
   if (!studentId) return null;
 
   const [rows] = await pool.query(
-    "SELECT assigned_teacher_id FROM student_profiles WHERE user_id = ? LIMIT 1",
+    "SELECT assigned_teacher_id, course_id FROM student_profiles WHERE user_id = ? LIMIT 1",
     [studentId]
   );
-  return rows[0]?.assigned_teacher_id || null;
+  return rows[0] || null;
+}
+
+async function getStudentAssignedTeacherId(studentId) {
+  const profile = await getStudentProfile(studentId);
+  return profile?.assigned_teacher_id || null;
 }
 
 async function canStudentAccessBook(studentId, bookId) {
-  const [rows] = await pool.query(
-    `SELECT b.book_id
+  const profile = await getStudentProfile(studentId);
+  if (!profile?.assigned_teacher_id) return false;
+
+  const params = [studentId, bookId, profile.assigned_teacher_id];
+  let query = `SELECT b.book_id
      FROM books b
      JOIN student_profiles sp ON sp.user_id = ?
      WHERE b.book_id = ?
-       AND b.teacher_id = sp.assigned_teacher_id
-     LIMIT 1`,
-    [studentId, bookId]
-  );
+       AND b.teacher_id = ?`;
+
+  if (profile.course_id) {
+    query += ' AND b.course_id = ?';
+    params.push(profile.course_id);
+  }
+
+  query += '\n     LIMIT 1';
+
+  const [rows] = await pool.query(query, params);
   return rows.length > 0;
+}
+
+async function canStudentAccessLesson(studentId, lessonId) {
+  const profile = await getStudentProfile(studentId);
+  if (!profile?.assigned_teacher_id) return false;
+
+  const params = [studentId, lessonId, profile.assigned_teacher_id];
+  let query = `SELECT l.lesson_id
+     FROM lessons l
+     JOIN books b ON l.book_id = b.book_id
+     JOIN student_profiles sp ON sp.user_id = ?
+     WHERE l.lesson_id = ?
+       AND b.teacher_id = ?`;
+
+  if (profile.course_id) {
+    query += ' AND b.course_id = ?';
+    params.push(profile.course_id);
+  }
+
+  query += '\n     LIMIT 1';
+
+  const [rows] = await pool.query(query, params);
+  return rows.length > 0;
+}
+
+async function getAssignedStudentIds(teacherId, courseId) {
+  if (!teacherId) return [];
+
+  let query = `SELECT u.user_id
+     FROM users u
+     JOIN student_profiles sp ON sp.user_id = u.user_id
+     WHERE u.role = 'student'
+       AND u.status = 'active'
+       AND sp.assigned_teacher_id = ?`;
+  const params = [teacherId];
+
+  if (courseId) {
+    query += ' AND sp.course_id = ?';
+    params.push(courseId);
+  }
+
+  const [rows] = await pool.query(query, params);
+  return rows.map((row) => row.user_id);
+}
+
+async function createNotificationsForUsers(userIds, type, title, message, relatedId = null, relatedType = null, actionUrl = null) {
+  if (!Array.isArray(userIds) || userIds.length === 0) return;
+
+  const values = userIds.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ');
+  const params = [];
+
+  userIds.forEach((userId) => {
+    params.push(userId, type, title || null, message, relatedId, relatedType, actionUrl);
+  });
+
+  await pool.query(
+    `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url) VALUES ${values}`,
+    params
+  );
 }
 
 // ========== TEACHER DATA ISOLATION & SECURITY HELPERS ==========
@@ -3734,15 +3807,18 @@ app.get("/api/books", async (req, res) => {
     let params = [];
 
     if (student_id) {
-      const assignedTeacherId = await getStudentAssignedTeacherId(student_id);
-      if (!assignedTeacherId) {
+      const profile = await getStudentProfile(student_id);
+      if (!profile?.assigned_teacher_id) {
         return res.json({ books: [] });
       }
 
       query += " WHERE teacher_id = ?";
-      params.push(assignedTeacherId);
+      params.push(profile.assigned_teacher_id);
 
-      if (course_id) {
+      if (profile.course_id) {
+        query += " AND course_id = ?";
+        params.push(profile.course_id);
+      } else if (course_id) {
         query += " AND course_id = ?";
         params.push(course_id);
       }
@@ -3780,17 +3856,16 @@ app.get("/api/books/:book_id", async (req, res) => {
       return res.status(404).json({ message: "Book not found" });
     }
 
-    // Teacher access control: verify ownership
     if (teacher_id) {
       if (!(await validateTeacherBookOwnership(res, book_id, teacher_id))) {
         return;
       }
-    }
-    // Student access control: verify assigned teacher
-    else if (student_id) {
+    } else if (student_id) {
       if (!(await canStudentAccessBook(student_id, book_id))) {
         return res.status(403).json({ message: "You do not have access to this book" });
       }
+    } else {
+      return res.status(401).json({ message: "student_id or teacher_id is required" });
     }
 
     const [lessons] = await pool.query(
@@ -3814,6 +3889,11 @@ app.get("/api/books/:book_id", async (req, res) => {
 app.get("/api/teacher/book/:bookId/progress", async (req, res) => {
   try {
     const { bookId } = req.params;
+    const teacher_id = getTeacherIdFromRequest(req);
+
+    if (!teacher_id) {
+      return res.status(401).json({ message: "Unauthorized: teacher_id is required" });
+    }
 
     const [bookRows] = await pool.query(
       "SELECT book_id, title, course_id, teacher_id FROM books WHERE book_id = ? LIMIT 1",
@@ -3825,6 +3905,9 @@ app.get("/api/teacher/book/:bookId/progress", async (req, res) => {
     }
 
     const book = bookRows[0];
+    if (book.teacher_id !== parseInt(teacher_id, 10)) {
+      return res.status(403).json({ message: "Forbidden: You do not have permission to view progress for this book." });
+    }
 
     const [lessons] = await pool.query(
       `SELECT lesson_id, lesson_number, title
@@ -3953,6 +4036,21 @@ app.post("/api/books", bookCoverUpload.single("cover"), async (req, res) => {
         [title, description || null, course_id, teacher_id, cover_url]
       );
 
+      const studentIds = await getAssignedStudentIds(teacher_id, course_id);
+      if (studentIds.length > 0) {
+        const notificationTitle = `New book available: ${title}`;
+        const notificationMessage = `A new book titled "${title}" has been added to your course by your teacher. Check it out in Books & Lessons.`;
+        await createNotificationsForUsers(
+          studentIds,
+          'general',
+          notificationTitle,
+          notificationMessage,
+          result.insertId,
+          'book',
+          `/bookscontent/${result.insertId}`
+        );
+      }
+
       res.status(201).json({
         message: "Book created successfully",
         book_id: result.insertId,
@@ -4077,14 +4175,22 @@ app.delete("/api/books/:book_id", async (req, res) => {
 // GET all lessons for a book
 app.get("/api/lessons", async (req, res) => {
   try {
-    const { book_id, student_id } = req.query;
+    const { book_id, student_id, teacher_id } = req.query;
 
     if (!book_id) {
       return res.status(400).json({ message: "book_id is required" });
     }
 
-    if (student_id && !(await canStudentAccessBook(student_id, book_id))) {
-      return res.status(403).json({ message: "You do not have access to this book" });
+    if (student_id) {
+      if (!(await canStudentAccessBook(student_id, book_id))) {
+        return res.status(403).json({ message: "You do not have access to this book" });
+      }
+    } else if (teacher_id) {
+      if (!(await validateTeacherBookOwnership(res, book_id, teacher_id))) {
+        return;
+      }
+    } else {
+      return res.status(401).json({ message: "student_id or teacher_id is required" });
     }
 
     const [lessons] = await pool.query(
@@ -4103,7 +4209,7 @@ app.get("/api/lessons", async (req, res) => {
 app.get("/api/lessons/:lesson_id", async (req, res) => {
   try {
     const { lesson_id } = req.params;
-    const { student_id } = req.query;
+    const { student_id, teacher_id } = req.query;
 
     const [lessons] = await pool.query(
       "SELECT * FROM lessons WHERE lesson_id = ?",
@@ -4112,6 +4218,18 @@ app.get("/api/lessons/:lesson_id", async (req, res) => {
 
     if (lessons.length === 0) {
       return res.status(404).json({ message: "Lesson not found" });
+    }
+
+    if (student_id) {
+      if (!(await canStudentAccessLesson(student_id, lesson_id))) {
+        return res.status(403).json({ message: "You do not have access to this lesson" });
+      }
+    } else if (teacher_id) {
+      if (!(await validateTeacherLessonOwnership(res, lesson_id, teacher_id))) {
+        return;
+      }
+    } else {
+      return res.status(401).json({ message: "student_id or teacher_id is required" });
     }
 
     let progress = null;
@@ -4156,6 +4274,31 @@ app.post("/api/lessons", lessonUpload.single("file"), async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [book_id, lesson_number, title, content || null, file_path, order_number || lesson_number, is_published || 1]
     );
+
+    const [bookRows] = await pool.query(
+      "SELECT title, course_id FROM books WHERE book_id = ? LIMIT 1",
+      [book_id]
+    );
+
+    if (bookRows.length > 0) {
+      const bookTitle = bookRows[0].title || 'your book';
+      const courseIdForNotification = bookRows[0].course_id;
+      const studentIds = await getAssignedStudentIds(teacher_id, courseIdForNotification);
+
+      if (studentIds.length > 0) {
+        const notificationTitle = `New lesson added to ${bookTitle}`;
+        const notificationMessage = `A new lesson "${title}" has been added to the book ${bookTitle}. Visit Books & Lessons to review it.`;
+        await createNotificationsForUsers(
+          studentIds,
+          'general',
+          notificationTitle,
+          notificationMessage,
+          book_id,
+          'book',
+          `/bookscontent/${book_id}`
+        );
+      }
+    }
 
     res.status(201).json({ 
       message: "Lesson created successfully",
@@ -4292,7 +4435,7 @@ function normalizeLessonProgress(value) {
 
 async function refreshStudentBookProgress(studentId, lessonId) {
   const [lessonRows] = await pool.query(
-    `SELECT l.book_id, b.course_id
+    `SELECT l.book_id, b.course_id, b.teacher_id, b.title AS book_title
      FROM lessons l
      JOIN books b ON b.book_id = l.book_id
      WHERE l.lesson_id = ?
@@ -4302,7 +4445,12 @@ async function refreshStudentBookProgress(studentId, lessonId) {
 
   if (lessonRows.length === 0) return null;
 
-  const { book_id: bookId, course_id: courseId } = lessonRows[0];
+  const { book_id: bookId, course_id: courseId, teacher_id: teacherId, book_title: bookTitle } = lessonRows[0];
+  const [existingProgressRows] = await pool.query(
+    "SELECT status FROM student_course_progress WHERE student_id = ? AND book_id = ? LIMIT 1",
+    [studentId, bookId]
+  );
+  const wasCompleted = existingProgressRows.length > 0 && existingProgressRows[0].status === 'Completed';
 
   const [lessonCountRows] = await pool.query(
     "SELECT COUNT(*) AS totalLessons FROM lessons WHERE book_id = ?",
@@ -4343,6 +4491,25 @@ async function refreshStudentBookProgress(studentId, lessonId) {
        END`,
     [studentId, bookId, courseId, status, completedLessons, totalLessons, progressPercentage, completedAt]
   );
+
+  if (status === 'Completed' && !wasCompleted && teacherId) {
+    const [studentRows] = await pool.query(
+      "SELECT first_name, last_name FROM users WHERE user_id = ? LIMIT 1",
+      [studentId]
+    );
+    const studentName = studentRows.length
+      ? `${studentRows[0].first_name || ''} ${studentRows[0].last_name || ''}`.trim() || `Student ${studentId}`
+      : `Student ${studentId}`;
+
+    const notificationTitle = `Student completed ${bookTitle}`;
+    const notificationMessage = `${studentName} has completed 100% of lessons in "${bookTitle}".`;
+
+    await pool.query(
+      `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+       VALUES (?, 'general', ?, ?, ?, 'book', ?)`,
+      [teacherId, notificationTitle, notificationMessage, bookId, `/teacherBooksLessons/${bookId}`]
+    );
+  }
 
   return {
     student_id: studentId,

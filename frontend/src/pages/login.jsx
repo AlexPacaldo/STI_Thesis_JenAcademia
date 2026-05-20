@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/Login.module.css";
+import { useNotification } from "../components/NotificationContainer.jsx";
 
 export default function Login() {
   const { notify } = useNotification() || {};
@@ -32,6 +32,14 @@ export default function Login() {
       stayLoggedIn: stayLoggedIn,
     };
     localStorage.setItem("user", JSON.stringify(userToStore));
+
+    if (data.user.role === "teacher") {
+      localStorage.setItem("teacher_id", String(data.user.id));
+      localStorage.removeItem("student_id");
+    } else if (data.user.role === "student") {
+      localStorage.setItem("student_id", String(data.user.id));
+      localStorage.removeItem("teacher_id");
+    }
     
     // If profile is not complete, always redirect to account page
     if (!userToStore.profileCompleted) {

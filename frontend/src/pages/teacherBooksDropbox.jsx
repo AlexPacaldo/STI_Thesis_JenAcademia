@@ -15,7 +15,8 @@ export default function TeacherBooksDropbox() {
     file: null,
   });
 
-  const teacherId = localStorage.getItem("teacher_id") || "1";
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const teacherId = localStorage.getItem("teacher_id") || storedUser.id || storedUser.user_id || storedUser.userId || null;
 
   useEffect(() => {
     fetchBooks();
@@ -85,6 +86,7 @@ export default function TeacherBooksDropbox() {
       formData.append("title", lessonData.title);
       formData.append("content", lessonData.content || "");
       formData.append("file", lessonData.file);
+      formData.append("teacher_id", teacherId);
 
       const response = await fetch("http://localhost:3001/api/lessons", {
         method: "POST",

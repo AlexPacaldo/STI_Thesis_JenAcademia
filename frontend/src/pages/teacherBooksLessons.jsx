@@ -20,12 +20,32 @@ export default function TeacherBooksLessons() {
 
 
 
-  const teacherId = localStorage.getItem("teacher_id") || "1"; // Get from session
-  const courseId = localStorage.getItem("course_id") || "1"; // Get from session
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const teacherId = localStorage.getItem("teacher_id") || storedUser.id || storedUser.user_id || storedUser.userId || null;
+  const [teacherCourses, setTeacherCourses] = useState([]);
+  const [selectedCourseId, setSelectedCourseId] = useState(null);
 
   useEffect(() => {
     fetchBooks();
+    loadTeacherCourses();
   }, []);
+
+  const loadTeacherCourses = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/teacher-courses`);
+      if (!response.ok) throw new Error("Failed to fetch teacher courses");
+      const data = await response.json();
+      const courses = (data.teacherCourses || []).filter(
+        (course) => String(course.teacher_id) === String(teacherId)
+      );
+      setTeacherCourses(courses);
+      if (courses.length > 0) {
+        setSelectedCourseId(courses[0].course_id);
+      }
+    } catch (err) {
+      console.error("Error loading teacher courses:", err);
+    }
+  };
 
   const fetchBooks = async () => {
     try {
@@ -51,10 +71,15 @@ export default function TeacherBooksLessons() {
     }
 
     try {
+      if (!selectedCourseId) {
+        notify?.("Please select a valid course before creating a book.", "error");
+        return;
+      }
+
       const formData = new FormData();
       formData.append("title", newBook.title);
       formData.append("description", newBook.description || "");
-      formData.append("course_id", courseId);
+      formData.append("course_id", selectedCourseId);
       formData.append("teacher_id", teacherId);
       if (newBook.coverFile) {
         formData.append("cover", newBook.coverFile);
@@ -83,7 +108,7 @@ export default function TeacherBooksLessons() {
     if (!window.confirm("Are you sure you want to delete this book?")) return;
 
     try {
-      const response = await fetch(`http://localhost:3001/api/books/${bookId}`, {
+      const response = await fetch(`http://localhost:3001/api/books/${bookId}?teacher_id=${encodeURIComponent(teacherId)}`, {
         method: "DELETE",
       });
 
@@ -214,6 +239,27 @@ export default function TeacherBooksLessons() {
             </label>
 
             <label>
+              Course:
+              <select
+                value={selectedCourseId || ""}
+                onChange={(e) => setSelectedCourseId(e.target.value || null)}
+              >
+                <option value="">Select course</option>
+                {teacherCourses.map((course) => (
+                  <option key={course.course_id} value={course.course_id}>
+                    {course.course_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {!teacherCourses.length && (
+              <p className={styles.error}>
+                No courses are assigned to this teacher yet. Ask the administrator to assign a course before creating books.
+              </p>
+            )}
+
+            <label>
               Cover (optional):
               <input
                 type="file"
@@ -255,6 +301,7 @@ export default function TeacherBooksLessons() {
                   try {
                     const fd = new FormData();
                     fd.append('cover', coverFile);
+                    fd.append('teacher_id', teacherId);
                     const res = await fetch(`${API_BASE}/api/books/${editingBookId}`, {
                       method: 'PUT',
                       body: fd,
