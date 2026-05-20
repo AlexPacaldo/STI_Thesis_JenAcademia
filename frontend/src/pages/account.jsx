@@ -4,6 +4,7 @@ import axios from "axios";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/account.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
+import { getUserTimezone } from "../utils/timezone.js";
 
 const API = "http://localhost:3001";
 const CROP_SIZE = 320;
@@ -111,6 +112,13 @@ function calculateAge(birthDate) {
     age -= 1;
   }
   return age >= 0 ? age : null;
+}
+
+function formatAccountDate(value, timezone) {
+  if (!value) return "Not available";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not available";
+  return date.toLocaleDateString("en-US", { timeZone: getUserTimezone({ timezone }) });
 }
 
 function hasRequiredCompletionFields(user = {}) {
@@ -798,7 +806,7 @@ export default function Account() {
             <div className={styles.detailList}>
               <p><strong>User ID:</strong> {user.id}</p>
               <p><strong>Role:</strong> {formatRole(user.role)}</p>
-              <p><strong>Created:</strong> {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : "Not available"}</p>
+              <p><strong>Created:</strong> {formatAccountDate(user.createdAt, user.timezone)}</p>
             </div>
             <button className={styles.logoutBtn} onClick={handleLogout}>Log out</button>
           </section>
