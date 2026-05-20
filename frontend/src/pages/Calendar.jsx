@@ -3,6 +3,13 @@ import { useLocation, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/studentSchedule.module.css";
+import {
+  DEFAULT_TIMEZONE,
+  convertDateTime,
+  getUserTimezone,
+  humanTime as formatHumanTime,
+  normalizeTimeKey,
+} from "../utils/timezone.js";
 
 // API base
 const API = "http://localhost:3001";
@@ -205,6 +212,11 @@ const isClassJoinable = (classObj, selectedDate) => {
   }
 };
 
+const addSeconds = (time) => {
+  const normalized = normalizeTimeKey(time);
+  return normalized ? `${normalized}:00` : "";
+};
+
 /**
  * Calendar view for teachers and students. Data is loaded from the backend using
  * the SQL schema tables (teacher_availability, classes, student_class_packages).
@@ -266,6 +278,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [contractRequests, setContractRequests] = useState([]);
   const [isSubmittingContractRequest, setIsSubmittingContractRequest] = useState(false);
   const isAdmin = localRole === "admin"; // helper for rendering
+  const viewerTimezone = useMemo(() => getUserTimezone(me), [me]);
 
   // booking form state
   const [bookingFormOpen, setBookingFormOpen] = useState(false);
@@ -308,6 +321,16 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
   }, []);
 
+  useEffect(() => {
+    const handleProfileUpdate = (event) => {
+      const updated = event.detail;
+      if (updated) setMe(updated);
+    };
+
+    window.addEventListener("userProfileUpdated", handleProfileUpdate);
+    return () => window.removeEventListener("userProfileUpdated", handleProfileUpdate);
+  }, []);
+
   // Fetch booked dates when user changes
   useEffect(() => {
     if (!localUserId || localRole === "admin") return;
@@ -316,15 +339,25 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       .then(r => {
         if (r.data && r.data.bookedDates) {
           // Normalize dates to YYYY-MM-DD format
-          const normalized = r.data.bookedDates.map(bd => ({
-            ...bd,
-            scheduled_date: normalizeDate(bd.scheduled_date)
-          }));
+          const normalized = r.data.bookedDates.map(bd => {
+            const sourceTimezone = bd.teacher_timezone || DEFAULT_TIMEZONE;
+            const start = convertDateTime(bd.scheduled_date, bd.start_time, sourceTimezone, viewerTimezone);
+            const end = convertDateTime(bd.scheduled_date, bd.end_time, sourceTimezone, viewerTimezone);
+
+            return {
+              ...bd,
+              source_scheduled_date: normalizeDate(bd.scheduled_date),
+              source_start_time: bd.start_time,
+              scheduled_date: start.date,
+              start_time: addSeconds(start.time),
+              end_time: addSeconds(end.time),
+            };
+          });
           setBookedDates(normalized);
         }
       })
       .catch(() => setBookedDates([]));
-  }, [localUserId, localRole]);
+  }, [localUserId, localRole, viewerTimezone]);
 
   // Helper to normalize date to YYYY-MM-DD format
   const normalizeDate = (dateVal) => {
@@ -466,6 +499,36 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       });
   }, [localRole, localUserId]);
 
+  const formatClassForViewer = (c) => {
+    const sourceTimezone = c.teacher_timezone || DEFAULT_TIMEZONE;
+    const start = convertDateTime(c.scheduled_date, c.start_time || c.time, sourceTimezone, viewerTimezone);
+    const end = convertDateTime(c.scheduled_date, c.end_time, sourceTimezone, viewerTimezone);
+
+    return {
+      ...c,
+      id: c.id || c.class_id,
+      className: c.className || c.class_name || c.name,
+      studentName: c.studentName || c.student_name,
+      studentEmail: c.studentEmail || c.student_email,
+      teacherName: c.teacherName || c.teacher_name,
+      teacherEmail: c.teacherEmail || c.teacher_email,
+      classLink: c.classLink || c.class_link,
+      source_scheduled_date: normalizeDate(c.scheduled_date),
+      source_start_time: c.start_time,
+      source_end_time: c.end_time,
+      scheduled_date: start.date,
+      start_time: addSeconds(start.time),
+      end_time: addSeconds(end.time),
+      time: c.time || formatHumanTime(start.time),
+      duration: c.duration,
+      status: c.status,
+      teacher_id: c.teacher_id,
+      student_id: c.student_id,
+      viewer_timezone: viewerTimezone,
+      source_timezone: sourceTimezone,
+    };
+  };
+
   // helper to load classes for a particular date
   const loadClassesForDate = (dateStr) => {
     if (!dateStr || classesCache[dateStr]) return;
@@ -487,22 +550,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       .then(r => {
         if (r.data && r.data.classes) {
           // normalize the returned rows to camelCase / unified fields
-          const formatted = r.data.classes.map(c => ({
-            ...c,
-            id: c.id || c.class_id,
-            className: c.className || c.class_name || c.name,
-            studentName: c.studentName || c.student_name,
-            studentEmail: c.studentEmail || c.student_email,
-            teacherName: c.teacherName || c.teacher_name,
-            teacherEmail: c.teacherEmail || c.teacher_email,
-            classLink: c.classLink || c.class_link,
-            time: c.time || humanTime(c.start_time),
-            start_time: c.start_time || parse24HourTime(c.time) || "",
-            duration: c.duration || c.duration,
-            status: c.status,
-            teacher_id: c.teacher_id,
-            student_id: c.student_id,
-          }));
+          const formatted = r.data.classes.map(formatClassForViewer);
           setClassesCache(prev => ({ ...prev, [dateStr]: formatted }));
         }
       })
@@ -662,7 +710,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       return time;
     }).filter(t => t && t.length === 5);
     
-    const finalSlots = afterBreakFilter.filter(slot => !studentBookedTimes.includes(slot));
+    const finalSlotsInTeacherTimezone = afterBreakFilter.filter(slot => !studentBookedTimes.includes(slot));
+    const teacherTimezone = teacherAvailabilityRecord?.teacher_timezone || DEFAULT_TIMEZONE;
+    const finalSlots = finalSlotsInTeacherTimezone
+      .map(slot => {
+        const converted = convertDateTime(dateKey, slot, teacherTimezone, viewerTimezone);
+        return converted.date === dateKey ? converted.time : null;
+      })
+      .filter(Boolean);
     
     console.log("Final available slots after all filters:", finalSlots);
     setAvailableTimeSlots(finalSlots);
@@ -879,8 +934,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const isTeacherDateTimeBooked = (dateStr, timeStr) => {
     const classes = teacherClassesCache[dateStr] || [];
     return classes.some(cls => {
-      const time = (cls.start_time || cls.time || "").substring(0, 5);
-      return time === timeStr;
+      const converted = convertDateTime(
+        cls.scheduled_date || dateStr,
+        cls.start_time || cls.time || "",
+        cls.teacher_timezone || DEFAULT_TIMEZONE,
+        viewerTimezone
+      );
+      return converted.date === dateStr && converted.time === normalizeTimeKey(timeStr);
     });
   };
 
@@ -1342,11 +1402,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
     setIsSubmittingRequest(true);
     try {
+      const targetTimezone = selectedClass.teacher_timezone || selectedClass.source_timezone || DEFAULT_TIMEZONE;
+      const requestedInTeacherTimezone = convertDateTime(requestDate, requestTime, viewerTimezone, targetTimezone);
       await axios.post(`${API}/api/calendar/reschedule-request`, {
         class_id: selectedClass.id,
         requested_by_id: localUserId,
-        requested_date: requestDate,
-        requested_time: requestTime,
+        requested_date: requestedInTeacherTimezone.date || requestDate,
+        requested_time: requestedInTeacherTimezone.time || requestTime,
         reason: requestReason,
       });
       
@@ -1536,11 +1598,19 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       return;
     }
 
-    const [hour, min] = studentBookingTime.split(":").map(Number);
+    const selectedAvailabilityRecord = teacherAvailabilityList.find(
+      record => normalizeDate(record.available_date) === studentBookingDate
+    ) || teacherAvailabilityRecordForDate;
+    const teacherTimezone = selectedAvailabilityRecord?.teacher_timezone || DEFAULT_TIMEZONE;
+    const teacherStart = convertDateTime(studentBookingDate, studentBookingTime, viewerTimezone, teacherTimezone);
+    const teacherBookingDate = teacherStart.date || studentBookingDate;
+    const teacherBookingTime = teacherStart.time || studentBookingTime;
+
+    const [hour, min] = teacherBookingTime.split(":").map(Number);
     const endDate = new Date(2000, 0, 1, hour + 1, min);
     const endTime = `${String(endDate.getHours()).padStart(2, "0")}:${String(endDate.getMinutes()).padStart(2, "0")}`;
 
-    const start = new Date(`2000-01-01T${studentBookingTime}`);
+    const start = new Date(`2000-01-01T${teacherBookingTime}`);
     const end = new Date(`2000-01-01T${endTime}`);
     const duration = Math.max(0, Math.round((end - start) / (1000 * 60)));
     if (duration <= 0) {
@@ -1554,8 +1624,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         class_name: studentProfile?.course_name || "General English",
         teacher_id: assignedTeacherId,
         student_id: localUserId,
-        scheduled_date: studentBookingDate,
-        start_time: studentBookingTime,
+        scheduled_date: teacherBookingDate,
+        start_time: teacherBookingTime,
         end_time: endTime,
         duration,
         class_link: ""
@@ -1574,15 +1644,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       setClassesCache(prev => {
         const updated = { ...prev };
         delete updated[studentBookingDate];
+        delete updated[teacherBookingDate];
         return updated;
       });
       setTeacherClassesCache(prev => {
         const updated = { ...prev };
         delete updated[studentBookingDate];
+        delete updated[teacherBookingDate];
         return updated;
       });
-      loadClassesForDate(studentBookingDate);
-      loadTeacherClassesForDate(studentBookingDate, assignedTeacherId);
+      loadClassesForDate(teacherBookingDate);
+      loadTeacherClassesForDate(teacherBookingDate, assignedTeacherId);
     } catch (err) {
       console.error(err);
       setStudentBookingError(err?.response?.data?.message || "Unable to book class. Please try again.");

@@ -8,6 +8,7 @@ import {
   markLocalNotificationRead,
   mergeNotifications,
 } from "../utils/localNotificationStore.js";
+import { getStoredUserTimezone } from "../utils/timezone.js";
 import { useNotification } from "./NotificationContainer";
 
 const API = "http://localhost:3001";
@@ -244,7 +245,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                       </div>
                       <p className={styles.notifMessage}>{notif.message}</p>
                       <span className={styles.notifTime}>
-                        {new Date(notif.created_at).toLocaleDateString()} {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(notif.created_at).toLocaleDateString([], { timeZone: getStoredUserTimezone() })} {new Date(notif.created_at).toLocaleTimeString([], { timeZone: getStoredUserTimezone(), hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
 

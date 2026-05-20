@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 import styles from "../assets/assignmentsDropbox.module.css";
 import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
+import { getStoredUserTimezone } from "../utils/timezone.js";
 
 const API = "http://localhost:3001";
 
@@ -36,6 +37,7 @@ function formatDueDate(assignment) {
 
     if (!Number.isNaN(date.getTime())) {
       return date.toLocaleString(undefined, {
+        timeZone: getStoredUserTimezone(),
         year: "numeric",
         month: "short",
         day: "numeric",

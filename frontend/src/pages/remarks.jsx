@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import teacherPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/remarks.module.css";
+import { getStoredUserTimezone } from "../utils/timezone.js";
 
 export default function Remarks() {
   const [remarks, setRemarks] = useState([]);
@@ -13,6 +14,7 @@ export default function Remarks() {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return date.toLocaleDateString("en-US", {
+      timeZone: getStoredUserTimezone(),
       month: "long",
       day: "numeric",
       year: "numeric",
@@ -25,6 +27,7 @@ export default function Remarks() {
       const date = new Date(value);
       if (!Number.isNaN(date.getTime())) {
         return date.toLocaleTimeString("en-US", {
+          timeZone: getStoredUserTimezone(),
           hour: "numeric",
           minute: "2-digit",
         });
@@ -111,7 +114,7 @@ export default function Remarks() {
                 <img src={teacherPic} alt={remark.teacher_name} className={styles.avatar} />
                 <h3>{remark.teacher_name}</h3>
               </div>
-              <span className={styles.date}>{new Date(remark.created_at).toLocaleDateString()}</span>
+              <span className={styles.date}>{new Date(remark.created_at).toLocaleDateString("en-US", { timeZone: getStoredUserTimezone() })}</span>
             </div>
             <p>{remark.remarks}</p>
             <div style={{ marginTop: 10, fontSize: "0.9rem", color: "#4b5563" }}>

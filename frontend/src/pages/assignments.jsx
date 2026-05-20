@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import styles from "../assets/assignments.module.css";
+import { getStoredUserTimezone } from "../utils/timezone.js";
 
 const API = "http://localhost:3001";
 
@@ -20,6 +21,7 @@ function formatDueDate(row) {
 
     if (!Number.isNaN(date.getTime())) {
       return date.toLocaleString(undefined, {
+        timeZone: getStoredUserTimezone(),
         year: "numeric",
         month: "short",
         day: "numeric",

@@ -14,7 +14,7 @@ dotenv.config();
 const PORT = process.env.PORT || 3001;
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USER || "root";
-const DB_PASSWORD = process.env.DB_PASSWORD || "LORAKLANG0405++";    // <- your password here
+const DB_PASSWORD = process.env.DB_PASSWORD || "Aj1182014";    // <- your password here
 const DB_NAME = process.env.DB_NAME || "jen_academia"; // your schema
 
 const app = express();
@@ -86,6 +86,17 @@ const COUNTRY_TIMEZONES = {
 
 function timezoneFromCountry(country) {
   return COUNTRY_TIMEZONES[String(country || "").trim()] || "Asia/Manila";
+}
+
+function normalizeTimezone(timezone, fallback = "Asia/Manila") {
+  const value = String(timezone || "").trim();
+  if (!value) return fallback;
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: value }).format(new Date());
+    return value;
+  } catch {
+    return fallback;
+  }
 }
 
 const pad = (n) => String(n).padStart(2, "0");
@@ -207,6 +218,21 @@ function formatMeetingDateTime(date, time) {
   const dt = new Date(`${date}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`);
   return dt.toISOString();
 }
+
+const classSelectFields = `
+  c.class_id,
+  c.class_name,
+  c.teacher_id,
+  c.student_id,
+  DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
+  TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time,
+  TIME_FORMAT(c.end_time, '%H:%i:%s') AS end_time,
+  c.duration,
+  c.class_link,
+  c.status,
+  c.created_at,
+  c.updated_at
+`;
 
 async function createTeamsMeeting(subject, date, startTime, endTime, organizerEmail) {
   const accessToken = await getMicrosoftGraphAccessToken();
@@ -877,7 +903,7 @@ app.post("/api/login", async (req, res) => {
 
     // Look up the user by email
     const [rows] = await pool.query(
-      `SELECT user_id, first_name, last_name, email, contact_number AS contact, password_hash, role, status, profile_completed, password_changed, profile_image_url, country, birth_date
+      `SELECT user_id, first_name, last_name, email, contact_number AS contact, password_hash, role, status, profile_completed, password_changed, profile_image_url, country, birth_date, timezone
        FROM users
        WHERE email = ?
        LIMIT 1`,
@@ -931,6 +957,7 @@ app.post("/api/login", async (req, res) => {
         role: user.role,
         country: user.country,
         birthDate: user.birth_date,
+        timezone: normalizeTimezone(user.timezone),
         profileCompleted: completion?.profile_completed,
         passwordChanged: completion?.password_changed,
         profileImageUrl: completion?.profile_image_url,
@@ -1045,7 +1072,7 @@ app.put("/api/users/:id", async (req, res) => {
     const { firstName, lastName, email, contact, country, birthDate, timezone } = req.body;
     const normalizedBirthDate = birthDate ? String(birthDate).slice(0, 10) : null;
     const normalizedCountry = String(country || "").trim();
-    const resolvedTimezone = String(timezone || "").trim() || timezoneFromCountry(normalizedCountry);
+    const resolvedTimezone = normalizeTimezone(timezone, timezoneFromCountry(normalizedCountry));
 
     if (normalizedBirthDate && !/^\d{4}-\d{2}-\d{2}$/.test(normalizedBirthDate)) {
       return res.status(400).json({ message: "Birthday must be a valid date" });
@@ -1756,11 +1783,14 @@ app.get("/api/calendar/classes-by-date", async (req, res) => {
   try {
     const { scheduled_date, student_id, teacher_id } = req.query;
 
-    let query = `SELECT c.*,
+    let query = `SELECT ${classSelectFields},
                        stu.first_name as student_name,
+                       stu.last_name as student_last_name,
                        stu.email as student_email,
+                       stu.timezone as student_timezone,
                        tea.first_name as teacher_name,
                        tea.email as teacher_email,
+                       tea.timezone as teacher_timezone,
                        COALESCE(c.class_link, vs.teams_meeting_link) as class_link
                  FROM classes c
                  LEFT JOIN video_sessions vs ON vs.class_id = c.class_id
@@ -1798,13 +1828,15 @@ app.get("/api/calendar/upcoming-classes", async (req, res) => {
       return res.status(400).json({ message: "Missing teacher_id or student_id" });
     }
 
-    let query = `SELECT c.*, \
+    let query = `SELECT ${classSelectFields}, \
                        stu.first_name as student_name, \
                        stu.last_name as student_last_name, \
                        stu.email as student_email, \
+                       stu.timezone as student_timezone, \
                        tea.first_name as teacher_name, \
                        tea.last_name as teacher_last_name, \
                        tea.email as teacher_email, \
+                       tea.timezone as teacher_timezone, \
                        COALESCE(c.class_link, vs.teams_meeting_link) as class_link \
                  FROM classes c \
                  LEFT JOIN video_sessions vs ON vs.class_id = c.class_id \
@@ -2097,12 +2129,20 @@ app.get("/api/calendar/booked-dates/:user_id", async (req, res) => {
   try {
     const { user_id } = req.params;
     const [bookedDates] = await pool.query(
-      `SELECT scheduled_date, start_time, end_time
-       FROM classes
+      `SELECT DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
+              TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time,
+              TIME_FORMAT(c.end_time, '%H:%i:%s') AS end_time,
+              c.teacher_id,
+              c.student_id,
+              tea.timezone AS teacher_timezone,
+              stu.timezone AS student_timezone
+       FROM classes c
+       JOIN users tea ON c.teacher_id = tea.user_id
+       JOIN users stu ON c.student_id = stu.user_id
        WHERE (teacher_id = ? OR student_id = ?)
-       AND status = 'scheduled'
-       AND scheduled_date >= CURDATE()
-       ORDER BY scheduled_date ASC, start_time ASC`,
+       AND c.status = 'scheduled'
+       AND c.scheduled_date >= CURDATE()
+       ORDER BY c.scheduled_date ASC, c.start_time ASC`,
       [user_id, user_id]
     );
 
@@ -2118,10 +2158,15 @@ app.get("/api/calendar/my-reschedule-requests/:user_id", async (req, res) => {
   try {
     const { user_id } = req.params;
     const [requests] = await pool.query(
-      `SELECT rr.*, c.class_id, c.class_name, c.scheduled_date, c.start_time, c.end_time,
+      `SELECT rr.*, c.class_id, c.class_name,
+              DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
+              TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time,
+              TIME_FORMAT(c.end_time, '%H:%i:%s') AS end_time,
               req.first_name AS requester_first, req.last_name AS requester_last,
               stu.first_name AS student_first, stu.last_name AS student_last,
-              tea.first_name AS teacher_first, tea.last_name AS teacher_last
+              stu.timezone AS student_timezone,
+              tea.first_name AS teacher_first, tea.last_name AS teacher_last,
+              tea.timezone AS teacher_timezone
        FROM reschedule_requests rr
        JOIN classes c ON rr.class_id = c.class_id
        JOIN users req ON rr.requested_by_id = req.user_id
@@ -3321,10 +3366,20 @@ app.get("/api/calendar/teacher-availability-records", async (req, res) => {
     const endDate = `${yearValue}-${String(monthIndex).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
     const [rows] = await pool.query(
-      `SELECT availability_id as id, teacher_id, DATE_FORMAT(available_date, '%Y-%m-%d') as available_date, status, notes, start_time, end_time, break_start, break_end
-       FROM teacher_availability
-       WHERE teacher_id = ? AND available_date BETWEEN ? AND ?
-       ORDER BY available_date ASC`,
+      `SELECT ta.availability_id as id,
+              ta.teacher_id,
+              DATE_FORMAT(ta.available_date, '%Y-%m-%d') as available_date,
+              ta.status,
+              ta.notes,
+              TIME_FORMAT(ta.start_time, '%H:%i:%s') AS start_time,
+              TIME_FORMAT(ta.end_time, '%H:%i:%s') AS end_time,
+              TIME_FORMAT(ta.break_start, '%H:%i:%s') AS break_start,
+              TIME_FORMAT(ta.break_end, '%H:%i:%s') AS break_end,
+              u.timezone AS teacher_timezone
+       FROM teacher_availability ta
+       JOIN users u ON u.user_id = ta.teacher_id
+       WHERE ta.teacher_id = ? AND ta.available_date BETWEEN ? AND ?
+       ORDER BY ta.available_date ASC`,
       [teacher_id, startDate, endDate]
     );
 
@@ -3346,9 +3401,19 @@ app.get("/api/calendar/teacher-availability-record", async (req, res) => {
     await deletePastTeacherAvailability(teacher_id);
 
     const [rows] = await pool.query(
-      `SELECT availability_id as id, teacher_id, DATE_FORMAT(available_date, '%Y-%m-%d') as available_date, status, notes, start_time, end_time, break_start, break_end
-       FROM teacher_availability
-       WHERE teacher_id = ? AND DATE(available_date) = ?
+      `SELECT ta.availability_id as id,
+              ta.teacher_id,
+              DATE_FORMAT(ta.available_date, '%Y-%m-%d') as available_date,
+              ta.status,
+              ta.notes,
+              TIME_FORMAT(ta.start_time, '%H:%i:%s') AS start_time,
+              TIME_FORMAT(ta.end_time, '%H:%i:%s') AS end_time,
+              TIME_FORMAT(ta.break_start, '%H:%i:%s') AS break_start,
+              TIME_FORMAT(ta.break_end, '%H:%i:%s') AS break_end,
+              u.timezone AS teacher_timezone
+       FROM teacher_availability ta
+       JOIN users u ON u.user_id = ta.teacher_id
+       WHERE ta.teacher_id = ? AND DATE(ta.available_date) = ?
        LIMIT 1`,
       [teacher_id, available_date]
     );

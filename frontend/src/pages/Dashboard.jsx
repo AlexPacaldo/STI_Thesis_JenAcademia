@@ -2,6 +2,13 @@ import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import styles from "../assets/Dashboard.module.css";
+import {
+  DEFAULT_TIMEZONE,
+  convertDateTime,
+  formatDateInTimezone,
+  getUserTimezone,
+  humanTime as formatHumanTime,
+} from "../utils/timezone.js";
 
 const API = "http://localhost:3001";
 
@@ -14,20 +21,15 @@ function getCurrentUser() {
 }
 
 function getTodayDate() {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const user = getCurrentUser();
+  return formatDateInTimezone(new Date(), getUserTimezone(user));
 }
 
-function humanTime(value) {
-  if (!value) return "";
-  const [hour, minute] = String(value).split(":");
-  if (hour == null || minute == null) return value;
-  const date = new Date();
-  date.setHours(Number(hour), Number(minute), 0, 0);
-  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+function formatClassTime(cls, viewerTimezone) {
+  const sourceTimezone = cls.teacher_timezone || DEFAULT_TIMEZONE;
+  const start = convertDateTime(cls.scheduled_date, cls.start_time, sourceTimezone, viewerTimezone);
+  const end = convertDateTime(cls.scheduled_date, cls.end_time, sourceTimezone, viewerTimezone);
+  return `${formatHumanTime(start.time)} - ${formatHumanTime(end.time)}`;
 }
 
 function formatDate(value) {
@@ -54,6 +56,7 @@ export default function Dashboard({ mode }) {
 
   const user = getCurrentUser();
   const isTeacher = mode === "teacher";
+  const viewerTimezone = getUserTimezone(user);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -87,7 +90,7 @@ export default function Dashboard({ mode }) {
             id: cls.class_id || cls.id,
             student: cls.student_name ? `${cls.student_name} ${cls.student_last_name || ""}`.trim() : cls.studentName || "Student",
             subject: cls.class_name || cls.className || "Class",
-            time: `${humanTime(cls.start_time)} – ${humanTime(cls.end_time)}`,
+            time: formatClassTime(cls, viewerTimezone),
             raw: cls,
           }));
           setUpcomingClasses(classes);
@@ -115,7 +118,7 @@ export default function Dashboard({ mode }) {
             id: cls.class_id || cls.id,
             title: cls.class_name || cls.className || cls.subject || "Class",
             teacher: cls.teacher_name ? `Teacher ${cls.teacher_name}` : cls.teacherName || "Teacher",
-            time: `${humanTime(cls.start_time)} - ${humanTime(cls.end_time)}`,
+            time: formatClassTime(cls, viewerTimezone),
             scheduled_date: cls.scheduled_date || cls.date || null,
             raw: cls,
           }));
