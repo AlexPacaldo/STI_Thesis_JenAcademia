@@ -113,7 +113,7 @@ export default function StudentBooksLessons() {
                 <h1><b>{book.title}</b></h1>
                 <div className={styles.Uploaded}>
                   <img src={userPic} alt="Teacher" />
-                  <h3>{book.author || "Your Teacher"}</h3>
+                  <h3>{book.author || book.teacher_name || "Teacher"}</h3>
                 </div>
                 <button
                   type="button"

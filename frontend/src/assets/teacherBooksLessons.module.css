@@ -61,6 +61,7 @@
 
 .createBookBtn,
 .ContentAvailable a,
+.uploadLessonBtn,
 .LessonsCard button,
 .modalButtons button {
   border: 0;
@@ -73,6 +74,7 @@
 
 .createBookBtn,
 .ContentAvailable a,
+.uploadLessonBtn,
 .viewBtn,
 .confirmBtn {
   background: #111827;
@@ -87,6 +89,7 @@
 
 .createBookBtn:hover,
 .ContentAvailable a:hover,
+.uploadLessonBtn:hover,
 .viewBtn:hover,
 .confirmBtn:hover {
   background: #374151;
@@ -125,6 +128,15 @@
 }
 
 .ContentAvailable a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 10px 16px;
+  font-size: 0.92rem;
+}
+
+.uploadLessonBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -292,6 +304,7 @@
   width: min(520px, 100%);
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 16px;
   background: #ffffff;
   border-radius: 8px;
@@ -312,8 +325,23 @@
   font-weight: 700;
 }
 
+.createBookModalContent {
+  width: min(560px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+.formLabel,
+.modalContent > label {
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
 .modalContent input,
-.modalContent textarea {
+.modalContent textarea,
+.modalContent select {
   width: 100%;
   border: 1px solid #d1d5db;
   border-radius: 6px;
@@ -324,15 +352,121 @@
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
+.modalField,
+.modalTextarea {
+  display: block;
+  width: 100% !important;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.modalField {
+  min-height: 46px;
+}
+
+.modalField[type="file"] {
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.modalField[type="file"]::file-selector-button {
+  margin-right: 12px;
+  border: 0;
+  border-radius: 5px;
+  background: #e5e7eb;
+  color: #111827;
+  padding: 8px 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .modalContent textarea {
   min-height: 118px;
   resize: vertical;
 }
 
+.modalTextarea {
+  min-height: 132px;
+}
+
 .modalContent input:focus,
-.modalContent textarea:focus {
+.modalContent textarea:focus,
+.modalContent select:focus {
   border-color: #2563eb;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+
+.lessonModalContent {
+  width: min(720px, 100%);
+  gap: 22px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+.autoLessonNote {
+  margin: -10px 0 0;
+  color: #5b6472;
+  font-size: 0.92rem;
+}
+
+.lessonFormGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.lessonModalContent label,
+.lessonFormGrid label {
+  width: 100%;
+  min-width: 0;
+}
+
+.lessonInput,
+.lessonTextarea {
+  display: block;
+  width: 100% !important;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.lessonInput {
+  min-height: 46px;
+}
+
+.lessonInput[type="file"] {
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.lessonInput[type="file"]::file-selector-button {
+  margin-right: 12px;
+  border: 0;
+  border-radius: 5px;
+  background: #e5e7eb;
+  color: #111827;
+  padding: 8px 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lessonTextarea {
+  min-height: 132px;
+}
+
+.selectedFileName {
+  margin: -6px 0 0;
+  color: #374151;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.confirmBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+  transform: none;
+  box-shadow: none;
 }
 
 .modalButtons {
@@ -386,8 +520,13 @@
   }
 
   .bookActions,
-  .modalButtons {
+  .modalButtons,
+  .lessonFormGrid {
     flex-direction: column;
+  }
+
+  .lessonFormGrid {
+    display: flex;
   }
 
   .modalButtons button {
