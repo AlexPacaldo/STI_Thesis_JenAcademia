@@ -154,7 +154,7 @@ function Header() {
       <header className={styles.header}>
         <div className={styles.headerContainer}>
           <div className={styles.brandName}>
-            <i>JEN ACADEMIA</i>
+            <i>JEN Academia</i>
           </div>
         </div>
       </header>
@@ -199,22 +199,22 @@ function Header() {
 
         {role === "student" && isStudentArea && (
           <>
-            <Link to="/StudentDashboard" className={styles.brandName}><i>JEN ACADEMIA</i></Link>
+            <Link to="/StudentDashboard" className={styles.brandName}><i>JEN Academia</i></Link>
           </>
         )}
         {role === "teacher" && isTeacherArea && (
           <>
-            <Link to="/TeacherDashboard" className={styles.brandName}><i>JEN ACADEMIA</i></Link>
+            <Link to="/TeacherDashboard" className={styles.brandName}><i>JEN Academia</i></Link>
           </>
         )}
         {role === "admin" && isAdminArea && (
           <>
-            <Link to="/AdminDashboard" className={styles.brandName}><i>JEN ACADEMIA</i></Link>
+            <Link to="/AdminDashboard" className={styles.brandName}><i>JEN Academia</i></Link>
           </>
         )}
         {!user && (
           <Link to="/" className={styles.brandName}>
-            <i>JEN ACADEMIA</i>
+            <i>JEN Academia</i>
           </Link>
         )}
 

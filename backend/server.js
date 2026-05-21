@@ -159,6 +159,24 @@ function humanTime(timeStr) {
   return `${hour}:${minute} ${period}`;
 }
 
+function normalizeDateKey(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : "";
+}
+
+function normalizeTimeKey(value) {
+  const match = String(value || "").trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return "";
+  return `${String(Number(match[1])).padStart(2, "0")}:${match[2]}`;
+}
+
+function timeToMinutes(value) {
+  const timeKey = normalizeTimeKey(value);
+  if (!timeKey) return null;
+  const [hour, minute] = timeKey.split(":").map(Number);
+  return hour * 60 + minute;
+}
+
 async function deleteLocalProfileImage(imageUrl) {
   if (!imageUrl || !String(imageUrl).startsWith("/uploads/profiles/")) return;
 
@@ -469,6 +487,8 @@ async function ensureStudentContractRequestsTable() {
       student_id INT NOT NULL,
       course_id INT DEFAULT NULL,
       requested_classes INT NOT NULL,
+      trial_notes TEXT DEFAULT NULL,
+      ai_criteria TEXT DEFAULT NULL,
       status ENUM('pending','approved','declined') NOT NULL DEFAULT 'pending',
       admin_response VARCHAR(500) DEFAULT NULL,
       requested_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
@@ -481,6 +501,14 @@ async function ensureStudentContractRequestsTable() {
       CONSTRAINT student_contract_requests_course_fk FOREIGN KEY (course_id) REFERENCES courses (course_id)
     )
   `);
+
+  if (!(await columnExists("student_contract_requests", "trial_notes"))) {
+    await pool.query("ALTER TABLE student_contract_requests ADD COLUMN trial_notes TEXT DEFAULT NULL AFTER requested_classes");
+  }
+
+  if (!(await columnExists("student_contract_requests", "ai_criteria"))) {
+    await pool.query("ALTER TABLE student_contract_requests ADD COLUMN ai_criteria TEXT DEFAULT NULL AFTER trial_notes");
+  }
 }
 
 async function removeStudentPackageDateColumns() {
@@ -567,16 +595,42 @@ const aiCriterionLabels = {
   pace: "Learning pace",
 };
 
+function normalizeAiValues(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+  return String(value || "").trim();
+}
+
+function aiValueText(value) {
+  return Array.isArray(value) ? value.join(", ") : String(value || "");
+}
+
+function aiValueIncludes(value, expected) {
+  return Array.isArray(value) ? value.includes(expected) : value === expected;
+}
+
+function parseAiCriteriaJson(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 function normalizeCriteria(criteria = {}) {
   return Object.fromEntries(
-    Object.entries(aiCriterionLabels).map(([key]) => [key, String(criteria[key] || "").trim()])
+    Object.entries(aiCriterionLabels).map(([key]) => [key, normalizeAiValues(criteria[key])])
   );
 }
 
 function buildCriteriaNotes(criteria) {
   const lines = Object.entries(criteria)
-    .filter(([, value]) => value)
-    .map(([key, value]) => `${aiCriterionLabels[key]}: ${value}`);
+    .filter(([, value]) => Array.isArray(value) ? value.length : value)
+    .map(([key, value]) => `${aiCriterionLabels[key]}: ${aiValueText(value)}`);
 
   return lines.length ? `AI matching criteria:\n${lines.join("\n")}` : "";
 }
@@ -618,23 +672,25 @@ function scoreTeacherForStudent(teacher, criteria, trialNotes, courseId) {
   ];
 
   for (const [key, weight] of weightedCriteria) {
-    const value = String(criteria[key] || "").toLowerCase();
-    if (!value) continue;
+    const values = Array.isArray(criteria[key]) ? criteria[key] : [criteria[key]].filter(Boolean);
+    if (!values.length) continue;
 
-    const words = value.split(/[\s-]+/).filter((word) => word.length > 2);
+    const words = values
+      .flatMap((value) => String(value || "").toLowerCase().split(/[\s-]+/))
+      .filter((word) => word.length > 2);
     const matched = words.some((word) => profileText.includes(word) || notes.includes(word));
     if (matched) {
-      score += weight;
+      score += weight + Math.max(0, values.length - 1) * 2;
       reasons.push(`${aiCriterionLabels[key].toLowerCase()} fit`);
     }
   }
 
-  if (criteria.learningStyle === "structured") score += profileText.includes("grammar") ? 5 : 0;
-  if (criteria.learningStyle === "conversational") score += profileText.includes("conversation") || profileText.includes("speaking") ? 5 : 0;
-  if (criteria.focusArea === "speaking") score += profileText.includes("speaking") || profileText.includes("conversation") ? 5 : 0;
-  if (criteria.focusArea === "grammar") score += profileText.includes("grammar") ? 5 : 0;
-  if (criteria.personality === "shy") score += profileText.includes("patient") || profileText.includes("supportive") ? 5 : 0;
-  if (criteria.pace === "slow") score += profileText.includes("patient") ? 4 : 0;
+  if (aiValueIncludes(criteria.learningStyle, "structured")) score += profileText.includes("grammar") ? 5 : 0;
+  if (aiValueIncludes(criteria.learningStyle, "conversational")) score += profileText.includes("conversation") || profileText.includes("speaking") ? 5 : 0;
+  if (aiValueIncludes(criteria.focusArea, "speaking")) score += profileText.includes("speaking") || profileText.includes("conversation") ? 5 : 0;
+  if (aiValueIncludes(criteria.focusArea, "grammar")) score += profileText.includes("grammar") ? 5 : 0;
+  if (aiValueIncludes(criteria.personality, "shy")) score += profileText.includes("patient") || profileText.includes("supportive") ? 5 : 0;
+  if (aiValueIncludes(criteria.pace, "slow")) score += profileText.includes("patient") ? 4 : 0;
 
   score -= Number(teacher.assigned_student_count || 0);
 
@@ -1278,6 +1334,9 @@ app.post("/api/admin/users", async (req, res) => {
         personalityStrength,
         idealStudentPace,
       });
+      const specializationText = Array.isArray(specialization)
+        ? specialization.map((item) => String(item || "").trim()).filter(Boolean).join(", ")
+        : String(specialization || "").trim();
 
       await pool.query(
         `INSERT INTO teacher_profiles (user_id, bio, specialization, experience_years)
@@ -1285,7 +1344,7 @@ app.post("/api/admin/users", async (req, res) => {
         [
           userId,
           teacherBio || "",
-          specialization || null,
+          specializationText || null,
           Number.isFinite(parsedExperienceYears) ? parsedExperienceYears : null,
         ]
       );
@@ -1472,7 +1531,7 @@ app.put("/api/admin/student-contracts/:student_id", async (req, res) => {
 
 app.post("/api/student/contract-requests", async (req, res) => {
   try {
-    const { student_id, course_id, requested_classes } = req.body;
+    const { student_id, course_id, requested_classes, trial_notes, ai_criteria } = req.body;
     const parsedStudentId = parseInt(student_id, 10);
     const parsedCourseId = course_id ? parseInt(course_id, 10) : null;
     const parsedClasses = parseInt(requested_classes, 10);
@@ -1494,9 +1553,15 @@ app.post("/api/student/contract-requests", async (req, res) => {
     }
 
     const [result] = await pool.query(
-      `INSERT INTO student_contract_requests (student_id, course_id, requested_classes, status)
-       VALUES (?, ?, ?, 'pending')`,
-      [parsedStudentId, parsedCourseId, parsedClasses]
+      `INSERT INTO student_contract_requests (student_id, course_id, requested_classes, trial_notes, ai_criteria, status)
+       VALUES (?, ?, ?, ?, ?, 'pending')`,
+      [
+        parsedStudentId,
+        parsedCourseId,
+        parsedClasses,
+        String(trial_notes || "").trim() || null,
+        JSON.stringify(normalizeCriteria(ai_criteria || {})),
+      ]
     );
 
     const [studentRows] = await pool.query(
@@ -1584,7 +1649,7 @@ app.put("/api/admin/contract-requests/:request_id", async (req, res) => {
     await connection.beginTransaction();
 
     const [requestRows] = await connection.query(
-      `SELECT r.request_id, r.student_id, r.course_id, r.requested_classes, r.status,
+      `SELECT r.request_id, r.student_id, r.course_id, r.requested_classes, r.trial_notes, r.ai_criteria, r.status,
               c.course_name
        FROM student_contract_requests r
        LEFT JOIN courses c ON c.course_id = r.course_id
@@ -1619,9 +1684,14 @@ app.put("/api/admin/contract-requests/:request_id", async (req, res) => {
         return res.status(404).json({ message: "Student profile not found" });
       }
 
+      const requestCriteria = parseAiCriteriaJson(request.ai_criteria);
+      const requestCriteriaNotes = buildCriteriaNotes(normalizeCriteria(requestCriteria));
+      const combinedTrialNotes = [profileRows[0].trial_notes || "", request.trial_notes || ""]
+        .filter((part) => String(part).trim())
+        .join("\n\nContract request notes:\n");
       const recommendation = await recommendTeacher({
-        criteria: {},
-        trialNotes: profileRows[0].trial_notes || "",
+        criteria: requestCriteria,
+        trialNotes: combinedTrialNotes,
         courseId: request.course_id,
         preferredTeacherId: profileRows[0].assigned_teacher_id,
         db: connection,
@@ -1637,9 +1707,16 @@ app.put("/api/admin/contract-requests/:request_id", async (req, res) => {
 
       await connection.query(
         `UPDATE student_profiles
-         SET course_id = COALESCE(?, course_id), assigned_teacher_id = ?
+         SET course_id = COALESCE(?, course_id), assigned_teacher_id = ?, trial_notes = ?
          WHERE user_id = ?`,
-        [request.course_id, assignedTeacherId, request.student_id]
+        [
+          request.course_id,
+          assignedTeacherId,
+          [profileRows[0].trial_notes || "", request.trial_notes || "", requestCriteriaNotes]
+            .filter((part) => String(part).trim())
+            .join("\n\n"),
+          request.student_id,
+        ]
       );
 
       await connection.query(
@@ -2075,18 +2152,27 @@ app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
 app.post("/api/calendar/reschedule-request", async (req, res) => {
   try {
     const { class_id, requested_by_id, requested_date, requested_time, reason } = req.body;
+    const requestedDateKey = normalizeDateKey(requested_date);
+    const requestedTimeKey = normalizeTimeKey(requested_time);
+    const requestedTimeForDb = requestedTimeKey ? `${requestedTimeKey}:00` : "";
 
-    if (!class_id || !requested_by_id || !requested_date) {
+    if (!class_id || !requested_by_id || !requestedDateKey || !requestedTimeKey) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
     // Get class details to determine recipient
     const [classRows] = await pool.query(
-      `SELECT c.*, ru.first_name AS requester_first, ru.last_name AS requester_last
+      `SELECT c.*,
+              tea.timezone AS teacher_timezone,
+              stu.timezone AS student_timezone,
+              ru.first_name AS requester_first,
+              ru.last_name AS requester_last
        FROM classes c
-       JOIN users ru ON c.teacher_id = ru.user_id OR c.student_id = ru.user_id
-       WHERE c.class_id = ? AND (ru.user_id = ? OR ru.user_id = ?)`,
-      [class_id, requested_by_id, requested_by_id]
+       JOIN users tea ON c.teacher_id = tea.user_id
+       JOIN users stu ON c.student_id = stu.user_id
+       JOIN users ru ON ru.user_id = ?
+       WHERE c.class_id = ? AND (c.teacher_id = ? OR c.student_id = ?)`,
+      [requested_by_id, class_id, requested_by_id, requested_by_id]
     );
 
     if (!classRows.length) {
@@ -2094,6 +2180,57 @@ app.post("/api/calendar/reschedule-request", async (req, res) => {
     }
 
     const classData = classRows[0];
+    const requestedMinutes = timeToMinutes(requestedTimeKey);
+
+    const [availabilityRows] = await pool.query(
+      `SELECT status,
+              TIME_FORMAT(start_time, '%H:%i:%s') AS start_time,
+              TIME_FORMAT(end_time, '%H:%i:%s') AS end_time,
+              TIME_FORMAT(break_start, '%H:%i:%s') AS break_start,
+              TIME_FORMAT(break_end, '%H:%i:%s') AS break_end
+       FROM teacher_availability
+       WHERE teacher_id = ? AND available_date = ?
+       LIMIT 1`,
+      [classData.teacher_id, requestedDateKey]
+    );
+
+    const availabilityRecord = availabilityRows[0];
+    if (!availabilityRecord || availabilityRecord.status !== "available") {
+      return res.status(400).json({ message: "Teacher is not available on the requested date" });
+    }
+
+    if (availabilityRecord.start_time && availabilityRecord.end_time) {
+      const startMinutes = timeToMinutes(availabilityRecord.start_time);
+      const endMinutes = timeToMinutes(availabilityRecord.end_time);
+      if (startMinutes == null || endMinutes == null || requestedMinutes < startMinutes || requestedMinutes >= endMinutes) {
+        return res.status(400).json({ message: "Requested time is outside the teacher's availability window" });
+      }
+    }
+
+    if (availabilityRecord.break_start && availabilityRecord.break_end) {
+      const breakStartMinutes = timeToMinutes(availabilityRecord.break_start);
+      const breakEndMinutes = timeToMinutes(availabilityRecord.break_end);
+      if (breakStartMinutes != null && breakEndMinutes != null && requestedMinutes >= breakStartMinutes && requestedMinutes < breakEndMinutes) {
+        return res.status(400).json({ message: "Requested time conflicts with the teacher's break" });
+      }
+    }
+
+    const [teacherConflictRows] = await pool.query(
+      `SELECT class_id
+       FROM classes
+       WHERE teacher_id = ?
+         AND class_id <> ?
+         AND scheduled_date = ?
+         AND TIME_FORMAT(start_time, '%H:%i') = ?
+         AND status = 'scheduled'
+       LIMIT 1`,
+      [classData.teacher_id, class_id, requestedDateKey, requestedTimeKey]
+    );
+
+    if (teacherConflictRows.length) {
+      return res.status(409).json({ message: "This time slot is already booked on the teacher's schedule" });
+    }
+
     // Determine recipient: if student requested, notify teacher; if teacher requested, notify student
     const recipientId = classData.student_id === requested_by_id ? classData.teacher_id : classData.student_id;
     const requesterUser = await pool.query(
@@ -2106,11 +2243,11 @@ app.post("/api/calendar/reschedule-request", async (req, res) => {
     const [result] = await pool.query(
       `INSERT INTO reschedule_requests (class_id, requested_by_id, requested_date, requested_time, reason)
        VALUES (?, ?, ?, ?, ?)`,
-      [class_id, requested_by_id, requested_date, requested_time, reason]
+      [class_id, requested_by_id, requestedDateKey, requestedTimeForDb, reason]
     );
 
     // Create notification for the counterparty
-    const notificationMessage = `Reschedule request from ${requesterName} for "${classData.class_name}" to ${requested_date} at ${requested_time}`;
+    const notificationMessage = `Reschedule request from ${requesterName} for "${classData.class_name}" to ${requestedDateKey} at ${requestedTimeKey}`;
     await pool.query(
       `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
        VALUES (?, ?, ?, ?, ?, ?)`,

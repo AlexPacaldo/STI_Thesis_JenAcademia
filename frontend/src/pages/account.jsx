@@ -42,6 +42,24 @@ const COUNTRY_TIMEZONES = {
   "United States": "America/New_York",
   Vietnam: "Asia/Ho_Chi_Minh",
 };
+const TIMEZONE_OPTIONS = [
+  "Asia/Manila",
+  "Asia/Shanghai",
+  "Asia/Tokyo",
+  "Asia/Kolkata",
+  "Asia/Jakarta",
+  "Asia/Kuala_Lumpur",
+  "Asia/Singapore",
+  "Asia/Seoul",
+  "Asia/Bangkok",
+  "Asia/Dubai",
+  "Asia/Ho_Chi_Minh",
+  "Australia/Sydney",
+  "America/Toronto",
+  "America/New_York",
+  "Europe/London",
+  "UTC",
+];
 
 function absoluteUrl(url) {
   if (!url) return "";
@@ -305,6 +323,22 @@ export default function Account() {
 
       return { ...current, [name]: value };
     });
+  }
+
+  function autoDetectTimezone() {
+    if (!profileEditing) return;
+
+    const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!detectedTimezone) {
+      notify("Could not detect your timezone in this browser.", "error");
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      timezone: detectedTimezone,
+    }));
+    notify(`Detected timezone: ${detectedTimezone}`, "success");
   }
 
   function cancelProfileEdit() {
@@ -710,25 +744,25 @@ export default function Account() {
               <div className={styles.row}>
                 <label>
                   Timezone
-                  <select name="timezone" value={form.timezone} onChange={onChange} disabled={!profileEditing} required>
-                    <option value="">Select timezone</option>
-                    <option value="Asia/Manila">Asia/Manila</option>
-                    <option value="Asia/Shanghai">Asia/Shanghai</option>
-                    <option value="Asia/Tokyo">Asia/Tokyo</option>
-                    <option value="Asia/Kolkata">Asia/Kolkata</option>
-                    <option value="Asia/Jakarta">Asia/Jakarta</option>
-                    <option value="Asia/Kuala_Lumpur">Asia/Kuala_Lumpur</option>
-                    <option value="Asia/Singapore">Asia/Singapore</option>
-                    <option value="Asia/Seoul">Asia/Seoul</option>
-                    <option value="Asia/Bangkok">Asia/Bangkok</option>
-                    <option value="Asia/Dubai">Asia/Dubai</option>
-                    <option value="Asia/Ho_Chi_Minh">Asia/Ho_Chi_Minh</option>
-                    <option value="Australia/Sydney">Australia/Sydney</option>
-                    <option value="America/Toronto">America/Toronto</option>
-                    <option value="America/New_York">America/New_York</option>
-                    <option value="Europe/London">Europe/London</option>
-                    <option value="UTC">UTC</option>
-                  </select>
+                  <div className={styles.timezoneControl}>
+                    <select name="timezone" value={form.timezone} onChange={onChange} disabled={!profileEditing} required>
+                      <option value="">Select timezone</option>
+                      {form.timezone && !TIMEZONE_OPTIONS.includes(form.timezone) && (
+                        <option value={form.timezone}>{form.timezone}</option>
+                      )}
+                      {TIMEZONE_OPTIONS.map((timezone) => (
+                        <option key={timezone} value={timezone}>{timezone}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className={styles.detectBtn}
+                      onClick={autoDetectTimezone}
+                      disabled={!profileEditing}
+                    >
+                      Auto Detect
+                    </button>
+                  </div>
                 </label>
                 <div className={styles.inlineActions}>
                   {profileEditing && (

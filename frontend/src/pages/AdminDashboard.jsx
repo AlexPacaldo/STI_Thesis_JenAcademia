@@ -26,12 +26,13 @@ const COUNTRY_OPTIONS = [
 
 const AI_CRITERIA_OPTIONS = {
   learningGoal: [
-    ["", "Select Learning Goal"],
-    ["school-support", "School Support"],
-    ["conversation", "Conversation"],
-    ["exam-prep", "Exam Preparation"],
-    ["business", "Business English"],
-    ["confidence", "Confidence Building"],
+    ["school-support", "School Support", ["Online English", "OPIc"]],
+    ["conversation", "Conversation", ["Conversational English", "Travel English", "Online English", "OPIc"]],
+    ["exam-prep", "Exam Preparation", ["IELTS", "TOEIC", "OPIc"]],
+    ["business", "Business English", ["Business English", "Job Interview", "TOEIC"]],
+    ["confidence", "Confidence Building", ["Conversational English", "Travel English", "Online English"]],
+    ["interview-readiness", "Interview Readiness", ["Job Interview", "Business English"]],
+    ["news-discussion", "News Discussion", ["News", "Conversational English"]],
   ],
   learningStyle: [
     ["", "Select Learning Style"],
@@ -50,13 +51,14 @@ const AI_CRITERIA_OPTIONS = {
     ["anxious", "Anxious / Needs Patience"],
   ],
   focusArea: [
-    ["", "Select Focus Area"],
-    ["speaking", "Speaking"],
-    ["grammar", "Grammar"],
-    ["reading", "Reading"],
-    ["writing", "Writing"],
-    ["listening", "Listening"],
-    ["vocabulary", "Vocabulary"],
+    ["speaking", "Speaking", ["Conversational English", "Travel English", "Online English", "OPIc", "Job Interview"]],
+    ["grammar", "Grammar", ["Online English", "IELTS", "TOEIC", "Business English"]],
+    ["reading", "Reading", ["IELTS", "TOEIC", "News", "Online English"]],
+    ["writing", "Writing", ["IELTS", "Business English", "Online English", "Job Interview"]],
+    ["listening", "Listening", ["IELTS", "TOEIC", "Conversational English", "OPIc", "News"]],
+    ["vocabulary", "Vocabulary", ["Business English", "Travel English", "News", "TOEIC", "IELTS"]],
+    ["pronunciation", "Pronunciation", ["Conversational English", "OPIc", "Travel English", "Online English"]],
+    ["interview-answers", "Interview Answers", ["Job Interview", "Business English"]],
   ],
   pace: [
     ["", "Select Pace"],
@@ -69,14 +71,15 @@ const AI_CRITERIA_OPTIONS = {
 
 const TEACHER_AI_OPTIONS = {
   specialization: [
-    ["", "Select Specialization"],
-    ["speaking and conversation", "Speaking and Conversation"],
-    ["grammar and writing", "Grammar and Writing"],
-    ["reading and vocabulary", "Reading and Vocabulary"],
-    ["listening and pronunciation", "Listening and Pronunciation"],
-    ["exam preparation", "Exam Preparation"],
-    ["business english", "Business English"],
-    ["kids and beginner english", "Kids and Beginner English"],
+    ["speaking and conversation", "Speaking and Conversation", ["Conversational English", "Travel English", "Online English", "OPIc"]],
+    ["grammar and writing", "Grammar and Writing", ["Online English", "IELTS", "TOEIC", "Business English"]],
+    ["reading and vocabulary", "Reading and Vocabulary", ["IELTS", "TOEIC", "News", "Online English"]],
+    ["listening and pronunciation", "Listening and Pronunciation", ["IELTS", "TOEIC", "Conversational English", "OPIc", "Travel English"]],
+    ["exam preparation", "Exam Preparation", ["IELTS", "TOEIC", "OPIc"]],
+    ["business english", "Business English", ["Business English", "Job Interview", "TOEIC"]],
+    ["job interview coaching", "Job Interview Coaching", ["Job Interview", "Business English"]],
+    ["news discussion", "News Discussion", ["News", "Conversational English"]],
+    ["kids and beginner english", "Kids and Beginner English", ["Online English"]],
   ],
   teachingStyle: [
     ["", "Select Teaching Style"],
@@ -101,6 +104,13 @@ const TEACHER_AI_OPTIONS = {
     ["fast", "Fast-paced"],
     ["review-heavy", "Review-heavy"],
   ],
+};
+
+const optionAppliesToCourses = (option, selectedCourseNames) => {
+  const allowedCourses = option[2] || [];
+  if (!selectedCourseNames.length) return false;
+  if (!allowedCourses.length) return true;
+  return allowedCourses.some((courseName) => selectedCourseNames.includes(courseName));
 };
 
 // Helper to safely parse date strings
@@ -159,7 +169,7 @@ export default function AdminDashboard() {
     email: "",
     country: "",
     birthDate: "",
-    specialization: "",
+    specialization: [],
     experienceYears: "",
     teachingStyle: "",
     personalityStrength: "",
@@ -180,10 +190,10 @@ export default function AdminDashboard() {
     courseId: "",
     classesAvailed: "",
     aiCriteria: {
-      learningGoal: "",
+      learningGoal: [],
       learningStyle: "",
       personality: "",
-      focusArea: "",
+      focusArea: [],
       pace: "",
     },
   });
@@ -210,6 +220,18 @@ export default function AdminDashboard() {
   const [contractRequestsLoading, setContractRequestsLoading] = useState(false);
   const [updatingContractRequestId, setUpdatingContractRequestId] = useState(null);
   const [contractSubTab, setContractSubTab] = useState("packages");
+  const selectedTeacherCourseNames = courses
+    .filter((course) => tForm.courseIds.includes(String(course.course_id)))
+    .map((course) => course.course_name);
+  const teacherSpecializationOptions = TEACHER_AI_OPTIONS.specialization
+    .filter((option) => optionAppliesToCourses(option, selectedTeacherCourseNames));
+  const selectedStudentCourseNames = courses
+    .filter((course) => String(course.course_id) === String(sForm.courseId))
+    .map((course) => course.course_name);
+  const studentLearningGoalOptions = AI_CRITERIA_OPTIONS.learningGoal
+    .filter((option) => optionAppliesToCourses(option, selectedStudentCourseNames));
+  const studentFocusAreaOptions = AI_CRITERIA_OPTIONS.focusArea
+    .filter((option) => optionAppliesToCourses(option, selectedStudentCourseNames));
 
   // ---- role gate (admin only) ----
    useEffect(() => {
@@ -304,7 +326,7 @@ export default function AdminDashboard() {
         email: "",
         country: "",
         birthDate: "",
-        specialization: "",
+        specialization: [],
         experienceYears: "",
         teachingStyle: "",
         personalityStrength: "",
@@ -346,10 +368,10 @@ export default function AdminDashboard() {
         courseId: "",
         classesAvailed: "",
         aiCriteria: {
-          learningGoal: "",
+          learningGoal: [],
           learningStyle: "",
           personality: "",
-          focusArea: "",
+          focusArea: [],
           pace: "",
         },
       });
@@ -374,15 +396,49 @@ export default function AdminDashboard() {
     setAiRecommendation(null);
   }
 
+  function toggleAiCriterionValue(key, value) {
+    setSForm((prev) => {
+      const selected = Array.isArray(prev.aiCriteria[key]) ? prev.aiCriteria[key] : [];
+      const exists = selected.includes(value);
+      return {
+        ...prev,
+        aiCriteria: {
+          ...prev.aiCriteria,
+          [key]: exists ? selected.filter((item) => item !== value) : [...selected, value],
+        },
+      };
+    });
+    setAiRecommendation(null);
+  }
+
+  function toggleTeacherSpecialization(value) {
+    setTForm((prev) => {
+      const selected = Array.isArray(prev.specialization) ? prev.specialization : [];
+      const exists = selected.includes(value);
+      return {
+        ...prev,
+        specialization: exists ? selected.filter((item) => item !== value) : [...selected, value],
+      };
+    });
+  }
+
   function toggleTeacherCourse(courseId) {
     const normalized = String(courseId);
     setTForm((prev) => {
       const exists = prev.courseIds.includes(normalized);
+      const nextCourseIds = exists
+        ? prev.courseIds.filter((id) => id !== normalized)
+        : [...prev.courseIds, normalized];
+      const selectedCourseNames = courses
+        .filter((course) => nextCourseIds.includes(String(course.course_id)))
+        .map((course) => course.course_name);
       return {
         ...prev,
-        courseIds: exists
-          ? prev.courseIds.filter((id) => id !== normalized)
-          : [...prev.courseIds, normalized],
+        courseIds: nextCourseIds,
+        specialization: prev.specialization.filter((value) => {
+          const option = TEACHER_AI_OPTIONS.specialization.find(([optionValue]) => optionValue === value);
+          return option ? optionAppliesToCourses(option, selectedCourseNames) : false;
+        }),
       };
     });
   }
@@ -437,7 +493,9 @@ export default function AdminDashboard() {
       return;
     }
 
-    const hasCriteria = Object.values(sForm.aiCriteria).some(Boolean);
+    const hasCriteria = Object.values(sForm.aiCriteria).some((value) => (
+      Array.isArray(value) ? value.length > 0 : Boolean(value)
+    ));
     if (!sForm.trialNotes.trim() && !hasCriteria) {
       notify("Please add trial notes or choose matching criteria before analyzing.", "error");
       return;
@@ -718,10 +776,26 @@ export default function AdminDashboard() {
 
   const updateStudentCourse = (courseId) => {
     const currentTeacherCanTeach = !sForm.teacherId || !courseId || teacherCourseMap[String(sForm.teacherId)]?.has(String(courseId));
+    const selectedCourseNames = courses
+      .filter((course) => String(course.course_id) === String(courseId))
+      .map((course) => course.course_name);
+    const filterValues = (key, options) => {
+      const selected = Array.isArray(sForm.aiCriteria[key]) ? sForm.aiCriteria[key] : [];
+      return selected.filter((value) => {
+        const option = options.find(([optionValue]) => optionValue === value);
+        return option ? optionAppliesToCourses(option, selectedCourseNames) : false;
+      });
+    };
+
     setSForm({
       ...sForm,
       courseId,
       teacherId: currentTeacherCanTeach ? sForm.teacherId : "",
+      aiCriteria: {
+        ...sForm.aiCriteria,
+        learningGoal: filterValues("learningGoal", AI_CRITERIA_OPTIONS.learningGoal),
+        focusArea: filterValues("focusArea", AI_CRITERIA_OPTIONS.focusArea),
+      },
     });
     setAiRecommendation(null);
   };
@@ -911,11 +985,36 @@ export default function AdminDashboard() {
                   These details help the AI match this teacher with students based on the student's trial notes and selected criteria.
                 </p>
                 <div className={styles.grid2}>
-                  <div>
+                  <div style={{ gridColumn: "1 / -1" }}>
                     <label>Specialization</label>
-                    <select value={tForm.specialization} onChange={(e)=>setTForm({...tForm, specialization:e.target.value})}>
-                      {TEACHER_AI_OPTIONS.specialization.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                    </select>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "8px", marginTop: "6px" }}>
+                      {teacherSpecializationOptions.length ? teacherSpecializationOptions.map(([value, label]) => (
+                        <label
+                          key={value}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "9px 10px",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: 8,
+                            background: tForm.specialization.includes(value) ? "#f0fdf4" : "#fff",
+                            cursor: "pointer",
+                            fontWeight: 600,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={tForm.specialization.includes(value)}
+                            onChange={() => toggleTeacherSpecialization(value)}
+                            style={{ width: "auto" }}
+                          />
+                          <span>{label}</span>
+                        </label>
+                      )) : (
+                        <p style={{ margin: 0, color: "#777", fontSize: "0.9em" }}>Select at least one course to show matching specializations.</p>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label>Experience Years</label>
@@ -1029,9 +1128,34 @@ export default function AdminDashboard() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
                   <div>
                     <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Learning Goal</label>
-                    <select value={sForm.aiCriteria.learningGoal} onChange={(e)=>updateAiCriterion("learningGoal", e.target.value)} style={{ width: "100%", padding: "10px", border: "1px solid #d0d0d0", borderRadius: "6px", fontFamily: "inherit", fontSize: "0.9em", background: "#fff" }}>
-                      {AI_CRITERIA_OPTIONS.learningGoal.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                    </select>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "8px" }}>
+                      {studentLearningGoalOptions.length ? studentLearningGoalOptions.map(([value, label]) => (
+                        <label
+                          key={value}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "9px 10px",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: 8,
+                            background: sForm.aiCriteria.learningGoal.includes(value) ? "#f0fdf4" : "#fff",
+                            cursor: "pointer",
+                            fontWeight: 600,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={sForm.aiCriteria.learningGoal.includes(value)}
+                            onChange={() => toggleAiCriterionValue("learningGoal", value)}
+                            style={{ width: "auto" }}
+                          />
+                          <span>{label}</span>
+                        </label>
+                      )) : (
+                        <p style={{ margin: 0, color: "#777", fontSize: "0.9em" }}>Select a course to show matching goals.</p>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Learning Style</label>
@@ -1047,9 +1171,34 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Focus Area</label>
-                    <select value={sForm.aiCriteria.focusArea} onChange={(e)=>updateAiCriterion("focusArea", e.target.value)} style={{ width: "100%", padding: "10px", border: "1px solid #d0d0d0", borderRadius: "6px", fontFamily: "inherit", fontSize: "0.9em", background: "#fff" }}>
-                      {AI_CRITERIA_OPTIONS.focusArea.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                    </select>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "8px" }}>
+                      {studentFocusAreaOptions.length ? studentFocusAreaOptions.map(([value, label]) => (
+                        <label
+                          key={value}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "9px 10px",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: 8,
+                            background: sForm.aiCriteria.focusArea.includes(value) ? "#f0fdf4" : "#fff",
+                            cursor: "pointer",
+                            fontWeight: 600,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={sForm.aiCriteria.focusArea.includes(value)}
+                            onChange={() => toggleAiCriterionValue("focusArea", value)}
+                            style={{ width: "auto" }}
+                          />
+                          <span>{label}</span>
+                        </label>
+                      )) : (
+                        <p style={{ margin: 0, color: "#777", fontSize: "0.9em" }}>Select a course to show matching focus areas.</p>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Learning Pace</label>

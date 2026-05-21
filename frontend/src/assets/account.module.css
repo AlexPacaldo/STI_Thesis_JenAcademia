@@ -4,7 +4,6 @@
 
 .pageShell {
   min-height: calc(100vh - 78px);
-  background: #f6f7f8;
   padding: 18px 18px 40px;
 }
 
@@ -259,9 +258,16 @@
 .form label {
   display: grid;
   gap: 5px;
+  width: 100%;
+  min-width: 0;
   color: #344054;
   font-size: 13px;
   font-weight: 700;
+}
+
+.row > label,
+.rowSingle > label {
+  justify-self: stretch;
 }
 
 .row > label:only-child {
@@ -271,6 +277,7 @@
 .form input,
 .form select {
   width: 100%;
+  min-width: 0;
   min-height: 38px;
   border: 1px solid #d0d5dd;
   border-radius: 8px;
@@ -295,6 +302,43 @@
 .form select:focus {
   border-color: #35a844;
   box-shadow: 0 0 0 3px rgba(53, 168, 68, 0.14);
+}
+
+.timezoneControl {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+
+.timezoneControl select {
+  min-width: 0;
+}
+
+.detectBtn {
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: #fff;
+  color: #101828;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.detectBtn:hover:not(:disabled) {
+  border-color: #35a844;
+  color: #248232;
+}
+
+.detectBtn:disabled {
+  cursor: default;
+  border-color: #eaecf0;
+  background: #f8fafc;
+  color: #98a2b3;
 }
 
 .actions {
