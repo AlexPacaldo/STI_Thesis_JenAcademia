@@ -1,11 +1,14 @@
 // src/pages/BooksContent.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as pdfjsLib from "pdfjs-dist";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
 import { useNavigate, useParams } from "react-router-dom";
 import styles from "../assets/booksContent.module.css";
 import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 
 const API_BASE = "http://localhost:3001";
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const getProgressPercentage = (item) => {
   const value = Number(item?.progress_percentage ?? (item?.is_completed ? 100 : 0));
@@ -21,6 +24,96 @@ const getAssetUrl = (url) => {
   if (!url) return "";
   return String(url).startsWith("http") ? url : `${API_BASE}${url}`;
 };
+
+function PdfLessonViewer({ fileUrl, title, onRendered }) {
+  const containerRef = useRef(null);
+  const renderTokenRef = useRef(0);
+  const [status, setStatus] = useState("loading");
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !fileUrl) return undefined;
+
+    const renderToken = renderTokenRef.current + 1;
+    renderTokenRef.current = renderToken;
+    let cancelled = false;
+    let activeDocument = null;
+
+    container.replaceChildren();
+    setStatus("loading");
+
+    const renderPdf = async () => {
+      try {
+        const loadingTask = pdfjsLib.getDocument(fileUrl);
+        const pdf = await loadingTask.promise;
+        activeDocument = pdf;
+
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+          if (cancelled || renderTokenRef.current !== renderToken) return;
+
+          const page = await pdf.getPage(pageNumber);
+          const baseViewport = page.getViewport({ scale: 1 });
+          const availableWidth = Math.max(container.clientWidth - 28, 320);
+          const scale = Math.min(1.6, Math.max(0.8, availableWidth / baseViewport.width));
+          const viewport = page.getViewport({ scale });
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          const outputScale = window.devicePixelRatio || 1;
+
+          canvas.width = Math.floor(viewport.width * outputScale);
+          canvas.height = Math.floor(viewport.height * outputScale);
+          canvas.style.width = `${Math.floor(viewport.width)}px`;
+          canvas.style.height = `${Math.floor(viewport.height)}px`;
+          canvas.className = styles.pdfPage;
+
+          const wrapper = document.createElement("div");
+          wrapper.className = styles.pdfPageWrap;
+          wrapper.appendChild(canvas);
+          container.appendChild(wrapper);
+
+          await page.render({
+            canvasContext: context,
+            viewport,
+            transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null,
+          }).promise;
+        }
+
+        if (!cancelled && renderTokenRef.current === renderToken) {
+          setStatus("ready");
+          window.requestAnimationFrame(() => onRendered?.());
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Error rendering PDF:", error);
+          setStatus("error");
+          onRendered?.();
+        }
+      }
+    };
+
+    renderPdf();
+
+    return () => {
+      cancelled = true;
+      activeDocument?.destroy?.();
+    };
+  }, [fileUrl, onRendered]);
+
+  return (
+    <div className={styles.pdfViewerShell}>
+      {status === "loading" && <p className={styles.emptyText}>Loading file preview...</p>}
+      {status === "error" && (
+        <div className={styles.documentPreview}>
+          <div>
+            <h3>{title}</h3>
+            <p>This file could not be previewed here. Open it in a separate tab instead.</p>
+          </div>
+        </div>
+      )}
+      <div ref={containerRef} className={styles.pdfPages} />
+    </div>
+  );
+}
 
 export default function BooksContent({ mode = "student" }) {
   const { bookId } = useParams();
@@ -39,6 +132,10 @@ export default function BooksContent({ mode = "student" }) {
   const [progressLoading, setProgressLoading] = useState(false);
   const [progressError, setProgressError] = useState("");
   const [accessError, setAccessError] = useState("");
+  const [readLessons, setReadLessons] = useState({});
+  const [showPdfFullscreen, setShowPdfFullscreen] = useState(false);
+  const readerViewportRef = useRef(null);
+  const fullscreenReaderRef = useRef(null);
 
   const isTeacherView = mode === "teacher";
   const teacherId = useMemo(() => {
@@ -174,8 +271,52 @@ export default function BooksContent({ mode = "student" }) {
     return fileName.endsWith(".pdf") || fileName.endsWith(".txt");
   }, [selectedFileName]);
 
+  const isPdfFile = useMemo(() => selectedFileName.toLowerCase().endsWith(".pdf"), [selectedFileName]);
+
   const selectedLessonId = selectedLesson?.lesson_id;
   const selectedLessonCompleted = selectedLessonId ? isLessonCompleted(progress[selectedLessonId]) : false;
+  const lessonRequiresScroll = Boolean(selectedFileUrl);
+  const selectedLessonReadReady = selectedLessonCompleted || !lessonRequiresScroll || Boolean(readLessons[selectedLessonId]);
+
+  const markSelectedLessonRead = useCallback(() => {
+    if (!selectedLessonId) return;
+    setReadLessons((current) => {
+      if (current[selectedLessonId]) return current;
+      return { ...current, [selectedLessonId]: true };
+    });
+  }, [selectedLessonId]);
+
+  const checkReaderBottom = useCallback((viewport) => {
+    if (!viewport || !selectedLessonId || !lessonRequiresScroll) return;
+
+    const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    if (distanceFromBottom <= 12) {
+      markSelectedLessonRead();
+    }
+  }, [lessonRequiresScroll, markSelectedLessonRead, selectedLessonId]);
+
+  const handleReaderScroll = useCallback(() => {
+    checkReaderBottom(readerViewportRef.current);
+  }, [checkReaderBottom]);
+
+  const handleFullscreenScroll = useCallback(() => {
+    checkReaderBottom(fullscreenReaderRef.current);
+  }, [checkReaderBottom]);
+
+  useEffect(() => {
+    const viewport = readerViewportRef.current;
+    if (!viewport || !selectedLessonId) return;
+
+    viewport.scrollTop = 0;
+
+    const checkIfScrollable = window.setTimeout(() => {
+      if (!lessonRequiresScroll || viewport.scrollHeight <= viewport.clientHeight + 12) {
+        markSelectedLessonRead();
+      }
+    }, 80);
+
+    return () => window.clearTimeout(checkIfScrollable);
+  }, [selectedLessonId, lessonRequiresScroll, markSelectedLessonRead]);
 
   const handleLessonClick = (lesson) => {
     if (!isTeacherView) {
@@ -194,6 +335,10 @@ export default function BooksContent({ mode = "student" }) {
 
   const markLessonComplete = async () => {
     if (!selectedLesson || isTeacherView || selectedLessonCompleted) return;
+    if (!selectedLessonReadReady) {
+      notify?.("Please scroll to the bottom of the lesson file before marking it complete.", "warning");
+      return;
+    }
 
     try {
       const completedLesson = selectedLesson;
@@ -379,7 +524,7 @@ export default function BooksContent({ mode = "student" }) {
                         <td>
                           <div className={styles.progressCount}>
                             <strong>{student.completedLessons} / {student.totalLessons} Lessons</strong>
-                            {student.courseCompleted && <span>100% Complete</span>}
+                            <span>{student.progressPercentage}% Complete</span>
                             <div className={styles.tableProgressBar}>
                               <div style={{ width: `${student.progressPercentage}%` }} />
                             </div>
@@ -457,7 +602,12 @@ export default function BooksContent({ mode = "student" }) {
                   <p className={styles.lessonContent}>{selectedLesson.content}</p>
                 )}
 
-                <section className={styles.readerViewport} aria-label="Lesson reading area">
+                <section
+                  className={styles.readerViewport}
+                  aria-label="Lesson reading area"
+                  onScroll={handleReaderScroll}
+                  ref={readerViewportRef}
+                >
                   {selectedFileUrl ? (
                     <section className={styles.fileSection}>
                       <div className={styles.fileInfo}>
@@ -466,19 +616,36 @@ export default function BooksContent({ mode = "student" }) {
                       </div>
 
                       <div className={styles.fileActions}>
-                        <a href={selectedFileUrl} target="_blank" rel="noopener noreferrer">
-                          Open file
-                        </a>
+                        {isPdfFile ? (
+                          <button
+                            type="button"
+                            className={styles.fileActionBtn}
+                            onClick={() => setShowPdfFullscreen(true)}
+                          >
+                            Full screen
+                          </button>
+                        ) : (
+                          <a href={selectedFileUrl} target="_blank" rel="noopener noreferrer">
+                            Open file
+                          </a>
+                        )}
                         <a href={selectedFileUrl} download>
                           Download
                         </a>
                       </div>
 
-                      {canPreviewFile ? (
+                      {isPdfFile ? (
+                        <PdfLessonViewer
+                          fileUrl={selectedFileUrl}
+                          title={selectedLesson.title}
+                          onRendered={handleReaderScroll}
+                        />
+                      ) : canPreviewFile ? (
                         <iframe
                           title={`${selectedLesson.title} file preview`}
                           className={styles.filePreview}
                           src={selectedFileUrl}
+                          onLoad={handleReaderScroll}
                         />
                       ) : (
                         <div className={styles.documentPreview}>
@@ -499,13 +666,13 @@ export default function BooksContent({ mode = "student" }) {
                 {!isTeacherView && (
                   <div className={styles.lessonActions}>
                     <div className={`${styles.lessonStatus} ${selectedLessonCompleted ? styles.statusCompleted : ""}`}>
-                      {selectedLessonCompleted ? "Completed" : "In Progress"}
+                      {selectedLessonCompleted ? "Completed" : selectedLessonReadReady ? "Ready" : "Scroll to Bottom"}
                     </div>
                     <button
                       type="button"
                       className={`${styles.completeBtn} ${selectedLessonCompleted ? styles.completedBtn : ""}`}
                       onClick={markLessonComplete}
-                      disabled={selectedLessonCompleted || completingLessonId === selectedLesson.lesson_id}
+                      disabled={selectedLessonCompleted || !selectedLessonReadReady || completingLessonId === selectedLesson.lesson_id}
                     >
                       {selectedLessonCompleted
                         ? "Completed"
@@ -580,6 +747,32 @@ export default function BooksContent({ mode = "student" }) {
               </button>
               <button onClick={() => { setShowCoverModal(false); setCoverFile(null); }} className={styles.cancelBtn}>Cancel</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showPdfFullscreen && selectedFileUrl && isPdfFile && (
+        <div className={styles.fullscreenPdf}>
+          <div className={styles.fullscreenHeader}>
+            <div>
+              <h2>{selectedLesson?.title || "Lesson file"}</h2>
+              <p>{selectedFileName}</p>
+            </div>
+            <button type="button" onClick={() => setShowPdfFullscreen(false)}>
+              Close
+            </button>
+          </div>
+
+          <div
+            className={styles.fullscreenReader}
+            onScroll={handleFullscreenScroll}
+            ref={fullscreenReaderRef}
+          >
+            <PdfLessonViewer
+              fileUrl={selectedFileUrl}
+              title={selectedLesson?.title || "Lesson file"}
+              onRendered={handleFullscreenScroll}
+            />
           </div>
         </div>
       )}

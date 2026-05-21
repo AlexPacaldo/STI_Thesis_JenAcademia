@@ -24,7 +24,6 @@ import BooksContent from "./pages/booksContent.jsx";
 import PassRemarks from "./pages/PassRemarks.jsx";
 import TeacherAssignment from "./pages/teacherAssignment.jsx";
 import TeacherBooksLessons from "./pages/teacherBooksLessons.jsx";
-import TeacherBooksDropbox from "./pages/teacherBooksDropbox.jsx";
 import Calendar from "./pages/Calendar.jsx";
 
 const router = createBrowserRouter([
@@ -60,7 +59,6 @@ const router = createBrowserRouter([
       { path: "teacherAssignment", element: <TeacherAssignment /> },
       { path: "TeacherBooksLessons", element: <TeacherBooksLessons /> },
       { path: "teacherBooksLessons/:bookId", element: <BooksContent mode="teacher" /> },
-      { path: "TeacherBooksDropbox", element: <TeacherBooksDropbox /> },
 
 
        // "/register"

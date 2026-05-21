@@ -1,6 +1,5 @@
 // src/pages/BooksLessons.jsx
 import { useEffect, useState } from "react";
-import topImage from "../assets/img/Books-Lessons/top.jpg";
 import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/teacherBooksLessons.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
@@ -15,6 +14,14 @@ export default function TeacherBooksLessons() {
   const [showCoverModal, setShowCoverModal] = useState(false);
   const [coverFile, setCoverFile] = useState(null);
   const [editingBookId, setEditingBookId] = useState(null);
+  const [showLessonModal, setShowLessonModal] = useState(false);
+  const [selectedBook, setSelectedBook] = useState("");
+  const [uploadingLesson, setUploadingLesson] = useState(false);
+  const [lessonData, setLessonData] = useState({
+    title: "",
+    content: "",
+    file: null,
+  });
 
   const API_BASE = "http://localhost:3001";
 
@@ -122,6 +129,91 @@ export default function TeacherBooksLessons() {
     }
   };
 
+  const openLessonModal = (bookId = "") => {
+    setSelectedBook(bookId ? String(bookId) : "");
+    setShowLessonModal(true);
+  };
+
+  const closeLessonModal = () => {
+    setShowLessonModal(false);
+    setSelectedBook("");
+    setLessonData({
+      title: "",
+      content: "",
+      file: null,
+    });
+  };
+
+  const handleLessonFileChange = (e) => {
+    const file = e.target.files?.[0] || null;
+    if (!file) {
+      setLessonData({ ...lessonData, file: null });
+      return;
+    }
+
+    const allowedTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/plain",
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      notify?.("Only PDF, DOC, DOCX, and TXT files are allowed", "error");
+      e.target.value = "";
+      return;
+    }
+
+    setLessonData({ ...lessonData, file });
+  };
+
+  const handleUploadLesson = async () => {
+    if (!selectedBook.trim()) {
+      notify?.("Please select a book", "error");
+      return;
+    }
+
+    if (!lessonData.title.trim()) {
+      notify?.("Lesson title is required", "error");
+      return;
+    }
+
+    if (!lessonData.file) {
+      notify?.("Please select a file to upload", "error");
+      return;
+    }
+
+    try {
+      setUploadingLesson(true);
+
+      const formData = new FormData();
+      formData.append("book_id", selectedBook);
+      formData.append("title", lessonData.title);
+      formData.append("content", lessonData.content || "");
+      formData.append("file", lessonData.file);
+      formData.append("teacher_id", teacherId);
+
+      const response = await fetch(`${API_BASE}/api/lessons`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.message || "Failed to create lesson");
+      }
+
+      notify?.("Lesson uploaded successfully!", "success");
+      closeLessonModal();
+      fetchBooks();
+    } catch (err) {
+      console.error("Error uploading lesson:", err);
+      notify?.(`Error: ${err.message}`, "error");
+    } finally {
+      setUploadingLesson(false);
+    }
+  };
+
   return (
     <div className={styles.cont}>
       <div className={styles.center}>
@@ -139,19 +231,6 @@ export default function TeacherBooksLessons() {
           </div>
         </div>
         <br />
-
-        {/* Available Lessons Segment */}
-        <div className={styles.AvailableLessonSegment}>
-          <img src={topImage} alt="Top banner" />
-          <div className={styles.ContentAvailable}>
-            <h1><b>Your Published Books</b></h1>
-            <p>
-              Manage your books and lessons. Upload new lessons or edit existing ones
-              to keep your course materials up to date.
-            </p>
-            <a href="/teacherBooksDropbox">+ Upload New Lesson</a>
-          </div>
-        </div>
 
         {/* Loading/Error State */}
         {loading && <p className={styles.loading}>Loading books...</p>}
@@ -182,6 +261,13 @@ export default function TeacherBooksLessons() {
                   <a href={`/teacherBooksLessons/${book.book_id}`}>
                     <button type="button" className={styles.viewBtn}>View</button>
                   </a>
+                  <button
+                    type="button"
+                    className={styles.viewBtn}
+                    onClick={() => openLessonModal(book.book_id)}
+                  >
+                    Upload Lesson
+                  </button>
                   <button 
                     type="button"
                     className={styles.deleteBtn}
@@ -205,12 +291,6 @@ export default function TeacherBooksLessons() {
         {!loading && books.length === 0 && (
           <div className={styles.noBooks}>
             <p>No books yet. Create your first book to get started!</p>
-            <button 
-              className={styles.createBookBtn}
-              onClick={() => setShowCreateModal(true)}
-            >
-              + Create Your First Book
-            </button>
           </div>
         )}
       </div>
@@ -218,29 +298,32 @@ export default function TeacherBooksLessons() {
       {/* Create Book Modal */}
       {showCreateModal && (
         <div className={styles.modal}>
-          <div className={styles.modalContent}>
+          <div className={`${styles.modalContent} ${styles.createBookModalContent}`}>
             <h2>Create New Book</h2>
-            <label>
+            <label className={styles.formLabel}>
               Title:
               <input
+                className={styles.modalField}
                 type="text"
                 placeholder="Enter book title..."
                 value={newBook.title}
                 onChange={(e) => setNewBook({ ...newBook, title: e.target.value })}
               />
             </label>
-            <label>
+            <label className={styles.formLabel}>
               Description (optional):
               <textarea
+                className={styles.modalTextarea}
                 placeholder="Enter book description..."
                 value={newBook.description}
                 onChange={(e) => setNewBook({ ...newBook, description: e.target.value })}
               />
             </label>
 
-            <label>
+            <label className={styles.formLabel}>
               Course:
               <select
+                className={styles.modalField}
                 value={selectedCourseId || ""}
                 onChange={(e) => setSelectedCourseId(e.target.value || null)}
               >
@@ -259,9 +342,10 @@ export default function TeacherBooksLessons() {
               </p>
             )}
 
-            <label>
+            <label className={styles.formLabel}>
               Cover (optional):
               <input
+                className={styles.modalField}
                 type="file"
                 accept="image/*"
                 onChange={(e) => {
@@ -275,6 +359,71 @@ export default function TeacherBooksLessons() {
 
               <button onClick={handleCreateBook} className={styles.confirmBtn}>Create</button>
               <button onClick={() => setShowCreateModal(false)} className={styles.cancelBtn}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Lesson Modal */}
+      {showLessonModal && (
+        <div className={styles.modal}>
+          <div className={`${styles.modalContent} ${styles.lessonModalContent}`}>
+            <h2>Upload Lesson</h2>
+            <p className={styles.autoLessonNote}>
+              The lesson number will be assigned automatically.
+            </p>
+
+            <label>
+              Lesson Title:
+              <input
+                className={styles.lessonInput}
+                type="text"
+                placeholder="Enter lesson title"
+                value={lessonData.title}
+                onChange={(e) =>
+                  setLessonData({ ...lessonData, title: e.target.value })
+                }
+              />
+            </label>
+
+            <label>
+              File:
+              <input
+                className={styles.lessonInput}
+                type="file"
+                accept=".pdf,.doc,.docx,.txt"
+                onChange={handleLessonFileChange}
+              />
+            </label>
+
+            {lessonData.file && (
+              <p className={styles.selectedFileName}>{lessonData.file.name}</p>
+            )}
+
+            <label>
+              Description (optional):
+              <textarea
+                className={styles.lessonTextarea}
+                placeholder="Write additional notes for this lesson..."
+                value={lessonData.content}
+                onChange={(e) =>
+                  setLessonData({ ...lessonData, content: e.target.value })
+                }
+              />
+            </label>
+
+            <div className={styles.modalButtons}>
+              <button
+                type="button"
+                onClick={handleUploadLesson}
+                className={styles.confirmBtn}
+                disabled={uploadingLesson}
+              >
+                {uploadingLesson ? "Uploading..." : "Upload"}
+              </button>
+              <button type="button" onClick={closeLessonModal} className={styles.cancelBtn}>
+                Cancel
+              </button>
             </div>
           </div>
         </div>

@@ -34,7 +34,7 @@ function App() {
     if (!stored) return null;
     try {
       return JSON.parse(stored);
-    } catch (error) {
+    } catch {
       return null;
     }
   }
@@ -89,7 +89,6 @@ function App() {
         "/teacherassignment",
         "/teacherbookslessons",
         "/teacherbookslessons/",
-        "/teacherbooksdropbox",
         "/calendar",
         "/account",
         "/reschedule",

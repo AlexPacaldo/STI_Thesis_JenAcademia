@@ -14,7 +14,7 @@ dotenv.config();
 const PORT = process.env.PORT || 3001;
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USER || "root";
-const DB_PASSWORD = process.env.DB_PASSWORD || "Aj1182014";    // <- your password here
+const DB_PASSWORD = process.env.DB_PASSWORD || "LORAKLANG0405++";    // <- your password here
 const DB_NAME = process.env.DB_NAME || "jen_academia"; // your schema
 
 const app = express();
@@ -4005,7 +4005,11 @@ app.get("/api/books", async (req, res) => {
   try {
     const { course_id, teacher_id, student_id } = req.query;
 
-    let query = "SELECT * FROM books";
+    let query = `SELECT b.*,
+        TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS teacher_name,
+        NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), '') AS author
+      FROM books b
+      LEFT JOIN users u ON u.user_id = b.teacher_id`;
     let params = [];
 
     if (student_id) {
@@ -4014,25 +4018,25 @@ app.get("/api/books", async (req, res) => {
         return res.json({ books: [] });
       }
 
-      query += " WHERE teacher_id = ?";
+      query += " WHERE b.teacher_id = ?";
       params.push(profile.assigned_teacher_id);
 
       if (profile.course_id) {
-        query += " AND course_id = ?";
+        query += " AND b.course_id = ?";
         params.push(profile.course_id);
       } else if (course_id) {
-        query += " AND course_id = ?";
+        query += " AND b.course_id = ?";
         params.push(course_id);
       }
     } else if (teacher_id) {
-      query += " WHERE teacher_id = ?";
+      query += " WHERE b.teacher_id = ?";
       params.push(teacher_id);
     } else if (course_id) {
-      query += " WHERE course_id = ?";
+      query += " WHERE b.course_id = ?";
       params.push(course_id);
     }
 
-    query += " ORDER BY created_at DESC";
+    query += " ORDER BY b.created_at DESC";
 
     const [books] = await pool.query(query, params);
     res.json({ books });
@@ -4189,8 +4193,10 @@ app.get("/api/teacher/book/:bookId/progress", async (req, res) => {
         };
       });
       const completedLessons = lessonProgress.filter((lesson) => lesson.isCompleted).length;
-      const courseCompleted = courseProgress?.status === "Completed" ||
-        (totalLessons > 0 && completedLessons === totalLessons);
+      const progressPercentage = totalLessons > 0
+        ? Math.round((completedLessons / totalLessons) * 100)
+        : 0;
+      const courseCompleted = totalLessons > 0 && completedLessons === totalLessons;
 
       return {
         studentId: student.student_id,
@@ -4199,11 +4205,10 @@ app.get("/api/teacher/book/:bookId/progress", async (req, res) => {
         profileImageUrl: student.profile_image_url,
         completedLessons,
         totalLessons,
-        progressPercentage: Number(courseProgress?.progress_percentage) ||
-          (totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0),
+        progressPercentage,
         status: courseCompleted ? "Course Completed" : "In Progress",
         courseCompleted,
-        courseCompletedAt: courseProgress?.completed_at || null,
+        courseCompletedAt: courseCompleted ? courseProgress?.completed_at || null : null,
         lessons: lessonProgress,
       };
     });
@@ -4458,9 +4463,9 @@ app.get("/api/lessons/:lesson_id", async (req, res) => {
 // SECURITY: Only the teacher who owns the book can create lessons for it
 app.post("/api/lessons", lessonUpload.single("file"), async (req, res) => {
   try {
-    const { book_id, lesson_number, title, content, order_number, is_published, teacher_id } = req.body;
+    const { book_id, title, content, is_published, teacher_id } = req.body;
 
-    if (!book_id || !lesson_number || !title) {
+    if (!book_id || !title) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
@@ -4470,11 +4475,20 @@ app.post("/api/lessons", lessonUpload.single("file"), async (req, res) => {
     }
 
     const file_path = req.file ? `/uploads/lessons/${req.file.filename}` : null;
+    const [lessonNumberRows] = await pool.query(
+      `SELECT COALESCE(MAX(lesson_number), 0) + 1 AS next_lesson_number,
+              COALESCE(MAX(order_number), 0) + 1 AS next_order_number
+       FROM lessons
+       WHERE book_id = ?`,
+      [book_id]
+    );
+    const lessonNumber = Number(lessonNumberRows[0]?.next_lesson_number || 1);
+    const orderNumber = Number(lessonNumberRows[0]?.next_order_number || lessonNumber);
 
     const [result] = await pool.query(
       `INSERT INTO lessons (book_id, lesson_number, title, content, file_path, order_number, is_published)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [book_id, lesson_number, title, content || null, file_path, order_number || lesson_number, is_published || 1]
+      [book_id, lessonNumber, title, content || null, file_path, orderNumber, is_published || 1]
     );
 
     const [bookRows] = await pool.query(
@@ -4505,6 +4519,7 @@ app.post("/api/lessons", lessonUpload.single("file"), async (req, res) => {
     res.status(201).json({ 
       message: "Lesson created successfully",
       lesson_id: result.insertId,
+      lesson_number: lessonNumber,
       file_path
     });
   } catch (err) {
