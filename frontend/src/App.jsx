@@ -26,7 +26,7 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const { notify } = useNotification() || {};
-  const showFooter = location.pathname === "/" && !isAuthenticated(parseUser());
+  // footer visibility will be computed after hideHeaderPaths
   const idleTimerRef = useRef(null);
 
   function parseUser() {
@@ -233,11 +233,13 @@ function App() {
     return undefined;
   }, [location.pathname, navigate, notify]);
 
-  const isHomepage = location.pathname === "/";
+  const hideHeaderPaths = ["/", "/login", "/register"];
+  const shouldShowHeader = !hideHeaderPaths.includes(location.pathname);
+  const showFooter = location.pathname === "/" && !isAuthenticated(parseUser());
 
   return (
     <>
-      {!isHomepage && <Header />}
+      {shouldShowHeader && <Header />}
       <div className='main'>
         <Outlet />
       </div>
