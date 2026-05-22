@@ -1,5 +1,6 @@
-import { useState } from "react";
-import styles from "../assets/Login.module.css";
+import { useState, useEffect } from "react";
+import styles from "../assets/login.module.css";
+import Girl from "../assets/img/homepage/Girl.png";
 import { useNotification } from "../components/NotificationContainer.jsx";
 
 export default function Login() {
@@ -8,105 +9,132 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [stayLoggedIn, setStayLoggedIn] = useState(false);
 
-  async function handleLogin(e) {
-  e.preventDefault();
-
-  try {
-    const res = await fetch("http://localhost:3001/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      // Backend sent an error status
-      notify(data.message || "Login failed", "error");
-      return;
-    }
-
-    // Save user and route by role
-    const userToStore = {
-      ...data.user,
-      stayLoggedIn: stayLoggedIn,
+  useEffect(() => {
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
     };
-    localStorage.setItem("user", JSON.stringify(userToStore));
+  }, []);
 
-    if (data.user.role === "teacher") {
-      localStorage.setItem("teacher_id", String(data.user.id));
-      localStorage.removeItem("student_id");
-    } else if (data.user.role === "student") {
-      localStorage.setItem("student_id", String(data.user.id));
-      localStorage.removeItem("teacher_id");
+  async function handleLogin(e) {
+    e.preventDefault();
+
+    try {
+      const res = await fetch("http://localhost:3001/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        notify(data.message || "Login failed", "error");
+        return;
+      }
+
+      const userToStore = {
+        ...data.user,
+        stayLoggedIn: stayLoggedIn,
+      };
+      localStorage.setItem("user", JSON.stringify(userToStore));
+
+      if (data.user.role === "teacher") {
+        localStorage.setItem("teacher_id", String(data.user.id));
+        localStorage.removeItem("student_id");
+      } else if (data.user.role === "student") {
+        localStorage.setItem("student_id", String(data.user.id));
+        localStorage.removeItem("teacher_id");
+      }
+
+      if (!userToStore.profileCompleted) {
+        window.location.href = "/account";
+        return;
+      }
+
+      if (data.user.role === "teacher") {
+        window.location.href = "/TeacherDashboard";
+      } else if (data.user.role === "admin") {
+        window.location.href = "/AdminDashboard";
+      } else {
+        window.location.href = "/StudentDashboard";
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+      notify("Network or server error. Please try again.", "error");
     }
-    
-    // If profile is not complete, always redirect to account page
-    if (!userToStore.profileCompleted) {
-      window.location.href = "/account";
-      return;
-    }
-    
-    if (data.user.role === "teacher") {
-      window.location.href = "/TeacherDashboard";
-    }else if(data.user.role === "admin"){
-      window.location.href = "/AdminDashboard";
-    } else {
-      window.location.href = "/StudentDashboard";
-    }
-  } catch (err) {
-    console.error("Login error:", err);
-    notify("Network or server error. Please try again.", "error");
   }
-}
 
   return (
-    <div className={styles.cont}>
-      <section className={styles.Center}>
-        <div className={styles.Title}>
-          <h1><b>Welcome!</b></h1>
+    <div className={styles.page}>
+      <div className={styles.backRow}>
+        <button type="button" className={styles.backButton} onClick={() => window.history.back()}>
+          ← Back
+        </button>
+      </div>
+
+      <section className={styles.loginSection}>
+        <div className={styles.decorativeArea}>
+          <img src={Girl} alt="Student learning" className={styles.heroImage} />
         </div>
 
-        <form onSubmit={handleLogin}>
-          <label htmlFor="email">Email</label>
-          <input
-            type="email"
-            id="email"
-            name="email"
-            placeholder="Enter your Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
+        <div className={styles.loginCard}>
+          <div className={styles.cardHeader}>
+            <span className={styles.cardLabel}>Welcome Back</span>
+            <h1>Sign in to continue learning</h1>
+            <p>Access your classes, progress, and teacher messages in one elegant space.</p>
+          </div>
 
-          <label htmlFor="password">Password</label>
-          <input
-            type="password"
-            id="password"
-            name="password"
-            placeholder="Enter your Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-
-          <label className={styles.checkboxLabel}>
+          <form onSubmit={handleLogin} className={styles.formSection}>
+            <label htmlFor="email">Email</label>
             <input
-              type="checkbox"
-              checked={stayLoggedIn}
-              onChange={(e) => setStayLoggedIn(e.target.checked)}
+              type="email"
+              id="email"
+              name="email"
+              className={styles.inputField}
+              placeholder="Enter your email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
             />
-            Stay logged in
-          </label>
 
-          <br />
-          <button type="submit" className={styles.submitbtn}>
-            Log In
-          </button>
-        </form>
+            <label htmlFor="password">Password</label>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              className={styles.inputField}
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
 
-        <div className={styles.forgotPass}>
-          <a href="#">Forgot Password?</a>
+            <label className={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={stayLoggedIn}
+                onChange={(e) => setStayLoggedIn(e.target.checked)}
+              />
+              <span>Stay logged in</span>
+            </label>
+
+            <button type="submit" className={styles.submitbtn}>
+              Log In
+            </button>
+
+            <div className={styles.formFooter}>
+              <a href="#" className={styles.forgotPass}>
+                Forgot Password?
+              </a>
+            </div>
+          </form>
+
+          
         </div>
       </section>
     </div>

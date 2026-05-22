@@ -1,44 +1,245 @@
-.cont{
+.page {
+  height: 100vh;
+  padding: 2rem 1.5rem 3rem;
+  background: linear-gradient(180deg, #fbf7ef 0%, #f7efe3 34%, #f9f6ef 100%);
+  color: #2f4d3e;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: visible;
+}
+
+.backRow {
+  width: 100%;
+  max-width: 1160px;
+  margin-bottom: 1.5rem;
+}
+
+.backButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.95rem 1.2rem;
+  border-radius: 999px;
+  border: 1px solid rgba(47, 77, 62, 0.14);
+  background: rgba(255, 255, 255, 0.88);
+  color: #2f4d3e;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.backButton:hover {
+  transform: translateY(-1px);
+  background: rgba(245, 242, 236, 0.95);
+  box-shadow: 0 14px 32px rgba(47, 77, 62, 0.09);
+}
+
+.loginSection {
+  width: 100%;
+  max-width: 1160px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 2rem;
+  align-items: center;
+  position: relative;
+  overflow: visible;
+}
+
+.decorativeArea {
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  overflow: visible;
+}
+
+.heroImage {
+  margin: 0 6rem 0;
+  max-width: 100%;
+  z-index: 1;
+  border-radius: 18px;
+  filter: drop-shadow(0 20px 40px rgba(47,77,62,0.06));
+}
+
+.loginCard {
+  background: #fcfaf4;
+  border: 1px solid rgba(47, 77, 62, 0.08);
+  border-radius: 32px;
+  padding: 2.4rem;
+  box-shadow: 0 36px 70px rgba(47, 77, 62, 0.08);
+}
+
+.cardHeader {
+  margin-bottom: 1.4rem;
+}
+
+.cardLabel {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.65rem 1rem;
+  border-radius: 999px;
+  background: #eef6ec;
+  color: #2f4d3e;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 1rem;
+}
+
+.loginCard h1 {
+  margin: 0 0 0.9rem;
+  font-size: clamp(2rem, 2.8vw, 2.75rem);
+  line-height: 1.05;
+}
+
+.loginCard p {
+  margin: 0;
+  color: #53695f;
+  line-height: 1.8;
+  font-size: 1rem;
+}
+
+.formSection {
+  display: grid;
+  gap: 1.2rem;
+}
+
+label {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #3e5847;
+}
+
+.inputField {
+  width: 100%;
+  padding: 1rem 1.15rem;
+  border-radius: 20px;
+  border: 1px solid #dad6ca;
+  background: #fffdf8;
+  color: #20322b;
+  font-size: 1rem;
+  box-shadow: inset 0 1px 2px rgba(47, 77, 62, 0.05);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.inputField:focus {
+  outline: none;
+  border-color: #89a597;
+  box-shadow: 0 0 0 4px rgba(137, 165, 151, 0.14);
+}
+
+.checkboxLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.95rem 1rem;
+  border-radius: 18px;
+  background: #f8f4ee;
+  border: 1px solid rgba(47, 77, 62, 0.06);
+  color: #2f4d3e;
+  font-weight: 600;
+}
+
+.checkboxLabel input {
+  width: 18px;
+  height: 18px;
+  accent-color: #2f4d3e;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.submitbtn {
+  background-color: #2f4d3e;
+  color: #ffffff;
+  padding: 1rem 1.15rem;
+  border: none;
+  border-radius: 999px;
+  font-size: 1rem;
+  font-weight: 700;
+  width: 100%;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  box-shadow: 0 20px 40px rgba(47, 77, 62, 0.16);
+}
+
+.submitbtn:hover {
+  transform: translateY(-1px);
+  background-color: #295150;
+}
+
+.formFooter {
   display: flex;
   justify-content: center;
-  align-items: center;
-  height: 61vh;
-} 
-.Center{
-  margin-top: 3%;
-  width: 30%;
-  padding: 50px;
-  box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-  border-radius: 1rem;
 }
-.submitbtn {
-    background-color: #000;
-    color: #fff;
-    padding: 10px;
-    border: none;
-    border-radius: 1rem;
-    font-size: 15px;
-    font-weight: bold;
-    margin-top: 15px;
-    cursor: pointer;
-    width: 100%;
-    transition: 0.3s ease; 
-    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+
+.forgotPass {
+  font-size: 0.95rem;
+  color: #2f4d3e;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.forgotPass:hover {
+  text-decoration: underline;
+}
+
+.signUpText {
+  margin-top: 1.5rem;
+  text-align: center;
+  color: #5a6d60;
+  font-size: 0.95rem;
+}
+
+.signUpText a {
+  color: #2f4d3e;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.signUpText a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 1024px) {
+  .loginSection {
+    grid-template-columns: 1fr;
   }
 
-  .submitbtn:hover {
-    background-color: white;
-    color: black;
+
+  .decorCard {
+    width: 100%;
   }
+
+  .heroImage {
+    display: none;
+  }
+
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding: 1.2rem 1rem 6.2rem;
+  }
+
+  .backButton {
+    padding: 0.85rem 1rem;
+  }
+
+  .loginSection {
+    gap: 1.2rem;
+  }
+
+  .loginCard {
+    padding: 1.8rem;
+  }
+
+ 
+
   
+
   
-  .forgotPass{
-    justify-self: center;
-    margin-top: 5%;
-    font-size: 90%;
-  }
-  .forgotPass a{
-    text-decoration: none;
-  }
+}
 
   
