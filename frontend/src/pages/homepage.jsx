@@ -1,156 +1,203 @@
 // src/pages/Homepage.jsx
-import {Link, useLocation} from "react-router-dom";
+import { useState } from "react";
+import { Link } from "react-router-dom";
 import styles from "../assets/homepage.module.css";
-// images (adjust paths if your files live elsewhere)
-import Welcome  from "../assets/img/homepage/welcome.jpg";
-import SignUp   from "../assets/img/homepage/signup.png";
-import Match    from "../assets/img/homepage/match.png";
+import SignUp from "../assets/img/homepage/signup.png";
+import Match from "../assets/img/homepage/match.png";
 import Learning from "../assets/img/homepage/learning.png";
+import Girl from "../assets/img/homepage/Girl.png";
 
-import Pic1 from "../assets/img/homepage/pic1.jpg";
-import Pic2 from "../assets/img/homepage/pic2.jpg";
-import Pic3 from "../assets/img/homepage/pic3.jpg";
-import Pic4 from "../assets/img/homepage/pic4.jpg";
-import Pic5 from "../assets/img/homepage/pic5.jpg";
-import Pic6 from "../assets/img/homepage/pic6.jpg";
-import Pic7 from "../assets/img/homepage/pic7.jpg";
-import Pic8 from "../assets/img/homepage/pic8.jpg";
+
+const processSteps = [
+  {
+    icon: SignUp,
+    alt: "Login icon",
+    title: "Login",
+    description: "Login to your profile and access your personalized learning dashboard.",
+  },
+  {
+    icon: Match,
+    alt: "Match with Tutor",
+    title: "Match with Tutor",
+    description: "Find the best teacher for your goals with smart, student-centered pairing.",
+  },
+  {
+    icon: Learning,
+    alt: "Start Learning",
+    title: "Start Learning",
+    description: "Begin your journey with clear lessons, progress tracking, and teacher feedback.",
+  },
+];
+
+const features = [
+  {
+    icon: "📘",
+    title: "Online English Courses",
+    description: "Business English, IELTS prep, conversational lessons, and travel English support.",
+  },
+  {
+    icon: "🧾",
+    title: "Class Contracts",
+    description: "Choose 10, 15, or 20 lessons with flexible 25-minute or 1-hour packages.",
+  },
+  {
+    icon: "💰",
+    title: "Affordable Pricing",
+    description: "Transparent pricing and study plans that fit both budgets and busy schedules.",
+  },
+  {
+    icon: "🎓",
+    title: "Trial Classes",
+    description: "A 10-minute trial to assess level and preferences before you commit.",
+  },
+  {
+    icon: "🤖",
+    title: "AI-Powered Matching",
+    description: "Smart pairing to match students with tutors who fit their learning goals.",
+  },
+  {
+    icon: "✅",
+    title: "Verified Tutors",
+    description: "Experienced instructors with strong teaching records and friendly support.",
+  },
+  {
+    icon: "📅",
+    title: "Flexible Scheduling",
+    description: "Book, cancel, or reschedule classes with an easy calendar workflow.",
+  },
+  {
+    icon: "🔒",
+    title: "Secure & Easy Access",
+    description: "All classes and learning materials are protected and available anytime.",
+  },
+];
 
 export default function Homepage() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   return (
-    <main>
-      <div className={styles.center}>
-        <div className={styles.WelcomeIntro}>
-          <h1>
-            <b>Personalized Online Tutoring <br /> for Every Student!</b>
-          </h1>
-          <p>Learn smarter, achieve better with JEN Academia.</p>
-          <a href="/login" className={styles.btn}>Start Learning!</a>
+    <main className={styles.page}>
+      <section className={styles.heroHeader}>
+        <div className={styles.heroTop}>
+          <Link to="/" className={styles.logo}>
+            <i>JEN Academia</i>
+          </Link>
+          
+
+          <div className={styles.actionGroup}>
+            <Link to="/login" className={styles.navButton}>
+              Login
+            </Link>
+            <button
+              className={styles.mobileMenuButton}
+              onClick={() => setMobileMenuOpen((open) => !open)}
+              aria-label="Toggle menu"
+              type="button"
+            >
+              <span />
+              <span />
+              <span />
+            </button>
+          </div>
         </div>
 
-        <div className={styles.WelcomeDescrip}>
-          <img src={Welcome} alt="Welcome" />
+        <div className={`${styles.mobileNav} ${mobileMenuOpen ? styles.open : ""}`}>
+          <Link to="/login" className={styles.mobileLogin} onClick={() => setMobileMenuOpen(false)}>
+            Login
+          </Link>
         </div>
+        <br></br><br></br><br></br>
+
+        <div className={styles.heroSection}>
+          <div className={styles.heroContent}>
+            <span className={styles.heroBadge}>Personalized Learning, Better Results</span>
+            <h3 className={styles.heroTitle}>Personalized Online Tutoring for Every Student</h3>
+            <p className={styles.heroDescription}>
+              Learn smarter, achieve better with JEN Academia. Get matched with tutors, book classes, and
+              track your progress through a refined learning system.
+            </p>
+
+            <div className={styles.heroActions}>
+              <Link to="/login" className={styles.ctaButton}>
+                Start Learning
+              </Link>
+              {/* <Link to="/courses" className={styles.secondaryButton}>
+                Explore Courses
+              </Link> */}
+            </div>
+
+            <div className={styles.heroMeta}>
+              <div className={styles.avatarRow}>
+                <span className={styles.avatar}>J</span>
+                <span className={styles.avatar}>E</span>
+                <span className={styles.avatar}>N</span>
+              </div>
+              <span className={styles.heroMetaText}>Join English Now</span>
+            </div>
+          </div>
+
+          <div className={styles.heroPreview}>
+            <div className={styles.heroVisual}>
+              <div className={styles.heroVisualCard}>
+                <img src={Girl} alt="Student learning online with laptop" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.processSection}>
+        <div className={styles.sectionHeader}>
+          <span className={styles.sectionEyebrow}>How it works</span>
+          <h2>A simple 3-step process for every learner</h2>
+        </div>
+
+        <div className={styles.processGrid}>
+          {processSteps.map((step, index) => (
+            <article key={step.title} className={styles.processCard}>
+              <div className={styles.processCardTop}>
+                <span className={styles.stepNumber}>{index + 1}</span>
+                <div className={styles.processCardIcon}>
+                  <img src={step.icon} alt={step.alt} />
+                </div>
+              </div>
+              <h3>{step.title}</h3>
+              <p>{step.description}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+      
+      <div className={styles.services}>
+        <section className={styles.servicesIntro}>
+          <div className={styles.introCopy}>
+            <span>Our services</span>
+            <br></br>
+            <h2><strong>Explore the wealth of knowledge we offer.</strong></h2>
+            <br></br>
+            <p>
+              Discover flexible course packages, trial classes, AI-assisted matching, and secure access across every lesson.
+            </p>
+          </div>
+          <br></br>
+          <div className={styles.introAction}>
+            <Link to="/login" className={styles.ctaButton}>
+              Start Learning
+            </Link>
+          </div>
+        </section>
+
+        <section className={styles.featureGrid}>
+          {features.map((feature) => (
+            <article key={feature.title} className={styles.featureCard}>
+              <div className={styles.featureIcon}>{feature.icon}</div>
+              <h3 className={styles.featureCardTitle}>{feature.title}</h3>
+              <p className={styles.featureCardDescription}>{feature.description}</p>
+            </article>
+          ))}
+        </section>
       </div>
-
-      <section className={styles.HowItWorks}>
-        <div className={styles.StepIntro}>
-          <h1>How It Works</h1>
-          <h4>A simple 3-step process.</h4>
-        </div>
-
-        <div className={styles.Steps}>
-          <div className={styles.step}>
-            <img src={SignUp} alt="Sign Up Logo" />
-            <div className={styles.stepContent}>
-              <span className={styles.stepTitle}><b>Login</b></span>
-              <span className={styles.stepDesc}>Login to your profile</span>
-            </div>
-          </div>
-
-          <div className={styles.step}>
-            <img src={Match} alt="Match Tutor Logo" />
-            <div className={styles.stepContent}>
-              <span className={styles.stepTitle}><b>Match with Tutor</b></span>
-              <span className={styles.stepDesc}>Find your best fit</span>
-            </div>
-          </div>
-
-          <div className={styles.step}>
-            <img src={Learning} alt="Start Learning Logo" />
-            <div className={styles.stepContent}>
-              <span className={styles.stepTitle}><b>Start Learning</b></span>
-              <span className={styles.stepDesc}>Begin your journey!</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className={styles.OurServices}>
-        <div className={styles.Services}>
-          <span className={styles.servicesTitle}><b>Our services</b></span>
-          <span className={styles.servicesDesc}>Explore the wealth of knowledge we offer.</span>
-          <a href="/login" className={styles.btn}>Start Learning!</a>
-        </div>
-      </section>
-
-      <section className={styles.ListOfServices}>
-        <div className={styles.ServicesList}>
-          <img src={Pic1} alt="Online English Courses" />
-          <div className={styles.textContent}>
-            <span className={styles.ListServicesTitle}><b>Online English Courses</b></span>
-            <span className={styles.ListServicesDescription}>
-              Covers Business English, IELTS preparation, Conversational English, Travel English, OPIc (for Korean students), TOEIC, and Online English News Discussions.
-            </span>
-          </div>
-        </div>
-
-        <div className={styles.ServicesList}>
-          <img src={Pic2} alt="Class Contracts" />
-          <div className={styles.textContent}>
-            <span className={styles.ListServicesTitle}><b>Class Contracts</b></span>
-            <span className={styles.ListServicesDescription}>
-              10, 15, or 20 classes, either 25 minutes or 1 hour.
-            </span>
-          </div>
-        </div>
-
-        <div className={styles.ServicesList}>
-          <img src={Pic3} alt="Class Contracts" />
-          <div className={styles.textContent}>
-            <span className={styles.ListServicesTitle}><b>Class Contracts</b></span>
-            <span className={styles.ListServicesDescription}>
-              10, 15, or 20 classes, either 25 minutes or 1 hour.
-            </span>
-          </div>
-        </div>
-
-        <div className={styles.ServicesList}>
-          <img src={Pic4} alt="Trial Classes" />
-          <div className={styles.textContent}>
-            <span className={styles.ListServicesTitle}><b>Trial Classes</b></span>
-            <span className={styles.ListServicesDescription}>
-              A free 10-minute trial class to assess the student’s level and preferences before enrollment.
-            </span>
-          </div>
-        </div>
-
-        <div className={styles.ServicesList}>
-          <img src={Pic5} alt="AI-Based Teacher Matching" />
-          <div className={styles.textContent}>
-            <span className={styles.ListServicesTitle}><b>AI-Based Teacher Matching</b></span>
-            <span className={styles.ListServicesDescription}>Personalized teacher–student pairing</span>
-          </div>
-        </div>
-
-        <div className={styles.ServicesList}>
-          <img src={Pic6} alt="Teacher Feedback & Progress Tracking" />
-          <div className={styles.textContent}>
-            <span className={styles.ListServicesTitle}><b>Teacher Feedback & Progress Tracking</b></span>
-            <span className={styles.ListServicesDescription}>Notes, corrections, and reports after each class</span>
-          </div>
-        </div>
-
-        <div className={styles.ServicesList}>
-          <img src={Pic7} alt="Flexible Class Scheduling" />
-          <div className={styles.textContent}>
-            <span className={styles.ListServicesTitle}><b>Flexible Class Scheduling</b></span>
-            <span className={styles.ListServicesDescription}>
-              Students can book, cancel, or reschedule classes via an integrated calendar.
-            </span>
-          </div>
-        </div>
-
-        <div className={styles.ServicesList}>
-          <img src={Pic8} alt="Secure & Reliable Learning System" />
-          <div className={styles.textContent}>
-            <span className={styles.ListServicesTitle}><b>Secure & Reliable Learning System</b></span>
-            <span className={styles.ListServicesDescription}>
-              All classes, schedules, and materials are protected with secure access, ensuring a safe and uninterrupted online learning experience.
-            </span>
-          </div>
-        </div>
-      </section>
+      
     </main>
   );
 }

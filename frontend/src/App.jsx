@@ -233,9 +233,11 @@ function App() {
     return undefined;
   }, [location.pathname, navigate, notify]);
 
+  const isHomepage = location.pathname === "/";
+
   return (
     <>
-      <Header />
+      {!isHomepage && <Header />}
       <div className='main'>
         <Outlet />
       </div>
