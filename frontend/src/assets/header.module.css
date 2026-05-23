@@ -1,111 +1,107 @@
-header {
-        height: 8vh;
-        display: flex;
-        align-items: center;
-        color: black;
-        background-color: white;
-        font-family: 'Poppins';
-        position: sticky;
-        top: 0;
-        width: 100%;
-        padding-left: 6%;
-        padding-right: 6%;
-        box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-        z-index: 99;
-    }
+.header {
+    height: 72px;
+    display: flex;
+    align-items: center;
+    color: #122;
+    background: rgba(255, 255, 255, 0);
+    font-family: 'Poppins';
+    position: sticky;
+    top: 0;
+    width: 100%;
+    padding: 0 1.8rem;
+    z-index: 99;
+    transition: background 240ms ease, box-shadow 240ms ease, border-color 240ms ease;
+    border-bottom: 1px solid transparent;
+    box-shadow: none;
+}
 
-    .headerContainer {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        width: 100%;
-    }
+.headerScrolled {
+    background: rgba(255, 255, 255, 0.55) !important;
+    box-shadow: 0 14px 40px rgba(0,0,0,0.14);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(47, 77, 62, 0.12);
+}
 
-    .brandName {
-        display: block;
-        font-size: 3vh;
-        font-weight: bold;
-        text-decoration: none;
-        color: #4bb14e;
-        white-space: nowrap;
-        line-height: 1.2;
-    }
+.headerContainer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    gap: 16px;
+}
 
-    .navbar {
-        display: flex;
-        align-items: center;
-        gap: 30px;
-    }
-
-    .navbar a{
-        color: black;
-        text-decoration: none;
-        padding: 8px;  
-        border-radius: 1rem; 
-        transition: 0.3s ease; 
-        white-space: nowrap;
-        line-height: 1.2;
-    }
-    .navbar a:hover {
-        background-color: black;
-        color: white;
-        box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-    }
-    .navbar a.btn {
-        background-color: black;
-        color: white;
-        box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-    }
-
-    .navbar a.btn:hover{
-        background-color: white;
-        color: black;
-        box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-    }
-
-    .logOut{
-        background-color: black;
-        color: white;
-        box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-        border: none;
-        border-radius: 1rem;
-        padding: 8px 15px;  
-        white-space: nowrap;
-        line-height: 1.2;
-    }
-
-    .logOut:hover{
-        background-color: white;
-        color: black;
-        box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-    }
-
-    .StudentAccount , .TeacherAccount{
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        background-color: #4bb14e;
-        border-radius: 1rem;
-        padding: 8px;
-        box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-    }
-
-    .profilePic {
-    height: 3vh;
-    border-radius: 50%;
-    border: 1px solid #ccc;
-    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-    }
-
-    .account {
-    color: white;
+.brandName {
+    display: block;
+    font-size: 1.4rem;
+    font-weight: 700;
     text-decoration: none;
-    font-size: 1.4vh;
+    color: var(--primary, #2f4d3e);
     white-space: nowrap;
     line-height: 1.2;
-    font-weight: 600;
-    }
+    padding: 8px 10px;
+    border-radius: 12px;
+}
 
-    .account:hover {
+.navbar {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+
+.navbar a{
+    color: #183; /* near-black */
     text-decoration: none;
-    }
+    padding: 8px 10px;  
+    border-radius: 10px; 
+    transition: 160ms ease; 
+    white-space: nowrap;
+    line-height: 1.2;
+}
+
+.navbar a.btn {
+    background: linear-gradient(90deg,var(--primary), #35624f);
+    color: white;
+}
+
+.StudentAccount , .TeacherAccount{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.profilePic {
+    width: 3rem;
+    border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.06);
+}
+
+.account {
+    color: black;
+    text-decoration: none;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    line-height: 1.2;
+    font-weight: 800;
+}
+
+.notificationBell{
+    position: relative;
+    background: transparent;
+    border: none;
+    font-size: 1.05rem;
+    cursor: pointer;
+}
+
+.badge{
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background: var(--accent);
+    color: white;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 999px;
+    box-shadow: 0 4px 12px rgba(47,77,62,0.12);
+}
+
+.account:hover { text-decoration: none; }

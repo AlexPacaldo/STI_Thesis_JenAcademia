@@ -1,10 +1,11 @@
 import axios from "axios";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import styles from "../assets/header.module.css";
+import styles from "../assets/sidebar.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
 import { getLocalUnreadCount } from "../utils/localNotificationStore.js";
-import NotificationPanel from "./NotificationPanel";
+import NotificationPanel from "./NotificationPanel.jsx";
+import Logo from "../assets/img/Navbar/LOGO.jpg";
 
 const API = "http://localhost:3001";
 
@@ -15,7 +16,7 @@ function profileSrc(user) {
   return `${API}${url}`;
 }
 
-function Header() {
+function Sidebar() {
   const location = useLocation();
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
@@ -23,7 +24,6 @@ function Header() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [studentPackage, setStudentPackage] = useState(null);
-  const [isScrolled, setIsScrolled] = useState(false);
   const currentUserId = user?.id || user?.user_id || user?.userId;
 
   useEffect(() => {
@@ -43,57 +43,6 @@ function Header() {
       console.warn("Failed to read user from localStorage:", e);
     }
   }, [location]);
-
-  useEffect(() => {
-    const contentArea = document.querySelector(".content-area");
-    const root = document.getElementById("root");
-    const scrollTargets = [
-      window,
-      document,
-      document.scrollingElement,
-      document.documentElement,
-      document.body,
-      root,
-      contentArea,
-      document.querySelector(".app-container"),
-      document.querySelector(".app-layout"),
-    ].filter(Boolean);
-
-    const uniqueTargets = scrollTargets.reduce((acc, target) => {
-      if (!acc.includes(target)) acc.push(target);
-      return acc;
-    }, []);
-
-    const getScrollTop = () => {
-      const values = uniqueTargets.map((target) => {
-        if (target === window) return window.scrollY || window.pageYOffset || 0;
-        return target.scrollTop || 0;
-      });
-      return Math.max(0, ...values);
-    };
-
-    const handleScroll = () => {
-      setIsScrolled(getScrollTop() > 0);
-    };
-
-    handleScroll();
-
-    uniqueTargets.forEach((target) => {
-      target.addEventListener("scroll", handleScroll, { passive: true });
-    });
-    window.addEventListener("wheel", handleScroll, { passive: true });
-    window.addEventListener("touchmove", handleScroll, { passive: true });
-    window.addEventListener("keydown", handleScroll, { passive: true });
-
-    return () => {
-      uniqueTargets.forEach((target) => {
-        target.removeEventListener("scroll", handleScroll);
-      });
-      window.removeEventListener("wheel", handleScroll);
-      window.removeEventListener("touchmove", handleScroll);
-      window.removeEventListener("keydown", handleScroll);
-    };
-  }, [location.pathname]);
 
   // Listen for profile updates
   useEffect(() => {
@@ -206,7 +155,7 @@ function Header() {
       <header className={styles.header}>
         <div className={styles.headerContainer}>
           <div className={styles.brandName}>
-            JEN Academia
+            <i>JEN Academia</i>
           </div>
         </div>
       </header>
@@ -243,121 +192,61 @@ function Header() {
     isAccountPage ||
     isAdminDashboardPage;
 
-  const headerStyle = {
-    background: isScrolled ? 'rgba(255, 255, 255, 0.98)' : 'transparent',
-    // boxShadow: isScrolled ? '0 14px 40px rgba(0,0,0,0.14)' : 'none',
-    // borderBottom: isScrolled ? '1px solid rgba(0,0,0,0.08)' : '1px solid transparent',
-    transition: 'background 240ms ease, box-shadow 240ms ease, border-color 240ms ease',
+  const navConfig = {
+    student: [
+      { to: "/StudentDashboard", label: "Dashboard", icon: "bi-house-door-fill" },
+      { to: "/Calendar", label: "Calendar", icon: "bi-calendar3" },
+      { to: "/assignments", label: "Assignments", icon: "bi-journal-text" },
+      { to: "/remarks", label: "Remarks", icon: "bi-chat-left-text" },
+      { to: "/booksLessons", label: "Books / Lessons", icon: "bi-book" },
+    ],
+    teacher: [
+      { to: "/TeacherDashboard", label: "Dashboard", icon: "bi-house-door-fill" },
+      { to: "/Calendar", label: "Calendar", icon: "bi-calendar3" },
+      { to: "/PassRemarks", label: "Remarks", icon: "bi-chat-left-text" },
+      { to: "/teacherAssignment", label: "Assignments", icon: "bi-journal-text" },
+      { to: "/teacherBooksLessons", label: "Books / Lessons", icon: "bi-book" },
+    ],
+    admin: [],
+  };
+
+  const navItems = navConfig[role] || [];
+  const normalizedPath = path.toLowerCase();
+
+  const isActiveLink = (item) => {
+    const target = item.to.toLowerCase();
+    return (
+      normalizedPath === target ||
+      normalizedPath.startsWith(`${target}/`)
+    );
   };
 
   return (
     <>
-      <header className={styles.header} style={headerStyle}>
-        <div className={styles.headerContainer}>
-        
+      <nav className={styles.sidebar} aria-label="Main navigation">
+        <Link to={role === "teacher" ? "/TeacherDashboard" : role === "student" ? "/StudentDashboard" : "/"} className={styles.brandName}>
+          <img src={Logo} alt="JEN Academia" />
+        </Link>
 
-        {role === "student" && isStudentArea && (
-          <>
-            <Link to="/StudentDashboard" className={styles.brandName}>JEN Academia</Link>
-          </>
-        )}
-        {role === "teacher" && isTeacherArea && (
-          <>
-            <Link to="/TeacherDashboard" className={styles.brandName}>JEN Academia</Link>
-          </>
-        )}
-        {role === "admin" && isAdminArea && (
-          <>
-            <Link to="/AdminDashboard" className={styles.brandName}>JEN Academia</Link>
-          </>
-        )}
-
-        
-        <nav className={styles.navbar}>
-          {/* 🧩 STUDENT NAVIGATION */}
-          {role === "student" && isStudentArea && profileCompleted && (
-            <>
-
-              {/* Notification Bell */}
-              <button className={styles.notificationBell} onClick={() => setIsNotificationOpen(!isNotificationOpen)} title="Reschedule Requests">
-                🔔
-                {unreadCount > 0 && (
-                  <span className={styles.badge}>{unreadCount}</span>
-                )}
-              </button>
-
-              <Link to="/account" className={styles.StudentAccount}>
-                <div className={styles.account}>
-                  {`${user?.firstName || ""} ${user?.lastName || ""}`}
-                </div>
-                <img src={profileSrc(user)} alt="Profile" className={styles.profilePic}/>
-              </Link>
-
-             
-            </>
-          )}
-
-          {/* 🧩 TEACHER NAVIGATION */}
-          {role === "teacher" && isTeacherArea && profileCompleted && (
-            <>
-              {/* Notification Bell */}
-              <button className={styles.notificationBell} onClick={() => setIsNotificationOpen(!isNotificationOpen)} title="Reschedule Requests">
-                🔔
-                {unreadCount > 0 && (
-                  <span className={styles.badge}>{unreadCount}</span>
-                )}
-              </button>
-
-              <Link to="/account" className={styles.TeacherAccount}>
-                <div className={styles.account}>
-                  {`${user?.firstName || ""} ${user?.lastName || ""}`}
-                </div>
-                <img src={profileSrc(user)} alt="Profile" className={styles.profilePic}/>
-              </Link>
-
-              
-            </>
-          )}
-
-          {role === "admin" && isAdminArea && (
-            <>
-              <button
-                className={styles.notificationBell}
-                onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-                title="Notifications"
+        <ul className={styles.navList}>
+          {navItems.map((item) => (
+            <li key={item.to}>
+              <Link
+                to={item.to}
+                className={`${styles.navItem} ${isActiveLink(item) ? styles.active : ""}`}
               >
-                🔔
-                {unreadCount > 0 && (
-                  <span className={styles.badge}>{unreadCount}</span>
-                )}
-              </button>
-
-              <Link to="/account" className={styles.TeacherAccount}>
-                <div className={styles.account}>
-                  {`${user?.firstName || ""} ${user?.lastName || ""}`}
-                </div>
-                <img
-                  src={profileSrc(user)}
-                  alt="Profile"
-                  className={styles.profilePic}
-                />
+                <span className={styles.navItemIcon}>
+                  <i className={`bi ${item.icon}`} aria-hidden="true" />
+                </span>
+                <span className={styles.navText}>{item.label}</span>
               </Link>
+            </li>
+          ))}
+        </ul>
 
-              
-            </>
-          )}
-        </nav>
-      </div>
-    </header>
-
-    {/* Notification Panel */}
-    <NotificationPanel 
-      userId={currentUserId}
-      isOpen={isNotificationOpen} 
-      onClose={() => setIsNotificationOpen(false)}
-    />
+      </nav>
     </>
   );
 }
 
-export default Header;
+export default Sidebar;

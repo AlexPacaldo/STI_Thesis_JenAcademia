@@ -3,6 +3,8 @@ import './App.css'
 import Homepage from './pages/homepage'
 import Header from './components/Header'
 import Footer from './components/Footer'
+import Sidebar from './components/Sidebar'
+
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useNotification } from "./components/NotificationContainer.jsx";
 
@@ -236,13 +238,24 @@ function App() {
   const hideHeaderPaths = ["/", "/login", "/register"];
   const shouldShowHeader = !hideHeaderPaths.includes(location.pathname);
   const showFooter = location.pathname === "/" && !isAuthenticated(parseUser());
+  const isFullBleedPath = location.pathname === "/" || location.pathname === "/login";
 
   return (
     <>
-      {shouldShowHeader && <Header />}
-      <div className='main'>
-        <Outlet />
+      <div className={`app-container ${isFullBleedPath ? 'full-bleed' : ''}`}>
+        {shouldShowHeader && <Sidebar />}
+
+        <div className={`app-layout ${isFullBleedPath ? 'full-bleed' : ''}`}>
+          {shouldShowHeader && <Header />}
+          <main className={`content-area ${isFullBleedPath ? 'full-bleed' : ''}`}>
+            <div className={`content-inner ${isFullBleedPath ? 'full-bleed' : ''}`}>
+              <Outlet />
+            </div>
+          </main>
+        </div>
+
       </div>
+
       {showFooter && <Footer />}
     </>
   )
