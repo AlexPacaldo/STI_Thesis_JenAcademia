@@ -1,462 +1,749 @@
-.Center {
-  min-height: 100vh;
+.cont {
   display: flex;
+  min-height: 86vh;
   justify-content: center;
-  align-items: flex-start;
-  color: #1f2933;
-  font-family: "Poppins", sans-serif;
-  padding: 32px 20px 56px;
+  align-items: center;
+  padding: 24px 16px;
+}
+
+.centerContent {
+  text-align: center;
+  height: auto;
+  margin-bottom: 12px;
+}
+
+.centerContent h1 {
+  font-size: 200%;
+  margin: 0;
+  line-height: 1.2;
+  color: #13251f;
+}
+
+.pastDueAlert {
+  background-color: #fef2f0;
+  border: 1px solid #d66a55;
+  border-radius: 18px;
+  color: #8a3e2e;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  margin-top: 8px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.instruction {
+  width: auto;
+  background-color: #26423b;
+  border-radius: 18px;
+  text-align: center;
+  padding: 6px 10px;
+}
+
+.emptyText {
+  color: #5e7268;
+}
+
+.instruction h1 {
+  font-size: 100%;
+  color: white;
+  margin-top: 4%;
+}
+
+.tabContainer {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.tabButton,
+.activeTab {
+  background: #f8fbf9;
+  border: 1px solid rgba(38, 66, 59, 0.12);
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.activeTab {
+  background: #26423b;
+  color: white;
+  border-color: #26423b;
+}
+
+.instructionContent {
+  height: min-content;
+  width: 100%;
+  background-color: white;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.leftSide,
+.rightSide,
+.card {
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  border-radius: 24px;
+  background-color: #fff;
+  box-shadow: 0 18px 40px rgba(18, 34, 30, 0.06);
+}
+
+.leftSide {
+  width: 70%;
+  height: 105%;
+  padding: 20px;
+  background-color: #f8fbf9;
+}
+
+.leftSide p {
+  font-size: 1rem;
+}
+
+.instructionsPanel {
+  width: 100%;
+}
+
+.instructionsPanel h4 {
+  margin: 0 0 10px;
+  font-size: 24px;
+  font-weight: 700;
+  color: #13251f;
+}
+
+.instructionsBox,
+.commentBox {
+  width: 100%;
+  border: 1px solid rgba(38, 66, 59, 0.14);
+  border-radius: 18px;
+  padding: 20px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 16px;
+  background-color: #fff;
+  color: #13251f;
+  resize: none;
+  box-shadow: inset 0 1px 2px rgba(18, 34, 30, 0.04);
+}
+
+.lessonFormGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.formLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modalField,
+.modalTextarea,
+.lessonInput,
+.lessonTextarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid rgba(38, 66, 59, 0.14);
+  border-radius: 18px;
+  padding: 12px 14px;
+  background: #fff;
+}
+
+.lessonInput[type="file"]::file-selector-button {
+  margin-right: 12px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(145, 167, 154, 0.18);
+  color: #26423b;
+  padding: 8px 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.selectedFileName {
+  margin: -6px 0 0;
+  color: #5e7268;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.instructionsBox {
+  min-height: 25vh;
+}
+
+.rightSide {
+  width: 26%;
+  height: min-content;
+  padding: 20px;
+  background-color: #f8fbf9;
+}
+
+.card {
+  width: 100%;
+  padding: 16px;
+  color: black;
+}
+
+.teacherImg {
+  height: 6vh;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-right: 10px;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+}
+
+.card h2 {
+  font-size: 2vh;
+}
+
+.card p {
+  font-size: 1rem;
+  margin: 3px 0;
+}
+
+.responsePanel {
+  margin-top: 24px;
+}
+
+.responseLabel {
+  display: block;
+  width: 100%;
+  margin: 0 0 8px;
+}
+
+.submitComment {
+  background-color: #26423b;
+  color: white;
+  border: 1px solid #26423b;
+  padding: 10px 16px;
+  border-radius: 18px;
+  cursor: pointer;
+  margin-top: 10px;
+  transition: 0.3s;
+  width: 180px;
+  box-shadow: 0 16px 32px rgba(18, 34, 30, 0.12);
+}
+
+.submitComment:hover:not(:disabled) {
+  background-color: #35594e;
+}
+
+.submitComment:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.submitMessage {
+  color: #5e7268;
+  font-size: 0.85rem;
+  margin-top: 10px;
+}
+
+.fileLabel {
+  display: block;
+  margin: 1rem 0 0.5rem;
+  font-weight: 700;
+  color: #13251f;
+}
+
+.fileInput {
+  width: 100%;
+  padding: 0.75rem 0.85rem;
+  border-radius: 18px;
+  border: 1px solid rgba(38, 66, 59, 0.14);
+  background: #fff;
+  margin-bottom: 0.75rem;
+}
+
+.fileInfo {
+  margin: 0.5rem 0 0;
+  color: #5e7268;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.Center {
+  width: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px 28px 40px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .CenterContent {
-  width: min(1180px, 100%);
   display: flex;
   flex-direction: column;
-  gap: 22px;
-}
-
-.TopContent,
-.progressContainer,
-.bookLayout,
-.stateMessage {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  box-shadow: 0 10px 30px rgba(31, 41, 51, 0.06);
+  gap: 18px;
+  width: 100%;
 }
 
 .TopContent {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 20px;
-  padding: 24px 28px;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
 }
 
-.Teacher,
-.Date {
+.Teacher {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  flex-wrap: wrap;
 }
 
-.Teacher img {
-  width: 48px;
-  height: 48px;
-  object-fit: cover;
-  border-radius: 50%;
+.bookTitleGroup {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
 }
 
+.bookTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.changeCoverBtn {
+  min-height: 34px;
+  padding: 0.48rem 0.82rem;
+  border-radius: 16px;
+  border: 1px solid rgba(38, 66, 59, 0.14);
+  background: #f8fbf9;
+  color: #26423b;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(18, 34, 30, 0.06);
+}
+
+.changeCoverBtn:hover {
+  background: rgba(145, 167, 154, 0.16);
+  border-color: rgba(38, 66, 59, 0.24);
+}
+
+.Teacher img,
 .bookCoverImg {
-  width: 48px;
-  height: 48px;
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
   object-fit: cover;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-}
-
-
-.Teacher h1,
-.Date h1,
-.lessonHeader h2,
-.fileInfo h3,
-.lessonsList h3 {
-  margin: 0;
-  color: #111827;
-  line-height: 1.2;
-}
-
-.Teacher h1 {
-  font-size: clamp(1.35rem, 2vw, 2rem);
-}
-
-.Teacher p,
-.Date p,
-.lessonContent,
-.fileInfo p,
-.emptyText,
-.noPreview p,
-.stateMessage {
-  margin: 0;
-  color: #5b6472;
-  line-height: 1.6;
+  border: 1px solid rgba(38, 66, 59, 0.1);
 }
 
 .Date {
   min-width: 120px;
-  justify-content: center;
-  border-left: 1px solid #e5e7eb;
-  padding-left: 20px;
+  padding: 12px 16px;
   text-align: center;
+  border-radius: 20px;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  background: #f8fbf9;
 }
 
-.Date h1 {
-  font-size: 1.6rem;
+.Date h1,
+.Teacher h1 {
+  margin: 0;
+  color: #13251f;
+}
+
+.Date p,
+.Teacher p {
+  margin: 4px 0 0;
+  color: #5e7268;
 }
 
 .progressContainer {
-  padding: 18px 22px;
+  padding: 16px 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  background: #f8fbf9;
 }
 
 .progressContainer h3 {
-  margin: 0 0 10px;
-  font-size: 0.98rem;
+  margin: 0 0 12px;
+  color: #13251f;
+  font-size: 1rem;
 }
 
-.progressBar {
+.progressBar,
+.tableProgressBar {
   width: 100%;
   height: 10px;
-  overflow: hidden;
   border-radius: 999px;
-  background: #e5e7eb;
+  overflow: hidden;
+  background: rgba(145, 167, 154, 0.18);
 }
 
-.progressFill {
+.progressFill,
+.tableProgressBar > div {
   height: 100%;
   border-radius: inherit;
-  background: #16a34a;
-  transition: width 0.2s ease;
+  background: linear-gradient(90deg, #26423b, #91a79a);
 }
 
 .teacherTabs,
-.progressPanel {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  box-shadow: 0 10px 30px rgba(31, 41, 51, 0.06);
-}
-
-.teacherTabs {
+.tabContainer {
   display: flex;
-  gap: 8px;
-  padding: 8px;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 4px;
 }
 
-.teacherTab {
-  min-height: 42px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: #4b5563;
+.teacherTab,
+.tabButton,
+.activeTeacherTab,
+.activeTab {
+  padding: 0.85rem 1.1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(38, 66, 59, 0.12);
+  background: #f8fbf9;
+  color: #26423b;
+  font-weight: 700;
   cursor: pointer;
-  font-weight: 800;
-  padding: 10px 16px;
 }
 
-.teacherTab:hover,
-.activeTeacherTab {
-  background: #111827;
-  color: #ffffff;
+.activeTeacherTab,
+.activeTab {
+  background: #26423b;
+  border-color: #26423b;
+  color: #fff;
 }
 
 .progressPanel {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 18px;
-  padding: 22px;
+  padding: 0;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
 }
 
 .progressPanelHeader {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
+  margin-bottom: 0;
 }
 
-.progressPanelHeader h2 {
+.progressPanelHeader h2,
+.lessonHeader h2,
+.fileInfo h3,
+.documentPreview h3 {
   margin: 0;
-  color: #111827;
-  font-size: 1.25rem;
+  color: #13251f;
 }
 
 .progressPanelHeader p {
-  margin: 6px 0 0;
-  color: #6b7280;
+  margin: 4px 0 0;
+  color: #5e7268;
 }
 
 .progressTableWrap {
   width: 100%;
   overflow-x: auto;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 18px 40px rgba(18, 34, 30, 0.06);
 }
 
 .progressTable {
   width: 100%;
-  min-width: 860px;
   border-collapse: collapse;
+  min-width: 860px;
+  table-layout: fixed;
+}
+
+.progressTable th:nth-child(1),
+.progressTable td:nth-child(1) {
+  width: 34%;
+}
+
+.progressTable th:nth-child(2),
+.progressTable td:nth-child(2) {
+  width: 24%;
+}
+
+.progressTable th:nth-child(3),
+.progressTable td:nth-child(3) {
+  width: 22%;
+}
+
+.progressTable th:nth-child(4),
+.progressTable td:nth-child(4) {
+  width: 20%;
 }
 
 .progressTable th,
 .progressTable td {
-  border-bottom: 1px solid #e5e7eb;
-  padding: 14px 12px;
+  padding: 18px 20px;
   text-align: left;
-  vertical-align: top;
+  border-bottom: 1px solid rgba(38, 66, 59, 0.08);
+  vertical-align: middle;
 }
 
 .progressTable th {
-  color: #6b7280;
-  font-size: 0.78rem;
-  font-weight: 900;
+  color: #5e7268;
+  font-size: 0.82rem;
   text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #f8fbf9;
+}
+
+.progressTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.progressTable tbody tr:hover {
+  background: rgba(145, 167, 154, 0.08);
 }
 
 .courseCompletedRow {
-  background: #f0fdf4;
-}
-
-.courseCompletedRow td {
-  border-bottom-color: #bbf7d0;
+  background: rgba(145, 167, 154, 0.08);
 }
 
 .studentCell {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .studentCell img,
 .studentInitial {
   width: 42px;
   height: 42px;
-  flex: 0 0 42px;
   border-radius: 50%;
-}
-
-.studentCell img {
   object-fit: cover;
 }
 
 .studentInitial {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #e5e7eb;
-  color: #111827;
-  font-weight: 900;
+  display: grid;
+  place-items: center;
+  background: rgba(145, 167, 154, 0.18);
+  color: #26423b;
+  font-weight: 700;
 }
 
 .studentCell strong,
 .progressCount strong {
   display: block;
-  color: #111827;
+  color: #13251f;
+  overflow-wrap: anywhere;
 }
 
-.studentCell span {
-  display: block;
-  color: #6b7280;
-  font-size: 0.86rem;
-  margin-top: 2px;
-}
-
+.studentCell span,
 .progressCount span {
-  display: block;
-  color: #15803d;
-  font-size: 0.82rem;
-  font-weight: 900;
-  margin-top: 2px;
+  color: #5e7268;
+  font-size: 0.9rem;
+}
+
+.progressCount {
+  display: grid;
+  gap: 8px;
+  max-width: 340px;
 }
 
 .tableProgressBar {
-  width: min(220px, 100%);
   height: 8px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #e5e7eb;
-  margin-top: 8px;
-}
-
-.tableProgressBar div {
-  height: 100%;
-  border-radius: inherit;
-  background: #16a34a;
-}
-
-.statusBadge,
-.lessonBreakdown span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 900;
-  padding: 6px 10px;
+  width: 100%;
 }
 
 .statusBadge {
-  background: #fef3c7;
-  color: #92400e;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.42rem 0.72rem;
+  border-radius: 999px;
+  background: rgba(145, 167, 154, 0.18);
+  color: #26423b;
+  font-weight: 700;
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
-.statusDone {
-  background: #dcfce7;
-  color: #166534;
+.statusDone,
+.statusCompleted {
+  background: rgba(38, 66, 59, 0.12);
 }
 
 .lessonBreakdown {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+.lessonBreakdown span,
+.lessonDone,
+.lessonPending {
+  padding: 0.4rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .lessonDone {
-  background: #dcfce7;
-  color: #166534;
+  background: rgba(38, 66, 59, 0.12);
+  color: #26423b;
 }
 
 .lessonPending {
-  background: #f3f4f6;
-  color: #4b5563;
+  background: rgba(145, 167, 154, 0.16);
+  color: #35594e;
 }
 
 .bookLayout {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
-  gap: 22px;
-  padding: 22px;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  width: 100%;
 }
 
-.lessonsList {
+.lessonsList,
+.bookContent {
   min-width: 0;
-  border-right: 1px solid #e5e7eb;
-  padding-right: 22px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  background: #fff;
+  box-shadow: 0 18px 40px rgba(18, 34, 30, 0.06);
 }
 
 .lessonsList h3 {
-  margin-bottom: 14px;
-  font-size: 1.05rem;
+  margin: 0 0 14px;
+  color: #13251f;
 }
 
 .lessonsContainer {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: 70vh;
-  overflow-y: auto;
-  padding-right: 4px;
 }
 
 .lessonButton {
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 5px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #f9fafb;
-  color: #1f2933;
-  cursor: pointer;
-  padding: 12px;
+  display: grid;
+  gap: 4px;
   text-align: left;
-  transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(38, 66, 59, 0.12);
+  background: #f8fbf9;
+  color: #13251f;
+  cursor: pointer;
 }
 
-.lessonButton:hover,
-.lessonButton.active {
-  border-color: #9ca3af;
-  background: #ffffff;
-  box-shadow: 0 8px 18px rgba(31, 41, 51, 0.08);
+.lessonButton:hover {
+  border-color: rgba(145, 167, 154, 0.8);
+  box-shadow: 0 14px 26px rgba(18, 34, 30, 0.06);
 }
 
-.lessonButton.completed {
-  border-color: #bbf7d0;
-  background: #f0fdf4;
+.active {
+  background: rgba(145, 167, 154, 0.16);
+  border-color: rgba(145, 167, 154, 0.9);
 }
 
-.lessonButton.locked {
-  border-color: #d1d5db;
-  background: #f3f4f6;
-  color: #6b7280;
-  cursor: not-allowed;
+.completed {
+  border-color: rgba(38, 66, 59, 0.18);
+}
+
+.locked {
   opacity: 0.72;
 }
 
-.lessonButton.locked:hover {
-  border-color: #d1d5db;
-  background: #f3f4f6;
-  box-shadow: none;
-}
-
-.lessonNumber {
-  color: #6b7280;
-  font-size: 0.78rem;
-  font-weight: 800;
-  text-transform: uppercase;
+.lessonNumber,
+.lessonProgressText {
+  color: #5e7268;
+  font-size: 0.84rem;
 }
 
 .lessonTitle {
   font-weight: 700;
-  overflow-wrap: anywhere;
-}
-
-.lessonProgressText {
-  margin-top: 2px;
-  color: #475569;
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
-.lessonButton.completed .lessonProgressText {
-  color: #15803d;
 }
 
 .bookContent {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.lessonHeader span {
-  display: inline-flex;
-  margin-bottom: 6px;
-  color: #6b7280;
-  font-size: 0.82rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.lessonHeader h2 {
-  font-size: clamp(1.4rem, 2vw, 2rem);
-}
-
-.lessonContent {
-  padding: 14px 16px;
-  border-left: 4px solid #d1d5db;
-  background: #f9fafb;
-}
-
-.fileSection {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 16px;
-  background: #ffffff;
+  min-height: calc(100vh - 300px);
+}
+
+.lessonHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lessonHeader span {
+  color: #5e7268;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.lessonContent {
+  margin: 0;
+  color: #374151;
+}
+
+.readerViewport,
+.fullscreenReader {
+  min-height: 260px;
+  max-height: 70vh;
+  overflow: auto;
+  border-radius: 24px;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  background: #f8fbf9;
+  padding: 14px;
 }
 
 .readerViewport {
-  max-height: min(76vh, 820px);
-  min-height: 420px;
-  overflow-y: auto;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #ffffff;
-  scroll-behavior: smooth;
-}
-
-.readerViewport .fileSection {
+  width: 100%;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
   border: 0;
   border-radius: 0;
-  min-height: calc(min(76vh, 820px) + 260px);
+  background: transparent;
+  padding: 0;
 }
 
-.fileInfo h3 {
-  margin-bottom: 4px;
-  font-size: 1rem;
+.fileSection {
+  display: grid;
+  gap: 14px;
+  width: 100%;
 }
 
-.fileActions {
+.fileInfo {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+}
+
+.fileInfo p,
+.documentPreview p,
+.noPreview p,
+.stateMessage {
+  margin: 0;
+  color: #5e7268;
+}
+
+.fileActions,
+.modalButtons {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -464,293 +751,120 @@
 
 .fileActions a,
 .fileActionBtn,
-.completeBtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 40px;
-  border: 0;
-  border-radius: 6px;
-  background: #111827;
-  color: #ffffff;
+.confirmBtn,
+.cancelBtn,
+.completeBtn,
+.fullscreenHeader button {
+  min-height: 42px;
+  padding: 0.7rem 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(38, 66, 59, 0.12);
+  background: #f8fbf9;
+  color: #26423b;
+  font-weight: 700;
   cursor: pointer;
-  font-weight: 800;
-  padding: 10px 16px;
   text-decoration: none;
-  transition: background-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
 
-.fileActions a:hover,
-.fileActionBtn:hover,
-.completeBtn:hover {
-  background: #374151;
-  transform: translateY(-1px);
-  box-shadow: 0 10px 22px rgba(17, 24, 39, 0.14);
+.fileActions a,
+.fileActionBtn,
+.confirmBtn,
+.completeBtn {
+  background: #26423b;
+  color: #fff;
+  border-color: #26423b;
 }
 
 .filePreview {
   width: 100%;
-  height: 1120px;
-  min-height: 720px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  background: #f9fafb;
+  min-height: 520px;
+  border: 0;
+  border-radius: 18px;
+  background: #fff;
 }
 
-.pdfViewerShell {
-  width: 100%;
-  min-height: 680px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  background: #eef2f7;
-  padding: 14px;
-}
-
-.pdfPages {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 18px;
-}
-
-.pdfPageWrap {
-  max-width: 100%;
-  padding: 10px;
-  border-radius: 6px;
-  background: #ffffff;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
-}
-
-.pdfPage {
-  display: block;
-  max-width: 100%;
-  height: auto !important;
-  background: #ffffff;
-}
-
-.noPreview,
-.stateMessage {
-  padding: 18px;
-}
-
-.documentPreview {
-  min-height: 760px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px dashed #cbd5e1;
-  border-radius: 8px;
-  background: #f8fafc;
-  color: #334155;
-  padding: 24px;
-  text-align: center;
-}
-
-.documentPreview h3 {
-  margin: 0 0 8px;
-  color: #111827;
-  overflow-wrap: anywhere;
-}
-
-.documentPreview p {
-  margin: 0;
-  color: #64748b;
+.documentPreview,
+.noPreview {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px dashed rgba(38, 66, 59, 0.16);
+  background: #fff;
 }
 
 .lessonActions {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 12px;
+  align-items: center;
 }
 
 .lessonStatus {
-  min-height: 40px;
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  background: #f9fafb;
-  color: #4b5563;
-  font-weight: 800;
-  padding: 10px 14px;
-}
-
-.statusCompleted {
-  border-color: #bbf7d0;
-  background: #f0fdf4;
-  color: #15803d;
-}
-
-.completeBtn.completedBtn {
-  background: #15803d;
-  cursor: default;
-}
-
-.completeBtn:disabled {
-  opacity: 0.78;
-  transform: none;
-  box-shadow: none;
-}
-
-@media (max-width: 860px) {
-  .Center {
-    padding: 20px 14px 40px;
-  }
-
-  .TopContent {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .Date {
-    width: 100%;
-    justify-content: flex-start;
-    border-left: 0;
-    border-top: 1px solid #e5e7eb;
-    padding-left: 0;
-    padding-top: 14px;
-    text-align: left;
-  }
-
-  .bookLayout {
-    grid-template-columns: 1fr;
-  }
-
-  .lessonsList {
-    border-right: 0;
-    border-bottom: 1px solid #e5e7eb;
-    padding-right: 0;
-    padding-bottom: 18px;
-  }
-
-  .lessonsContainer {
-    max-height: none;
-  }
-
-  .filePreview {
-    min-height: 360px;
-  }
-}
-
-@media (max-width: 520px) {
-  .TopContent,
-  .progressContainer,
-  .bookLayout,
-  .fileSection {
-    padding: 16px;
-  }
-
-  .fileActions,
-  .lessonActions {
-    flex-direction: column;
-  }
-
-  .fileActions a,
-  .fileActionBtn,
-  .completeBtn {
-    width: 100%;
-  }
-}
-
-/* Modal styles copied for book cover upload */
-.modal {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background: rgba(15, 23, 42, 0.52);
-}
-
-.modalContent {
-  width: min(520px, 100%);
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  background: #ffffff;
-  border-radius: 8px;
-  padding: 26px;
-  box-shadow: 0 22px 70px rgba(15, 23, 42, 0.26);
-}
-
-.modalContent h2 {
-  font-size: 1.35rem;
-}
-
-.modalContent label {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  color: #374151;
-  font-size: 0.92rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(145, 167, 154, 0.16);
+  color: #26423b;
   font-weight: 700;
 }
 
-.modalContent input {
-  width: 100%;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  padding: 12px 14px;
-  color: #111827;
-  font: inherit;
-  outline: none;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+.statusCompleted {
+  background: rgba(38, 66, 59, 0.12);
 }
 
-.modalButtons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 4px;
+.completedBtn {
+  opacity: 0.78;
 }
 
-.modalButtons button {
-  min-width: 96px;
-  min-height: 40px;
-  padding: 10px 14px;
-}
-
-.cancelBtn {
-  background: #e5e7eb;
-  color: #374151;
-}
-
-.cancelBtn:hover {
-  background: #d1d5db;
-}
-
-.confirmBtn {
-  background: #111827;
-  color: #ffffff;
-}
-
-.confirmBtn:hover {
-  background: #374151;
-  transform: translateY(-1px);
-  box-shadow: 0 10px 22px rgba(17, 24, 39, 0.14);
-}
-
+.modal,
 .fullscreenPdf {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: #f4f7f5;
+}
+
+.modalContent {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  padding: 20px;
+  border-radius: 24px;
+  background: #fff;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  box-shadow: 0 28px 80px rgba(18, 34, 30, 0.18);
+}
+
+.modalContent label {
+  display: grid;
+  gap: 8px;
+  color: #13251f;
+}
+
+.fullscreenPdf {
   display: flex;
   flex-direction: column;
-  background: #f8fafc;
+  gap: 14px;
+  align-items: stretch;
+  justify-content: stretch;
+  width: 100%;
+  height: 100%;
+  background: #f4f7f5;
+  padding: 18px;
 }
 
 .fullscreenHeader {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  border-bottom: 1px solid #d1d5db;
-  background: #ffffff;
-  padding: 14px 20px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 0;
+  padding: 14px 16px;
+  border-radius: 20px;
+  background: #fff;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  box-shadow: 0 18px 40px rgba(18, 34, 30, 0.08);
 }
 
 .fullscreenHeader h2,
@@ -758,47 +872,168 @@
   margin: 0;
 }
 
-.fullscreenHeader h2 {
-  color: #111827;
-  font-size: 1.05rem;
-}
-
-.fullscreenHeader p {
-  margin-top: 4px;
-  color: #64748b;
-  font-size: 0.86rem;
-  overflow-wrap: anywhere;
-}
-
-.fullscreenHeader button {
-  flex: 0 0 auto;
-  min-height: 40px;
-  border: 0;
-  border-radius: 6px;
-  background: #111827;
-  color: #ffffff;
-  cursor: pointer;
-  font-weight: 800;
-  padding: 10px 16px;
-}
-
-.fullscreenHeader button:hover {
-  background: #374151;
-}
-
 .fullscreenReader {
   flex: 1;
-  overflow-y: auto;
-  padding: 22px;
+  min-height: 0;
+  max-height: none;
+  width: 100%;
+  background: #fff;
+  border-radius: 24px;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  padding: 18px;
+  box-shadow: 0 18px 40px rgba(18, 34, 30, 0.08);
 }
 
-.fullscreenReader .pdfViewerShell {
+.pdfViewerShell {
+  width: 100%;
+  display: grid;
+  gap: 12px;
+}
+
+.pdfPages {
+  width: 100%;
+  display: grid;
+  gap: 14px;
+}
+
+.pdfPageWrap {
+  width: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.pdfPageWrap canvas {
+  max-width: 100%;
+}
+
+.pdfPage {
+  max-width: 100%;
+  height: auto;
+  border-radius: 18px;
+  box-shadow: 0 12px 28px rgba(18, 34, 30, 0.08);
+}
+
+.imagePreview {
+  width: 100%;
   min-height: 100%;
-  border: 0;
-  background: transparent;
-  padding: 0;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  border-radius: 18px;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  padding: 14px;
 }
 
-.fullscreenReader .pdfPageWrap {
-  width: fit-content;
+.previewImage {
+  width: 100%;
+  max-height: calc(100vh - 240px);
+  object-fit: contain;
+  border-radius: 14px;
+}
+
+.textPreview {
+  width: 100%;
+  min-height: 100%;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  background: #fff;
+  overflow: auto;
+}
+
+.textPreview pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "Poppins", sans-serif;
+  color: #13251f;
+  line-height: 1.6;
+}
+
+.genericPreview {
+  width: 100%;
+  min-height: calc(100vh - 240px);
+  height: calc(100vh - 240px);
+  border: 0;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.stateMessage,
+.emptyText {
+  padding: 12px 0;
+  color: #5e7268;
+  text-align: center;
+}
+
+@media (max-width: 980px) {
+  .Center {
+    padding: 18px 20px 32px;
+  }
+
+  .bookLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .teacherTabs {
+    width: 100%;
+  }
+
+  .progressTable {
+    min-width: 680px;
+  }
+}
+
+@media (max-width: 640px) {
+  .Center {
+    padding: 14px 12px 28px;
+    border-radius: 0;
+  }
+
+  .TopContent,
+  .lessonActions,
+  .fileActions,
+  .modalButtons,
+  .fullscreenHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .Teacher,
+  .Date {
+    width: 100%;
+  }
+
+  .bookTitleRow {
+    align-items: flex-start;
+  }
+
+  .changeCoverBtn {
+    width: fit-content;
+  }
+
+  .teacherTab,
+  .tabButton,
+  .activeTeacherTab,
+  .activeTab,
+  .fileActions a,
+  .fileActionBtn,
+  .confirmBtn,
+  .cancelBtn,
+  .completeBtn,
+  .fullscreenHeader button {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+@media (max-width: 900px) {
+  .instructionContent {
+    flex-direction: column;
+  }
+
+  .leftSide,
+  .rightSide {
+    width: 100%;
+  }
 }

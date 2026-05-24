@@ -1,43 +1,69 @@
 .Center {
-      height: 86vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  /* padding: 24px 16px; */
+  margin: -1.8rem;
+}
 
-    table {
-      width: 80vw;
-      box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-      border-radius: 1rem;
-    }
+table {
+  width: 100%;
+  background: #fff;
+  box-shadow: 0 18px 40px rgba(18, 34, 30, 0.08);
+  border-radius: 24px;
+  overflow: hidden;
+  border-collapse: collapse;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+}
 
-    th, td {
-      padding: 25px;
-      text-align: left;
-      border-bottom: 1px solid #ddd;
-    }
+th,
+td {
+  padding: 18px 20px;
+  text-align: left;
+  border-bottom: 1px solid rgba(38, 66, 59, 0.1);
+  color: #13251f;
+}
 
-    .Icon{
-      color: black;
-    }
+th {
+  background: #f8fbf9;
+  color: #26423b;
+  font-weight: 800;
+}
 
-    .submitButton {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 8px 16px;
-      border-radius: 999px;
-      background-color: #0b5ed7;
-      color: white;
-      text-decoration: none;
-      font-size: 0.95rem;
-      border: none;
-      cursor: pointer;
-      transition: background-color 0.2s ease;
-    }
+.Icon {
+  color: #26423b;
+}
 
-    .submitButton:hover,
-    .submitButton:focus {
-      background-color: #084298;
-      outline: none;
-    }
+.submitButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 10px 16px;
+  border-radius: 18px;
+  background: #26423b;
+  color: white;
+  text-decoration: none;
+  font-size: 0.95rem;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.18s ease, background-color 0.18s ease;
+}
+
+.submitButton:hover,
+.submitButton:focus {
+  background-color: #35594e;
+  transform: translateY(-1px);
+  outline: none;
+}
+
+@media (max-width: 800px) {
+  .Center {
+    padding: 16px 12px;
+  }
+
+  table {
+    display: block;
+    overflow-x: auto;
+  }
+}

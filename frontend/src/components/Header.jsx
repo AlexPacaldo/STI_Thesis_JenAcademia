@@ -15,7 +15,7 @@ function profileSrc(user) {
   return `${API}${url}`;
 }
 
-function Header() {
+function Header({ isSidebarOpen = false, onMenuClick }) {
   const location = useLocation();
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
@@ -23,6 +23,7 @@ function Header() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [studentPackage, setStudentPackage] = useState(null);
+  const [isScrolled, setIsScrolled] = useState(false);
   const currentUserId = user?.id || user?.user_id || user?.userId;
 
   useEffect(() => {
@@ -42,6 +43,57 @@ function Header() {
       console.warn("Failed to read user from localStorage:", e);
     }
   }, [location]);
+
+  useEffect(() => {
+    const contentArea = document.querySelector(".content-area");
+    const root = document.getElementById("root");
+    const scrollTargets = [
+      window,
+      document,
+      document.scrollingElement,
+      document.documentElement,
+      document.body,
+      root,
+      contentArea,
+      document.querySelector(".app-container"),
+      document.querySelector(".app-layout"),
+    ].filter(Boolean);
+
+    const uniqueTargets = scrollTargets.reduce((acc, target) => {
+      if (!acc.includes(target)) acc.push(target);
+      return acc;
+    }, []);
+
+    const getScrollTop = () => {
+      const values = uniqueTargets.map((target) => {
+        if (target === window) return window.scrollY || window.pageYOffset || 0;
+        return target.scrollTop || 0;
+      });
+      return Math.max(0, ...values);
+    };
+
+    const handleScroll = () => {
+      setIsScrolled(getScrollTop() > 0);
+    };
+
+    handleScroll();
+
+    uniqueTargets.forEach((target) => {
+      target.addEventListener("scroll", handleScroll, { passive: true });
+    });
+    window.addEventListener("wheel", handleScroll, { passive: true });
+    window.addEventListener("touchmove", handleScroll, { passive: true });
+    window.addEventListener("keydown", handleScroll, { passive: true });
+
+    return () => {
+      uniqueTargets.forEach((target) => {
+        target.removeEventListener("scroll", handleScroll);
+      });
+      window.removeEventListener("wheel", handleScroll);
+      window.removeEventListener("touchmove", handleScroll);
+      window.removeEventListener("keydown", handleScroll);
+    };
+  }, [location.pathname]);
 
   // Listen for profile updates
   useEffect(() => {
@@ -154,7 +206,7 @@ function Header() {
       <header className={styles.header}>
         <div className={styles.headerContainer}>
           <div className={styles.brandName}>
-            <i>JEN Academia</i>
+            JEN Academia
           </div>
         </div>
       </header>
@@ -191,31 +243,48 @@ function Header() {
     isAccountPage ||
     isAdminDashboardPage;
 
+  const headerStyle = {
+    background: isScrolled ? 'rgba(255, 255, 255, 0.98)' : 'transparent',
+    // boxShadow: isScrolled ? '0 14px 40px rgba(0,0,0,0.14)' : 'none',
+    // borderBottom: isScrolled ? '1px solid rgba(0,0,0,0.08)' : '1px solid transparent',
+    transition: 'background 240ms ease, box-shadow 240ms ease, border-color 240ms ease',
+  };
+
+  const shouldShowMenuButton = !(isAccountPage && !profileCompleted);
+
   return (
     <>
-      <header className={styles.header}>
+      <header className={styles.header} style={headerStyle}>
         <div className={styles.headerContainer}>
+        {shouldShowMenuButton && (
+          <button
+            type="button"
+            className={styles.menuButton}
+            onClick={onMenuClick}
+            aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
+            aria-expanded={isSidebarOpen}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+        )}
         
 
         {role === "student" && isStudentArea && (
           <>
-            <Link to="/StudentDashboard" className={styles.brandName}><i>JEN Academia</i></Link>
+            <Link className={styles.brandName}>JEN Academia</Link>
           </>
         )}
         {role === "teacher" && isTeacherArea && (
           <>
-            <Link to="/TeacherDashboard" className={styles.brandName}><i>JEN Academia</i></Link>
+            <Link className={styles.brandName}>JEN Academia</Link>
           </>
         )}
         {role === "admin" && isAdminArea && (
           <>
-            <Link to="/AdminDashboard" className={styles.brandName}><i>JEN Academia</i></Link>
+            <Link to="/AdminDashboard" className={styles.brandName}>JEN Academia</Link>
           </>
-        )}
-        {!user && (
-          <Link to="/" className={styles.brandName}>
-            <i>JEN Academia</i>
-          </Link>
         )}
 
         
@@ -223,51 +292,22 @@ function Header() {
           {/* 🧩 STUDENT NAVIGATION */}
           {role === "student" && isStudentArea && profileCompleted && (
             <>
-              <Link 
-                to="/Calendar"
-                className={styles.schedulenav}
-              >
-                Calendar
-              </Link>
-              <Link 
-                to="/assignments"
-              >
-                Assignments
-              </Link>
-              <Link 
-                to="/remarks"
-              >
-                Remarks
-              </Link>
-              {!studentHasNoClassesLeft && (
-                <Link
-                  to="/booksLessons"
-                >
-                  Books / Lessons
-                </Link>
-              )}
 
               {/* Notification Bell */}
-              <button
-                className={styles.notificationBell}
-                onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-                title="Reschedule Requests"
-              >
+              <button className={styles.notificationBell} onClick={() => setIsNotificationOpen(!isNotificationOpen)} title="Reschedule Requests">
                 🔔
                 {unreadCount > 0 && (
                   <span className={styles.badge}>{unreadCount}</span>
                 )}
               </button>
 
+              <span className={styles.headerSeparator} aria-hidden="true">|</span>
+
               <Link to="/account" className={styles.StudentAccount}>
-                <img
-                  src={profileSrc(user)}
-                  alt="Profile"
-                  className={styles.profilePic}
-                />
                 <div className={styles.account}>
-                  <i>{`${user?.firstName || ""} ${user?.lastName || ""}`}</i>
+                  {`${user?.firstName || ""} ${user?.lastName || ""}`}
                 </div>
+                <img src={profileSrc(user)} alt="Profile" className={styles.profilePic}/>
               </Link>
 
              
@@ -277,48 +317,21 @@ function Header() {
           {/* 🧩 TEACHER NAVIGATION */}
           {role === "teacher" && isTeacherArea && profileCompleted && (
             <>
-              <Link 
-                to="/Calendar"
-              >
-                Calendar
-              </Link>
-              <Link 
-                to="/PassRemarks"
-              >
-                Remarks
-              </Link>
-              <Link 
-                to="/teacherAssignment"
-              >
-                Assignments
-              </Link>
-              <Link 
-                to="/teacherBooksLessons"
-              >
-                Books / Lessons
-              </Link>
-
               {/* Notification Bell */}
-              <button
-                className={styles.notificationBell}
-                onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-                title="Reschedule Requests"
-              >
+              <button className={styles.notificationBell} onClick={() => setIsNotificationOpen(!isNotificationOpen)} title="Reschedule Requests">
                 🔔
                 {unreadCount > 0 && (
                   <span className={styles.badge}>{unreadCount}</span>
                 )}
               </button>
 
+              <span className={styles.headerSeparator} aria-hidden="true">|</span>
+
               <Link to="/account" className={styles.TeacherAccount}>
-                <img
-                  src={profileSrc(user)}
-                  alt="Profile"
-                  className={styles.profilePic}
-                />
                 <div className={styles.account}>
-                  <i>{`${user?.firstName || ""} ${user?.lastName || ""}`}</i>
+                  {`${user?.firstName || ""} ${user?.lastName || ""}`}
                 </div>
+                <img src={profileSrc(user)} alt="Profile" className={styles.profilePic}/>
               </Link>
 
               
@@ -338,25 +351,20 @@ function Header() {
                 )}
               </button>
 
+              <span className={styles.headerSeparator} aria-hidden="true">|</span>
+
               <Link to="/account" className={styles.TeacherAccount}>
+                <div className={styles.account}>
+                  {`${user?.firstName || ""} ${user?.lastName || ""}`}
+                </div>
                 <img
                   src={profileSrc(user)}
                   alt="Profile"
                   className={styles.profilePic}
                 />
-                <div className={styles.account}>
-                  <i>{`${user?.firstName || ""} ${user?.lastName || ""}`}</i>
-                </div>
               </Link>
 
               
-            </>
-          )}
-
-          {/* 🧩 GUEST (not logged in) */}
-          {!user && (
-            <>
-              <Link to="/login" className={styles.btn}>Log in</Link>
             </>
           )}
         </nav>

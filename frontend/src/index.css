@@ -1,2 +1,158 @@
+* {
+  box-sizing: border-box;
+  font-family: "Poppins", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
 
+:root {
+  --primary: #26423b;
+  --accent: #91a79a;
+  --bg: #f4f7f5;
+  --surface: #ffffff;
+  --surface-soft: #f8fbf9;
+  --surface-muted: #eef3f0;
+  --text: #13251f;
+  --muted: #5e7268;
+  --border: rgba(38, 66, 59, 0.12);
+  --border-strong: rgba(38, 66, 59, 0.18);
+  --shadow-sm: 0 8px 24px rgba(18, 34, 30, 0.06);
+  --shadow-md: 0 16px 42px rgba(18, 34, 30, 0.09);
+  --shadow-lg: 0 24px 60px rgba(18, 34, 30, 0.12);
+  --radius-sm: 14px;
+  --radius-md: 20px;
+  --radius-lg: 28px;
+  --radius-xl: 36px;
+  --control-radius: 18px;
+  --sidebar-width: 230px;
+}
 
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+body {
+  background: linear-gradient(180deg, #f7faf8 0%, var(--bg) 100%);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  border-radius: var(--control-radius);
+}
+
+button {
+  color: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+.app-container {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: row;
+}
+
+.app-container.full-bleed {
+  width: 100vw;
+  margin-left: calc(-50vw + 50%);
+  padding: 0;
+}
+
+.app-layout {
+  width: 100%;
+  margin-left: var(--sidebar-width);
+}
+
+/* When the account page intentionally hides the sidebar, remove left margin */
+.app-layout.account-no-sidebar {
+  margin-left: 0;
+}
+
+.app-layout.full-bleed {
+  width: 100%;
+  padding: 0;
+  margin-left: 0;
+}
+
+.content-area {
+  margin: 0 1.8rem 2rem;
+}
+
+.content-area.full-bleed {
+  margin: 0;
+}
+
+.content-inner {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border);
+}
+
+.content-inner.full-bleed {
+  padding: 0 !important;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  border: 0;
+}
+
+@media (max-width: 1200px) {
+  :root {
+    --sidebar-width: 216px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .app-layout {
+    margin-left: var(--sidebar-width);
+  }
+
+  .right-panel {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  :root {
+    --sidebar-width: 0px;
+  }
+
+  .app-layout {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 800px) {
+  .app-layout {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+
+  .content-area {
+    margin: 0 0 1.25rem;
+  }
+
+  .content-inner {
+    padding: 16px;
+    border-radius: var(--radius-md);
+  }
+}

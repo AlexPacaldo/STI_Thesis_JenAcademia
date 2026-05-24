@@ -21,6 +21,13 @@ function getUserName(user) {
     : user.name || user.fullName || "";
 }
 
+function studentProfileSrc(student) {
+  const url = student?.profileImageUrl || student?.profile_image_url || student?.profile_picture;
+  if (!url) return userPic;
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API}${url}`;
+}
+
 function formatStudent(student) {
   return {
     id: student.user_id ?? student.id ?? student.studentId,
@@ -28,6 +35,7 @@ function formatStudent(student) {
       student.name ||
       `${student.first_name || student.firstName || ""} ${student.last_name || student.lastName || ""}`.trim(),
     courseId: student.course_id ?? student.courseId ?? null,
+    profileImageUrl: student.profileImageUrl || student.profile_image_url || student.profile_picture || "",
   };
 }
 
@@ -171,6 +179,7 @@ export default function AssignTask() {
           id: assignment.studentId,
           name: assignment.student,
           courseId: assignment.courseId ?? existing?.courseId ?? null,
+          profileImageUrl: existing?.profileImageUrl || assignment.profileImageUrl || assignment.profile_image_url || "",
         });
       }
     });
@@ -182,6 +191,7 @@ export default function AssignTask() {
           id: submission.studentId,
           name: submission.student,
           courseId: submission.courseId ?? existing?.courseId ?? null,
+          profileImageUrl: existing?.profileImageUrl || submission.profileImageUrl || submission.profile_image_url || "",
         });
       }
     });
@@ -304,7 +314,14 @@ export default function AssignTask() {
                   setSelectedSubmission(null);
                 }}
               >
-                <h1>{student.name}</h1>
+                <div className={styles.studentSummary}>
+                  <img
+                    src={studentProfileSrc(student)}
+                    alt={student.name}
+                    className={styles.studentAvatar}
+                  />
+                  <h1>{student.name}</h1>
+                </div>
               </button>
             ))
           ) : (
@@ -336,7 +353,7 @@ export default function AssignTask() {
             {activeTab === "assign" ? (
               <>
                 <div className={styles.user}>
-                  <img src={userPic} alt="Selected student" />
+                  <img src={studentProfileSrc(selectedStudent)} alt={selected || "Selected student"} />
                   <div>
                     <h1>{selected || "Select a student"}</h1>
                   </div>

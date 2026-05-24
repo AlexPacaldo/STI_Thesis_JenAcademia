@@ -4,6 +4,14 @@ import teacherPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/remarks.module.css";
 import { getStoredUserTimezone } from "../utils/timezone.js";
 
+const API = "http://localhost:3001";
+
+function absoluteUrl(url) {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API}${url}`;
+}
+
 export default function Remarks() {
   const [remarks, setRemarks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -96,9 +104,8 @@ export default function Remarks() {
   }, []);
 
   return (
-    <section className={styles.Center}>
+    
       <div className={styles.CenterContent}>
-        <br />
         <h1><b>Teacher’s Remarks</b></h1>
 
         {loading && <p>Loading remarks...</p>}
@@ -111,7 +118,11 @@ export default function Remarks() {
           <div key={remark.remark_id} className={styles.remarksCard}>
             <div className={styles.remarksHeader}>
               <div className={styles.teacherInfo}>
-                <img src={teacherPic} alt={remark.teacher_name} className={styles.avatar} />
+                <img
+                  src={absoluteUrl(remark.teacher_profile_image_url) || teacherPic}
+                  alt={remark.teacher_name}
+                  className={styles.avatar}
+                />
                 <h3>{remark.teacher_name}</h3>
               </div>
               <span className={styles.date}>{new Date(remark.created_at).toLocaleDateString("en-US", { timeZone: getStoredUserTimezone() })}</span>
@@ -123,6 +134,5 @@ export default function Remarks() {
           </div>
         ))}
       </div>
-    </section>
   );
 }

@@ -1,68 +1,68 @@
-.Center {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 86vh;
-    }
+.CenterContent {
+  width:auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: #fff;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  border-radius: 24px;
+  box-shadow: 0 18px 40px rgba(18, 34, 30, 0.08);
+  padding: 24px;
+  margin: -1.8rem;
+}
 
-    .CenterContent {
-    background-color: #f0f0f0;
-    width: 50vw;
-    border-radius: 1rem;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin-top: 3%;
-    justify-content: center;
-    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-    }
+.CenterContent h1 {
+  font-size: clamp(1.6rem, 2.2vw, 2rem);
+  margin: 0;
+  color: #26423b;
+}
 
-    .CenterContent h1 {
-    font-size: 1.8rem;
-    margin-bottom: 30px;
-    }
+.remarksCard {
+  background: #f8fbf9;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  border-radius: 20px;
+  width: 100%;
+  padding: 18px;
+  box-shadow: 0 12px 28px rgba(18, 34, 30, 0.06);
+}
 
-    .remarksCard {
-    background-color: white;
-    border-radius: 1rem;
-    width: 80%;
-    padding: 20px;
-    margin-bottom: 30px;
-    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-    }
+.remarksHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
 
-    .remarksHeader {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-    }
+.teacherInfo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 
-    .teacherInfo {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    }
+.avatar {
+  width: 34px;
+  height: 34px;
+  background-color: #dce7e2;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+}
 
-    .avatar {
-    width: 30px;
-    height: 30px;
-    background-color: #ccc;
-    border-radius: 50%;
-    box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-    border: 1px solid rgba(0, 0, 0, 0);
-    margin-top: -3%;
-    }
+.date {
+  font-size: 0.9rem;
+  color: #5e7268;
+}
 
-    .date {
-    font-size: 0.9rem;
-    color: #666;
-    }
+.remarksCard p {
+  font-size: 0.95rem;
+  color: #13251f;
+  line-height: 1.6;
+}
 
-    .remarksCard p {
-    font-size: 0.95rem;
-    color: #333;
-    line-height: 1.4;
-    }
+@media (max-width: 640px) {
+  .CenterContent {
+    padding: 18px;
+  }
+}

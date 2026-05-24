@@ -8,7 +8,6 @@
 }
 
 .siteFooter{
-  margin-top: 64px;
   background: var(--footer-bg);
   color: var(--footer-fg);
   border-top: 1px solid var(--footer-border);

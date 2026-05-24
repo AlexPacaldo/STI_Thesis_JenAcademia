@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import styles from "../assets/login.module.css";
 import Girl from "../assets/img/homepage/Girl.png";
 import { useNotification } from "../components/NotificationContainer.jsx";
+import { Link } from "react-router-dom";
 
 export default function Login() {
   const { notify } = useNotification() || {};
@@ -72,9 +73,9 @@ export default function Login() {
   return (
     <div className={styles.page}>
       <div className={styles.backRow}>
-        <button type="button" className={styles.backButton} onClick={() => window.history.back()}>
+        <Link to="/" className={styles.backButton}>
           ← Back
-        </button>
+        </Link>
       </div>
 
       <section className={styles.loginSection}>

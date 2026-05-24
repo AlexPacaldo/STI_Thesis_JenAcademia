@@ -25,6 +25,98 @@ const getAssetUrl = (url) => {
   return String(url).startsWith("http") ? url : `${API_BASE}${url}`;
 };
 
+const getFileExtension = (fileName) => {
+  const cleaned = String(fileName || "").split("?")[0].split("#")[0];
+  return cleaned.includes(".") ? cleaned.split(".").pop().toLowerCase() : "";
+};
+
+const decodeText = (value) => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
+function InlineFilePreview({ fileUrl, fileName, onRendered }) {
+  const ext = getFileExtension(fileName);
+  const [textContent, setTextContent] = useState("");
+  const [textStatus, setTextStatus] = useState("idle");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!fileUrl) {
+      setTextContent("");
+      setTextStatus("idle");
+      return undefined;
+    }
+
+    if (["txt", "md", "csv", "json", "log"].includes(ext)) {
+      setTextStatus("loading");
+      fetch(fileUrl)
+        .then((res) => res.text())
+        .then((text) => {
+          if (!cancelled) {
+            setTextContent(text);
+            setTextStatus("ready");
+            onRendered?.();
+          }
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            console.error("Error loading text preview:", error);
+            setTextStatus("error");
+          }
+        });
+    } else {
+      setTextContent("");
+      setTextStatus("idle");
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ext, fileUrl, onRendered]);
+
+  if (!fileUrl) return null;
+
+  if (ext === "pdf") {
+    return <PdfLessonViewer fileUrl={fileUrl} title={fileName} onRendered={onRendered} />;
+  }
+
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(ext)) {
+    return (
+      <div className={styles.imagePreview}>
+        <img src={fileUrl} alt={fileName} className={styles.previewImage} onLoad={onRendered} />
+      </div>
+    );
+  }
+
+  if (["txt", "md", "csv", "json", "log"].includes(ext)) {
+    return (
+      <div className={styles.textPreview}>
+        {textStatus === "loading" ? (
+          <p className={styles.emptyText}>Loading file preview...</p>
+        ) : textStatus === "error" ? (
+          <p className={styles.emptyText}>This file could not be loaded.</p>
+        ) : (
+          <pre>{textContent}</pre>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <iframe
+      title={`${fileName} preview`}
+      src={fileUrl}
+      className={styles.genericPreview}
+      onLoad={onRendered}
+    />
+  );
+}
+
 function PdfLessonViewer({ fileUrl, title, onRendered }) {
   const containerRef = useRef(null);
   const renderTokenRef = useRef(0);
@@ -136,6 +228,15 @@ export default function BooksContent({ mode = "student" }) {
   const [showPdfFullscreen, setShowPdfFullscreen] = useState(false);
   const readerViewportRef = useRef(null);
   const fullscreenReaderRef = useRef(null);
+
+  useEffect(() => {
+    if (!showPdfFullscreen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showPdfFullscreen]);
 
   const isTeacherView = mode === "teacher";
   const teacherId = useMemo(() => {
@@ -266,12 +367,7 @@ export default function BooksContent({ mode = "student" }) {
     return selectedLesson.file_path.split("/").pop()?.replace(/^\d+-/, "") || "Lesson material";
   }, [selectedLesson]);
 
-  const canPreviewFile = useMemo(() => {
-    const fileName = selectedFileName.toLowerCase();
-    return fileName.endsWith(".pdf") || fileName.endsWith(".txt");
-  }, [selectedFileName]);
-
-  const isPdfFile = useMemo(() => selectedFileName.toLowerCase().endsWith(".pdf"), [selectedFileName]);
+  const fileExtension = useMemo(() => getFileExtension(selectedFileName), [selectedFileName]);
 
   const selectedLessonId = selectedLesson?.lesson_id;
   const selectedLessonCompleted = selectedLessonId ? isLessonCompleted(progress[selectedLessonId]) : false;
@@ -423,13 +519,19 @@ export default function BooksContent({ mode = "student" }) {
             ) : (
               <img src={teacherPic} alt="Teacher" />
             )}
-            {isTeacherView && (
-              <div style={{ marginLeft: 12 }}>
-                <button type="button" onClick={() => setShowCoverModal(true)}>Change Cover</button>
+            <div className={styles.bookTitleGroup}>
+              <div className={styles.bookTitleRow}>
+                <h1><b>{book.title}</b></h1>
+                {isTeacherView && (
+                  <button
+                    type="button"
+                    className={styles.changeCoverBtn}
+                    onClick={() => setShowCoverModal(true)}
+                  >
+                    Change Cover
+                  </button>
+                )}
               </div>
-            )}
-            <div>
-              <h1><b>{book.title}</b></h1>
               <p>{isTeacherView ? "Uploaded lessons" : book.author || "Your Teacher"}</p>
             </div>
           </div>
@@ -608,53 +710,31 @@ export default function BooksContent({ mode = "student" }) {
                   onScroll={handleReaderScroll}
                   ref={readerViewportRef}
                 >
-                  {selectedFileUrl ? (
-                    <section className={styles.fileSection}>
-                      <div className={styles.fileInfo}>
-                        <h3>Uploaded File</h3>
-                        <p>{selectedFileName}</p>
-                      </div>
+                {selectedFileUrl ? (
+                  <section className={styles.fileSection}>
+                    <div className={styles.fileInfo}>
+                      <h3>Uploaded File</h3>
+                      <p>{decodeText(selectedFileName)}</p>
+                    </div>
 
-                      <div className={styles.fileActions}>
-                        {isPdfFile ? (
-                          <button
-                            type="button"
-                            className={styles.fileActionBtn}
-                            onClick={() => setShowPdfFullscreen(true)}
-                          >
-                            Full screen
-                          </button>
-                        ) : (
-                          <a href={selectedFileUrl} target="_blank" rel="noopener noreferrer">
-                            Open file
-                          </a>
-                        )}
+                    <div className={styles.fileActions}>
+                        <button
+                          type="button"
+                          className={styles.fileActionBtn}
+                          onClick={() => setShowPdfFullscreen(true)}
+                        >
+                          Full screen
+                        </button>
                         <a href={selectedFileUrl} download>
                           Download
                         </a>
                       </div>
 
-                      {isPdfFile ? (
-                        <PdfLessonViewer
-                          fileUrl={selectedFileUrl}
-                          title={selectedLesson.title}
-                          onRendered={handleReaderScroll}
-                        />
-                      ) : canPreviewFile ? (
-                        <iframe
-                          title={`${selectedLesson.title} file preview`}
-                          className={styles.filePreview}
-                          src={selectedFileUrl}
-                          onLoad={handleReaderScroll}
-                        />
-                      ) : (
-                        <div className={styles.documentPreview}>
-                          <div>
-                            <h3>{selectedFileName}</h3>
-                            <p>This document opens in a separate tab or downloads to your device.</p>
-                          </div>
-                        </div>
-                      )}
+                      <InlineFilePreview
+                        fileUrl={selectedFileUrl}
+                        fileName={selectedFileName}
+                        onRendered={handleReaderScroll}
+                      />
                     </section>
                   ) : (
                     <div className={styles.noPreview}>
@@ -751,12 +831,12 @@ export default function BooksContent({ mode = "student" }) {
         </div>
       )}
 
-      {showPdfFullscreen && selectedFileUrl && isPdfFile && (
+      {showPdfFullscreen && selectedFileUrl && (
         <div className={styles.fullscreenPdf}>
           <div className={styles.fullscreenHeader}>
             <div>
               <h2>{selectedLesson?.title || "Lesson file"}</h2>
-              <p>{selectedFileName}</p>
+              <p>{decodeText(selectedFileName)}</p>
             </div>
             <button type="button" onClick={() => setShowPdfFullscreen(false)}>
               Close
@@ -768,11 +848,30 @@ export default function BooksContent({ mode = "student" }) {
             onScroll={handleFullscreenScroll}
             ref={fullscreenReaderRef}
           >
-            <PdfLessonViewer
-              fileUrl={selectedFileUrl}
-              title={selectedLesson?.title || "Lesson file"}
-              onRendered={handleFullscreenScroll}
-            />
+            {fileExtension === "pdf" ? (
+              <PdfLessonViewer
+                fileUrl={selectedFileUrl}
+                title={selectedLesson?.title || "Lesson file"}
+                onRendered={handleFullscreenScroll}
+              />
+            ) : fileExtension && ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(fileExtension) ? (
+              <div className={styles.imagePreview}>
+                <img src={selectedFileUrl} alt={selectedFileName} className={styles.previewImage} />
+              </div>
+            ) : fileExtension && ["txt", "md", "csv", "json", "log"].includes(fileExtension) ? (
+              <InlineFilePreview
+                fileUrl={selectedFileUrl}
+                fileName={selectedFileName}
+                onRendered={handleFullscreenScroll}
+              />
+            ) : (
+              <iframe
+                title={`${selectedFileName} preview`}
+                src={selectedFileUrl}
+                className={styles.genericPreview}
+                onLoad={handleFullscreenScroll}
+              />
+            )}
           </div>
         </div>
       )}

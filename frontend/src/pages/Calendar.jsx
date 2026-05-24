@@ -1867,7 +1867,6 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       </style>
       <main className={styles.page}>
       <section className={styles.center}>
-        <h1 className={styles.title}>Calendar</h1>
 
         <div className={styles.wrapper}>
           <div className={styles.calendarCard}>
