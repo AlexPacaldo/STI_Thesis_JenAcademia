@@ -40,6 +40,10 @@ body{
     margin-left: 230px;
 }
 
+.app-layout.account-no-sidebar {
+    margin-left: 0;
+}
+
 .app-layout.full-bleed {
     width: 100%;
     padding: 0;

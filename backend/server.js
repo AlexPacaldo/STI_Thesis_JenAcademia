@@ -701,6 +701,8 @@ function scoreTeacherForStudent(teacher, criteria, trialNotes, courseId) {
   };
 }
 
+const TEACHER_BALANCE_LIMIT = 2;
+
 async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = null, preferredTeacherId = null, db = pool }) {
   const normalizedCriteria = normalizeCriteria(criteria);
   const courseFilter = courseId ? parseInt(courseId, 10) : null;
@@ -728,7 +730,7 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
       return Number(a.assigned_student_count || 0) - Number(b.assigned_student_count || 0);
     });
 
-  const underBalanceLimit = ranked.filter((teacher) => Number(teacher.assigned_student_count || 0) < 5);
+  const underBalanceLimit = ranked.filter((teacher) => Number(teacher.assigned_student_count || 0) < TEACHER_BALANCE_LIMIT);
   const leastLoaded = [...ranked].sort((a, b) => {
     const loadDiff = Number(a.assigned_student_count || 0) - Number(b.assigned_student_count || 0);
     if (loadDiff !== 0) return loadDiff;
@@ -737,7 +739,7 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
   const preferred = preferredTeacherId
     ? ranked.find((teacher) => String(teacher.user_id) === String(preferredTeacherId))
     : null;
-  const assigned = preferred && Number(preferred.assigned_student_count || 0) < 5
+  const assigned = preferred && Number(preferred.assigned_student_count || 0) < TEACHER_BALANCE_LIMIT
     ? preferred
     : underBalanceLimit[0] || leastLoaded;
 
@@ -745,7 +747,7 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
     teacher: assigned || null,
     rankedTeachers: ranked,
     criteria: normalizedCriteria,
-    overBalanceTeachers: ranked.filter((teacher) => Number(teacher.assigned_student_count || 0) >= 5),
+    overBalanceTeachers: ranked.filter((teacher) => Number(teacher.assigned_student_count || 0) >= TEACHER_BALANCE_LIMIT),
     usedLeastLoadedFallback: underBalanceLimit.length === 0 && Boolean(leastLoaded),
   };
 }
@@ -2622,7 +2624,8 @@ app.get("/api/student/:student_id/remarks", async (req, res) => {
 
     const [rows] = await pool.query(
       `SELECT cr.*, c.class_name, c.scheduled_date, c.start_time, c.end_time,
-              t.first_name AS teacher_first, t.last_name AS teacher_last
+              t.first_name AS teacher_first, t.last_name AS teacher_last,
+              t.profile_image_url AS teacher_profile_image_url
        FROM class_remarks cr
        JOIN classes c ON cr.class_id = c.class_id
        JOIN users t ON cr.teacher_id = t.user_id
@@ -2636,6 +2639,7 @@ app.get("/api/student/:student_id/remarks", async (req, res) => {
       class_id: row.class_id,
       class_name: row.class_name,
       teacher_name: `${row.teacher_first} ${row.teacher_last}`,
+      teacher_profile_image_url: row.teacher_profile_image_url,
       remarks: row.remarks,
       rating: row.rating,
       created_at: row.created_at,
@@ -3053,6 +3057,7 @@ app.get("/api/teacher/:teacher_id/students", async (req, res) => {
 
     const [rows] = await pool.query(
       `SELECT u.user_id, u.first_name, u.last_name, u.email, u.contact_number AS contact,
+              u.profile_image_url,
               sp.proficiency_level, sp.assigned_teacher_id, sp.course_id, sp.trial_notes
        FROM users u
        JOIN student_profiles sp ON u.user_id = sp.user_id
@@ -3066,6 +3071,8 @@ app.get("/api/teacher/:teacher_id/students", async (req, res) => {
       last_name: student.last_name,
       email: student.email,
       contact: student.contact,
+      profileImageUrl: student.profile_image_url,
+      profile_image_url: student.profile_image_url,
       proficiency_level: student.proficiency_level,
       assigned_teacher_id: student.assigned_teacher_id,
       course_id: student.course_id,

@@ -4,6 +4,15 @@ import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/teacherSchedule.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 
+const API = "http://localhost:3001";
+
+function studentProfileSrc(student) {
+  const url = student?.profileImageUrl || student?.profile_image_url || student?.profile_picture;
+  if (!url) return userPic;
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API}${url}`;
+}
+
 export default function PassRemarks() {
   const { notify } = useNotification() || {};
   const [students, setStudents] = useState([]);
@@ -43,7 +52,7 @@ export default function PassRemarks() {
 
     setTeacherId(currentUserId);
     setTeacherName(fullName);
-    fetch(`http://localhost:3001/api/teacher/${currentUserId}/students`)
+    fetch(`${API}/api/teacher/${currentUserId}/students`)
       .then(async (res) => {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -88,7 +97,7 @@ export default function PassRemarks() {
 
     try {
       const classRes = await fetch(
-        `http://localhost:3001/api/teacher/${teacherId}/student/${selectedStudentId}/latest-class`
+        `${API}/api/teacher/${teacherId}/student/${selectedStudentId}/latest-class`
       );
       if (!classRes.ok) {
         const errData = await classRes.json().catch(() => ({}));
@@ -102,7 +111,7 @@ export default function PassRemarks() {
         return;
       }
 
-      const submitRes = await fetch("http://localhost:3001/api/calendar/remarks", {
+      const submitRes = await fetch(`${API}/api/calendar/remarks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -147,11 +156,18 @@ export default function PassRemarks() {
               onClick={() => setSelectedStudentId(student.user_id)}
               style={{ cursor: "pointer" }}
             >
-              <h1>{`${student.first_name} ${student.last_name}`}</h1>
-              <p style={{ fontSize: "0.9rem", marginTop: 6 }}>{student.email}</p>
-              <p style={{ fontSize: "0.8rem", marginTop: 6, color: "#4b5563" }}>
-                Enrolled with you
-              </p>
+              <div className={styles.studentSummary}>
+                <img
+                  src={studentProfileSrc(student)}
+                  alt={`${student.first_name} ${student.last_name}`}
+                  className={styles.studentAvatar}
+                />
+                <div className={styles.studentMeta}>
+                  <h1>{`${student.first_name} ${student.last_name}`}</h1>
+                  <p>{student.email}</p>
+                </div>
+              </div>
+              <p className={styles.enrollmentText}>Enrolled with you</p>
             </div>
           ))}
         </div>
@@ -161,7 +177,10 @@ export default function PassRemarks() {
             {selectedStudent ? (
               <>
                 <div className={styles.user}>
-                  <img src={userPic} alt={`${selectedStudent.first_name} ${selectedStudent.last_name}`} />
+                  <img
+                    src={studentProfileSrc(selectedStudent)}
+                    alt={`${selectedStudent.first_name} ${selectedStudent.last_name}`}
+                  />
                   <h1>{`${selectedStudent.first_name} ${selectedStudent.last_name}`}</h1>
                 </div>
 

@@ -1,122 +1,176 @@
-.Cont{
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 86vh;
+.Cont {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 86vh;
+  padding: 24px 16px;
 }
+
 .Center {
-      width: 100%;
-      background-color: #e9e7e7;
-      display: flex;
-      flex-direction: row;
-      gap: 3%;
-      padding: 2%;
-      border-radius: 1rem;
-      box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-    }
+  width: min(1180px, 100%);
+  display: flex;
+  flex-direction: row;
+  gap: 18px;
+  padding: 20px;
+  background: #fff;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  border-radius: 28px;
+  box-shadow: 0 24px 60px rgba(18, 34, 30, 0.08);
+}
 
-    .leftCard {
-      height: min-content;
-      width: 55%; 
-      background-color: white;
-      display: flex;
-      align-items: flex-start; 
-      justify-content: flex-start;
-      flex-direction: column;
-      gap: 1.5rem;
-      border-radius: 1rem;
-      padding: 3%; 
-      box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-    }
+.leftCard,
+.rightCard {
+  background: #fff;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  border-radius: 24px;
+  box-shadow: 0 18px 40px rgba(18, 34, 30, 0.06);
+}
 
-    .rightContent{
-        width: 90%;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-    }
+.leftCard {
+  height: min-content;
+  width: 55%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 24px;
+}
 
-    .words {
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-    }
+.rightContent {
+  width: 90%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
 
-    .words h1, .rightContent h1 {
-      font-size: 1.2rem;
-      margin-bottom: 0.5rem;
-    }
+.words {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
 
-    .commentBox {
-      width: 100%;
-      height: 5vh;
-      border: 1px solid #ccc;
-      border-radius: 1rem;
-      padding: 10px;
-      resize: none;
-      margin-top: 8px;
-      box-sizing: border-box;
-      box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-    }
+.words h1,
+.rightContent h1 {
+  font-size: 1.2rem;
+  margin-bottom: 0.5rem;
+  color: #13251f;
+}
 
-    .submitComment {
-      background-color: black;
-      color: white;
-      border: none;
-      padding: 2%;
-      border-radius: 1rem;
-      cursor: pointer;
-      transition: 0.3s;
-      box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-      width: 100%;
-    }
+.fileName {
+  margin: 0.5rem 0 0;
+  color: #5e7268;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
 
-    .submitComment:hover {
-      background-color: white;
-      color: black;
-      box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-      border: none;
-    }
+.commentBox,
+.postBox,
+.fileInput {
+  width: 100%;
+  border: 1px solid rgba(38, 66, 59, 0.14);
+  border-radius: 18px;
+  padding: 12px 14px;
+  background: #fff;
+  color: #13251f;
+  box-shadow: inset 0 1px 2px rgba(18, 34, 30, 0.04);
+}
 
-    .wordPreview{
-        border: 1px solid rgb(214, 208, 208);
-        box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-        width: 100%;
-        height: min-content;
-        border-radius: 1rem;
-        padding-top: 3%;
-        padding-bottom: 3%;
-        font-size: 2.2vh;
-    }
+.commentBox {
+  height: 5vh;
+  resize: none;
+  margin-top: 8px;
+}
 
-    .card{
-        padding: 1%;
-        margin-left: 5%;
-    }
-    .card h1, p{
-        font-size: 70%;
-    }
+.postBox {
+  min-height: 10vh;
+  resize: none;
+}
 
-    .rightCard {
-      height: min-content;
-      width: 45%;
-      background-color: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 1rem;
-      padding: 2%;
-      box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-    }
+.submitComment {
+  background: #26423b;
+  color: white;
+  border: 1px solid #26423b;
+  padding: 12px 16px;
+  border-radius: 18px;
+  cursor: pointer;
+  transition: 0.3s;
+  width: 100%;
+  box-shadow: 0 16px 32px rgba(18, 34, 30, 0.12);
+}
 
-    
-    .postBox {
-      width: 100%;
-      min-height: 10vh;
-      border: 1px solid #ccc;
-      padding: 3%;
-      border-radius: 1rem;
-      resize: none;
-      box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
-    }
+.submitComment:hover {
+  background: #35594e;
+}
+
+.wordPreview {
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  box-shadow: 0 18px 36px rgba(18, 34, 30, 0.06);
+  width: 100%;
+  height: min-content;
+  border-radius: 20px;
+  padding: 16px;
+  font-size: 1rem;
+  background: #f8fbf9;
+}
+
+.card {
+  padding: 0;
+  margin-left: 0;
+}
+
+.card h1,
+.card p {
+  font-size: 1rem;
+}
+
+.rightCard {
+  height: min-content;
+  width: 45%;
+  padding: 20px;
+}
+
+.infoBox {
+  width: 100%;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  border-radius: 20px;
+  padding: 18px;
+  background: #f8fbf9;
+}
+
+.infoBox h3 {
+  margin-top: 0;
+}
+
+.infoBox ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #5e7268;
+}
+
+@media (max-width: 980px) {
+  .Center {
+    flex-direction: column;
+  }
+
+  .leftCard,
+  .rightCard {
+    width: 100%;
+  }
+
+  .rightContent {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .Cont {
+    padding: 16px 12px 32px;
+  }
+
+  .Center {
+    padding: 16px;
+    border-radius: 20px;
+  }
+}

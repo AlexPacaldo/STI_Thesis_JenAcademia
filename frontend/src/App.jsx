@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import Homepage from './pages/homepage'
 import Header from './components/Header'
@@ -30,6 +30,7 @@ function App() {
   const { notify } = useNotification() || {};
   // footer visibility will be computed after hideHeaderPaths
   const idleTimerRef = useRef(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   function parseUser() {
     const stored = localStorage.getItem("user");
@@ -235,18 +236,35 @@ function App() {
     return undefined;
   }, [location.pathname, navigate, notify]);
 
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [location.pathname, location.search]);
+
   const hideHeaderPaths = ["/", "/login", "/register"];
   const shouldShowHeader = !hideHeaderPaths.includes(location.pathname);
+  const isAccountPage = location.pathname === "/account";
+  const isAccountPageNewUser = isAccountPage && !isProfileComplete(parseUser());
+  const shouldShowSidebar = shouldShowHeader && !isAccountPageNewUser;
   const showFooter = location.pathname === "/" && !isAuthenticated(parseUser());
   const isFullBleedPath = location.pathname === "/" || location.pathname === "/login";
 
   return (
     <>
       <div className={`app-container ${isFullBleedPath ? 'full-bleed' : ''}`}>
-        {shouldShowHeader && <Sidebar />}
+        {shouldShowSidebar && (
+          <Sidebar
+            isMobileOpen={isSidebarOpen}
+            onClose={() => setIsSidebarOpen(false)}
+          />
+        )}
 
-        <div className={`app-layout ${isFullBleedPath ? 'full-bleed' : ''}`}>
-          {shouldShowHeader && <Header />}
+        <div className={`app-layout ${isFullBleedPath ? 'full-bleed' : ''} ${isAccountPageNewUser ? 'account-no-sidebar' : ''}`}>
+          {shouldShowHeader && (
+            <Header
+              isSidebarOpen={isSidebarOpen}
+              onMenuClick={() => setIsSidebarOpen((open) => !open)}
+            />
+          )}
           <main className={`content-area ${isFullBleedPath ? 'full-bleed' : ''}`}>
             <div className={`content-inner ${isFullBleedPath ? 'full-bleed' : ''}`}>
               <Outlet />

@@ -1,29 +1,33 @@
 :root {
-    --primary: #324d3e;
-    --accent: #88a798;
     --sidebar-bg: #203a35;
-    --sidebar-bg-light: #304f45;
+    --sidebar-bg-light: #2e4f45;
     --sidebar-text: #eef6ef;
-    --sidebar-muted: rgba(238, 246, 239, 0.66);
-    --sidebar-hover: rgba(136, 167, 152, 0.18);
-    --sidebar-active: #88a798;
-    --radius: 20px;
-    --shadow: 0 18px 50px rgba(0, 0, 0, 0.14);
+    --sidebar-muted: rgba(238, 246, 239, 0.68);
+    --sidebar-hover: rgba(145, 167, 154, 0.18);
+    --sidebar-active: #91a79a;
+    --radius: 24px;
+    --shadow: 0 20px 56px rgba(18, 34, 30, 0.16);
 }
 
 .sidebar {
-    width: 230px;
+    width: var(--sidebar-width, 230px);
     height: 100vh;
     background: linear-gradient(180deg, var(--sidebar-bg-light) 0%, var(--sidebar-bg) 100%);
-    border-top-right-radius: var(--radius);
-    padding: 24px 18px;
+    /* border-top-right-radius: var(--radius); */
+    padding: 22px 16px;
     box-shadow: var(--shadow);
     position: fixed;
     left: 0;
     display: flex;
     flex-direction: column;
-    gap: 22px;
+    gap: 18px;
     z-index: 10;
+    overflow: hidden;
+}
+
+.backdrop,
+.closeButton {
+    display: none;
 }
 
 .brandName {
@@ -36,11 +40,11 @@
 }
 
 .brandName img {
-    width: 80%;
+    width: 60%;
     max-width: 180px;
-    border-radius: 14px;
     object-fit: cover;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    margin-bottom: 2rem;
+    
 }
 
 .brandText {
@@ -68,19 +72,19 @@
     margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
 }
 
 .navItem {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 12px;
-    border-radius: 18px;
+    padding: 11px 12px;
+    border-radius: 20px;
     color: var(--sidebar-text);
     text-decoration: none;
     transition: transform 180ms ease, background 180ms ease, color 180ms ease;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 0.95rem;
 }
 
@@ -104,7 +108,7 @@
     justify-content: center;
     border-radius: 14px;
     background: rgba(255, 255, 255, 0.08);
-    color: #cbdcff;
+    color: #d7ece2;
     font-size: 0.95rem;
     flex-shrink: 0;
     transition: background 180ms ease, color 180ms ease;
@@ -152,7 +156,66 @@
 }
 
 @media (max-width: 900px) {
+    .backdrop {
+        position: fixed;
+        inset: 0;
+        display: block;
+        border: 0;
+        border-radius: 0;
+        background: rgba(19, 37, 31, 0.42);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 180ms ease;
+        z-index: 109;
+    }
+
+    .backdropOpen {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
     .sidebar {
-        display: none;
+        display: flex;
+        width: min(82vw, 280px);
+        transform: translateX(-105%);
+        transition: transform 220ms ease;
+        z-index: 110;
+        border-top-right-radius: 24px;
+        border-bottom-right-radius: 24px;
+    }
+
+    .sidebarOpen {
+        transform: translateX(0);
+    }
+
+    .closeButton {
+        display: inline-flex;
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        width: 38px;
+        height: 38px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--sidebar-text);
+        cursor: pointer;
+    }
+
+    .closeButton span {
+        position: absolute;
+        width: 18px;
+        height: 2px;
+        border-radius: 999px;
+        background: currentColor;
+    }
+
+    .closeButton span:first-child {
+        transform: rotate(45deg);
+    }
+
+    .closeButton span:last-child {
+        transform: rotate(-45deg);
     }
 }

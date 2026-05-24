@@ -1123,7 +1123,7 @@ export default function AdminDashboard() {
                   <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>Trial Class Assessment</h3>
                 </div>
                 <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
-                  Add trial notes and choose the student's learning criteria. The AI matcher will prioritize teachers below 5 active students, then choose the least-loaded teacher if everyone already has 5 or more.
+                  Add trial notes and choose the student's learning criteria. The AI matcher will prioritize teachers below 2 active students, then choose the least-loaded teacher if everyone already has 2 or more.
                 </p>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
                   <div>
@@ -1268,7 +1268,7 @@ export default function AdminDashboard() {
                       <span style={{ color: "#666" }}> ({aiRecommendation.teacher.assigned_student_count} active students)</span>
                       {aiRecommendation.usedLeastLoadedFallback && (
                         <div style={{ marginTop: "6px", color: "#666" }}>
-                          All teachers are at 5 or more students, so the least-loaded suitable teacher was selected.
+                          All teachers are at 2 or more students, so the least-loaded suitable teacher was selected.
                         </div>
                       )}
                       {aiRecommendation.teacher.reasons?.length > 0 && (
@@ -1674,7 +1674,7 @@ export default function AdminDashboard() {
                   {filteredArchiveStudents.length === 0 && <li className={styles.empty}>No active students found</li>}
                   {filteredArchiveStudents.map(s => (
                     <li key={s.user_id} className={styles.listRow}>
-                      <span>{s.first_name} {s.last_name} — {s.email}</span>
+                      <span>{s.first_name} {s.last_name} - {s.email}</span>
                       <div>
                         <button className={styles.warn} onClick={() => archiveUser(s.user_id)}>Archive</button>
                       </div>
@@ -1688,7 +1688,7 @@ export default function AdminDashboard() {
                   {filteredArchiveTeachers.length === 0 && <li className={styles.empty}>No active teachers found</li>}
                   {filteredArchiveTeachers.map(t => (
                     <li key={t.user_id} className={styles.listRow}>
-                      <span>{t.first_name} {t.last_name} — {t.email}</span>
+                      <span>{t.first_name} {t.last_name} - {t.email}</span>
                       <div>
                         <button className={styles.warn} onClick={() => archiveUser(t.user_id)}>Archive</button>
                       </div>
@@ -1812,11 +1812,11 @@ export default function AdminDashboard() {
                             </td>
                             <td style={{ padding: "12px", verticalAlign: "top" }}>
                               <div style={{ fontWeight: "500" }}>{formatDate(r.scheduled_date)}</div>
-                              <div style={{ fontSize: "0.8em", color: "#666" }}>{r.start_time || "—"}</div>
+                              <div style={{ fontSize: "0.8em", color: "#666" }}>{r.start_time || "-"}</div>
                             </td>
                             <td style={{ padding: "12px", verticalAlign: "top" }}>
                               <div style={{ fontWeight: "500" }}>{formatDate(r.requested_date)}</div>
-                              <div style={{ fontSize: "0.8em", color: "#666" }}>{r.requested_time || "—"}</div>
+                              <div style={{ fontSize: "0.8em", color: "#666" }}>{r.requested_time || "-"}</div>
                             </td>
                             <td style={{ padding: "12px", verticalAlign: "top" }}>
                               <span style={{
@@ -1963,7 +1963,7 @@ function ArchivedUsers({ onUnarchive, refresh, search = "" }) {
       {filteredItems.length === 0 && <li className={styles.empty}>No archived users found</li>}
       {filteredItems.map(u => (
         <li key={u.user_id} className={styles.listRow}>
-          <span>{u.first_name} {u.last_name} — {u.email} ({u.role})</span>
+          <span>{u.first_name} {u.last_name} - {u.email} ({u.role})</span>
           <div>
             <button className={styles.approve} onClick={() => onUnarchive(u.user_id)}>Restore</button>
           </div>

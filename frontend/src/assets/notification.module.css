@@ -4,12 +4,13 @@
   justify-content: space-between;
   padding: 14px 16px;
   margin-bottom: 12px;
-  border-radius: 8px;
+  border-radius: 18px;
   font-size: 14px;
   font-weight: 500;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 18px 40px rgba(18, 34, 30, 0.12);
   animation: slideIn 0.3s ease-out;
   transition: all 0.3s ease;
+  border: 1px solid rgba(38, 66, 59, 0.08);
 }
 
 @keyframes slideIn {
@@ -78,48 +79,56 @@
 
 /* Success notification */
 .notification.success {
-  background-color: #ecfdf5;
-  color: #065f46;
-  border-left: 4px solid #10b981;
+  background-color: #e6fff6; /* pale mint */
+  color: #006a43; /* rich green text */
+  border-left: 6px solid #00c853; /* vibrant green */
+  box-shadow: 0 18px 40px rgba(0, 200, 83, 0.06);
 }
 
 .notification.success .icon {
-  background-color: #10b981;
+  background-color: #00c853;
   color: white;
+  box-shadow: 0 6px 18px rgba(0,200,83,0.18);
 }
 
 /* Error notification */
 .notification.error {
-  background-color: #fef2f2;
-  color: #7f1d1d;
-  border-left: 4px solid #ef4444;
+  background-color: #ffecec; /* pale red */
+  color: #7a1f1f; /* deep red text */
+  border-left: 6px solid #ff5252; /* vivid red */
+  box-shadow: 0 18px 40px rgba(255, 82, 82, 0.06);
 }
 
 .notification.error .icon {
-  background-color: #ef4444;
+  background-color: #ff5252;
   color: white;
+  box-shadow: 0 6px 18px rgba(255,82,82,0.18);
 }
 
 /* Warning notification */
 .notification.warning {
-  background-color: #fffbeb;
-  color: #78350f;
-  border-left: 4px solid #f59e0b;
+  background-color: #fff8e6; /* pale yellow */
+  color: #6b3f00; /* warm brown text */
+  border-left: 6px solid #ffb300; /* strong amber */
+  box-shadow: 0 18px 40px rgba(255, 179, 0, 0.06);
 }
 
 .notification.warning .icon {
-  background-color: #f59e0b;
+  background-color: #ffb300;
   color: white;
+  box-shadow: 0 6px 18px rgba(255,179,0,0.18);
 }
 
 /* Info notification */
 .notification.info {
-  background-color: #eff6ff;
-  color: #1e40af;
-  border-left: 4px solid #3b82f6;
+  background-color: #eaf2ff; /* soft blue */
+  color: #013a8a; /* deep blue text */
+  border-left: 6px solid #3b82f6; /* vibrant blue */
+  box-shadow: 0 18px 40px rgba(59,130,246,0.06);
 }
 
 .notification.info .icon {
   background-color: #3b82f6;
   color: white;
+  box-shadow: 0 6px 18px rgba(59,130,246,0.18);
 }

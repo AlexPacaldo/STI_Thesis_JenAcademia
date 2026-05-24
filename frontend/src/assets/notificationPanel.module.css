@@ -4,7 +4,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(19, 37, 31, 0.48);
   display: flex;
   justify-content: flex-end;
   z-index: 1000;
@@ -21,13 +21,14 @@
 }
 
 .panel {
-  background: #fff;
+  background: var(--surface, #fff);
   width: 100%;
   max-width: 500px;
   height: 100vh;
   display: flex;
   flex-direction: column;
-  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+  box-shadow: -12px 0 40px rgba(18, 34, 30, 0.16);
+  border-left: 1px solid var(--border, rgba(38, 66, 59, 0.12));
   animation: slideIn 0.3s ease-in-out;
 }
 
@@ -45,22 +46,22 @@
   justify-content: space-between;
   align-items: center;
   padding: 20px;
-  border-bottom: 1px solid #e0e0e0;
-  background: #fafafa;
+  border-bottom: 1px solid var(--border, rgba(38, 66, 59, 0.12));
+  background: var(--surface-soft, #f8fbf9);
   position: relative;
 }
 
 .header h2 {
   margin: 0;
   font-size: 1.3rem;
-  color: #333;
+  color: var(--text, #13251f);
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .badge {
-  background-color: #f44336;
+  background-color: #d66a55;
   color: white;
   border-radius: 50%;
   width: 28px;
@@ -74,11 +75,11 @@
 }
 
 .closeBtn {
-  background: none;
-  border: none;
+  background: rgba(145, 167, 154, 0.12);
+  border: 1px solid rgba(38, 66, 59, 0.08);
   font-size: 1.5rem;
   cursor: pointer;
-  color: #666;
+  color: var(--primary, #26423b);
   padding: 0;
   width: 32px;
   height: 32px;
@@ -90,7 +91,7 @@
 }
 
 .closeBtn:hover {
-  background: #e8e8e8;
+  background: rgba(145, 167, 154, 0.18);
 }
 
 /* Filter Bar */
@@ -98,8 +99,8 @@
   display: flex;
   gap: 8px;
   padding: 12px 16px;
-  background: #f5f5f5;
-  border-bottom: 1px solid #e0e0e0;
+  background: var(--surface-soft, #f8fbf9);
+  border-bottom: 1px solid var(--border, rgba(38, 66, 59, 0.12));
   overflow-x: auto;
   scroll-behavior: smooth;
 }
@@ -116,24 +117,24 @@
 .filterBtn {
   padding: 6px 12px;
   background: #fff;
-  border: 1px solid #d0d0d0;
-  border-radius: 20px;
+  border: 1px solid var(--border, rgba(38, 66, 59, 0.12));
+  border-radius: 999px;
   font-size: 0.85rem;
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.2s;
-  color: #666;
+  color: var(--muted, #5e7268);
 }
 
 .filterBtn:hover {
-  border-color: #0f0f0f;
-  color: #333;
+  border-color: var(--primary, #26423b);
+  color: var(--primary, #26423b);
 }
 
 .filterBtn.active {
-  background: #0f0f0f;
+  background: var(--primary, #26423b);
   color: #fff;
-  border-color: #0f0f0f;
+  border-color: var(--primary, #26423b);
 }
 
 /* Main Content */
@@ -150,7 +151,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #999;
+  color: var(--muted, #5e7268);
   font-size: 0.9rem;
 }
 
@@ -159,7 +160,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #999;
+  color: var(--muted, #5e7268);
   text-align: center;
   padding: 20px;
 }
@@ -182,19 +183,19 @@
   display: flex;
   gap: 12px;
   padding: 16px;
-  border-bottom: 1px solid #e8e8e8;
+  border-bottom: 1px solid var(--border, rgba(38, 66, 59, 0.12));
   border-left: 4px solid transparent;
   transition: all 0.2s;
   background: #fff;
 }
 
 .notificationItem:hover {
-  background: #f9f9f9;
+  background: var(--surface-soft, #f8fbf9);
   border-left-color: inherit;
 }
 
 .notificationItem.unread {
-  background: #f0f7ff;
+  background: rgba(145, 167, 154, 0.12);
   font-weight: 500;
 }
 
@@ -233,14 +234,14 @@
 .notifTitle {
   margin: 0;
   font-size: 0.95rem;
-  color: #333;
+  color: var(--text, #13251f);
   font-weight: 600;
 }
 
 .notifType {
   font-size: 0.7rem;
-  background: #e0e0e0;
-  color: #666;
+  background: rgba(145, 167, 154, 0.18);
+  color: var(--primary, #26423b);
   padding: 2px 8px;
   border-radius: 10px;
   white-space: nowrap;
@@ -251,14 +252,14 @@
 .notifMessage {
   margin: 6px 0 4px 0;
   font-size: 0.85rem;
-  color: #666;
+  color: var(--muted, #5e7268);
   line-height: 1.4;
   word-break: break-word;
 }
 
 .notifTime {
   font-size: 0.75rem;
-  color: #999;
+  color: var(--muted, #5e7268);
 }
 
 .notifActions {
@@ -271,36 +272,36 @@
 .deleteBtn,
 .approveBtn,
 .rejectBtn {
-  background: none;
-  border: none;
+  background: rgba(145, 167, 154, 0.08);
+  border: 1px solid rgba(38, 66, 59, 0.08);
   font-size: 1.1rem;
   cursor: pointer;
   padding: 4px 6px;
-  border-radius: 4px;
+  border-radius: 12px;
   transition: all 0.2s;
-  color: #666;
+  color: var(--primary, #26423b);
 }
 
 .markReadBtn:hover {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: rgba(145, 167, 154, 0.18);
+  color: var(--primary, #26423b);
 }
 
 .deleteBtn:hover {
-  background: #ffebee;
-  color: #c62828;
+  background: rgba(214, 106, 85, 0.16);
+  color: #8a3e2e;
 }
 
 .approveBtn {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: rgba(145, 167, 154, 0.18);
+  color: var(--primary, #26423b);
   font-weight: bold;
   padding: 6px 8px;
-  border: 1px solid #2e7d32;
+  border: 1px solid rgba(38, 66, 59, 0.14);
 }
 
 .approveBtn:hover {
-  background: #c8e6c9;
+  background: rgba(145, 167, 154, 0.26);
 }
 
 .approveBtn:disabled {
@@ -309,15 +310,15 @@
 }
 
 .rejectBtn {
-  background: #ffebee;
-  color: #c62828;
+  background: rgba(214, 106, 85, 0.14);
+  color: #8a3e2e;
   font-weight: bold;
   padding: 6px 8px;
-  border: 1px solid #c62828;
+  border: 1px solid rgba(214, 106, 85, 0.24);
 }
 
 .rejectBtn:hover {
-  background: #ffcdd2;
+  background: rgba(214, 106, 85, 0.2);
 }
 
 .rejectBtn:disabled {
@@ -332,25 +333,25 @@
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  border-top: 1px solid #e0e0e0;
-  background: #f5f5f5;
+  border-top: 1px solid var(--border, rgba(38, 66, 59, 0.12));
+  background: var(--surface-soft, #f8fbf9);
 }
 
 .pageBtn {
   padding: 6px 12px;
   background: #fff;
-  border: 1px solid #d0d0d0;
-  border-radius: 4px;
+  border: 1px solid var(--border, rgba(38, 66, 59, 0.12));
+  border-radius: 14px;
   font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s;
-  color: #333;
+  color: var(--text, #13251f);
 }
 
 .pageBtn:hover:not(:disabled) {
-  background: #0f0f0f;
+  background: var(--primary, #26423b);
   color: #fff;
-  border-color: #0f0f0f;
+  border-color: var(--primary, #26423b);
 }
 
 .pageBtn:disabled {
@@ -360,17 +361,17 @@
 
 .pageInfo {
   font-size: 0.85rem;
-  color: #666;
+  color: var(--muted, #5e7268);
 }
 
 /* Mark All Read Button */
 .markAllReadBtn {
   flex: 1;
   padding: 12px 16px;
-  background: #0f0f0f;
+  background: var(--primary, #26423b);
   color: #fff;
   border: none;
-  border-radius: 0;
+  border-radius: 18px;
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
@@ -378,7 +379,7 @@
 }
 
 .markAllReadBtn:hover {
-  background: #333;
+  background: #35594e;
 }
 
 .markAllReadBtn:active {
@@ -387,8 +388,8 @@
 
 /* Footer Actions */
 .footerActions {
-  border-top: 1px solid #e0e0e0;
-  background: #f5f5f5;
+  border-top: 1px solid var(--border, rgba(38, 66, 59, 0.12));
+  background: var(--surface-soft, #f8fbf9);
   display: flex;
   gap: 8px;
   padding: 12px 16px;
@@ -398,10 +399,10 @@
 .clearAllBtn {
   flex: 1;
   padding: 12px 16px;
-  background: #f44336;
+  background: #d66a55;
   color: #fff;
   border: none;
-  border-radius: 0;
+  border-radius: 18px;
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
@@ -409,7 +410,7 @@
 }
 
 .clearAllBtn:hover {
-  background: #d32f2f;
+  background: #bb5742;
 }
 
 .clearAllBtn:active {

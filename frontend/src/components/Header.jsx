@@ -15,7 +15,7 @@ function profileSrc(user) {
   return `${API}${url}`;
 }
 
-function Header() {
+function Header({ isSidebarOpen = false, onMenuClick }) {
   const location = useLocation();
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
@@ -250,20 +250,35 @@ function Header() {
     transition: 'background 240ms ease, box-shadow 240ms ease, border-color 240ms ease',
   };
 
+  const shouldShowMenuButton = !(isAccountPage && !profileCompleted);
+
   return (
     <>
       <header className={styles.header} style={headerStyle}>
         <div className={styles.headerContainer}>
+        {shouldShowMenuButton && (
+          <button
+            type="button"
+            className={styles.menuButton}
+            onClick={onMenuClick}
+            aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
+            aria-expanded={isSidebarOpen}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+        )}
         
 
         {role === "student" && isStudentArea && (
           <>
-            <Link to="/StudentDashboard" className={styles.brandName}>JEN Academia</Link>
+            <Link className={styles.brandName}>JEN Academia</Link>
           </>
         )}
         {role === "teacher" && isTeacherArea && (
           <>
-            <Link to="/TeacherDashboard" className={styles.brandName}>JEN Academia</Link>
+            <Link className={styles.brandName}>JEN Academia</Link>
           </>
         )}
         {role === "admin" && isAdminArea && (
@@ -286,6 +301,8 @@ function Header() {
                 )}
               </button>
 
+              <span className={styles.headerSeparator} aria-hidden="true">|</span>
+
               <Link to="/account" className={styles.StudentAccount}>
                 <div className={styles.account}>
                   {`${user?.firstName || ""} ${user?.lastName || ""}`}
@@ -307,6 +324,8 @@ function Header() {
                   <span className={styles.badge}>{unreadCount}</span>
                 )}
               </button>
+
+              <span className={styles.headerSeparator} aria-hidden="true">|</span>
 
               <Link to="/account" className={styles.TeacherAccount}>
                 <div className={styles.account}>
@@ -331,6 +350,8 @@ function Header() {
                   <span className={styles.badge}>{unreadCount}</span>
                 )}
               </button>
+
+              <span className={styles.headerSeparator} aria-hidden="true">|</span>
 
               <Link to="/account" className={styles.TeacherAccount}>
                 <div className={styles.account}>

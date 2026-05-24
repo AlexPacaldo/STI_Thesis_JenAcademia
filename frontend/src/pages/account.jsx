@@ -216,6 +216,36 @@ export default function Account() {
     };
   }, [crop.x, crop.y, crop.zoom, cropImageSize.height, cropImageSize.width]);
 
+  function clampCropPosition({ x, y, zoom }) {
+    if (!cropImageSize.width || !cropImageSize.height) return { x, y, zoom };
+
+    const baseScale = Math.max(CROP_SIZE / cropImageSize.width, CROP_SIZE / cropImageSize.height);
+    const scale = baseScale * zoom;
+    const width = cropImageSize.width * scale;
+    const height = cropImageSize.height * scale;
+    const minX = (CROP_SIZE - width) / 2;
+    const maxX = (width - CROP_SIZE) / 2;
+    const minY = (CROP_SIZE - height) / 2;
+    const maxY = (height - CROP_SIZE) / 2;
+
+    return {
+      x: Math.min(maxX, Math.max(minX, x)),
+      y: Math.min(maxY, Math.max(minY, y)),
+      zoom,
+    };
+  }
+
+  useEffect(() => {
+    if (!cropImageSize.width || !cropImageSize.height) return;
+    setCrop((current) => {
+      const bounded = clampCropPosition(current);
+      if (bounded.x === current.x && bounded.y === current.y && bounded.zoom === current.zoom) {
+        return current;
+      }
+      return bounded;
+    });
+  }, [cropImageSize.width, cropImageSize.height]);
+
   async function loadUser(userId) {
     const res = await axios.get(`${API}/api/users/${userId}`);
     const refreshed = mapUser(res.data?.user ?? res.data);
@@ -506,7 +536,7 @@ export default function Account() {
 
   function moveCropDrag(e) {
     if (!dragRef.current.active) return;
-    setCrop((current) => ({
+    setCrop((current) => clampCropPosition({
       ...current,
       x: dragRef.current.baseX + e.clientX - dragRef.current.startX,
       y: dragRef.current.baseY + e.clientY - dragRef.current.startY,
@@ -632,7 +662,7 @@ export default function Account() {
           <section className={styles.notice}>
             <div>
               <strong>Complete your profile</strong>
-              <span>Upload a profile picture, add your contact number, and change your password before going back to your dashboard.</span>
+              <span>Upload a profile picture, add your contact number, and change your password to access your dashboard.</span>
             </div>
             <ul className={styles.requirementList}>
               {completionItems.map((item) => (
@@ -764,16 +794,17 @@ export default function Account() {
                     </button>
                   </div>
                 </label>
-                <div className={styles.inlineActions}>
-                  {profileEditing && (
-                    <button type="button" className={styles.textBtn} onClick={cancelProfileEdit}>
-                      Cancel
-                    </button>
-                  )}
-                <button className={styles.primaryBtn} disabled={saving}>
-                    {profileEditing ? (saving ? "Saving..." : "Save Changes") : "Update Profile"}
+              </div>
+
+              <div className={styles.actions}>
+                {profileEditing && (
+                  <button type="button" className={styles.textBtn} onClick={cancelProfileEdit}>
+                    Cancel
                   </button>
-                </div>
+                )}
+                <button className={styles.primaryBtn} disabled={saving}>
+                  {profileEditing ? (saving ? "Saving..." : "Save Changes") : "Update Profile"}
+                </button>
               </div>
             </form>
           </section>
@@ -882,7 +913,10 @@ export default function Account() {
                   max="3"
                   step="0.01"
                   value={crop.zoom}
-                  onChange={(e) => setCrop((current) => ({ ...current, zoom: Number(e.target.value) }))}
+                  onChange={(e) => {
+                    const nextZoom = Number(e.target.value);
+                    setCrop((current) => clampCropPosition({ ...current, zoom: nextZoom }));
+                  }}
                 />
                 <span>+</span>
               </div>

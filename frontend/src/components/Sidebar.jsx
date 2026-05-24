@@ -5,9 +5,21 @@ import styles from "../assets/sidebar.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
 import { getLocalUnreadCount } from "../utils/localNotificationStore.js";
 import NotificationPanel from "./NotificationPanel.jsx";
-import Logo from "../assets/img/Navbar/LOGO.jpg";
+import Logo from "../assets/img/Navbar/LOGO.png";
 
 const API = "http://localhost:3001";
+
+function hasRequiredProfileFields(user = {}) {
+  return Boolean(
+    String(user.contact || user.contact_number || "").trim()
+    && String(user.profileImageUrl || user.profile_image_url || "").trim()
+    && (user.passwordChanged || user.password_changed)
+  );
+}
+
+function isProfileComplete(user = {}) {
+  return Boolean(user.profileCompleted && hasRequiredProfileFields(user));
+}
 
 function profileSrc(user) {
   const url = user?.profileImageUrl || user?.profile_image_url;
@@ -16,11 +28,20 @@ function profileSrc(user) {
   return `${API}${url}`;
 }
 
-function Sidebar() {
+function Sidebar({ isMobileOpen = false, onClose }) {
   const location = useLocation();
-  const [user, setUser] = useState(null);
-  const [role, setRole] = useState(null);
-  const [profileCompleted, setProfileCompleted] = useState(false);
+  const storedUser = (() => {
+    try {
+      const stored = localStorage.getItem("user");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  })();
+
+  const [user, setUser] = useState(storedUser);
+  const [role, setRole] = useState(storedUser?.role || null);
+  const [profileCompleted, setProfileCompleted] = useState(isProfileComplete(storedUser));
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [studentPackage, setStudentPackage] = useState(null);
@@ -29,15 +50,11 @@ function Sidebar() {
   useEffect(() => {
     try {
       const stored = localStorage.getItem("user");
-      console.log('Header: Reading from localStorage:', stored);
       if (stored) {
         const parsedUser = JSON.parse(stored);
-        console.log('Header: Parsed user:', parsedUser);
         setUser(parsedUser);
         setRole(parsedUser.role);
-        console.log('Header: Setting role to:', parsedUser.role);
-        console.log('Header: Setting profileCompleted to:', !!parsedUser.profileCompleted);
-        setProfileCompleted(!!parsedUser.profileCompleted);
+        setProfileCompleted(isProfileComplete(parsedUser));
       }
     } catch (e) {
       console.warn("Failed to read user from localStorage:", e);
@@ -48,44 +65,39 @@ function Sidebar() {
   useEffect(() => {
     const handleProfileUpdate = (event) => {
       const updatedUser = event.detail;
-      console.log('Header received profile update:', updatedUser);
       setUser(updatedUser);
       setRole(updatedUser.role);
-      setProfileCompleted(!!updatedUser.profileCompleted);
+      setProfileCompleted(isProfileComplete(updatedUser));
     };
-    
+
     const handleStorageChange = () => {
       const stored = localStorage.getItem("user");
       if (stored) {
         const parsedUser = JSON.parse(stored);
-        console.log('Header detected storage change:', parsedUser);
         setUser(parsedUser);
         setRole(parsedUser.role);
-        setProfileCompleted(!!parsedUser.profileCompleted);
+        setProfileCompleted(isProfileComplete(parsedUser));
       } else {
-        console.log('Header detected logout or cleared storage');
         setUser(null);
         setRole(null);
         setProfileCompleted(false);
       }
     };
-    
+
     const handleLogoutEvent = () => {
-      console.log('Header received userLoggedOut event');
       setUser(null);
       setRole(null);
       setProfileCompleted(false);
     };
 
-    window.addEventListener('userProfileUpdated', handleProfileUpdate);
-    window.addEventListener('userLoggedOut', handleLogoutEvent);
-    // Also check on visibility change (when user returns to tab)
-    document.addEventListener('visibilitychange', handleStorageChange);
-    
+    window.addEventListener("userProfileUpdated", handleProfileUpdate);
+    window.addEventListener("userLoggedOut", handleLogoutEvent);
+    document.addEventListener("visibilitychange", handleStorageChange);
+
     return () => {
-      window.removeEventListener('userProfileUpdated', handleProfileUpdate);
-      window.removeEventListener('userLoggedOut', handleLogoutEvent);
-      document.removeEventListener('visibilitychange', handleStorageChange);
+      window.removeEventListener("userProfileUpdated", handleProfileUpdate);
+      window.removeEventListener("userLoggedOut", handleLogoutEvent);
+      document.removeEventListener("visibilitychange", handleStorageChange);
     };
   }, []);
 
@@ -150,16 +162,8 @@ function Sidebar() {
   const isTeacherBooksDropboxPage = path === "/teacherBooksDropbox";
   const isCalendarPage = path === "/Calendar";
 
-  if (isCallPage) {
-    return (
-      <header className={styles.header}>
-        <div className={styles.headerContainer}>
-          <div className={styles.brandName}>
-            <i>JEN Academia</i>
-          </div>
-        </div>
-      </header>
-    );
+  if (isCallPage || (isAccountPage && !profileCompleted)) {
+    return null;
   }
 
   // ✅ Keep your current `isStudentArea`
@@ -243,7 +247,27 @@ function Sidebar() {
 
   return (
     <>
-      <nav className={styles.sidebar} aria-label="Main navigation">
+      <button
+        type="button"
+        className={`${styles.backdrop} ${isMobileOpen ? styles.backdropOpen : ""}`}
+        onClick={onClose}
+        aria-label="Close sidebar"
+      />
+
+      <nav
+        className={`${styles.sidebar} ${isMobileOpen ? styles.sidebarOpen : ""}`}
+        aria-label="Main navigation"
+      >
+        <button
+          type="button"
+          className={styles.closeButton}
+          onClick={onClose}
+          aria-label="Close sidebar"
+        >
+          <span />
+          <span />
+        </button>
+
         <Link
           to={
             role === "teacher"
@@ -264,6 +288,7 @@ function Sidebar() {
             <li key={item.to}>
               <Link
                 to={item.to}
+                onClick={onClose}
                 className={`${styles.navItem} ${isActiveLink(item) ? styles.active : ""}`}
               >
                 <span className={styles.navItemIcon}>

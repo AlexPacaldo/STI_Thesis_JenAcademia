@@ -1,8 +1,16 @@
 // src/pages/BooksLessons.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/teacherBooksLessons.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
+
+const API_BASE = "http://localhost:3001";
+
+function absoluteUrl(url) {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API_BASE}${url}`;
+}
 
 export default function TeacherBooksLessons() {
   const { notify } = useNotification() || {};
@@ -23,12 +31,10 @@ export default function TeacherBooksLessons() {
     file: null,
   });
 
-  const API_BASE = "http://localhost:3001";
-
-
-
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
   const teacherId = localStorage.getItem("teacher_id") || storedUser.id || storedUser.user_id || storedUser.userId || null;
+  const teacherProfileImageUrl = storedUser?.profileImageUrl || storedUser?.profile_image_url || "";
+  const teacherPicUrl = useMemo(() => absoluteUrl(teacherProfileImageUrl) || userPic, [teacherProfileImageUrl]);
   const [teacherCourses, setTeacherCourses] = useState([]);
   const [selectedCourseId, setSelectedCourseId] = useState(null);
 
@@ -253,7 +259,7 @@ export default function TeacherBooksLessons() {
                 <h1><b>{book.title}</b></h1>
                 <p className={styles.description}>{book.description || "No description"}</p>
                 <div className={styles.Uploaded}>
-                  <img src={userPic} alt="Teacher" />
+                  <img src={teacherPicUrl} alt="Teacher" />
                   <h3>You</h3>
                 </div>
                 <p className={styles.lessonCount}>{book.lesson_count || 0} lessons</p>
