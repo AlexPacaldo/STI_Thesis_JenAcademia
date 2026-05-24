@@ -43,6 +43,7 @@ body{
 .app-layout.full-bleed {
     width: 100%;
     padding: 0;
+    margin-left: 0;
 }
 
 .content-area{

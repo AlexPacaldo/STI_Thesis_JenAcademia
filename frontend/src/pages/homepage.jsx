@@ -106,7 +106,6 @@ export default function Homepage() {
             Login
           </Link>
         </div>
-        <br></br><br></br><br></br>
 
         <div className={styles.heroSection}>
           <div className={styles.heroContent}>

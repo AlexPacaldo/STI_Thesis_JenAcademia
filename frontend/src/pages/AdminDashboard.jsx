@@ -1,10 +1,26 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import axios from "axios";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/AdminDashboard.module.css";
 import Calendar from "./Calendar.jsx"; // admin calendar view
 
 const API = "http://localhost:3001";
+
+const ADMIN_TABS = [
+  "calendar",
+  "requests",
+  "contracts",
+  "teacherCourses",
+  "createTeacher",
+  "createStudent",
+  "archive",
+];
+
+const getAdminTabFromSearch = (search) => {
+  const requestedTab = new URLSearchParams(search).get("tab");
+  return ADMIN_TABS.includes(requestedTab) ? requestedTab : "calendar";
+};
 
 const COUNTRY_OPTIONS = [
   "Australia",
@@ -154,8 +170,14 @@ const formatDate = (dateString) => {
 
 export default function AdminDashboard() {
   const { notify } = useNotification() || {};
+  const location = useLocation();
   const [active, setActive] = useState("calendar"); // 'calendar' | 'createTeacher' | 'createStudent' | 'archive' | 'requests'
   const [me, setMe] = useState(null);
+
+  useEffect(() => {
+    const nextActive = getAdminTabFromSearch(location.search);
+    setActive((currentActive) => (currentActive === nextActive ? currentActive : nextActive));
+  }, [location.search]);
 
   // data
   const [students, setStudents] = useState([]);
@@ -695,16 +717,6 @@ export default function AdminDashboard() {
   }
 
   // ---- UI helpers ----
-  const Tab = ({ id, label }) => (
-    <button
-      className={`${styles.tab} ${active === id ? styles.active : ""}`}
-      onClick={() => setActive(id)}
-      type="button"
-    >
-      {label}
-    </button>
-  );
-
   const teacherCourseMap = teacherCourses.reduce((acc, item) => {
     const teacherId = String(item.teacher_id);
     if (!acc[teacherId]) acc[teacherId] = new Set();
@@ -803,18 +815,6 @@ export default function AdminDashboard() {
   return (
     <div className={styles.Center}>
     <div className={styles.page}>
-      <div className={styles.header}>
-        <h1><b>Admin Console</b></h1>
-        <div className={styles.tabs}>
-          <Tab id="calendar" label="Calendar" />
-          <Tab id="requests" label="Schedule Requests" />
-          <Tab id="contracts" label="Manage Class Contracts" />
-          <Tab id="teacherCourses" label="Teacher Courses" />
-          <Tab id="createTeacher" label="Create Teacher" />
-          <Tab id="createStudent" label="Create Student" />
-          <Tab id="archive" label="Archive Accounts" />
-        </div>
-      </div>
 
       <main className={styles.main}>
         {active === "teacherCourses" && (

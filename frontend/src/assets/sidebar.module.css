@@ -116,7 +116,8 @@
 }
 
 .navText {
-    white-space: nowrap;
+    white-space: normal;
+    word-break: break-word;
 }
 
 .sidebarFooter {

@@ -207,24 +207,55 @@ function Sidebar() {
       { to: "/teacherAssignment", label: "Assignments", icon: "bi-journal-text" },
       { to: "/teacherBooksLessons", label: "Books / Lessons", icon: "bi-book" },
     ],
-    admin: [],
+    admin: [
+      { to: "/AdminDashboard?tab=calendar", label: "Calendar", icon: "bi-calendar3" },
+      { to: "/AdminDashboard?tab=requests", label: "Requests", icon: "bi-list-check" },
+      { to: "/AdminDashboard?tab=contracts", label: "Contracts", icon: "bi-folder-check" },
+      { to: "/AdminDashboard?tab=teacherCourses", label: "Teacher Courses", icon: "bi-people" },
+      { to: "/AdminDashboard?tab=createTeacher", label: "Create Teacher", icon: "bi-person-plus" },
+      { to: "/AdminDashboard?tab=createStudent", label: "Create Student", icon: "bi-person-plus" },
+      { to: "/AdminDashboard?tab=archive", label: "Archive", icon: "bi-archive" },
+    ],
   };
 
   const navItems = navConfig[role] || [];
   const normalizedPath = path.toLowerCase();
+  const currentSearch = location.search.toLowerCase();
 
   const isActiveLink = (item) => {
-    const target = item.to.toLowerCase();
-    return (
-      normalizedPath === target ||
-      normalizedPath.startsWith(`${target}/`)
-    );
+    const target = item.to || "";
+    try {
+      const targetUrl = new URL(target, window.location.origin);
+      const targetPath = targetUrl.pathname.toLowerCase();
+      const targetSearch = targetUrl.search.toLowerCase();
+      if (!(normalizedPath === targetPath || normalizedPath.startsWith(`${targetPath}/`))) {
+        return false;
+      }
+      return !targetSearch || currentSearch === targetSearch;
+    } catch {
+      const targetPath = target.toLowerCase();
+      return (
+        normalizedPath === targetPath ||
+        normalizedPath.startsWith(`${targetPath}/`)
+      );
+    }
   };
 
   return (
     <>
       <nav className={styles.sidebar} aria-label="Main navigation">
-        <Link to={role === "teacher" ? "/TeacherDashboard" : role === "student" ? "/StudentDashboard" : "/"} className={styles.brandName}>
+        <Link
+          to={
+            role === "teacher"
+              ? "/TeacherDashboard"
+              : role === "student"
+              ? "/StudentDashboard"
+              : role === "admin"
+              ? "/AdminDashboard"
+              : "/"
+          }
+          className={styles.brandName}
+        >
           <img src={Logo} alt="JEN Academia" />
         </Link>
 
