@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router-dom";
 import styles from "../assets/header.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
 import { getLocalUnreadCount } from "../utils/localNotificationStore.js";
+import ChatPanel from "./ChatPanel";
 import NotificationPanel from "./NotificationPanel";
 
 const API = "http://localhost:3001";
@@ -22,6 +23,8 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
   const [profileCompleted, setProfileCompleted] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [studentPackage, setStudentPackage] = useState(null);
   const [isScrolled, setIsScrolled] = useState(false);
   const currentUserId = user?.id || user?.user_id || user?.userId;
@@ -151,6 +154,59 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
   }, [currentUserId, role]);
 
   useEffect(() => {
+    if (!currentUserId || !role) {
+      setChatUnreadCount(0);
+      return undefined;
+    }
+
+    const fetchChatUnreadCount = async () => {
+      try {
+        const response = await axios.get(`${API}/api/chats/unread-count/${currentUserId}`);
+        setChatUnreadCount(Number(response.data.unreadCount || 0));
+      } catch (err) {
+        console.error("Error fetching unread chat count:", err);
+        setChatUnreadCount(0);
+      }
+    };
+
+    fetchChatUnreadCount();
+    const interval = setInterval(fetchChatUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, [currentUserId, role]);
+
+  useEffect(() => {
+    if (!currentUserId) return undefined;
+
+    const refreshChatBadge = () => {
+      axios
+        .get(`${API}/api/chats/unread-count/${currentUserId}`)
+        .then((response) => {
+          setChatUnreadCount(Number(response.data.unreadCount || 0));
+        })
+        .catch(() => {});
+    };
+
+    window.addEventListener("chatUpdated", refreshChatBadge);
+    return () => window.removeEventListener("chatUpdated", refreshChatBadge);
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId) return undefined;
+
+    const presenceStream = new EventSource(`${API}/api/chats/stream/${currentUserId}`);
+    const keepAlive = () => {};
+
+    presenceStream.addEventListener("open", keepAlive);
+    presenceStream.addEventListener("error", () => {
+      presenceStream?.close?.();
+    });
+
+    return () => {
+      presenceStream?.close?.();
+    };
+  }, [currentUserId]);
+
+  useEffect(() => {
     if (role !== "student" || !currentUserId) {
       setStudentPackage(null);
       return;
@@ -252,6 +308,16 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
 
   const shouldShowMenuButton = !(isAccountPage && !profileCompleted);
 
+  const toggleNotifications = () => {
+    setIsNotificationOpen((current) => !current);
+    setIsChatOpen(false);
+  };
+
+  const toggleChatDrawer = () => {
+    setIsChatOpen((current) => !current);
+    setIsNotificationOpen(false);
+  };
+
   return (
     <>
       <header className={styles.header} style={headerStyle}>
@@ -293,9 +359,16 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
           {role === "student" && isStudentArea && profileCompleted && (
             <>
 
+              <button className={styles.notificationBell} onClick={toggleChatDrawer} title="Chats">
+                <i className="bi bi-chat-dots-fill" aria-hidden="true" />
+                {chatUnreadCount > 0 && (
+                  <span className={styles.badge}>{chatUnreadCount}</span>
+                )}
+              </button>
+
               {/* Notification Bell */}
-              <button className={styles.notificationBell} onClick={() => setIsNotificationOpen(!isNotificationOpen)} title="Reschedule Requests">
-                🔔
+              <button className={styles.notificationBell} onClick={toggleNotifications} title="Reschedule Requests">
+                <i className="bi bi-bell-fill" aria-hidden="true" />
                 {unreadCount > 0 && (
                   <span className={styles.badge}>{unreadCount}</span>
                 )}
@@ -317,9 +390,17 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
           {/* 🧩 TEACHER NAVIGATION */}
           {role === "teacher" && isTeacherArea && profileCompleted && (
             <>
+            
+              <button className={styles.notificationBell} onClick={toggleChatDrawer} title="Chats">
+                <i className="bi bi-chat-dots-fill" aria-hidden="true" />
+                {chatUnreadCount > 0 && (
+                  <span className={styles.badge}>{chatUnreadCount}</span>
+                )}
+              </button>
+
               {/* Notification Bell */}
-              <button className={styles.notificationBell} onClick={() => setIsNotificationOpen(!isNotificationOpen)} title="Reschedule Requests">
-                🔔
+              <button className={styles.notificationBell} onClick={toggleNotifications} title="Reschedule Requests">
+                <i className="bi bi-bell-fill" aria-hidden="true" />
                 {unreadCount > 0 && (
                   <span className={styles.badge}>{unreadCount}</span>
                 )}
@@ -340,12 +421,21 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
 
           {role === "admin" && isAdminArea && (
             <>
+              
+
+              <button className={styles.notificationBell} onClick={toggleChatDrawer} title="Chats">
+                <i className="bi bi-chat-dots-fill" aria-hidden="true" />
+                {chatUnreadCount > 0 && (
+                  <span className={styles.badge}>{chatUnreadCount}</span>
+                )}
+              </button>
+
               <button
                 className={styles.notificationBell}
-                onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+                onClick={toggleNotifications}
                 title="Notifications"
               >
-                🔔
+                <i className="bi bi-bell-fill" aria-hidden="true" />
                 {unreadCount > 0 && (
                   <span className={styles.badge}>{unreadCount}</span>
                 )}
@@ -376,6 +466,13 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
       userId={currentUserId}
       isOpen={isNotificationOpen} 
       onClose={() => setIsNotificationOpen(false)}
+    />
+    <ChatPanel
+      user={user}
+      role={role}
+      userId={currentUserId}
+      isOpen={isChatOpen}
+      onClose={() => setIsChatOpen(false)}
     />
     </>
   );

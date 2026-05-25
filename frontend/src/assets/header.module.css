@@ -132,6 +132,18 @@
     justify-content: center;
     border-radius: 50%;
     flex-shrink: 0;
+    transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.notificationBell:hover,
+.notificationBell:focus-visible {
+    background: rgba(145, 167, 154, 0.2);
+    border-color: rgba(38, 66, 59, 0.16);
+    transform: translateY(-1px);
+}
+
+.notificationBell i {
+    font-size: 1rem;
 }
 
 .headerSeparator {
