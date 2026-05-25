@@ -211,6 +211,7 @@ export default function AdminDashboard() {
     teacherId: "",
     courseId: "",
     classesAvailed: "",
+    classDuration: "50",
     aiCriteria: {
       learningGoal: [],
       learningStyle: "",
@@ -389,6 +390,7 @@ export default function AdminDashboard() {
         teacherId: "",
         courseId: "",
         classesAvailed: "",
+        classDuration: "50",
         aiCriteria: {
           learningGoal: [],
           learningStyle: "",
@@ -638,6 +640,7 @@ export default function AdminDashboard() {
         assigned_teacher_id: item.assigned_teacher_id || "",
         total_classes: item.total_classes ?? "",
         classes_used: item.classes_used ?? 0,
+        class_duration: item.class_duration ?? 50,
         package_status: item.package_status || "active",
       })));
     } catch (e) {
@@ -675,6 +678,7 @@ export default function AdminDashboard() {
         package_id: row.package_id || null,
         total_classes: row.total_classes,
         classes_used: row.classes_used,
+        class_duration: row.class_duration || 50,
         status: row.package_status || "active",
       });
       notify("Student contract updated", "success");
@@ -767,6 +771,7 @@ export default function AdminDashboard() {
       request.course_name,
       request.status,
       request.requested_classes,
+      request.class_duration,
     ]
       .filter((value) => value !== null && value !== undefined)
       .join(" ")
@@ -1356,29 +1361,54 @@ export default function AdminDashboard() {
                 <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
                   Specify the number of classes this student has purchased or availed in their package. This helps track their remaining classes and package utilization.
                 </p>
-                <div>
-                  <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Number of Classes Availed</label>
-                  <select
-                    value={sForm.classesAvailed}
-                    onChange={(e)=>setSForm({...sForm, classesAvailed:e.target.value})}
-                    style={{
-                      width: "100%",
-                      padding: "10px",
-                      border: "1px solid #d0d0d0",
-                      borderRadius: "6px",
-                      fontFamily: "inherit",
-                      fontSize: "0.9em",
-                      background: "#fff",
-                      boxSizing: "border-box"
-                    }}
-                  >
-                    <option value="">Select Number of Classes</option>
-                    <option value="10">10</option>
-                    <option value="15">15</option>
-                    <option value="20">20</option>
-                  </select>
-                  <div style={{ marginTop: "8px", fontSize: "0.85em", color: "#666" }}>
-                    This information will be stored with the student's profile for tracking purposes.
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
+                  <div>
+                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Number of Classes Availed</label>
+                    <select
+                      value={sForm.classesAvailed}
+                      onChange={(e)=>setSForm({...sForm, classesAvailed:e.target.value})}
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        border: "1px solid #d0d0d0",
+                        borderRadius: "6px",
+                        fontFamily: "inherit",
+                        fontSize: "0.9em",
+                        background: "#fff",
+                        boxSizing: "border-box"
+                      }}
+                    >
+                      <option value="">Select Number of Classes</option>
+                      <option value="10">10</option>
+                      <option value="15">15</option>
+                      <option value="20">20</option>
+                    </select>
+                    <div style={{ marginTop: "8px", fontSize: "0.85em", color: "#666" }}>
+                      This information will be stored with the student's profile for tracking purposes.
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Class Duration</label>
+                    <select
+                      value={sForm.classDuration}
+                      onChange={(e)=>setSForm({...sForm, classDuration:e.target.value})}
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        border: "1px solid #d0d0d0",
+                        borderRadius: "6px",
+                        fontFamily: "inherit",
+                        fontSize: "0.9em",
+                        background: "#fff",
+                        boxSizing: "border-box"
+                      }}
+                    >
+                      <option value="25">25 minutes</option>
+                      <option value="50">50 minutes</option>
+                    </select>
+                    <div style={{ marginTop: "8px", fontSize: "0.85em", color: "#666" }}>
+                      Future bookings for this package will use this duration.
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1457,6 +1487,7 @@ export default function AdminDashboard() {
                         <th>Student</th>
                         <th>Requested Course</th>
                         <th>Classes</th>
+                        <th>Duration</th>
                         <th>Status</th>
                         <th>Requested</th>
                         <th>Actions</th>
@@ -1471,6 +1502,7 @@ export default function AdminDashboard() {
                           </td>
                           <td>{request.course_name || "Course not set"}</td>
                           <td>{request.requested_classes}</td>
+                          <td>{request.class_duration || 50} min</td>
                           <td>
                             <span style={{
                               padding: "4px 8px",
@@ -1544,6 +1576,7 @@ export default function AdminDashboard() {
                       <th>Student</th>
                       <th>Course</th>
                       <th>Teacher</th>
+                      <th>Duration</th>
                       <th>Total</th>
                       <th>Used</th>
                       <th>Left</th>
@@ -1588,6 +1621,15 @@ export default function AdminDashboard() {
                                   {teacher.first_name} {teacher.last_name}
                                 </option>
                               ))}
+                            </select>
+                          </td>
+                          <td>
+                            <select
+                              value={row.class_duration || 50}
+                              onChange={(e) => updateContractRow(row.user_id, "class_duration", e.target.value)}
+                            >
+                              <option value="25">25 min</option>
+                              <option value="50">50 min</option>
                             </select>
                           </td>
                           <td>

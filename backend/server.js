@@ -65,6 +65,82 @@ export const pool = mysql.createPool({
   connectionLimit: 10,
 });
 
+const chatStreamClients = new Map();
+const chatPresenceUsers = new Map();
+
+function addChatStreamClient(userId, res) {
+  const key = String(userId);
+  if (!chatStreamClients.has(key)) {
+    chatStreamClients.set(key, new Set());
+  }
+  chatStreamClients.get(key).add(res);
+  chatPresenceUsers.set(key, Date.now());
+  broadcastChatPresenceChange(userId, true);
+}
+
+function removeChatStreamClient(userId, res) {
+  const key = String(userId);
+  const clients = chatStreamClients.get(key);
+  if (!clients) return;
+  clients.delete(res);
+  if (clients.size === 0) {
+    chatStreamClients.delete(key);
+    chatPresenceUsers.delete(key);
+    broadcastChatPresenceChange(userId, false);
+  }
+}
+
+function sendChatStreamEvent(userId, eventName, payload) {
+  const clients = chatStreamClients.get(String(userId));
+  if (!clients || !clients.size) return;
+
+  const message = `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
+  clients.forEach((res) => {
+    try {
+      res.write(message);
+    } catch {
+      removeChatStreamClient(userId, res);
+    }
+  });
+}
+
+function broadcastChatMessage(messagePayload) {
+  if (!messagePayload) return;
+  sendChatStreamEvent(messagePayload.sender_id, "chat-message", messagePayload);
+  if (String(messagePayload.recipient_id) !== String(messagePayload.sender_id)) {
+    sendChatStreamEvent(messagePayload.recipient_id, "chat-message", messagePayload);
+  }
+}
+
+function broadcastChatReadReceipt(payload) {
+  if (!payload) return;
+  sendChatStreamEvent(payload.sender_id, "chat-read-receipt", payload);
+  sendChatStreamEvent(payload.reader_id, "chat-read-receipt", payload);
+}
+
+function broadcastChatPresenceChange(userId, active) {
+  const payload = {
+    user_id: Number(userId),
+    active: Boolean(active),
+    status_label: active ? "Active now" : "Not active",
+    updated_at: new Date().toISOString(),
+  };
+
+  for (const clients of chatStreamClients.values()) {
+    clients.forEach((res) => {
+      try {
+        res.write(`event: chat-presence-change\ndata: ${JSON.stringify(payload)}\n\n`);
+      } catch {
+        // Ignore individual stream write failures; cleanup occurs on close.
+      }
+    });
+  }
+}
+
+function isUserChatActive(userId) {
+  return chatPresenceUsers.has(String(userId));
+}
+
 // ---------- helpers ----------
 const COUNTRY_TIMEZONES = {
   Australia: "Australia/Sydney",
@@ -175,6 +251,97 @@ function timeToMinutes(value) {
   if (!timeKey) return null;
   const [hour, minute] = timeKey.split(":").map(Number);
   return hour * 60 + minute;
+}
+
+const ALLOWED_CLASS_DURATIONS = new Set([25, 50]);
+const DEFAULT_CLASS_DURATION = 50;
+
+function normalizeClassDuration(value) {
+  const parsed = parseInt(value, 10);
+  return ALLOWED_CLASS_DURATIONS.has(parsed) ? parsed : DEFAULT_CLASS_DURATION;
+}
+
+function minutesToTimeKey(totalMinutes) {
+  const safeMinutes = ((Number(totalMinutes) % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const hours = Math.floor(safeMinutes / 60);
+  const minutes = safeMinutes % 60;
+  return `${pad(hours)}:${pad(minutes)}`;
+}
+
+function getRangeMinutes(startTime, durationMinutes) {
+  const start = timeToMinutes(startTime);
+  if (start == null) return null;
+  const duration = parseInt(durationMinutes, 10);
+  if (!Number.isFinite(duration) || duration <= 0) return null;
+  return {
+    start,
+    end: start + duration,
+  };
+}
+
+function rangesOverlap(aStart, aEnd, bStart, bEnd) {
+  return aStart < bEnd && aEnd > bStart;
+}
+
+function getClassInterval(startTime, durationMinutes, endTime = null) {
+  const start = timeToMinutes(startTime);
+  if (start == null) return null;
+  let end = null;
+  const duration = parseInt(durationMinutes, 10);
+  if (Number.isFinite(duration) && duration > 0) {
+    end = start + duration;
+  } else if (endTime) {
+    end = timeToMinutes(endTime);
+  }
+
+  if (end == null || end <= start) return null;
+  return { start, end };
+}
+
+function hasClassConflict(rows, start, end, excludeClassId = null) {
+  return rows.some((row) => {
+    if (excludeClassId != null && Number(row.class_id) === Number(excludeClassId)) {
+      return false;
+    }
+
+    const interval = getClassInterval(row.start_time, row.duration, row.end_time);
+    if (!interval) return false;
+    return rangesOverlap(interval.start, interval.end, start, end);
+  });
+}
+
+async function getStudentPackageAvailability(connection, studentId) {
+  const db = connection || pool;
+  await autoMarkPastClassesAsNoShow(db);
+  const [packageRows] = await db.query(
+    `SELECT package_id, student_id, total_classes, classes_used, classes_left, class_duration, status
+     FROM student_class_packages
+     WHERE student_id = ? AND status = 'active'
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [studentId]
+  );
+
+  if (!packageRows.length) {
+    return { package: null, bookedClasses: 0, bookableClasses: 0 };
+  }
+
+  const [scheduledRows] = await db.query(
+    `SELECT COUNT(*) AS booked_count
+     FROM classes
+     WHERE student_id = ? AND status IN ('scheduled', 'completed')`,
+    [studentId]
+  );
+
+  const bookedClasses = Number(scheduledRows[0]?.booked_count || 0);
+  const packageInfo = packageRows[0];
+  const totalClasses = Number(packageInfo.total_classes || 0);
+
+  return {
+    package: packageInfo,
+    bookedClasses,
+    bookableClasses: Math.max(0, totalClasses - bookedClasses),
+  };
 }
 
 async function deleteLocalProfileImage(imageUrl) {
@@ -487,6 +654,7 @@ async function ensureStudentContractRequestsTable() {
       student_id INT NOT NULL,
       course_id INT DEFAULT NULL,
       requested_classes INT NOT NULL,
+      class_duration INT NOT NULL DEFAULT 50,
       trial_notes TEXT DEFAULT NULL,
       ai_criteria TEXT DEFAULT NULL,
       status ENUM('pending','approved','declined') NOT NULL DEFAULT 'pending',
@@ -506,9 +674,25 @@ async function ensureStudentContractRequestsTable() {
     await pool.query("ALTER TABLE student_contract_requests ADD COLUMN trial_notes TEXT DEFAULT NULL AFTER requested_classes");
   }
 
+  if (!(await columnExists("student_contract_requests", "class_duration"))) {
+    await pool.query("ALTER TABLE student_contract_requests ADD COLUMN class_duration INT NOT NULL DEFAULT 50 AFTER requested_classes");
+  }
+
   if (!(await columnExists("student_contract_requests", "ai_criteria"))) {
     await pool.query("ALTER TABLE student_contract_requests ADD COLUMN ai_criteria TEXT DEFAULT NULL AFTER trial_notes");
   }
+}
+
+async function ensureStudentClassPackageDurationColumn() {
+  if (!(await columnExists("student_class_packages", "class_duration"))) {
+    await pool.query("ALTER TABLE student_class_packages ADD COLUMN class_duration INT NOT NULL DEFAULT 50 AFTER classes_left");
+  }
+}
+
+async function ensureClassStatusSupportsNoShow() {
+  await pool.query(
+    "ALTER TABLE classes MODIFY COLUMN status ENUM('scheduled','completed','cancelled','no-show') DEFAULT 'scheduled'"
+  );
 }
 
 async function removeStudentPackageDateColumns() {
@@ -542,7 +726,29 @@ async function ensureTeacherCoursesTable() {
     WHERE u.role = 'teacher'
       AND NOT EXISTS (
         SELECT 1 FROM teacher_courses tc WHERE tc.teacher_id = u.user_id
-      )
+    )
+  `);
+}
+
+async function ensureMessagesTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS messages (
+      message_id INT NOT NULL AUTO_INCREMENT,
+      sender_id INT NOT NULL,
+      recipient_id INT NOT NULL,
+      subject VARCHAR(255) DEFAULT NULL,
+      content TEXT NOT NULL,
+      is_read TINYINT(1) DEFAULT '0',
+      sent_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+      read_at TIMESTAMP NULL DEFAULT NULL,
+      PRIMARY KEY (message_id),
+      KEY sender_id (sender_id),
+      KEY idx_recipient_id (recipient_id),
+      KEY idx_is_read (is_read),
+      KEY idx_sent_at (sent_at),
+      CONSTRAINT messages_ibfk_1 FOREIGN KEY (sender_id) REFERENCES users (user_id),
+      CONSTRAINT messages_ibfk_2 FOREIGN KEY (recipient_id) REFERENCES users (user_id)
+    )
   `);
 }
 
@@ -557,6 +763,9 @@ try {
   await ensureUserDemographicsColumns();
   await refreshAllProfileCompletion();
   await ensureStudentContractRequestsTable();
+  await ensureStudentClassPackageDurationColumn();
+  await ensureClassStatusSupportsNoShow();
+  await ensureMessagesTable();
   await removeStudentPackageDateColumns();
   await ensureTeacherCoursesTable();
   await expireDepletedPackages();
@@ -764,6 +973,21 @@ async function expireDepletedPackages(db = pool) {
     `UPDATE student_class_packages
      SET status = 'expired'
      WHERE status = 'active' AND classes_left <= 0`
+  );
+}
+
+async function autoMarkPastClassesAsNoShow(db = pool) {
+  await db.query(
+    `UPDATE classes
+     SET status = 'no-show'
+     WHERE status = 'scheduled'
+       AND (
+         scheduled_date < CURDATE()
+         OR (
+           scheduled_date = CURDATE()
+           AND TIMESTAMP(scheduled_date, end_time) <= NOW()
+         )
+       )`
   );
 }
 
@@ -1034,6 +1258,7 @@ app.post("/api/login", async (req, res) => {
 app.get("/api/users/:id", async (req, res) => {
   try {
     await refreshProfileCompletion(req.params.id);
+    await autoMarkPastClassesAsNoShow(pool);
     const [rows] = await pool.query(
       `SELECT u.user_id, u.first_name, u.last_name, u.email, u.contact_number AS contact, u.country, u.birth_date, u.profile_image_url, u.timezone, u.role, u.status,
               u.profile_completed, u.password_changed, u.created_at,
@@ -1278,6 +1503,7 @@ app.post("/api/admin/users", async (req, res) => {
       teacherId,
       trialNotes,
       courseId,
+      classDuration,
       aiCriteria,
       specialization,
       experienceYears,
@@ -1369,6 +1595,7 @@ app.post("/api/admin/users", async (req, res) => {
       const assignedTeacherId = recommendation.teacher?.user_id || null;
       const proficiencyLevel = level || "beginner";
       const courseIdValue = courseId ? parseInt(courseId, 10) : null;
+      const classDurationValue = normalizeClassDuration(classDuration);
       const criteriaNotes = buildCriteriaNotes(recommendation.criteria);
       const finalTrialNotes = [trialNotes || "", criteriaNotes]
         .filter((part) => String(part).trim())
@@ -1382,9 +1609,9 @@ app.post("/api/admin/users", async (req, res) => {
       // Create student class package if classesAvailed is provided
       if (classesAvailed && parseInt(classesAvailed, 10) > 0) {
         await pool.query(`
-          INSERT INTO student_class_packages (student_id, total_classes, classes_used, status)
-          VALUES (?, ?, 0, 'active')
-        `, [userId, parseInt(classesAvailed, 10)]);
+          INSERT INTO student_class_packages (student_id, total_classes, classes_used, status, class_duration)
+          VALUES (?, ?, 0, 'active', ?)
+        `, [userId, parseInt(classesAvailed, 10), classDurationValue]);
       }
     }
 
@@ -1433,7 +1660,7 @@ app.get("/api/admin/student-contracts", async (_req, res) => {
       `SELECT u.user_id, u.first_name, u.last_name, u.email,
               sp.course_id, c.course_name, sp.assigned_teacher_id,
               CONCAT(t.first_name, ' ', t.last_name) AS teacher_name,
-              scp.package_id, scp.total_classes, scp.classes_used, scp.classes_left,
+              scp.package_id, scp.total_classes, scp.classes_used, scp.classes_left, scp.class_duration,
               scp.status AS package_status
        FROM users u
        LEFT JOIN student_profiles sp ON sp.user_id = u.user_id
@@ -1469,11 +1696,13 @@ app.put("/api/admin/student-contracts/:student_id", async (req, res) => {
       package_id,
       total_classes,
       classes_used,
+      class_duration,
       status,
     } = req.body;
 
     const parsedTotal = Math.max(0, parseInt(total_classes, 10) || 0);
     const parsedUsed = Math.min(parsedTotal, Math.max(0, parseInt(classes_used, 10) || 0));
+    const parsedDuration = normalizeClassDuration(class_duration);
     const packageStatus = packageStatusFromUsage(status, parsedTotal, parsedUsed);
     const courseIdValue = course_id ? parseInt(course_id, 10) : null;
     const teacherIdValue = assigned_teacher_id ? parseInt(assigned_teacher_id, 10) : null;
@@ -1501,12 +1730,13 @@ app.put("/api/admin/student-contracts/:student_id", async (req, res) => {
     if (package_id) {
       await connection.query(
         `UPDATE student_class_packages
-         SET total_classes = ?, classes_used = ?, status = ?
+         SET total_classes = ?, classes_used = ?, status = ?, class_duration = ?
          WHERE package_id = ? AND student_id = ?`,
         [
           parsedTotal,
           parsedUsed,
           packageStatus,
+          parsedDuration,
           package_id,
           student_id,
         ]
@@ -1514,9 +1744,9 @@ app.put("/api/admin/student-contracts/:student_id", async (req, res) => {
     } else if (parsedTotal > 0) {
       await connection.query(
         `INSERT INTO student_class_packages
-         (student_id, total_classes, classes_used, status)
-         VALUES (?, ?, ?, ?)`,
-        [student_id, parsedTotal, parsedUsed, packageStatus]
+         (student_id, total_classes, classes_used, status, class_duration)
+         VALUES (?, ?, ?, ?, ?)`,
+        [student_id, parsedTotal, parsedUsed, packageStatus, parsedDuration]
       );
     }
 
@@ -1533,10 +1763,11 @@ app.put("/api/admin/student-contracts/:student_id", async (req, res) => {
 
 app.post("/api/student/contract-requests", async (req, res) => {
   try {
-    const { student_id, course_id, requested_classes, trial_notes, ai_criteria } = req.body;
+    const { student_id, course_id, requested_classes, class_duration, trial_notes, ai_criteria } = req.body;
     const parsedStudentId = parseInt(student_id, 10);
     const parsedCourseId = course_id ? parseInt(course_id, 10) : null;
     const parsedClasses = parseInt(requested_classes, 10);
+    const parsedDuration = normalizeClassDuration(class_duration);
 
     if (!parsedStudentId || !parsedCourseId || !Number.isFinite(parsedClasses) || parsedClasses <= 0) {
       return res.status(400).json({ message: "Please choose a course and number of classes." });
@@ -1551,16 +1782,58 @@ app.post("/api/student/contract-requests", async (req, res) => {
     );
 
     if (existing.length) {
-      return res.status(409).json({ message: "You already have a pending contract request." });
+      const requestId = existing[0].request_id;
+      await pool.query(
+        `UPDATE student_contract_requests
+         SET course_id = ?, requested_classes = ?, class_duration = ?, trial_notes = ?, ai_criteria = ?, admin_response = NULL, resolved_at = NULL, requested_at = CURRENT_TIMESTAMP, status = 'pending'
+         WHERE request_id = ?`,
+        [
+          parsedCourseId,
+          parsedClasses,
+          parsedDuration,
+          String(trial_notes || "").trim() || null,
+          JSON.stringify(normalizeCriteria(ai_criteria || {})),
+          requestId,
+        ]
+      );
+
+      const [studentRows] = await pool.query(
+        `SELECT first_name, last_name FROM users WHERE user_id = ?`,
+        [parsedStudentId]
+      );
+      const [courseRows] = await pool.query(
+        `SELECT course_name FROM courses WHERE course_id = ?`,
+        [parsedCourseId]
+      );
+      const [adminRows] = await pool.query(
+        `SELECT user_id FROM users WHERE role = 'admin' AND status = 'active'`
+      );
+
+      const studentName = studentRows.length
+        ? `${studentRows[0].first_name} ${studentRows[0].last_name}`.trim()
+        : "A student";
+      const courseName = courseRows[0]?.course_name || "a course";
+      const notificationMessage = `${studentName} updated a pending contract request for ${courseName} with ${parsedClasses} classes (${parsedDuration}-minute lessons).`;
+
+      if (adminRows.length) {
+        await pool.query(
+          `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+           VALUES ${adminRows.map(() => "(?, 'general', 'Updated Contract Request', ?, ?, 'contract_request', '/AdminDashboard')").join(", ")}`,
+          adminRows.flatMap((admin) => [admin.user_id, notificationMessage, requestId])
+        );
+      }
+
+      return res.status(200).json({ message: "Contract request updated", request_id: requestId });
     }
 
     const [result] = await pool.query(
-      `INSERT INTO student_contract_requests (student_id, course_id, requested_classes, trial_notes, ai_criteria, status)
-       VALUES (?, ?, ?, ?, ?, 'pending')`,
+      `INSERT INTO student_contract_requests (student_id, course_id, requested_classes, class_duration, trial_notes, ai_criteria, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
       [
         parsedStudentId,
         parsedCourseId,
         parsedClasses,
+        parsedDuration,
         String(trial_notes || "").trim() || null,
         JSON.stringify(normalizeCriteria(ai_criteria || {})),
       ]
@@ -1582,7 +1855,7 @@ app.post("/api/student/contract-requests", async (req, res) => {
       ? `${studentRows[0].first_name} ${studentRows[0].last_name}`.trim()
       : "A student";
     const courseName = courseRows[0]?.course_name || "a course";
-    const notificationMessage = `${studentName} requested a new contract for ${courseName} with ${parsedClasses} classes.`;
+    const notificationMessage = `${studentName} requested a new contract for ${courseName} with ${parsedClasses} classes (${parsedDuration}-minute lessons).`;
 
     if (adminRows.length) {
       await pool.query(
@@ -1651,7 +1924,7 @@ app.put("/api/admin/contract-requests/:request_id", async (req, res) => {
     await connection.beginTransaction();
 
     const [requestRows] = await connection.query(
-      `SELECT r.request_id, r.student_id, r.course_id, r.requested_classes, r.trial_notes, r.ai_criteria, r.status,
+      `SELECT r.request_id, r.student_id, r.course_id, r.requested_classes, r.class_duration, r.trial_notes, r.ai_criteria, r.status,
               c.course_name
        FROM student_contract_requests r
        LEFT JOIN courses c ON c.course_id = r.course_id
@@ -1730,9 +2003,9 @@ app.put("/api/admin/contract-requests/:request_id", async (req, res) => {
 
       await connection.query(
         `INSERT INTO student_class_packages
-         (student_id, total_classes, classes_used, status)
-         VALUES (?, ?, 0, 'active')`,
-        [request.student_id, request.requested_classes]
+         (student_id, total_classes, classes_used, status, class_duration)
+         VALUES (?, ?, 0, 'active', ?)`,
+        [request.student_id, request.requested_classes, normalizeClassDuration(request.class_duration)]
       );
     }
 
@@ -1747,8 +2020,8 @@ app.put("/api/admin/contract-requests/:request_id", async (req, res) => {
       ? "Contract Request Approved"
       : "Contract Request Declined";
     const notificationMessage = status === "approved"
-      ? `Your contract request for ${request.course_name || "your selected course"} with ${request.requested_classes} classes was approved.`
-      : `Your contract request for ${request.course_name || "your selected course"} with ${request.requested_classes} classes was declined.`;
+      ? `Your contract request for ${request.course_name || "your selected course"} with ${request.requested_classes} classes (${normalizeClassDuration(request.class_duration)}-minute lessons) was approved.`
+      : `Your contract request for ${request.course_name || "your selected course"} with ${request.requested_classes} classes (${normalizeClassDuration(request.class_duration)}-minute lessons) was declined.`;
 
     await connection.query(
       `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
@@ -1861,6 +2134,7 @@ app.post("/api/calendar/teacher-availability", async (req, res) => {
 app.get("/api/calendar/classes-by-date", async (req, res) => {
   try {
     const { scheduled_date, student_id, teacher_id } = req.query;
+    await autoMarkPastClassesAsNoShow(pool);
 
     let query = `SELECT ${classSelectFields},
                        stu.first_name as student_name,
@@ -1907,6 +2181,8 @@ app.get("/api/calendar/upcoming-classes", async (req, res) => {
       return res.status(400).json({ message: "Missing teacher_id or student_id" });
     }
 
+    await autoMarkPastClassesAsNoShow(pool);
+
     let query = `SELECT ${classSelectFields}, \
                        stu.first_name as student_name, \
                        stu.last_name as student_last_name, \
@@ -1947,26 +2223,113 @@ app.get("/api/calendar/upcoming-classes", async (req, res) => {
 
 // Create a new class
 app.post("/api/calendar/class", async (req, res) => {
+  const connection = await pool.getConnection();
   try {
     const { class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, class_link } = req.body;
+    const hasRequestedDuration = duration !== undefined && duration !== null && String(duration).trim() !== "";
+    const normalizedDuration = normalizeClassDuration(duration);
 
     if (!class_name || !teacher_id || !student_id || !scheduled_date) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    const [packageRows] = await pool.query(
-      `SELECT classes_left
+    await autoMarkPastClassesAsNoShow(pool);
+    await connection.beginTransaction();
+
+    const [packageRows] = await connection.query(
+      `SELECT package_id, total_classes, class_duration
        FROM student_class_packages
        WHERE student_id = ? AND status = 'active'
-       LIMIT 1`,
+       ORDER BY created_at DESC
+       LIMIT 1
+       FOR UPDATE`,
       [student_id]
     );
 
-    if (!packageRows.length || Number(packageRows[0].classes_left) <= 0) {
-      return res.status(400).json({ message: "This student has no classes left. Please contact the admin for a new contract." });
+    if (!packageRows.length) {
+      await connection.rollback();
+      return res.status(400).json({ message: "This student has no active contract. Please contact the admin for a new contract." });
     }
 
-    const [teacherRows] = await pool.query(
+    const [scheduledRows] = await connection.query(
+      `SELECT COUNT(*) AS booked_count
+       FROM classes
+       WHERE student_id = ? AND status IN ('scheduled', 'completed')`,
+      [student_id]
+    );
+
+    const bookedClasses = Number(scheduledRows[0]?.booked_count || 0);
+    const remainingBookableClasses = Math.max(0, Number(packageRows[0].total_classes || 0) - bookedClasses);
+    if (remainingBookableClasses <= 0) {
+      await connection.rollback();
+      return res.status(400).json({ message: "This student has reached the maximum number of classes in the active contract. Please contact the admin for a new contract." });
+    }
+
+    const packageDuration = normalizeClassDuration(packageRows[0].class_duration);
+    const classDuration = packageDuration;
+    if (hasRequestedDuration && normalizedDuration !== packageDuration) {
+      await connection.rollback();
+      return res.status(400).json({ message: "Class duration must match the active package duration." });
+    }
+
+    const classRange = getRangeMinutes(start_time, classDuration);
+    if (!classRange) {
+      await connection.rollback();
+      return res.status(400).json({ message: "Invalid class duration or start time." });
+    }
+    const computedEndTime = minutesToTimeKey(classRange.end);
+
+    const [availabilityRows] = await connection.query(
+      `SELECT status,
+              TIME_FORMAT(start_time, '%H:%i:%s') AS start_time,
+              TIME_FORMAT(end_time, '%H:%i:%s') AS end_time,
+              TIME_FORMAT(break_start, '%H:%i:%s') AS break_start,
+              TIME_FORMAT(break_end, '%H:%i:%s') AS break_end
+       FROM teacher_availability
+       WHERE teacher_id = ? AND available_date = ?
+       LIMIT 1`,
+      [teacher_id, scheduled_date]
+    );
+
+    const availabilityRecord = availabilityRows[0];
+    if (!availabilityRecord || availabilityRecord.status !== "available") {
+      await connection.rollback();
+      return res.status(400).json({ message: "Teacher is not available on the selected date" });
+    }
+
+    if (availabilityRecord.start_time && availabilityRecord.end_time) {
+      const startMinutes = timeToMinutes(availabilityRecord.start_time);
+      const endMinutes = timeToMinutes(availabilityRecord.end_time);
+      if (startMinutes == null || endMinutes == null || classRange.start < startMinutes || classRange.end > endMinutes) {
+        await connection.rollback();
+        return res.status(400).json({ message: "Selected time is outside the teacher's availability window" });
+      }
+    }
+
+    if (availabilityRecord.break_start && availabilityRecord.break_end) {
+      const breakStartMinutes = timeToMinutes(availabilityRecord.break_start);
+      const breakEndMinutes = timeToMinutes(availabilityRecord.break_end);
+      if (breakStartMinutes != null && breakEndMinutes != null && rangesOverlap(classRange.start, classRange.end, breakStartMinutes, breakEndMinutes)) {
+        await connection.rollback();
+        return res.status(400).json({ message: "Selected time conflicts with the teacher's break" });
+      }
+    }
+
+    const [conflictRows] = await connection.query(
+      `SELECT class_id, teacher_id, student_id, start_time, end_time, duration
+       FROM classes
+       WHERE status = 'scheduled'
+         AND scheduled_date = ?
+         AND (teacher_id = ? OR student_id = ?)`,
+      [scheduled_date, teacher_id, student_id]
+    );
+
+    if (hasClassConflict(conflictRows, classRange.start, classRange.end)) {
+      await connection.rollback();
+      return res.status(409).json({ message: "That time overlaps with an existing class." });
+    }
+
+    const [teacherRows] = await connection.query(
       `SELECT first_name, last_name, email FROM users WHERE user_id = ?`,
       [teacher_id]
     );
@@ -1979,7 +2342,7 @@ app.post("/api/calendar/class", async (req, res) => {
           class_name,
           scheduled_date,
           start_time,
-          end_time,
+          computedEndTime,
           teacherEmail || MS_TEAMS_ORGANIZER_UPN
         );
       } catch (meetingErr) {
@@ -1988,19 +2351,19 @@ app.post("/api/calendar/class", async (req, res) => {
       }
     }
 
-    const [result] = await pool.query(
+    const [result] = await connection.query(
       `INSERT INTO classes (class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, class_link, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')`,
-      [class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, classLinkToSave]
+      [class_name, teacher_id, student_id, scheduled_date, start_time, computedEndTime, classDuration, classLinkToSave]
     );
 
-    await pool.query(
+    await connection.query(
       `INSERT INTO video_sessions (class_id, teacher_id, student_id, teams_meeting_link)
        VALUES (?, ?, ?, ?)`,
       [result.insertId, teacher_id, student_id, classLinkToSave]
     );
 
-    const [studentRows] = await pool.query(
+    const [studentRows] = await connection.query(
       `SELECT first_name, last_name FROM users WHERE user_id = ?`,
       [student_id]
     );
@@ -2008,16 +2371,22 @@ app.post("/api/calendar/class", async (req, res) => {
     const studentName = studentRows.length > 0 ? `${studentRows[0].first_name} ${studentRows[0].last_name}` : "A student";
     const notificationMessage = `${studentName} booked "${class_name}" for ${scheduled_date} at ${start_time}.`;
 
-    await pool.query(
+    await connection.query(
       `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [teacher_id, "general", "New Class Booked", notificationMessage, result.insertId, "class"]
     );
 
+    await connection.commit();
     res.status(201).json({ class_id: result.insertId, class_link: classLinkToSave, message: "Class created successfully" });
   } catch (err) {
+    try {
+      await connection.rollback();
+    } catch {}
     console.error(err);
     res.status(500).json({ message: "Error creating class" });
+  } finally {
+    connection.release();
   }
 });
 
@@ -2027,20 +2396,19 @@ app.get("/api/calendar/student-package/:student_id", async (req, res) => {
     const { student_id } = req.params;
     await expireDepletedPackages();
 
-    const [rows] = await pool.query(
-      `SELECT *
-       FROM student_class_packages
-       WHERE student_id = ?
-       ORDER BY FIELD(status, 'active', 'expired', 'cancelled'), created_at DESC
-       LIMIT 1`,
-      [student_id]
-    );
+    const { package: packageInfo, bookedClasses, bookableClasses } = await getStudentPackageAvailability(pool, student_id);
 
-    if (!rows.length) {
+    if (!packageInfo) {
       return res.status(404).json({ message: "No package found" });
     }
 
-    res.json({ package: rows[0] });
+    res.json({
+      package: {
+        ...packageInfo,
+        booked_classes: bookedClasses,
+        bookable_classes: bookableClasses,
+      }
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching package" });
@@ -2150,6 +2518,79 @@ app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
   }
 });
 
+app.put("/api/calendar/classes/:class_id/no-show", async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const { class_id } = req.params;
+    const { teacher_id } = req.body;
+
+    if (!class_id || !teacher_id) {
+      return res.status(400).json({ message: "Missing class_id or teacher_id" });
+    }
+
+    await connection.beginTransaction();
+
+    const [classRows] = await connection.query(
+      `SELECT class_id, teacher_id, student_id, class_name, status
+       FROM classes
+       WHERE class_id = ?
+       FOR UPDATE`,
+      [class_id]
+    );
+
+    if (!classRows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: "Class not found" });
+    }
+
+    const classInfo = classRows[0];
+    if (String(classInfo.teacher_id) !== String(teacher_id)) {
+      await connection.rollback();
+      return res.status(403).json({ message: "Only the assigned teacher can mark this class as no-show" });
+    }
+
+    if (classInfo.status === "completed") {
+      await connection.rollback();
+      return res.status(409).json({ message: "This class has already been marked as done" });
+    }
+
+    if (classInfo.status === "cancelled") {
+      await connection.rollback();
+      return res.status(400).json({ message: "Cancelled classes cannot be marked as no-show" });
+    }
+
+    if (classInfo.status === "no-show") {
+      await connection.rollback();
+      return res.status(409).json({ message: "This class has already been marked as no-show" });
+    }
+
+    await connection.query(
+      `UPDATE classes SET status = 'no-show' WHERE class_id = ?`,
+      [class_id]
+    );
+
+    const { package: updatedPackage } = await getStudentPackageAvailability(connection, classInfo.student_id);
+
+    await connection.commit();
+
+    res.json({
+      message: "Class marked as no-show",
+      class: {
+        class_id: classInfo.class_id,
+        status: "no-show",
+      },
+      package: updatedPackage,
+    });
+  } catch (err) {
+    await connection.rollback();
+    console.error(err);
+    res.status(500).json({ message: "Error marking class as no-show" });
+  } finally {
+    connection.release();
+  }
+});
+
 // Request class reschedule
 app.post("/api/calendar/reschedule-request", async (req, res) => {
   try {
@@ -2182,7 +2623,11 @@ app.post("/api/calendar/reschedule-request", async (req, res) => {
     }
 
     const classData = classRows[0];
-    const requestedMinutes = timeToMinutes(requestedTimeKey);
+    const classDuration = parseInt(classData.duration, 10) || DEFAULT_CLASS_DURATION;
+    const requestedRange = getRangeMinutes(requestedTimeKey, classDuration);
+    if (!requestedRange) {
+      return res.status(400).json({ message: "Invalid requested time" });
+    }
 
     const [availabilityRows] = await pool.query(
       `SELECT status,
@@ -2204,7 +2649,7 @@ app.post("/api/calendar/reschedule-request", async (req, res) => {
     if (availabilityRecord.start_time && availabilityRecord.end_time) {
       const startMinutes = timeToMinutes(availabilityRecord.start_time);
       const endMinutes = timeToMinutes(availabilityRecord.end_time);
-      if (startMinutes == null || endMinutes == null || requestedMinutes < startMinutes || requestedMinutes >= endMinutes) {
+      if (startMinutes == null || endMinutes == null || requestedRange.start < startMinutes || requestedRange.end > endMinutes) {
         return res.status(400).json({ message: "Requested time is outside the teacher's availability window" });
       }
     }
@@ -2212,25 +2657,23 @@ app.post("/api/calendar/reschedule-request", async (req, res) => {
     if (availabilityRecord.break_start && availabilityRecord.break_end) {
       const breakStartMinutes = timeToMinutes(availabilityRecord.break_start);
       const breakEndMinutes = timeToMinutes(availabilityRecord.break_end);
-      if (breakStartMinutes != null && breakEndMinutes != null && requestedMinutes >= breakStartMinutes && requestedMinutes < breakEndMinutes) {
+      if (breakStartMinutes != null && breakEndMinutes != null && rangesOverlap(requestedRange.start, requestedRange.end, breakStartMinutes, breakEndMinutes)) {
         return res.status(400).json({ message: "Requested time conflicts with the teacher's break" });
       }
     }
 
     const [teacherConflictRows] = await pool.query(
-      `SELECT class_id
+      `SELECT class_id, teacher_id, student_id, start_time, end_time, duration
        FROM classes
-       WHERE teacher_id = ?
-         AND class_id <> ?
+       WHERE class_id <> ?
          AND scheduled_date = ?
-         AND TIME_FORMAT(start_time, '%H:%i') = ?
          AND status = 'scheduled'
-       LIMIT 1`,
-      [classData.teacher_id, class_id, requestedDateKey, requestedTimeKey]
+         AND (teacher_id = ? OR student_id = ?)`,
+      [class_id, requestedDateKey, classData.teacher_id, classData.student_id]
     );
 
-    if (teacherConflictRows.length) {
-      return res.status(409).json({ message: "This time slot is already booked on the teacher's schedule" });
+    if (hasClassConflict(teacherConflictRows, requestedRange.start, requestedRange.end, class_id)) {
+      return res.status(409).json({ message: "This time slot overlaps with another booked class" });
     }
 
     // Determine recipient: if student requested, notify teacher; if teacher requested, notify student
@@ -2267,10 +2710,12 @@ app.post("/api/calendar/reschedule-request", async (req, res) => {
 app.get("/api/calendar/booked-dates/:user_id", async (req, res) => {
   try {
     const { user_id } = req.params;
+    await autoMarkPastClassesAsNoShow(pool);
     const [bookedDates] = await pool.query(
       `SELECT DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
               TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time,
               TIME_FORMAT(c.end_time, '%H:%i:%s') AS end_time,
+              c.duration,
               c.teacher_id,
               c.student_id,
               tea.timezone AS teacher_timezone,
@@ -2301,6 +2746,7 @@ app.get("/api/calendar/my-reschedule-requests/:user_id", async (req, res) => {
               DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
               TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time,
               TIME_FORMAT(c.end_time, '%H:%i:%s') AS end_time,
+              c.duration,
               req.first_name AS requester_first, req.last_name AS requester_last,
               stu.first_name AS student_first, stu.last_name AS student_last,
               stu.timezone AS student_timezone,
@@ -2357,7 +2803,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", async (req, res) => {
 
     // Get current class end_time to calculate duration
     const [classData] = await pool.query(
-      `SELECT start_time, end_time FROM classes WHERE class_id = ?`,
+      `SELECT teacher_id, student_id, start_time, end_time, duration FROM classes WHERE class_id = ?`,
       [class_id]
     );
 
@@ -2365,16 +2811,61 @@ app.post("/api/calendar/reschedule-requests/:id/approve", async (req, res) => {
       return res.status(404).json({ message: "Class not found" });
     }
 
-    const { end_time: oldEndTime, start_time: oldStartTime } = classData[0];
-    
-    // Calculate new end_time by preserving the original duration
-    const startDate = new Date(`2000-01-01 ${oldStartTime}`);
-    const endDate = new Date(`2000-01-01 ${oldEndTime}`);
-    const durationMs = endDate - startDate;
-    
-    const newEndTimeDate = new Date(`2000-01-01 ${requested_time}`);
-    newEndTimeDate.setTime(newEndTimeDate.getTime() + durationMs);
-    const newEndTime = newEndTimeDate.toTimeString().slice(0, 8);
+    const classInfo = classData[0];
+    const classDuration = parseInt(classInfo.duration, 10) || DEFAULT_CLASS_DURATION;
+    const requestedRange = getRangeMinutes(requested_time, classDuration);
+    if (!requestedRange) {
+      return res.status(400).json({ message: "Invalid requested time" });
+    }
+
+    const [availabilityRows] = await pool.query(
+      `SELECT status,
+              TIME_FORMAT(start_time, '%H:%i:%s') AS start_time,
+              TIME_FORMAT(end_time, '%H:%i:%s') AS end_time,
+              TIME_FORMAT(break_start, '%H:%i:%s') AS break_start,
+              TIME_FORMAT(break_end, '%H:%i:%s') AS break_end
+       FROM teacher_availability
+       WHERE teacher_id = ? AND available_date = ?
+       LIMIT 1`,
+      [classInfo.teacher_id, requested_date]
+    );
+
+    const availabilityRecord = availabilityRows[0];
+    if (!availabilityRecord || availabilityRecord.status !== "available") {
+      return res.status(400).json({ message: "Teacher is not available on the requested date" });
+    }
+
+    if (availabilityRecord.start_time && availabilityRecord.end_time) {
+      const startMinutes = timeToMinutes(availabilityRecord.start_time);
+      const endMinutes = timeToMinutes(availabilityRecord.end_time);
+      if (startMinutes == null || endMinutes == null || requestedRange.start < startMinutes || requestedRange.end > endMinutes) {
+        return res.status(400).json({ message: "Requested time is outside the teacher's availability window" });
+      }
+    }
+
+    if (availabilityRecord.break_start && availabilityRecord.break_end) {
+      const breakStartMinutes = timeToMinutes(availabilityRecord.break_start);
+      const breakEndMinutes = timeToMinutes(availabilityRecord.break_end);
+      if (breakStartMinutes != null && breakEndMinutes != null && rangesOverlap(requestedRange.start, requestedRange.end, breakStartMinutes, breakEndMinutes)) {
+        return res.status(400).json({ message: "Requested time conflicts with the teacher's break" });
+      }
+    }
+
+    const [conflictRows] = await pool.query(
+      `SELECT class_id, teacher_id, student_id, start_time, end_time, duration
+       FROM classes
+       WHERE class_id <> ?
+         AND scheduled_date = ?
+         AND status = 'scheduled'
+         AND (teacher_id = ? OR student_id = ?)`,
+      [class_id, requested_date, classInfo.teacher_id, classInfo.student_id]
+    );
+
+    if (hasClassConflict(conflictRows, requestedRange.start, requestedRange.end, class_id)) {
+      return res.status(409).json({ message: "That time overlaps with another booked class" });
+    }
+
+    const newEndTime = minutesToTimeKey(requestedRange.end);
 
     // Update reschedule request status
     const resolvedAt = new Date();
@@ -2767,6 +3258,197 @@ app.get("/api/video-sessions/user/:user_id", async (req, res) => {
   }
 });
 
+// ==================== CHATS ====================
+
+app.get("/api/chats/stream/:user_id", async (req, res) => {
+  try {
+    const { user_id } = req.params;
+
+    res.status(200).set({
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    res.flushHeaders?.();
+    res.write(`event: connected\ndata: ${JSON.stringify({ ok: true })}\n\n`);
+    addChatStreamClient(user_id, res);
+
+    const heartbeat = setInterval(() => {
+      try {
+        res.write(`event: ping\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`);
+      } catch {
+        clearInterval(heartbeat);
+        removeChatStreamClient(user_id, res);
+      }
+    }, 25000);
+
+    req.on("close", () => {
+      clearInterval(heartbeat);
+      removeChatStreamClient(user_id, res);
+    });
+  } catch (err) {
+    console.error("GET /api/chats/stream/:user_id error:", err);
+    res.status(500).json({ message: "Error opening chat stream" });
+  }
+});
+
+app.get("/api/chats/unread-count/:user_id", async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const [rows] = await pool.query(
+      `SELECT COUNT(*) AS unread_count
+       FROM messages
+       WHERE recipient_id = ? AND is_read = 0`,
+      [user_id]
+    );
+
+    res.json({ unreadCount: Number(rows[0]?.unread_count || 0) });
+  } catch (err) {
+    console.error("GET /api/chats/unread-count/:user_id error:", err);
+    res.status(500).json({ message: "Error fetching unread chat count" });
+  }
+});
+
+app.get("/api/chats/conversations/:user_id", async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const conversations = await getChatConversationsForUser(user_id);
+    res.json({ conversations });
+  } catch (err) {
+    console.error("GET /api/chats/conversations/:user_id error:", err);
+    res.status(500).json({ message: "Error fetching chat conversations" });
+  }
+});
+
+app.get("/api/chats/conversations/:user_id/:other_user_id/messages", async (req, res) => {
+  try {
+    const { user_id, other_user_id } = req.params;
+    const messages = await getChatThread(user_id, other_user_id);
+    res.json({ messages });
+  } catch (err) {
+    console.error("GET /api/chats/conversations/:user_id/:other_user_id/messages error:", err);
+    res.status(500).json({ message: "Error fetching chat messages" });
+  }
+});
+
+app.put("/api/chats/conversations/:user_id/:other_user_id/read", async (req, res) => {
+  try {
+    const { user_id, other_user_id } = req.params;
+    const readAt = new Date();
+    await pool.query(
+      `UPDATE messages
+       SET is_read = 1,
+           read_at = CURRENT_TIMESTAMP
+       WHERE sender_id = ?
+         AND recipient_id = ?
+         AND is_read = 0`,
+      [other_user_id, user_id]
+    );
+
+    const [receiptRows] = await pool.query(
+      `SELECT MAX(message_id) AS last_read_message_id,
+              MAX(read_at) AS read_at
+       FROM messages
+       WHERE sender_id = ?
+         AND recipient_id = ?
+         AND is_read = 1`,
+      [other_user_id, user_id]
+    );
+
+    const readReceipt = {
+      reader_id: Number(user_id),
+      sender_id: Number(other_user_id),
+      recipient_id: Number(user_id),
+      last_read_message_id: Number(receiptRows[0]?.last_read_message_id || 0),
+      read_at: receiptRows[0]?.read_at || readAt.toISOString(),
+    };
+
+    broadcastChatReadReceipt(readReceipt);
+
+    const conversations = await getChatConversationsForUser(user_id);
+    res.json({ message: "Conversation marked as read", conversations, readReceipt });
+  } catch (err) {
+    console.error("PUT /api/chats/conversations/:user_id/:other_user_id/read error:", err);
+    res.status(500).json({ message: "Error marking chat conversation as read" });
+  }
+});
+
+app.post("/api/chats/messages", async (req, res) => {
+  try {
+    const { sender_id, recipient_id, subject = null, content } = req.body;
+
+    if (!sender_id || !recipient_id || !String(content || "").trim()) {
+      return res.status(400).json({ message: "sender_id, recipient_id, and content are required" });
+    }
+
+    const [users] = await pool.query(
+      `SELECT user_id FROM users WHERE user_id IN (?, ?) AND status = 'active'`,
+      [sender_id, recipient_id]
+    );
+
+    if (users.length < 2) {
+      return res.status(404).json({ message: "Sender or recipient not found" });
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO messages (sender_id, recipient_id, subject, content, is_read, sent_at)
+       VALUES (?, ?, ?, ?, 0, CURRENT_TIMESTAMP)`,
+      [sender_id, recipient_id, subject || null, String(content).trim()]
+    );
+
+    const [rows] = await pool.query(
+      `SELECT
+          m.message_id,
+          m.sender_id,
+          m.recipient_id,
+          m.subject,
+          m.content,
+          m.is_read,
+          m.sent_at,
+          m.read_at,
+          s.first_name AS sender_first_name,
+          s.last_name AS sender_last_name,
+          s.profile_image_url AS sender_profile_image_url,
+          r.first_name AS recipient_first_name,
+          r.last_name AS recipient_last_name,
+          r.profile_image_url AS recipient_profile_image_url
+       FROM messages m
+       JOIN users s ON s.user_id = m.sender_id
+       JOIN users r ON r.user_id = m.recipient_id
+       WHERE m.message_id = ?
+       LIMIT 1`,
+      [result.insertId]
+    );
+
+    const message = rows[0]
+      ? {
+          message_id: rows[0].message_id,
+          sender_id: rows[0].sender_id,
+          recipient_id: rows[0].recipient_id,
+          subject: rows[0].subject,
+          content: rows[0].content,
+          is_read: Boolean(rows[0].is_read),
+          sent_at: rows[0].sent_at,
+          read_at: rows[0].read_at,
+          sender_name: `${rows[0].sender_first_name || ""} ${rows[0].sender_last_name || ""}`.trim(),
+          recipient_name: `${rows[0].recipient_first_name || ""} ${rows[0].recipient_last_name || ""}`.trim(),
+          sender_profile_image_url: rows[0].sender_profile_image_url || null,
+          recipient_profile_image_url: rows[0].recipient_profile_image_url || null,
+        }
+      : null;
+
+    if (message) {
+      broadcastChatMessage(message);
+    }
+
+    res.status(201).json({ message, messageId: result.insertId });
+  } catch (err) {
+    console.error("POST /api/chats/messages error:", err);
+    res.status(500).json({ message: "Error sending chat message" });
+  }
+});
+
 // ==================== NOTIFICATIONS (System-wide) ====================
 
 // Get all unread notifications for a user
@@ -2977,6 +3659,7 @@ app.put("/api/notification-preferences/:user_id", async (req, res) => {
 app.get("/api/student/profile/:student_id", async (req, res) => {
   try {
     const { student_id } = req.params;
+    await autoMarkPastClassesAsNoShow(pool);
 
     const [profileRows] = await pool.query(
       `SELECT sp.*, u.first_name, u.last_name, u.email,
@@ -3001,6 +3684,18 @@ app.get("/api/student/profile/:student_id", async (req, res) => {
 
     const profile = profileRows[0];
     const packageInfo = packageRows.length > 0 ? packageRows[0] : null;
+    let bookedClasses = 0;
+    let bookableClasses = 0;
+    if (packageInfo) {
+      const [scheduledRows] = await pool.query(
+        `SELECT COUNT(*) AS booked_count
+         FROM classes
+         WHERE student_id = ? AND status IN ('scheduled', 'completed')`,
+        [student_id]
+      );
+      bookedClasses = Number(scheduledRows[0]?.booked_count || 0);
+      bookableClasses = Math.max(0, Number(packageInfo.total_classes || 0) - bookedClasses);
+    }
 
     res.json({
       profile: {
@@ -3022,6 +3717,9 @@ app.get("/api/student/profile/:student_id", async (req, res) => {
         total_classes: packageInfo.total_classes,
         classes_used: packageInfo.classes_used,
         classes_left: packageInfo.classes_left,
+        booked_classes: bookedClasses,
+        bookable_classes: bookableClasses,
+        class_duration: packageInfo.class_duration,
         status: packageInfo.status
       } : null
     });
@@ -3911,6 +4609,199 @@ async function createNotificationsForUsers(userIds, type, title, message, relate
     `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url) VALUES ${values}`,
     params
   );
+}
+
+function formatChatUser(row, fallbackRole = null) {
+  const name = `${row?.first_name || ""} ${row?.last_name || ""}`.trim() || row?.email || "Unknown";
+  return {
+    user_id: row?.user_id,
+    first_name: row?.first_name || "",
+    last_name: row?.last_name || "",
+    name,
+    email: row?.email || null,
+    role: row?.role || fallbackRole || null,
+    status: row?.status || null,
+    profile_image_url: row?.profile_image_url || null,
+    profileImageUrl: row?.profile_image_url || null,
+  };
+}
+
+async function getDefaultChatContacts(userId, role) {
+  const normalizedRole = String(role || "").toLowerCase();
+  if (!userId || !normalizedRole) return [];
+
+  if (normalizedRole === "student") {
+    const [rows] = await pool.query(
+      `SELECT u.user_id, u.first_name, u.last_name, u.email, u.profile_image_url, u.role, u.status
+       FROM student_profiles sp
+       JOIN users u ON u.user_id = sp.assigned_teacher_id
+       WHERE sp.user_id = ? AND u.status = 'active'
+       LIMIT 1`,
+      [userId]
+    );
+    return rows.map((row) => formatChatUser(row, "teacher"));
+  }
+
+  if (normalizedRole === "teacher") {
+    const [rows] = await pool.query(
+      `SELECT DISTINCT u.user_id, u.first_name, u.last_name, u.email, u.profile_image_url, u.role, u.status
+       FROM student_profiles sp
+       JOIN users u ON u.user_id = sp.user_id
+       WHERE sp.assigned_teacher_id = ?
+         AND u.role = 'student'
+         AND u.status = 'active'
+       ORDER BY u.first_name ASC, u.last_name ASC`,
+      [userId]
+    );
+    return rows.map((row) => formatChatUser(row, "student"));
+  }
+
+  if (normalizedRole === "admin") {
+    const [rows] = await pool.query(
+      `SELECT user_id, first_name, last_name, email, profile_image_url, role, status
+       FROM users
+       WHERE status = 'active' AND role IN ('teacher', 'student')
+       ORDER BY role ASC, first_name ASC, last_name ASC
+       LIMIT 50`
+    );
+    return rows.map((row) => formatChatUser(row));
+  }
+
+  return [];
+}
+
+async function getChatConversationSummaries(userId) {
+  if (!userId) return [];
+
+  const [rows] = await pool.query(
+    `SELECT
+        u.user_id,
+        u.first_name,
+        u.last_name,
+        u.email,
+        u.profile_image_url,
+        u.role,
+        u.status,
+        lm.message_id AS last_message_id,
+        lm.content AS last_message,
+        lm.sent_at AS last_message_at,
+        lm.sender_id AS last_sender_id,
+        (
+          SELECT COUNT(*)
+          FROM messages unread
+          WHERE unread.sender_id = u.user_id
+            AND unread.recipient_id = ?
+            AND unread.is_read = 0
+        ) AS unread_count
+     FROM users u
+     JOIN (
+       SELECT other_id, MAX(message_id) AS latest_message_id
+       FROM (
+         SELECT recipient_id AS other_id, message_id
+         FROM messages
+         WHERE sender_id = ?
+         UNION ALL
+         SELECT sender_id AS other_id, message_id
+         FROM messages
+         WHERE recipient_id = ?
+       ) related_messages
+       GROUP BY other_id
+     ) conv ON conv.other_id = u.user_id
+     JOIN messages lm ON lm.message_id = conv.latest_message_id
+     WHERE u.status = 'active'
+     ORDER BY lm.sent_at DESC, lm.message_id DESC`,
+    [userId, userId, userId]
+  );
+
+  return rows.map((row) => ({
+    ...formatChatUser(row),
+    last_message_id: row.last_message_id,
+    last_message: row.last_message || "",
+    last_message_at: row.last_message_at || null,
+    last_sender_id: row.last_sender_id || null,
+    unread_count: Number(row.unread_count || 0),
+    online: isUserChatActive(row.user_id),
+    status_label: isUserChatActive(row.user_id) ? "Active now" : "Not active",
+  }));
+}
+
+async function getChatConversationsForUser(userId) {
+  const currentUser = await pool.query(
+    `SELECT user_id, role, status FROM users WHERE user_id = ? LIMIT 1`,
+    [userId]
+  );
+  const [userRows] = currentUser;
+  if (!userRows.length) return [];
+
+  const role = userRows[0].role;
+  const [summaryRows, defaultContacts] = await Promise.all([
+    getChatConversationSummaries(userId),
+    getDefaultChatContacts(userId, role),
+  ]);
+
+  const byId = new Map();
+  summaryRows.forEach((row) => byId.set(String(row.user_id), row));
+
+  defaultContacts.forEach((contact) => {
+    const key = String(contact.user_id);
+    if (!byId.has(key)) {
+      byId.set(key, {
+        ...contact,
+        last_message_id: null,
+        last_message: "",
+        last_message_at: null,
+        last_sender_id: null,
+        unread_count: 0,
+        online: isUserChatActive(contact.user_id),
+        status_label: isUserChatActive(contact.user_id) ? "Active now" : "Not active",
+      });
+    }
+  });
+
+  return Array.from(byId.values()).sort((a, b) => {
+    const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+    const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+    if (bTime !== aTime) return bTime - aTime;
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
+}
+
+async function getChatThread(userId, otherUserId) {
+  const [rows] = await pool.query(
+    `SELECT
+        m.message_id,
+        m.sender_id,
+        m.recipient_id,
+        m.subject,
+        m.content,
+        m.is_read,
+        m.sent_at,
+        m.read_at,
+        s.first_name AS sender_first_name,
+        s.last_name AS sender_last_name,
+        r.first_name AS recipient_first_name,
+        r.last_name AS recipient_last_name
+     FROM messages m
+     JOIN users s ON s.user_id = m.sender_id
+     JOIN users r ON r.user_id = m.recipient_id
+     WHERE (m.sender_id = ? AND m.recipient_id = ?)
+        OR (m.sender_id = ? AND m.recipient_id = ?)
+     ORDER BY m.sent_at ASC, m.message_id ASC`,
+    [userId, otherUserId, otherUserId, userId]
+  );
+
+  return rows.map((row) => ({
+    message_id: row.message_id,
+    sender_id: row.sender_id,
+    recipient_id: row.recipient_id,
+    subject: row.subject,
+    content: row.content,
+    is_read: Boolean(row.is_read),
+    sent_at: row.sent_at,
+    read_at: row.read_at,
+    sender_name: `${row.sender_first_name || ""} ${row.sender_last_name || ""}`.trim(),
+    recipient_name: `${row.recipient_first_name || ""} ${row.recipient_last_name || ""}`.trim(),
+  }));
 }
 
 // ========== TEACHER DATA ISOLATION & SECURITY HELPERS ==========
@@ -4852,3 +5743,17 @@ app.get("/api/teacher/books", async (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`🚀 API listening on http://localhost:${PORT}`));
+
+const runClassStatusSweep = async () => {
+  try {
+    await Promise.all([
+      expireDepletedPackages(pool),
+      autoMarkPastClassesAsNoShow(pool),
+    ]);
+  } catch (err) {
+    console.error("Class status sweep error:", err);
+  }
+};
+
+runClassStatusSweep();
+setInterval(runClassStatusSweep, 60 * 1000);

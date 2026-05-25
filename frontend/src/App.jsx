@@ -12,16 +12,16 @@ const IDLE_TIMEOUT_MS = 5 * 60 * 60 * 1000; // 5 hours
 const PUBLIC_PATHS = ["/", "/login", "/register"];
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
 
-function hasRequiredProfileFields(user = {}) {
+function hasRequiredProfileFields(user) {
   return Boolean(
-    String(user.contact || user.contact_number || "").trim()
-    && String(user.profileImageUrl || user.profile_image_url || "").trim()
-    && (user.passwordChanged || user.password_changed)
+    String(user?.contact || user?.contact_number || "").trim()
+    && String(user?.profileImageUrl || user?.profile_image_url || "").trim()
+    && (user?.passwordChanged || user?.password_changed)
   );
 }
 
-function isProfileComplete(user = {}) {
-  return Boolean(user.profileCompleted && hasRequiredProfileFields(user));
+function isProfileComplete(user) {
+  return Boolean(user?.profileCompleted && hasRequiredProfileFields(user));
 }
 
 function App() {

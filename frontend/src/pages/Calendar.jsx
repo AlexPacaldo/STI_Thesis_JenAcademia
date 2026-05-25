@@ -132,35 +132,50 @@ const normalizeTime = (timeStr) => {
 };
 
 const parse24HourTime = (timeStr) => normalizeTime(timeStr);
+const CLASS_DURATION_OPTIONS = [25, 50];
+const DEFAULT_CLASS_DURATION = 50;
+const SLOT_STEP_MINUTES = 25;
+
+const normalizeClassDuration = (value) => {
+  const parsed = parseInt(value, 10);
+  return CLASS_DURATION_OPTIONS.includes(parsed) ? parsed : DEFAULT_CLASS_DURATION;
+};
+
+const timeToMinutes = (timeStr) => {
+  const normalized = normalizeTime(timeStr);
+  if (!normalized) return null;
+  const [hours, minutes] = normalized.split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return hours * 60 + minutes;
+};
+
+const minutesToTime = (minutes) => {
+  const safeMinutes = ((Number(minutes) % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const hours = Math.floor(safeMinutes / 60);
+  const mins = safeMinutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+};
+
+const rangesOverlap = (startA, endA, startB, endB) => startA < endB && endA > startB;
+
+const getClassRange = (classObj) => {
+  const start = timeToMinutes(classObj?.start_time || classObj?.startTime || classObj?.time);
+  if (start == null) return null;
+  const duration = parseInt(classObj?.duration, 10);
+  let end = Number.isFinite(duration) && duration > 0
+    ? start + duration
+    : timeToMinutes(classObj?.end_time || classObj?.endTime);
+  if (end == null || end <= start) return null;
+  return { start, end };
+};
 
 // Helper: calculate end time from start time and duration in minutes
 const getEndTime = (startTime, durationMins) => {
   if (!startTime || !durationMins) return "";
-  
-  // Parse "HH:MM AM/PM" format
-  const timeMatch = startTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-  if (!timeMatch) return "";
-  
-  let hours = parseInt(timeMatch[1]);
-  const mins = parseInt(timeMatch[2]);
-  const period = timeMatch[3].toUpperCase();
-  
-  // Convert to 24-hour format
-  if (period === 'PM' && hours !== 12) hours += 12;
-  if (period === 'AM' && hours === 12) hours = 0;
-  
-  // Add duration in minutes
-  let totalMinutes = hours * 60 + mins + parseInt(durationMins);
-  
-  // Convert back to 12-hour format
-  let endHours = Math.floor(totalMinutes / 60) % 24;
-  let endMins = totalMinutes % 60;
-  
-  const endPeriod = endHours >= 12 ? "PM" : "AM";
-  if (endHours > 12) endHours -= 12;
-  if (endHours === 0) endHours = 12;
-  
-  return `${endHours}:${String(endMins).padStart(2, "0")} ${endPeriod}`;
+  const start = timeToMinutes(startTime);
+  const duration = parseInt(durationMins, 10);
+  if (start == null || !Number.isFinite(duration) || duration <= 0) return "";
+  return humanTime(minutesToTime(start + duration));
 };
 
 // Helper: check if a class is joinable (30 mins before start until class end)
@@ -264,6 +279,93 @@ const isClassJoinable = (classObj, selectedDate) => {
   }
 };
 
+const isClassPast = (classObj, selectedDate) => {
+  if (!classObj || !selectedDate) return false;
+
+  try {
+    const now = new Date();
+    const parseTimeString = (timeStr) => {
+      if (!timeStr) return null;
+      const ampmMatch = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+      if (ampmMatch) {
+        let hours = parseInt(ampmMatch[1], 10);
+        const mins = parseInt(ampmMatch[2], 10);
+        const period = ampmMatch[3].toUpperCase();
+        if (period === "PM" && hours !== 12) hours += 12;
+        if (period === "AM" && hours === 12) hours = 0;
+        return hours * 60 + mins;
+      }
+      const twentyFourMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
+      if (twentyFourMatch) {
+        const hours = parseInt(twentyFourMatch[1], 10);
+        const mins = parseInt(twentyFourMatch[2], 10);
+        return hours * 60 + mins;
+      }
+      return null;
+    };
+
+    const parseDateString = (dateStr) => {
+      if (dateStr instanceof Date && !Number.isNaN(dateStr.getTime())) {
+        return {
+          year: dateStr.getFullYear(),
+          month: dateStr.getMonth(),
+          day: dateStr.getDate(),
+        };
+      }
+
+      const dateMatch = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (!dateMatch) return null;
+
+      return {
+        year: Number(dateMatch[1]),
+        month: Number(dateMatch[2]) - 1,
+        day: Number(dateMatch[3]),
+      };
+    };
+
+    const selectedDateParts = parseDateString(selectedDate);
+    const classStartMins = parseTimeString(classObj.time || classObj.start_time);
+    if (!selectedDateParts || classStartMins == null) return false;
+
+    const startHour = Math.floor(classStartMins / 60);
+    const startMinute = classStartMins % 60;
+    const classStart = new Date(
+      selectedDateParts.year,
+      selectedDateParts.month,
+      selectedDateParts.day,
+      startHour,
+      startMinute,
+      0,
+      0
+    );
+
+    let classEnd = null;
+    if (classObj.duration && !Number.isNaN(Number(classObj.duration))) {
+      classEnd = new Date(classStart.getTime() + Number(classObj.duration) * 60 * 1000);
+    } else if (classObj.end_time) {
+      const classEndMins = parseTimeString(classObj.end_time);
+      if (classEndMins != null) {
+        const endHour = Math.floor(classEndMins / 60);
+        const endMinute = classEndMins % 60;
+        classEnd = new Date(
+          selectedDateParts.year,
+          selectedDateParts.month,
+          selectedDateParts.day,
+          endHour,
+          endMinute,
+          0,
+          0
+        );
+      }
+    }
+
+    if (!classEnd) return false;
+    return now >= classEnd;
+  } catch {
+    return false;
+  }
+};
+
 const addSeconds = (time) => {
   const normalized = normalizeTimeKey(time);
   return normalized ? `${normalized}:00` : "";
@@ -326,6 +428,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [contractRequestOpen, setContractRequestOpen] = useState(false);
   const [contractCourseId, setContractCourseId] = useState("");
   const [contractClassCount, setContractClassCount] = useState("10");
+  const [contractClassDuration, setContractClassDuration] = useState("50");
   const [contractTrialNotes, setContractTrialNotes] = useState("");
   const [contractAiCriteria, setContractAiCriteria] = useState({
     learningGoal: [],
@@ -346,12 +449,23 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [bookingSubject, setBookingSubject] = useState("");
   const [bookingEndTime, setBookingEndTime] = useState("");
   const [availableTimeSlots, setAvailableTimeSlots] = useState([]);
+  const studentClassDuration = useMemo(
+    () => normalizeClassDuration(studentPackage?.class_duration ?? studentProfile?.course_duration),
+    [studentPackage?.class_duration, studentProfile?.course_duration]
+  );
   const selectedContractCourseNames = useMemo(
     () => courses
       .filter((course) => String(course.course_id) === String(contractCourseId))
       .map((course) => course.course_name),
     [courses, contractCourseId]
   );
+  const selectedClasses = selectedDate ? (classesCache[selectedDate] || []) : [];
+  const selectedClass = selectedClassId
+    ? selectedClasses.find(cls => cls.id === selectedClassId)
+    : null;
+  const selectedClassDuration = Number(selectedClass?.duration) > 0
+    ? Number(selectedClass.duration)
+    : studentClassDuration;
   const contractLearningGoalOptions = useMemo(
     () => AI_CRITERIA_OPTIONS.learningGoal.filter((option) => optionAppliesToCourses(option, selectedContractCourseNames)),
     [selectedContractCourseNames]
@@ -678,7 +792,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   };
 
   // fetch available time slots for a specific date from teacher availability
-  const loadAvailableTimeSlots = (dateStr, tId) => {
+  const loadAvailableTimeSlots = (dateStr, tId, durationOverride = null, excludeClassId = null) => {
     const dateKey = normalizeDate(dateStr);
     if (!dateKey || !tId) {
       setAvailableTimeSlots([]);
@@ -693,98 +807,40 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
     
     const classes = teacherClassesCache[dateKey] !== undefined ? teacherClassesCache[dateKey] : (classesCache[dateKey] || []);
-    console.log("=== loadAvailableTimeSlots ===");
-    console.log("Date:", dateStr, "Teacher ID:", tId);
-    console.log("All classes for date:", classes);
-    
-    // Get booked times for this specific teacher on this date
-    const bookedClasses = classes.filter(cls => {
-      const classTeacherId = cls.teacher_id;
-      console.log("Checking class:", cls, "Teacher ID match:", classTeacherId, "===", tId, "?", classTeacherId === parseInt(tId));
-      return classTeacherId === parseInt(tId);
-    });
-    
-    console.log("Booked classes for this teacher:", bookedClasses);
-    
-    // Use start_time (24-hour format from DB) instead of formatted time
-    // Normalize to HH:MM format (first 5 characters of HH:MM:SS)
-    const bookedTimes = bookedClasses.map(cls => {
-      let time = cls.start_time || cls.time || "";
-      // Extract HH:MM from HH:MM:SS format
-      if (time.length >= 5) {
-        time = time.substring(0, 5);
-      }
-      return time;
-    }).filter(t => t && t.length === 5); // Only keep valid HH:MM times
-    
-    console.log("Booked times (from start_time):", bookedTimes);
-    
-    // Find teacher's availability record for this date (with time ranges and breaks)
     const teacherAvailabilityRecord = teacherAvailabilityList.find(
       record => normalizeDate(record.available_date) === dateKey && record.status === "available"
     ) || (teacherAvailabilityRecordForDate && teacherAvailabilityRecordForDate.status === "available" ? teacherAvailabilityRecordForDate : null);
-    
-    console.log("Teacher availability record:", teacherAvailabilityRecord);
-    
-    let allSlots = [];
-    let teacherStartTime = "07:00"; // default start
-    let teacherEndTime = "23:00";   // default end
-    let breakStartTime = null;
-    let breakEndTime = null;
-    
-    // If teacher has set specific availability hours for this date
-    if (teacherAvailabilityRecord && teacherAvailabilityRecord.start_time && teacherAvailabilityRecord.end_time) {
-      teacherStartTime = teacherAvailabilityRecord.start_time.substring(0, 5); // Extract HH:MM
-      teacherEndTime = teacherAvailabilityRecord.end_time.substring(0, 5);
-      
-      if (teacherAvailabilityRecord.break_start && teacherAvailabilityRecord.break_end) {
-        breakStartTime = teacherAvailabilityRecord.break_start.substring(0, 5);
-        breakEndTime = teacherAvailabilityRecord.break_end.substring(0, 5);
-      }
-      
-      // Generate time slots within teacher's availability window
-      const startHour = parseInt(teacherStartTime.split(":")[0]);
-      const endHour = parseInt(teacherEndTime.split(":")[0]);
-      
-      for (let hour = startHour; hour < endHour; hour++) {
-        allSlots.push(`${String(hour).padStart(2, "0")}:00`);
-      }
-      
-      console.log("Generated slots within teacher hours:", allSlots);
-    } else {
-      // No specific teacher availability set for this date, so there are no available slots.
-      allSlots = [];
+
+    if (!teacherAvailabilityRecord?.start_time || !teacherAvailabilityRecord?.end_time) {
+      setAvailableTimeSlots([]);
+      return;
     }
-    
-    // Filter out booked times
-    const afterBookingFilter = allSlots.filter(slot => !bookedTimes.includes(slot));
-    console.log("Available slots after booking filter:", afterBookingFilter);
-    
-    // Filter out times within teacher's break
-    const afterBreakFilter = afterBookingFilter.filter(slot => {
-      if (!breakStartTime || !breakEndTime) return true;
-      
-      const slotMinutes = parseInt(slot.split(":")[0]) * 60 + parseInt(slot.split(":")[1]);
-      const breakStartMinutes = parseInt(breakStartTime.split(":")[0]) * 60 + parseInt(breakStartTime.split(":")[1]);
-      const breakEndMinutes = parseInt(breakEndTime.split(":")[0]) * 60 + parseInt(breakEndTime.split(":")[1]);
-      
-      // Include slot if it's NOT within break time
-      return slotMinutes < breakStartMinutes || slotMinutes >= breakEndMinutes;
-    });
-    
-    console.log("Available slots after break filter:", afterBreakFilter);
-    
-    // Also filter out student's own booked classes on this date
-    const studentBookedClasses = classes.filter(cls => cls.student_id === localUserId);
-    const studentBookedTimes = studentBookedClasses.map(cls => {
-      let time = cls.start_time || cls.time || "";
-      if (time.length >= 5) {
-        time = time.substring(0, 5);
+
+    const duration = normalizeClassDuration(durationOverride ?? studentPackage?.class_duration ?? studentProfile?.course_duration);
+    const availabilityStart = timeToMinutes(teacherAvailabilityRecord.start_time);
+    const availabilityEnd = timeToMinutes(teacherAvailabilityRecord.end_time);
+    if (availabilityStart == null || availabilityEnd == null || availabilityEnd <= availabilityStart) {
+      setAvailableTimeSlots([]);
+      return;
+    }
+
+    const breakStart = teacherAvailabilityRecord.break_start ? timeToMinutes(teacherAvailabilityRecord.break_start) : null;
+    const breakEnd = teacherAvailabilityRecord.break_end ? timeToMinutes(teacherAvailabilityRecord.break_end) : null;
+    const occupiedRanges = classes
+      .filter(cls => cls?.id !== excludeClassId && (Number(cls.teacher_id) === Number(tId) || Number(cls.student_id) === Number(localUserId)))
+      .map(getClassRange)
+      .filter(Boolean);
+
+    const finalSlotsInTeacherTimezone = [];
+    for (let minute = availabilityStart; minute + duration <= availabilityEnd; minute += SLOT_STEP_MINUTES) {
+      const slotEnd = minute + duration;
+      const conflictsWithBreak = breakStart != null && breakEnd != null && rangesOverlap(minute, slotEnd, breakStart, breakEnd);
+      const conflictsWithClass = occupiedRanges.some(range => rangesOverlap(minute, slotEnd, range.start, range.end));
+      if (!conflictsWithBreak && !conflictsWithClass) {
+        finalSlotsInTeacherTimezone.push(minutesToTime(minute));
       }
-      return time;
-    }).filter(t => t && t.length === 5);
-    
-    const finalSlotsInTeacherTimezone = afterBreakFilter.filter(slot => !studentBookedTimes.includes(slot));
+    }
+
     const teacherTimezone = teacherAvailabilityRecord?.teacher_timezone || DEFAULT_TIMEZONE;
     const finalSlots = finalSlotsInTeacherTimezone
       .map(slot => {
@@ -792,9 +848,19 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         return converted.date === dateKey ? converted.time : null;
       })
       .filter(Boolean);
-    
-    console.log("Final available slots after all filters:", finalSlots);
+
     setAvailableTimeSlots(finalSlots);
+  };
+
+  const handleSelectTimeSlot = (time, setTime, setError, isBooked, conflictMessage, sameDateTimeCheck) => {
+    if (isBooked) return;
+    setTime(time);
+    setError("");
+    if (sameDateTimeCheck?.()) {
+      setError("Cannot reschedule to the same date and time. Please choose a different time.");
+    } else if (conflictMessage) {
+      setError(conflictMessage);
+    }
   };
 
   // whenever selectedDate changes we fetch if necessary
@@ -933,7 +999,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     if (studentBookingMode && studentBookingDate && assignedTeacherId && teacherClassesCache[studentBookingDate] !== undefined) {
       loadAvailableTimeSlots(studentBookingDate, assignedTeacherId);
     }
-  }, [selectedDate, teacherId, classesCache, availability, studentBookingMode, studentBookingDate, assignedTeacherId, teacherClassesCache, teacherAvailabilityList]);
+    if (requestMode && requestDate && selectedClass?.teacher_id && classesCache[requestDate] !== undefined) {
+      loadAvailableTimeSlots(requestDate, selectedClass.teacher_id, selectedClassDuration, selectedClass.id);
+    }
+  }, [selectedDate, teacherId, classesCache, availability, studentBookingMode, studentBookingDate, assignedTeacherId, teacherClassesCache, teacherAvailabilityList, studentPackage, studentProfile, requestMode, requestDate, selectedClass?.teacher_id, selectedClass?.id, selectedClassDuration]);
 
   // preload every day in the month so cells with classes are colored on load
   useEffect(() => {
@@ -1049,14 +1118,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
   const isTeacherDateTimeBooked = (dateStr, timeStr) => {
     const classes = teacherClassesCache[dateStr] || [];
+    const requestedStart = timeToMinutes(timeStr);
+    const requestedEnd = requestedStart == null ? null : requestedStart + studentClassDuration;
+    if (requestedStart == null || requestedEnd == null) return false;
+
     return classes.some(cls => {
-      const converted = convertDateTime(
-        cls.scheduled_date || dateStr,
-        cls.start_time || cls.time || "",
-        cls.teacher_timezone || DEFAULT_TIMEZONE,
-        viewerTimezone
-      );
-      return converted.date === dateStr && converted.time === normalizeTimeKey(timeStr);
+      const range = getClassRange(cls);
+      return range && rangesOverlap(requestedStart, requestedEnd, range.start, range.end);
     });
   };
 
@@ -1080,26 +1148,31 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     
     const dateKey = normalizeDate(dateStr);
     const classesOnDate = classesCache[dateKey] || [];
-    const requestedTime = normalizeTime(timeStr);
+    const requestedStart = timeToMinutes(timeStr);
+    const requestedEnd = requestedStart == null ? null : requestedStart + selectedClassDuration;
+    if (requestedStart == null || requestedEnd == null) return false;
     
     // Filter classes: 
     // - Exclude the current class being rescheduled
     // - Only include classes with the same teacher
-    return classesOnDate.some(cls => 
-      cls.id !== selectedClass.id &&  // Not the current class being rescheduled
-      cls.teacher_id === selectedClass.teacher_id &&  // Same teacher
-      normalizeTime(cls.start_time || cls.time || "") === requestedTime  // Same time
-    );
+    return classesOnDate.some(cls => {
+      if (cls.id === selectedClass.id || cls.teacher_id !== selectedClass.teacher_id) return false;
+      const range = getClassRange(cls);
+      return range && rangesOverlap(requestedStart, requestedEnd, range.start, range.end);
+    });
   };
 
   // Helper: Check if counterparty has this date/time booked
   const isCounterpartyDateTimeBooked = (dateStr, timeStr) => {
     const normalizedDate = normalizeDate(dateStr);
-    const requestedTime = normalizeTime(timeStr);
-    return counterpartyBookedDates.some(bd => 
-      normalizeDate(bd.scheduled_date) === normalizedDate && 
-      normalizeTime(bd.start_time || bd.time || "") === requestedTime
-    );
+    const requestedStart = timeToMinutes(timeStr);
+    const requestedEnd = requestedStart == null ? null : requestedStart + selectedClassDuration;
+    if (requestedStart == null || requestedEnd == null) return false;
+    return counterpartyBookedDates.some(bd => {
+      if (normalizeDate(bd.scheduled_date) !== normalizedDate) return false;
+      const range = getClassRange(bd);
+      return range && rangesOverlap(requestedStart, requestedEnd, range.start, range.end);
+    });
   };
 
   const getRescheduleTeacherDateTime = (dateStr, timeStr = "00:00") => {
@@ -1154,7 +1227,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       return false; // Invalid break times
     }
     
-    return teacherTime >= breakStart && teacherTime < breakEnd;
+    const teacherStart = timeToMinutes(teacherTime);
+    const breakStartMinutes = timeToMinutes(breakStart);
+    const breakEndMinutes = timeToMinutes(breakEnd);
+    if (teacherStart == null || breakStartMinutes == null || breakEndMinutes == null) return false;
+    return rangesOverlap(teacherStart, teacherStart + selectedClassDuration, breakStartMinutes, breakEndMinutes);
   };
 
   // Helper: Check if a time falls within teacher's availability window (start_time to end_time)
@@ -1199,12 +1276,44 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
     
     // Check if time is within the availability window (including break time - break is checked separately)
-    const isWithinWindow = teacherTime >= availStart && teacherTime < availEnd;
+    const teacherStart = timeToMinutes(teacherTime);
+    const availStartMinutes = timeToMinutes(availStart);
+    const availEndMinutes = timeToMinutes(availEnd);
+    const isWithinWindow = teacherStart != null && availStartMinutes != null && availEndMinutes != null
+      && teacherStart >= availStartMinutes
+      && teacherStart + selectedClassDuration <= availEndMinutes;
     console.log(`📍 Is ${timeStr} within ${availStart}-${availEnd}? ${isWithinWindow}`);
     
     // Return true if OUTSIDE the window
     return !isWithinWindow;
   };
+
+  const isRescheduleTimeSlotBookable = (dateStr, timeStr) => {
+    if (!dateStr || !timeStr || !selectedClass) return false;
+
+    if (isRescheduleToSameDateTime(dateStr, timeStr)) return false;
+
+    if (isTimeBookedForReschedule(dateStr, timeStr)) return false;
+    if (isCounterpartyDateTimeBooked(dateStr, timeStr)) return false;
+
+    if (isTimeConflictingWithTeacherBreak(dateStr, timeStr)) return false;
+    if (isTimeOutsideTeacherAvailability(dateStr, timeStr)) return false;
+
+    return true;
+  };
+
+  const rescheduleTimeSlots = useMemo(() => {
+    if (!requestMode || !requestDate || !availableTimeSlots?.length) return [];
+    return availableTimeSlots.filter((time) => isRescheduleTimeSlotBookable(requestDate, time));
+  }, [requestMode, requestDate, availableTimeSlots, selectedClass, selectedClassDuration, localRole, classesCache, counterpartyBookedDates, teacherAvailabilityList, availability]);
+
+  useEffect(() => {
+    if (!requestMode || !requestTime) return;
+    if (!rescheduleTimeSlots.includes(requestTime)) {
+      setRequestTime("");
+      setRequestError("");
+    }
+  }, [requestMode, requestTime, rescheduleTimeSlots]);
 
   const getAvailabilityStatusForDate = (dateStr) => {
     const dateKey = normalizeDate(dateStr);
@@ -1534,6 +1643,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       setRequestError("This time slot is already booked by another student with this teacher. Please choose another time.");
       return;
     }
+    if (isCounterpartyDateTimeBooked(requestDate, requestTime)) {
+      setRequestError(getCounterpartyUnavailableMessage());
+      return;
+    }
 
     setIsSubmittingRequest(true);
     try {
@@ -1571,14 +1684,6 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     0
   );
 
-  // Get scheduled classes for selected date from cache
-  const selectedClasses = selectedDate ? (classesCache[selectedDate] || []) : [];
-
-  // Get selected class details
-  const selectedClass = selectedClassId
-    ? selectedClasses.find(cls => cls.id === selectedClassId)
-    : null;
-  
   if (selectedClass) {
     console.log("Selected class updated:", selectedClass);
   }
@@ -1586,6 +1691,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const isTeacherOrAdmin = localRole === "teacher" || isAdmin;
   const isSelectedClassCompleted = selectedClass?.status === "completed";
   const isSelectedClassConfirmable = isClassJoinable(selectedClass, selectedDate);
+  const isSelectedClassNoShowable = selectedClass?.status === "scheduled" && isClassPast(selectedClass, selectedDate);
 
   const openClassDoneConfirmation = () => {
     if (!selectedClass?.id || !selectedClass?.student_id) {
@@ -1638,29 +1744,87 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
   };
 
+  const markSelectedClassNoShow = async () => {
+    if (!selectedClass?.id || !selectedClass?.student_id) {
+      notify?.("Please select a class first.", "error");
+      return;
+    }
+
+    if (!window.confirm("Mark this class as no-show and return the student's booking credit?")) {
+      return;
+    }
+
+    setIsMarkingClassDone(true);
+    try {
+      const response = await axios.put(`${API}/api/calendar/classes/${selectedClass.id}/no-show`, {
+        teacher_id: localUserId,
+      });
+
+      setClassesCache(prev => ({
+        ...prev,
+        [selectedDate]: (prev[selectedDate] || []).filter(cls => String(cls.id) !== String(selectedClass.id)),
+      }));
+      setTeacherClassesCache(prev => ({
+        ...prev,
+        [selectedDate]: (prev[selectedDate] || []).filter(cls => String(cls.id || cls.class_id) !== String(selectedClass.id)),
+      }));
+      setBookedDates(prev =>
+        prev.filter(bd =>
+          normalizeDate(bd.scheduled_date) !== normalizeDate(selectedDate) ||
+          normalizeTime(bd.start_time) !== normalizeTime(selectedClass.start_time || selectedClass.time)
+        )
+      );
+      setSelectedClassId(null);
+
+      if (response.data?.package && localRole === "student") {
+        setStudentPackage(response.data.package);
+      }
+
+      notify?.("Class marked as no-show. The booking credit was returned.", "success");
+    } catch (error) {
+      const message = error.response?.data?.message || "Unable to mark class as no-show. Please try again.";
+      notify?.(message, "error");
+    } finally {
+      setIsMarkingClassDone(false);
+    }
+  };
+
   // student package based usage calculation
   const effectiveClassesUsed = (() => {
+    if (studentPackage) {
+      if (studentPackage.booked_classes != null) return studentPackage.booked_classes;
+      return studentPackage.classes_used || 0;
+    }
     if (classesUsed && classesUsed > 0) return classesUsed;
-    if (studentPackage) return studentPackage.classes_used || 0;
     return 0;
   })();
   const effectiveClassesLimit = (() => {
     if (studentPackage && studentPackage.total_classes != null) return studentPackage.total_classes;
+    if (localRole === "student") return 0;
     return classesLimit;
   })();
   const effectiveClassesLeft = (() => {
     if (studentPackage) return studentPackage.classes_left != null ? studentPackage.classes_left : Math.max(0, effectiveClassesLimit - effectiveClassesUsed);
+    if (localRole === "student") return 0;
     return Math.max(0, effectiveClassesLimit - effectiveClassesUsed);
   })();
+  const effectiveBookableClasses = (() => {
+    if (studentPackage) {
+      if (studentPackage.bookable_classes != null) return studentPackage.bookable_classes;
+      return Math.max(0, effectiveClassesLimit - effectiveClassesUsed);
+    }
+    if (localRole === "student") return 0;
+    return Math.max(0, effectiveClassesLeft);
+  })();
   const effectivePercent = effectiveClassesLimit > 0 ? Math.min(100, Math.round((effectiveClassesUsed / effectiveClassesLimit) * 100)) : 0;
-  const hasNoClassesLeft = localRole === "student" && Number(effectiveClassesLeft) <= 0;
+  const hasNoClassesLeft = localRole === "student" && Number(effectiveBookableClasses) <= 0;
 
   const studentMonthMin = fmtDate(new Date(today.getFullYear(), today.getMonth(), 1));
   const studentMonthMax = fmtDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
 
   const openMonthlyBooking = () => {
     if (hasNoClassesLeft) {
-      setStudentBookingError("Contact the admin for a new contract before booking more classes.");
+      setStudentBookingError("You have no classes left to book. Contact the admin for a new contract.");
       return;
     }
 
@@ -1695,12 +1859,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         student_id: localUserId,
         course_id: contractCourseId,
         requested_classes: contractClassCount,
+        class_duration: contractClassDuration,
         trial_notes: contractTrialNotes,
         ai_criteria: contractAiCriteria,
       });
 
       notify?.("Contract request sent to the admin.", "success");
       setContractRequestOpen(false);
+      setContractClassDuration("50");
       setContractTrialNotes("");
       setContractAiCriteria({
         learningGoal: [],
@@ -1767,7 +1933,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       return;
     }
     if (hasNoClassesLeft) {
-      setStudentBookingError("Contact the admin for a new contract before booking more classes.");
+      setStudentBookingError("You have no classes left to book. Contact the admin for a new contract.");
       return;
     }
     if (studentBookingDate < studentMonthMin || studentBookingDate > studentMonthMax) {
@@ -1787,17 +1953,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     const teacherBookingDate = teacherStart.date || studentBookingDate;
     const teacherBookingTime = teacherStart.time || studentBookingTime;
 
-    const [hour, min] = teacherBookingTime.split(":").map(Number);
-    const endDate = new Date(2000, 0, 1, hour + 1, min);
-    const endTime = `${String(endDate.getHours()).padStart(2, "0")}:${String(endDate.getMinutes()).padStart(2, "0")}`;
-
-    const start = new Date(`2000-01-01T${teacherBookingTime}`);
-    const end = new Date(`2000-01-01T${endTime}`);
-    const duration = Math.max(0, Math.round((end - start) / (1000 * 60)));
-    if (duration <= 0) {
-      setStudentBookingError("End time must be after start time.");
+    const teacherStartMinutes = timeToMinutes(teacherBookingTime);
+    const duration = studentClassDuration;
+    if (teacherStartMinutes == null || duration <= 0) {
+      setStudentBookingError("Invalid class time or duration.");
       return;
     }
+    const endTime = minutesToTime(teacherStartMinutes + duration);
 
     setIsSubmittingStudentBooking(true);
     try {
@@ -2028,6 +2190,23 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                   >
                     Join Class
                   </button>
+                  { isTeacherOrAdmin && isSelectedClassNoShowable && !requestMode && (
+                    <button
+                      type="button"
+                      className={`${styles.bookBtn} ${styles.doneBtn}`}
+                      disabled={isMarkingClassDone}
+                      onClick={markSelectedClassNoShow}
+                      style={{
+                        marginTop: "8px",
+                        opacity: isMarkingClassDone ? 0.6 : 1,
+                        cursor: isMarkingClassDone ? "not-allowed" : "pointer",
+                        background: "#f59e0b",
+                      }}
+                      title="Mark this class as no-show and return the credit"
+                    >
+                      Mark No-Show
+                    </button>
+                  ) }
                   { !isAdmin && !requestMode && (
                     <button
                       className={`${styles.bookBtn} ${styles.rescheduleBtn}`}
@@ -2102,74 +2281,73 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           Select your preferred date and time, and let your teacher know why you need the reschedule.
                         </p>
                       </div>
-                      
                       {requestError && (
                         <div style={{ marginBottom: 10, padding: 8, background: "#ffebee", border: "1px solid #ffcdd2", borderRadius: 6, color: "#c62828", fontSize: "0.8rem" }}>
                           {requestError}
                         </div>
                       )}
-                      
                       <div style={{ marginBottom: 10 }}>
                         <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>New Date *</label>
-<div style={{ width: "100%", padding: "10px", fontSize: "0.95rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#fff", minHeight: "42px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                           <div style={{ color: requestDate ? "#111" : "#666" }}>
-                             {requestDate ? new Date(requestDate + "T00:00:00").toLocaleDateString() : "Select a date on the calendar"}
-                           </div>
-                         </div>
-                         <div style={{ fontSize: "0.7rem", color: "#999", marginTop: 4 }}>Click a day on the calendar</div>
-                         {requestDate && (
+                        <div style={{ width: "100%", padding: "10px", fontSize: "0.95rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#fff", minHeight: "42px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <div style={{ color: requestDate ? "#111" : "#666" }}>
+                            {requestDate ? new Date(requestDate + "T00:00:00").toLocaleDateString() : "Select a date on the calendar"}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: "0.7rem", color: "#999", marginTop: 4 }}>Click a day on the calendar</div>
+                        {requestDate && (
                           <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
                             {getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? (
-                              <p style={{ margin: 0, color: "#f44336" }}>✕ {localRole === "student" ? "Teacher" : "You are"} unavailable on this date</p>
+                              <p style={{ margin: 0, color: "#f44336" }}>{localRole === "student" ? "Teacher" : "You are"} unavailable on this date</p>
                             ) : getRescheduleAvailabilityStatus(requestDate) === "available" ? (
-                              <p style={{ margin: 0, color: "#4caf50" }}>✓ Available on this date</p>
+                              <p style={{ margin: 0, color: "#4caf50" }}>Available on this date</p>
                             ) : (
-                              <p style={{ margin: 0, color: "#999" }}>• Availability not set</p>
+                              <p style={{ margin: 0, color: "#999" }}>Availability not set</p>
                             )}
                             {counterpartyBookedDates.filter(bd => normalizeDate(bd.scheduled_date) === normalizeDate(requestDate)).length > 0 && (
                               <p style={{ margin: "4px 0 0 0", color: "#ff9800" }}>
-                                ⚠️ {localRole === "student" ? "Teacher" : "Student"} booked: {counterpartyBookedDates.filter(bd => normalizeDate(bd.scheduled_date) === normalizeDate(requestDate)).map(bd => humanTime(bd.start_time)).join(", ")} 
+                                {localRole === "student" ? "Teacher" : "Student"} booked: {counterpartyBookedDates.filter(bd => normalizeDate(bd.scheduled_date) === normalizeDate(requestDate)).map(bd => humanTime(bd.start_time)).join(", ")}
                               </p>
                             )}
                           </div>
                         )}
                       </div>
-                      
                       <div style={{ marginBottom: 10 }}>
                         <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>New Time *</label>
-                        <input
-                          type="time"
-                          step="3600"
-                          value={requestTime}
-                          onChange={e => {
-                            const time = e.target.value;
-                            const [hours] = time.split(':');
-                            const roundedTime = `${hours}:00`;
-                            setRequestTime(roundedTime);
-                            setRequestError("");
-                            // Check if reschedule is to the same date/time as current schedule
-                            if (requestDate && isRescheduleToSameDateTime(requestDate, roundedTime)) {
-                              setRequestError("Cannot reschedule to the same date and time. Please choose a different time.");
-                            }
-                            // Check if this time is already booked with the same teacher
-                            else if (requestDate && isTimeBookedForReschedule(requestDate, roundedTime)) {
-                              setRequestError(getBookedSlotErrorMessage());
-                            }
-                            // Check if time conflicts with break
-                            else if (requestDate && isTimeConflictingWithTeacherBreak(requestDate, roundedTime)) {
-                              setRequestError("This time conflicts with your break. Please choose another time.");
-                            }
-                            // Check if time is outside availability window
-                            else if (requestDate && isTimeOutsideTeacherAvailability(requestDate, roundedTime)) {
-                              setRequestError("This time is outside your availability window. Please choose another time.");
-                            }
-                          }}
-                          disabled={requestDate && getRescheduleAvailabilityStatus(requestDate) === "unavailable"}
-                          style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", opacity: requestDate && getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? 0.5 : 1, cursor: requestDate && getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? "not-allowed" : "auto" }}
-                        />
-                        {requestDate && getRescheduleAvailabilityStatus(requestDate) === "unavailable" && (
-                          <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
-                            ✕ Cannot select time - you are unavailable on this date
+                        {requestDate && getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? (
+                          <div style={{ padding: 12, background: "#fff3e0", borderRadius: 8, color: "#b65f00" }}>
+                            You are unavailable on this date.
+                          </div>
+                        ) : rescheduleTimeSlots.length > 0 ? (
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
+                            {rescheduleTimeSlots.map(time => {
+                              const isSelected = requestTime === time;
+                              return (
+                                <button
+                                  key={time}
+                                  type="button"
+                                  onClick={() => {
+                                    setRequestTime(time);
+                                    setRequestError("");
+                                    if (requestDate && isRescheduleToSameDateTime(requestDate, time)) {
+                                      setRequestError("Cannot reschedule to the same date and time. Please choose a different time.");
+                                    } else if (requestDate && isTimeBookedForReschedule(requestDate, time)) {
+                                      setRequestError(getBookedSlotErrorMessage());
+                                    } else if (requestDate && isTimeConflictingWithTeacherBreak(requestDate, time)) {
+                                      setRequestError("This time conflicts with your break. Please choose another time.");
+                                    } else if (requestDate && isTimeOutsideTeacherAvailability(requestDate, time)) {
+                                      setRequestError("This time is outside your availability window. Please choose another time.");
+                                    }
+                                  }}
+                                  style={{ padding: "12px 14px", border: isSelected ? "2px solid #4CAF50" : "1px solid #d0d0d0", borderRadius: "8px", background: isSelected ? "#e8f5e9" : "#fff", color: "#111", cursor: "pointer", textAlign: "center" }}
+                                >
+                                  {humanTime(time)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div style={{ padding: 12, background: "#f4f6f8", borderRadius: 8, color: "#555" }}>
+                            No available slots found for this date. Choose another day.
                           </div>
                         )}
                         {requestError && (
@@ -2178,39 +2356,15 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           </div>
                         )}
                       </div>
-                      
                       <div style={{ marginBottom: 12 }}>
                         <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Reason *</label>
-                        <textarea
-                          rows={3}
-                          placeholder="Please explain why you need to reschedule (minimum 5 characters)"
-                          value={requestReason}
-                          onChange={e => {
-                            setRequestReason(e.target.value);
-                            setRequestError("");
-                          }}
-                          style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }}
-                        />
+                        <textarea rows={3} placeholder="Please explain why you need to reschedule (minimum 5 characters)" value={requestReason} onChange={e => { setRequestReason(e.target.value); setRequestError(""); }} style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }} />
                       </div>
-                      
                       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            setRequestMode(false);
-                            setRequestError("");
-                          }}
-                          disabled={isSubmittingRequest}
-                          style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, cursor: isSubmittingRequest ? "not-allowed" : "pointer", opacity: isSubmittingRequest ? 0.6 : 1 }}
-                        >
+                        <button type="button" onClick={() => { setRequestMode(false); setRequestError(""); }} disabled={isSubmittingRequest} style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, cursor: isSubmittingRequest ? "not-allowed" : "pointer", opacity: isSubmittingRequest ? 0.6 : 1 }}>
                           Cancel
                         </button>
-                        <button 
-                          type="button"
-                          onClick={submitRequest}
-                          disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError}
-                          style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}
-                        >
+                        <button type="button" onClick={submitRequest} disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError} style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}>
                           {isSubmittingRequest ? "Sending..." : "Send Request"}
                         </button>
                       </div>
@@ -3029,6 +3183,23 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                     >
                       Join Class
                     </button>
+                    {isTeacherOrAdmin && isSelectedClassNoShowable && !requestMode && (
+                      <button
+                        type="button"
+                        className={`${styles.bookBtn} ${styles.doneBtn}`}
+                        disabled={isMarkingClassDone}
+                        onClick={markSelectedClassNoShow}
+                        style={{
+                          marginTop: "8px",
+                          opacity: isMarkingClassDone ? 0.6 : 1,
+                          cursor: isMarkingClassDone ? "not-allowed" : "pointer",
+                          background: "#f59e0b",
+                        }}
+                        title="Mark this class as no-show and return the credit"
+                      >
+                        Mark No-Show
+                      </button>
+                    )}
                     <button
                       type="button"
                       className={`${styles.bookBtn} ${styles.rescheduleBtn}`}
@@ -3085,125 +3256,100 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                     </button>
                     { requestMode && (
                       <div style={{ marginTop: 12, padding: 14, border: "1px solid #e0e0e0", borderRadius: 8, background: "#fafafa" }}>
-                        <div style={{ marginBottom: 12 }}>
-                          <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#333" }}>Request Reschedule</h4>
-                          <p style={{ margin: 0, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
-                            Select your preferred date and time, and let your teacher know why you need the reschedule.
-                          </p>
+                      <div style={{ marginBottom: 12 }}>
+                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#333" }}>Request Reschedule</h4>
+                        <p style={{ margin: 0, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
+                          Select your preferred date and time, and let your teacher know why you need the reschedule.
+                        </p>
+                      </div>
+                      {requestError && (
+                        <div style={{ marginBottom: 10, padding: 8, background: "#ffebee", border: "1px solid #ffcdd2", borderRadius: 6, color: "#c62828", fontSize: "0.8rem" }}>
+                          {requestError}
                         </div>
-                        
-                        {requestError && (
-                          <div style={{ marginBottom: 10, padding: 8, background: "#ffebee", border: "1px solid #ffcdd2", borderRadius: 6, color: "#c62828", fontSize: "0.8rem" }}>
-                            {requestError}
+                      )}
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>New Date *</label>
+                        <div style={{ width: "100%", padding: "10px", fontSize: "0.95rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#fff", minHeight: "42px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <div style={{ color: requestDate ? "#111" : "#666" }}>
+                            {requestDate ? new Date(requestDate + "T00:00:00").toLocaleDateString() : "Select a date on the calendar"}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: "0.7rem", color: "#999", marginTop: 4 }}>Click a day on the calendar</div>
+                        {requestDate && (
+                          <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
+                            {getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? (
+                              <p style={{ margin: 0, color: "#f44336" }}>Teacher is unavailable on this date</p>
+                            ) : getRescheduleAvailabilityStatus(requestDate) === "available" ? (
+                              <p style={{ margin: 0, color: "#4caf50" }}>Available on this date</p>
+                            ) : (
+                              <p style={{ margin: 0, color: "#999" }}>Availability not set</p>
+                            )}
+                            {counterpartyBookedDates.filter(bd => normalizeDate(bd.scheduled_date) === normalizeDate(requestDate)).length > 0 && (
+                              <p style={{ margin: "4px 0 0 0", color: "#ff9800" }}>
+                                Student booked: {counterpartyBookedDates.filter(bd => normalizeDate(bd.scheduled_date) === normalizeDate(requestDate)).map(bd => humanTime(bd.start_time)).join(", ")}
+                              </p>
+                            )}
                           </div>
                         )}
-                        
-                        <div style={{ marginBottom: 10 }}>
-                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>New Date *</label>
-<div style={{ width: "100%", padding: "10px", fontSize: "0.95rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#fff", minHeight: "42px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                             <div style={{ color: requestDate ? "#111" : "#666" }}>
-                               {requestDate ? new Date(requestDate + "T00:00:00").toLocaleDateString() : "Select a date on the calendar"}
-                             </div>
-                           </div>
-                           <div style={{ fontSize: "0.7rem", color: "#999", marginTop: 4 }}>Click a day on the calendar</div>
-                           {requestDate && (
-                            <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
-                              {getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? (
-                                <p style={{ margin: 0, color: "#f44336" }}>✕ Teacher is unavailable on this date</p>
-                              ) : getRescheduleAvailabilityStatus(requestDate) === "available" ? (
-                                <p style={{ margin: 0, color: "#4caf50" }}>✓ Teacher is available on this date</p>
-                              ) : (
-                                <p style={{ margin: 0, color: "#999" }}>• Availability not set</p>
-                              )}
-                              {counterpartyBookedDates.filter(bd => normalizeDate(bd.scheduled_date) === normalizeDate(requestDate)).length > 0 && (
-                                <p style={{ margin: "4px 0 0 0", color: "#ff9800" }}>
-                                  ⚠️ Student booked: {counterpartyBookedDates.filter(bd => normalizeDate(bd.scheduled_date) === normalizeDate(requestDate)).map(bd => humanTime(bd.start_time)).join(", ")} 
-                                </p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        
-                        <div style={{ marginBottom: 10 }}>
-                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>New Time *</label>
-                          <input
-                            type="time"
-                            step="3600"
-                            value={requestTime}
-                            onChange={e => {
-                              const time = e.target.value;
-                              const [hours] = time.split(':');
-                              const roundedTime = `${hours}:00`;
-                              setRequestTime(roundedTime);
-                              setRequestError("");
-                              // Check if reschedule is to the same date/time as current schedule
-                              if (requestDate && isRescheduleToSameDateTime(requestDate, roundedTime)) {
-                                setRequestError("Cannot reschedule to the same date and time. Please choose a different time.");
-                              }
-                              // Check if counterparty has this time booked
-                              else if (requestDate && isCounterpartyDateTimeBooked(requestDate, roundedTime)) {
-                                setRequestError(getCounterpartyUnavailableMessage());
-                              }
-                              // Check if time conflicts with teacher's break
-                              else if (requestDate && isTimeConflictingWithTeacherBreak(requestDate, roundedTime)) {
-                                setRequestError("This time conflicts with teacher's break. Please choose another time.");
-                              }
-                              // Check if time is outside teacher's availability window
-                              else if (requestDate && isTimeOutsideTeacherAvailability(requestDate, roundedTime)) {
-                                setRequestError("This time is outside the teacher's availability window. Please choose another time.");
-                              }
-                            }}
-                            disabled={requestDate && getRescheduleAvailabilityStatus(requestDate) === "unavailable"}
-                            style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", opacity: requestDate && getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? 0.5 : 1, cursor: requestDate && getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? "not-allowed" : "auto" }}
-                          />
-                          {requestDate && getRescheduleAvailabilityStatus(requestDate) === "unavailable" && (
-                            <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
-                              ✕ Cannot select time - teacher is unavailable on this date
-                            </div>
-                          )}
-                          {requestError && (
-                            <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
-                              ✕ {requestError}
-                            </div>
-                          )}
-                        </div>
-                        
-                        <div style={{ marginBottom: 12 }}>
-                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Reason *</label>
-                          <textarea
-                            rows={3}
-                            placeholder="Please explain why you need to reschedule (minimum 5 characters)"
-                            value={requestReason}
-                            onChange={e => {
-                              setRequestReason(e.target.value);
-                              setRequestError("");
-                            }}
-                            style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }}
-                          />
-                        </div>
-                        
-                        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                          <button 
-                            type="button"
-                            onClick={() => {
-                              setRequestMode(false);
-                              setRequestError("");
-                            }}
-                            disabled={isSubmittingRequest}
-                            style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, cursor: isSubmittingRequest ? "not-allowed" : "pointer", opacity: isSubmittingRequest ? 0.6 : 1 }}
-                          >
-                            Cancel
-                          </button>
-                          <button 
-                            type="button"
-                            onClick={submitRequest}
-                            disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError}
-                            style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}
-                          >
-                            {isSubmittingRequest ? "Sending..." : "Send Request"}
-                          </button>
-                        </div>
                       </div>
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>New Time *</label>
+                        {requestDate && getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? (
+                          <div style={{ padding: 12, background: "#fff3e0", borderRadius: 8, color: "#b65f00" }}>
+                            Teacher is unavailable on this date.
+                          </div>
+                        ) : rescheduleTimeSlots.length > 0 ? (
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
+                            {rescheduleTimeSlots.map(time => {
+                              const isSelected = requestTime === time;
+                              return (
+                                <button
+                                  key={time}
+                                  type="button"
+                                  onClick={() => {
+                                    setRequestTime(time);
+                                    setRequestError("");
+                                    if (requestDate && isRescheduleToSameDateTime(requestDate, time)) {
+                                      setRequestError("Cannot reschedule to the same date and time. Please choose a different time.");
+                                    } else if (requestDate && isCounterpartyDateTimeBooked(requestDate, time)) {
+                                      setRequestError(getCounterpartyUnavailableMessage());
+                                    } else if (requestDate && isTimeConflictingWithTeacherBreak(requestDate, time)) {
+                                      setRequestError("This time conflicts with teacher's break. Please choose another time.");
+                                    } else if (requestDate && isTimeOutsideTeacherAvailability(requestDate, time)) {
+                                      setRequestError("This time is outside the teacher's availability window. Please choose another time.");
+                                    }
+                                  }}
+                                  style={{ padding: "12px 14px", border: isSelected ? "2px solid #4CAF50" : "1px solid #d0d0d0", borderRadius: "8px", background: isSelected ? "#e8f5e9" : "#fff", color: "#111", cursor: "pointer", textAlign: "center" }}
+                                >
+                                  {humanTime(time)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div style={{ padding: 12, background: "#f4f6f8", borderRadius: 8, color: "#555" }}>
+                            No available slots found for this date. Choose another day.
+                          </div>
+                        )}
+                        {requestError && (
+                          <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
+                            ✕ {requestError}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ marginBottom: 12 }}>
+                        <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Reason *</label>
+                        <textarea rows={3} placeholder="Please explain why you need to reschedule (minimum 5 characters)" value={requestReason} onChange={e => { setRequestReason(e.target.value); setRequestError(""); }} style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }} />
+                      </div>
+                      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                        <button type="button" onClick={() => { setRequestMode(false); setRequestError(""); }} disabled={isSubmittingRequest} style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, cursor: isSubmittingRequest ? "not-allowed" : "pointer", opacity: isSubmittingRequest ? 0.6 : 1 }}>
+                          Cancel
+                        </button>
+                        <button type="button" onClick={submitRequest} disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError} style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}>
+                          {isSubmittingRequest ? "Sending..." : "Send Request"}
+                        </button>
+                      </div>
+                    </div>
                     ) }
                     <button
                       type="button"
@@ -3326,6 +3472,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           <div style={{ width: "100%", padding: "12px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#f7fafc", color: "#111", minHeight: "42px", display: "flex", alignItems: "center" }}>
                             {studentBookingTime ? (
                               <span style={{ fontWeight: 500 }}>
+                                {studentClassDuration} minutes ({humanTime(studentBookingTime)} - {humanTime(minutesToTime(timeToMinutes(studentBookingTime) + studentClassDuration))})
+                              </span>
+                            ) : studentBookingTime ? (
+                              <span style={{ fontWeight: 500 }}>
                                 {humanTime(studentBookingTime)} → {humanTime(`${String((Number(studentBookingTime.split(":")[0]) + 1)).padStart(2, "0")}:${studentBookingTime.split(":")[1]}`)}
                               </span>
                             ) : (
@@ -3350,8 +3500,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           <button
                             type="button"
                             onClick={submitStudentBooking}
-                            disabled={isSubmittingStudentBooking || !studentBookingTime || assignedTeacherId == null}
-                            style={{ padding: "10px 16px", fontSize: "0.9em", border: "none", background: "#4CAF50", color: "#fff", borderRadius: 6, cursor: (isSubmittingStudentBooking || !studentBookingTime || assignedTeacherId == null) ? "not-allowed" : "pointer" }}
+                            disabled={isSubmittingStudentBooking || !studentBookingTime || assignedTeacherId == null || hasNoClassesLeft}
+                            style={{ padding: "10px 16px", fontSize: "0.9em", border: "none", background: "#4CAF50", color: "#fff", borderRadius: 6, cursor: (isSubmittingStudentBooking || !studentBookingTime || assignedTeacherId == null || hasNoClassesLeft) ? "not-allowed" : "pointer" }}
                           >
                             {isSubmittingStudentBooking ? "Booking..." : "Book Class"}
                           </button>
@@ -3365,9 +3515,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                     <div className={styles.legendTitle}>Your Classes</div>
                     <div className={styles.slotList}>
                       <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", textAlign: "center" }}>
-                        <div style={{ fontSize: 14, color: "#666" }}>Used</div>
+                        <div style={{ fontSize: 14, color: "#666" }}>Booked</div>
                         <div style={{ fontSize: 20, fontWeight: 700, marginTop: 6 }}>{effectiveClassesUsed} / {effectiveClassesLimit}</div>
                         <div style={{ marginTop: 6, color: "#374151", fontSize: 14 }}>Classes left: {effectiveClassesLeft}</div>
+                        <div style={{ marginTop: 4, color: "#2563eb", fontSize: 14, fontWeight: 600 }}>Available to book: {effectiveBookableClasses}</div>
                         <div style={{ marginTop: 8 }}>
                           <div style={{ height: 8, background: "#eef2ff", borderRadius: 8, overflow: "hidden" }}>
                             <div style={{ width: `${effectivePercent}%`, height: "100%", background: "#6366f1" }} />
@@ -3376,7 +3527,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                       </div>
                     </div>
                     <div style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
-                      {hasNoClassesLeft ? "Booking is locked until a new contract is added." : "Tip: Contact your teacher to add or reschedule classes."}
+                      {hasNoClassesLeft ? "No active contract or bookable classes remain." : "Tip: Contact your teacher to add or reschedule classes."}
                     </div>
                     {hasNoClassesLeft && (
                       <div style={{ marginTop: 12, padding: 12, border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff" }}>
@@ -3385,6 +3536,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                             Latest request: <strong style={{ textTransform: "capitalize" }}>{contractRequests[0].status}</strong>
                             {contractRequests[0].course_name ? ` - ${contractRequests[0].course_name}` : ""}
                             {contractRequests[0].requested_classes ? ` (${contractRequests[0].requested_classes} classes)` : ""}
+                            {contractRequests[0].class_duration ? ` - ${contractRequests[0].class_duration} min` : ""}
                           </div>
                         )}
                         {!contractRequestOpen ? (
@@ -3498,6 +3650,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                                 placeholder="Add updated goals, focus areas, or notes for teacher matching..."
                                 style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }}
                               />
+                            </div>
+                            <div>
+                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Class Duration</label>
+                              <select
+                                value={contractClassDuration}
+                                onChange={(e) => setContractClassDuration(e.target.value)}
+                                style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit" }}
+                              >
+                                <option value="25">25 minutes</option>
+                                <option value="50">50 minutes</option>
+                              </select>
                             </div>
                             <div>
                               <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Number of Classes</label>
@@ -3716,3 +3879,6 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     </>
   );
 }
+
+
+

@@ -171,7 +171,7 @@ CREATE TABLE `classes` (
   `end_time` time NOT NULL,
   `duration` varchar(50) DEFAULT NULL,
   `class_link` varchar(500) DEFAULT NULL,
-  `status` enum('scheduled','completed','cancelled') DEFAULT 'scheduled',
+  `status` enum('scheduled','completed','cancelled','no-show') DEFAULT 'scheduled',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`class_id`),

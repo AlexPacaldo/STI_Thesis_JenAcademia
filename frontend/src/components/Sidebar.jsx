@@ -9,16 +9,16 @@ import Logo from "../assets/img/Navbar/LOGO.png";
 
 const API = "http://localhost:3001";
 
-function hasRequiredProfileFields(user = {}) {
+function hasRequiredProfileFields(user) {
   return Boolean(
-    String(user.contact || user.contact_number || "").trim()
-    && String(user.profileImageUrl || user.profile_image_url || "").trim()
-    && (user.passwordChanged || user.password_changed)
+    String(user?.contact || user?.contact_number || "").trim()
+    && String(user?.profileImageUrl || user?.profile_image_url || "").trim()
+    && (user?.passwordChanged || user?.password_changed)
   );
 }
 
-function isProfileComplete(user = {}) {
-  return Boolean(user.profileCompleted && hasRequiredProfileFields(user));
+function isProfileComplete(user) {
+  return Boolean(user?.profileCompleted && hasRequiredProfileFields(user));
 }
 
 function profileSrc(user) {
@@ -53,7 +53,7 @@ function Sidebar({ isMobileOpen = false, onClose }) {
       if (stored) {
         const parsedUser = JSON.parse(stored);
         setUser(parsedUser);
-        setRole(parsedUser.role);
+        setRole(parsedUser.role || null);
         setProfileCompleted(isProfileComplete(parsedUser));
       }
     } catch (e) {
@@ -66,7 +66,7 @@ function Sidebar({ isMobileOpen = false, onClose }) {
     const handleProfileUpdate = (event) => {
       const updatedUser = event.detail;
       setUser(updatedUser);
-      setRole(updatedUser.role);
+      setRole(updatedUser.role || null);
       setProfileCompleted(isProfileComplete(updatedUser));
     };
 
@@ -75,7 +75,7 @@ function Sidebar({ isMobileOpen = false, onClose }) {
       if (stored) {
         const parsedUser = JSON.parse(stored);
         setUser(parsedUser);
-        setRole(parsedUser.role);
+        setRole(parsedUser.role || null);
         setProfileCompleted(isProfileComplete(parsedUser));
       } else {
         setUser(null);

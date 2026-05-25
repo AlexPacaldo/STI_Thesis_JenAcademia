@@ -139,16 +139,16 @@ function formatAccountDate(value, timezone) {
   return date.toLocaleDateString("en-US", { timeZone: getUserTimezone({ timezone }) });
 }
 
-function hasRequiredCompletionFields(user = {}) {
+function hasRequiredCompletionFields(user) {
   return Boolean(
-    String(user.contact || "").trim()
-    && String(user.profileImageUrl || "").trim()
-    && user.passwordChanged
+    String(user?.contact || "").trim()
+    && String(user?.profileImageUrl || "").trim()
+    && user?.passwordChanged
   );
 }
 
-function isCompleteUser(user = {}) {
-  return Boolean(user.profileCompleted && hasRequiredCompletionFields(user));
+function isCompleteUser(user) {
+  return Boolean(user?.profileCompleted && hasRequiredCompletionFields(user));
 }
 
 function Stat({ label, value }) {
@@ -192,6 +192,14 @@ export default function Account() {
   const [cameraStarting, setCameraStarting] = useState(false);
   const [crop, setCrop] = useState({ x: 0, y: 0, zoom: 1 });
   const [cropImageSize, setCropImageSize] = useState({ width: 0, height: 0 });
+  const storedUser = useMemo(() => {
+    try {
+      const stored = localStorage.getItem("user");
+      return stored ? mapUser(JSON.parse(stored)) : null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   const details = user?.roleDetails || {};
   const fullName = `${form.firstName || ""} ${form.lastName || ""}`.trim() || "Account";
@@ -263,11 +271,12 @@ export default function Account() {
   }
 
   useEffect(() => {
-    const stored = localStorage.getItem("user");
-    if (!stored) return;
+    if (!storedUser?.id) {
+      navigate("/login", { replace: true });
+      return;
+    }
 
-    const mapped = mapUser(JSON.parse(stored));
-    mapped.profileCompleted = isCompleteUser(mapped);
+    const mapped = { ...storedUser, profileCompleted: isCompleteUser(storedUser) };
     setUser(mapped);
     setForm(formFromUser(mapped));
     setIsProfileIncomplete(!mapped.profileCompleted);
@@ -276,12 +285,10 @@ export default function Account() {
       setPasswordEditing(!mapped.passwordChanged);
     }
 
-    if (mapped.id) {
-      loadUser(mapped.id).catch(() => {
-        console.warn("Could not fetch user; using local data.");
-      });
-    }
-  }, []);
+    loadUser(mapped.id).catch(() => {
+      console.warn("Could not fetch user; using local data.");
+    });
+  }, [navigate, storedUser]);
 
   useEffect(() => {
     return () => {
