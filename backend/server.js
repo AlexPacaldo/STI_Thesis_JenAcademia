@@ -14,7 +14,7 @@ dotenv.config();
 const PORT = process.env.PORT || 3001;
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USER || "root";
-const DB_PASSWORD = process.env.DB_PASSWORD || "Aj1182014";    // <- your password here
+const DB_PASSWORD = process.env.DB_PASSWORD || "LORAKLANG0405++";    // <- your password here
 const DB_NAME = process.env.DB_NAME || "jen_academia"; // your schema
 
 const app = express();
@@ -515,6 +515,15 @@ async function ensureBooksColumns() {
 
   if (!(await columnExists("books", "cover_url"))) {
     await pool.query("ALTER TABLE books ADD COLUMN cover_url VARCHAR(1000) DEFAULT NULL AFTER teacher_id");
+  }
+
+  if (!(await columnExists("books", "status"))) {
+    await pool.query("ALTER TABLE books ADD COLUMN status ENUM('active','archived') NOT NULL DEFAULT 'active' AFTER cover_url");
+    await pool.query("ALTER TABLE books ADD INDEX idx_books_status (status)");
+  }
+
+  if (!(await columnExists("books", "archived_at"))) {
+    await pool.query("ALTER TABLE books ADD COLUMN archived_at TIMESTAMP NULL DEFAULT NULL AFTER status");
   }
 }
 
@@ -4910,30 +4919,33 @@ app.get("/api/books", async (req, res) => {
       LEFT JOIN users u ON u.user_id = b.teacher_id`;
     let params = [];
 
+    const whereClauses = ["b.status = 'active'"];
+
     if (student_id) {
       const profile = await getStudentProfile(student_id);
       if (!profile?.assigned_teacher_id) {
         return res.json({ books: [] });
       }
 
-      query += " WHERE b.teacher_id = ?";
+      whereClauses.push("b.teacher_id = ?");
       params.push(profile.assigned_teacher_id);
 
       if (profile.course_id) {
-        query += " AND b.course_id = ?";
+        whereClauses.push("b.course_id = ?");
         params.push(profile.course_id);
       } else if (course_id) {
-        query += " AND b.course_id = ?";
+        whereClauses.push("b.course_id = ?");
         params.push(course_id);
       }
     } else if (teacher_id) {
-      query += " WHERE b.teacher_id = ?";
+      whereClauses.push("b.teacher_id = ?");
       params.push(teacher_id);
     } else if (course_id) {
-      query += " WHERE b.course_id = ?";
+      whereClauses.push("b.course_id = ?");
       params.push(course_id);
     }
 
+    query += ` WHERE ${whereClauses.join(" AND ")}`;
     query += " ORDER BY b.created_at DESC";
 
     const [books] = await pool.query(query, params);
@@ -5272,6 +5284,33 @@ app.delete("/api/books/:book_id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error deleting book" });
+  }
+});
+
+// Archive a book without deleting lessons or progress
+app.put("/api/books/:book_id/archive", async (req, res) => {
+  try {
+    const { book_id } = req.params;
+    const teacher_id = getTeacherIdFromRequest(req);
+
+    // Verify teacher ownership before allowing archival
+    if (!(await validateTeacherBookOwnership(res, book_id, teacher_id))) {
+      return;
+    }
+
+    const [result] = await pool.query(
+      "UPDATE books SET status = 'archived', archived_at = CURRENT_TIMESTAMP WHERE book_id = ? AND teacher_id = ?",
+      [book_id, teacher_id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Book not found" });
+    }
+
+    res.json({ message: "Book archived successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error archiving book" });
   }
 });
 
@@ -5730,6 +5769,7 @@ app.get("/api/teacher/books", async (req, res) => {
        FROM books b
        LEFT JOIN lessons l ON b.book_id = l.book_id
        WHERE b.teacher_id = ?
+         AND b.status = 'active'
        GROUP BY b.book_id
        ORDER BY b.created_at DESC`,
       [teacher_id]

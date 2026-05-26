@@ -1,9 +1,9 @@
+import axios from "axios";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
-import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/account.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
+import { useNotification } from "../components/NotificationContainer.jsx";
 import { getUserTimezone } from "../utils/timezone.js";
 
 const API = "http://localhost:3001";

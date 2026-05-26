@@ -119,7 +119,7 @@ export default function StudentBooksLessons() {
                   type="button"
                   onClick={() => handleBookClick(book.book_id)}
                 >
-                  Check it out!
+                  View Lessons
                 </button>
               </div>
             ))}

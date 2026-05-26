@@ -87,6 +87,8 @@ CREATE TABLE `books` (
   `course_id` int NOT NULL,
   `teacher_id` int DEFAULT NULL,
   `cover_url` varchar(1000) DEFAULT NULL,
+  `status` enum('active','archived') NOT NULL DEFAULT 'active',
+  `archived_at` timestamp NULL DEFAULT NULL,
   `title` varchar(255) NOT NULL,
   `description` text,
   `author` varchar(255) DEFAULT NULL,

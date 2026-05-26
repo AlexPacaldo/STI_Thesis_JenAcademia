@@ -1,7 +1,7 @@
 // src/pages/BooksContent.jsx
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import styles from "../assets/booksContent.module.css";
 import teacherPic from "../assets/img/Navbar/user.jpg";
@@ -226,7 +226,13 @@ export default function BooksContent({ mode = "student" }) {
   const [accessError, setAccessError] = useState("");
   const [readLessons, setReadLessons] = useState({});
   const [showPdfFullscreen, setShowPdfFullscreen] = useState(false);
-  const readerViewportRef = useRef(null);
+  const [showLessonModal, setShowLessonModal] = useState(false);
+  const [uploadingLesson, setUploadingLesson] = useState(false);
+  const [lessonData, setLessonData] = useState({
+    title: "",
+    content: "",
+    file: null,
+  });
   const fullscreenReaderRef = useRef(null);
 
   useEffect(() => {
@@ -331,7 +337,7 @@ export default function BooksContent({ mode = "student" }) {
     };
 
     loadBookContent();
-  }, [bookId, isTeacherView, navigate, notify, studentId]);
+  }, [bookId, isTeacherView, navigate, notify, studentId, teacherId]);
 
   useEffect(() => {
     if (!isTeacherView || activeTeacherTab !== "progress" || !bookId) return;
@@ -355,7 +361,7 @@ export default function BooksContent({ mode = "student" }) {
     };
 
     loadStudentProgress();
-  }, [activeTeacherTab, bookId, isTeacherView]);
+  }, [activeTeacherTab, bookId, isTeacherView, teacherId]);
 
   const selectedFileUrl = useMemo(() => {
     if (!selectedLesson?.file_path) return "";
@@ -391,28 +397,22 @@ export default function BooksContent({ mode = "student" }) {
     }
   }, [lessonRequiresScroll, markSelectedLessonRead, selectedLessonId]);
 
-  const handleReaderScroll = useCallback(() => {
-    checkReaderBottom(readerViewportRef.current);
-  }, [checkReaderBottom]);
-
   const handleFullscreenScroll = useCallback(() => {
     checkReaderBottom(fullscreenReaderRef.current);
   }, [checkReaderBottom]);
 
   useEffect(() => {
-    const viewport = readerViewportRef.current;
-    if (!viewport || !selectedLessonId) return;
+    if (!showPdfFullscreen || !selectedLessonId) return undefined;
 
-    viewport.scrollTop = 0;
+    const resetScroll = window.setTimeout(() => {
+      const viewport = fullscreenReaderRef.current;
+      if (!viewport) return;
 
-    const checkIfScrollable = window.setTimeout(() => {
-      if (!lessonRequiresScroll || viewport.scrollHeight <= viewport.clientHeight + 12) {
-        markSelectedLessonRead();
-      }
-    }, 80);
+      viewport.scrollTop = 0;
+    }, 120);
 
-    return () => window.clearTimeout(checkIfScrollable);
-  }, [selectedLessonId, lessonRequiresScroll, markSelectedLessonRead]);
+    return () => window.clearTimeout(resetScroll);
+  }, [selectedLessonId, selectedFileUrl, showPdfFullscreen]);
 
   const handleLessonClick = (lesson) => {
     if (!isTeacherView) {
@@ -427,6 +427,7 @@ export default function BooksContent({ mode = "student" }) {
     }
 
     setSelectedLesson(lesson);
+    setShowPdfFullscreen(false);
   };
 
   const markLessonComplete = async () => {
@@ -491,6 +492,86 @@ export default function BooksContent({ mode = "student" }) {
       isLessonCompleted(progress[lesson.lesson_id])
     );
     return Math.round((completedCount.length / lessons.length) * 100);
+  };
+
+  const handleLessonFileChange = (e) => {
+    const file = e.target.files?.[0] || null;
+    if (!file) {
+      setLessonData({ ...lessonData, file: null });
+      return;
+    }
+
+    const allowedTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/plain",
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      notify?.("Only PDF, DOC, DOCX, and TXT files are allowed", "error");
+      e.target.value = "";
+      return;
+    }
+
+    setLessonData({ ...lessonData, file });
+  };
+
+  const handleUploadLesson = async () => {
+    if (!lessonData.title.trim()) {
+      notify?.("Lesson title is required", "error");
+      return;
+    }
+
+    if (!lessonData.file) {
+      notify?.("Please select a file to upload", "error");
+      return;
+    }
+
+    try {
+      setUploadingLesson(true);
+
+      const formData = new FormData();
+      formData.append("book_id", bookId);
+      formData.append("title", lessonData.title);
+      formData.append("content", lessonData.content || "");
+      formData.append("file", lessonData.file);
+      formData.append("teacher_id", teacherId);
+
+      const response = await fetch(`${API_BASE}/api/lessons`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.message || "Failed to create lesson");
+      }
+
+      notify?.("Lesson uploaded successfully!", "success");
+      setShowLessonModal(false);
+      setLessonData({
+        title: "",
+        content: "",
+        file: null,
+      });
+      // Reload the lessons
+      const bookId_param = bookId;
+      const lessonQuery = new URLSearchParams({ book_id: bookId_param });
+      if (teacherId) {
+        lessonQuery.set("teacher_id", teacherId);
+      }
+      const lessonsResponse = await fetch(`${API_BASE}/api/lessons?${lessonQuery.toString()}`);
+      if (lessonsResponse.ok) {
+        const lessonsData = await lessonsResponse.json();
+        setLessons(lessonsData.lessons || []);
+      }
+    } catch (err) {
+      console.error("Error uploading lesson:", err);
+      notify?.(`Error: ${err.message}`, "error");
+    } finally {
+      setUploadingLesson(false);
+    }
   };
 
   if (loading) {
@@ -659,14 +740,25 @@ export default function BooksContent({ mode = "student" }) {
         ) : (
         <div className={styles.bookLayout}>
           <aside className={styles.lessonsList}>
-            <h3>Lessons</h3>
+            <div className={styles.lessonsHeader}>
+              <h3>Lessons</h3>
+              {isTeacherView && (
+                <button
+                  type="button"
+                  className={styles.uploadLessonBtn}
+                  onClick={() => setShowLessonModal(true)}
+                >
+                  + Upload Lesson
+                </button>
+              )}
+            </div>
             <div className={styles.lessonsContainer}>
               {lessons.length === 0 && (
                 <p className={styles.emptyText}>No lessons uploaded for this book yet.</p>
               )}
 
               {lessons.map((lesson) => {
-                const isCompleted = progress[lesson.lesson_id]?.is_completed;
+                const isCompleted = isLessonCompleted(progress[lesson.lesson_id]);
                 const lessonIndex = lessons.findIndex((item) => item.lesson_id === lesson.lesson_id);
                 const previousLesson = lessons[lessonIndex - 1];
                 const isLocked = !isTeacherView && lessonIndex > 0 && !isLessonCompleted(progress[previousLesson?.lesson_id]);
@@ -707,8 +799,6 @@ export default function BooksContent({ mode = "student" }) {
                 <section
                   className={styles.readerViewport}
                   aria-label="Lesson reading area"
-                  onScroll={handleReaderScroll}
-                  ref={readerViewportRef}
                 >
                 {selectedFileUrl ? (
                   <section className={styles.fileSection}>
@@ -730,11 +820,17 @@ export default function BooksContent({ mode = "student" }) {
                         </a>
                       </div>
 
-                      <InlineFilePreview
-                        fileUrl={selectedFileUrl}
-                        fileName={selectedFileName}
-                        onRendered={handleReaderScroll}
-                      />
+                      {isTeacherView ? (
+                        <InlineFilePreview
+                          fileUrl={selectedFileUrl}
+                          fileName={selectedFileName}
+                        />
+                      ) : (
+                        <div className={styles.fullscreenPrompt}>
+                          <h3>Open full screen to read this lesson</h3>
+                          <p>Your reading progress is checked inside full screen mode.</p>
+                        </div>
+                      )}
                     </section>
                   ) : (
                     <div className={styles.noPreview}>
@@ -743,25 +839,6 @@ export default function BooksContent({ mode = "student" }) {
                   )}
                 </section>
 
-                {!isTeacherView && (
-                  <div className={styles.lessonActions}>
-                    <div className={`${styles.lessonStatus} ${selectedLessonCompleted ? styles.statusCompleted : ""}`}>
-                      {selectedLessonCompleted ? "Completed" : selectedLessonReadReady ? "Ready" : "Scroll to Bottom"}
-                    </div>
-                    <button
-                      type="button"
-                      className={`${styles.completeBtn} ${selectedLessonCompleted ? styles.completedBtn : ""}`}
-                      onClick={markLessonComplete}
-                      disabled={selectedLessonCompleted || !selectedLessonReadReady || completingLessonId === selectedLesson.lesson_id}
-                    >
-                      {selectedLessonCompleted
-                        ? "Completed"
-                        : completingLessonId === selectedLesson.lesson_id
-                          ? "Saving..."
-                          : "Mark as Complete"}
-                    </button>
-                  </div>
-                )}
               </>
             ) : (
               <p className={styles.emptyText}>Select a lesson to view its uploaded file.</p>
@@ -831,6 +908,82 @@ export default function BooksContent({ mode = "student" }) {
         </div>
       )}
 
+      {/* Upload Lesson Modal */}
+      {showLessonModal && (
+        <div className={styles.modal}>
+          <div className={`${styles.modalContent} ${styles.lessonModalContent}`}>
+            <h2>Upload Lesson</h2>
+            <p className={styles.autoLessonNote}>
+              The lesson number will be assigned automatically.
+            </p>
+
+            <label>
+              Lesson Title:
+              <input
+                className={styles.lessonInput}
+                type="text"
+                placeholder="Enter lesson title"
+                value={lessonData.title}
+                onChange={(e) =>
+                  setLessonData({ ...lessonData, title: e.target.value })
+                }
+              />
+            </label>
+
+            <label>
+              File:
+              <input
+                className={styles.lessonInput}
+                type="file"
+                accept=".pdf,.doc,.docx,.txt"
+                onChange={handleLessonFileChange}
+              />
+            </label>
+
+            {lessonData.file && (
+              <p className={styles.selectedFileName}>{lessonData.file.name}</p>
+            )}
+
+            <label>
+              Description (optional):
+              <textarea
+                className={styles.lessonTextarea}
+                placeholder="Write additional notes for this lesson..."
+                value={lessonData.content}
+                onChange={(e) =>
+                  setLessonData({ ...lessonData, content: e.target.value })
+                }
+              />
+            </label>
+
+            <div className={styles.modalButtons}>
+              <button
+                type="button"
+                onClick={handleUploadLesson}
+                className={styles.confirmBtn}
+                disabled={uploadingLesson}
+              >
+                {uploadingLesson ? "Uploading..." : "Upload"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLessonModal(false);
+                  setLessonData({
+                    title: "",
+                    content: "",
+                    file: null,
+                  });
+                }}
+                className={styles.cancelBtn}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPdfFullscreen && selectedFileUrl && (
         <div className={styles.fullscreenPdf}>
           <div className={styles.fullscreenHeader}>
@@ -838,9 +991,30 @@ export default function BooksContent({ mode = "student" }) {
               <h2>{selectedLesson?.title || "Lesson file"}</h2>
               <p>{decodeText(selectedFileName)}</p>
             </div>
-            <button type="button" onClick={() => setShowPdfFullscreen(false)}>
-              Close
-            </button>
+            <div className={styles.fullscreenActions}>
+              {!isTeacherView && (
+                <>
+                  <span className={`${styles.lessonStatus} ${selectedLessonCompleted ? styles.statusCompleted : ""}`}>
+                    {selectedLessonCompleted ? "Completed" : selectedLessonReadReady ? "Ready to complete" : "Read to the end"}
+                  </span>
+                  <button
+                    type="button"
+                    className={`${styles.completeBtn} ${selectedLessonCompleted ? styles.completedBtn : ""}`}
+                    onClick={markLessonComplete}
+                    disabled={selectedLessonCompleted || !selectedLessonReadReady || completingLessonId === selectedLesson?.lesson_id}
+                  >
+                    {selectedLessonCompleted
+                      ? "Completed"
+                      : completingLessonId === selectedLesson?.lesson_id
+                        ? "Saving..."
+                        : "Mark as Complete"}
+                  </button>
+                </>
+              )}
+              <button type="button" onClick={() => setShowPdfFullscreen(false)}>
+                Close
+              </button>
+            </div>
           </div>
 
           <div
@@ -856,7 +1030,7 @@ export default function BooksContent({ mode = "student" }) {
               />
             ) : fileExtension && ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(fileExtension) ? (
               <div className={styles.imagePreview}>
-                <img src={selectedFileUrl} alt={selectedFileName} className={styles.previewImage} />
+                <img src={selectedFileUrl} alt={selectedFileName} className={styles.previewImage} onLoad={handleFullscreenScroll} />
               </div>
             ) : fileExtension && ["txt", "md", "csv", "json", "log"].includes(fileExtension) ? (
               <InlineFilePreview

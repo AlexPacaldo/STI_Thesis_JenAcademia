@@ -1,7 +1,7 @@
 .cont {
   display: flex;
   justify-content: center;
-  min-height: 83vh;
+  min-height: auto;
   color: #13251f;
   font-family: "Poppins", sans-serif;
   padding: 32px 20px 56px;
