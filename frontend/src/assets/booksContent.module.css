@@ -628,6 +628,41 @@
   color: #13251f;
 }
 
+.lessonsHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  gap: 10px;
+}
+
+.lessonsHeader h3 {
+  margin: 0;
+  color: #13251f;
+  flex-grow: 1;
+}
+
+.uploadLessonBtn {
+  padding: 8px 16px;
+  background-color: #1f5d52;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
+}
+
+.uploadLessonBtn:hover {
+  background-color: #164a3d;
+}
+
+.uploadLessonBtn:active {
+  background-color: #0f3530;
+}
+
 .lessonsContainer {
   display: flex;
   flex-direction: column;
@@ -713,8 +748,8 @@
 .readerViewport {
   width: 100%;
   min-height: 0;
-  max-height: none;
-  overflow: visible;
+  max-height: 70vh;
+  overflow: auto;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -725,6 +760,9 @@
   display: grid;
   gap: 14px;
   width: 100%;
+  min-height: 300px;
+  max-height: calc(70vh - 60px);
+  overflow: auto;
 }
 
 .fileInfo {
@@ -784,11 +822,25 @@
 }
 
 .documentPreview,
-.noPreview {
+.noPreview,
+.fullscreenPrompt {
   padding: 16px;
   border-radius: 18px;
   border: 1px dashed rgba(38, 66, 59, 0.16);
   background: #fff;
+}
+
+.fullscreenPrompt {
+  min-height: 220px;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.fullscreenPrompt h3,
+.fullscreenPrompt p {
+  margin: 0;
 }
 
 .lessonActions {
@@ -812,6 +864,12 @@
 
 .completedBtn {
   opacity: 0.78;
+}
+
+.completeBtn:disabled,
+.fullscreenHeader button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .modal,
@@ -867,6 +925,14 @@
   box-shadow: 0 18px 40px rgba(18, 34, 30, 0.08);
 }
 
+.fullscreenActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
 .fullscreenHeader h2,
 .fullscreenHeader p {
   margin: 0;
@@ -882,6 +948,7 @@
   border: 1px solid rgba(38, 66, 59, 0.1);
   padding: 18px;
   box-shadow: 0 18px 40px rgba(18, 34, 30, 0.08);
+  overflow: auto;
 }
 
 .pdfViewerShell {
@@ -952,11 +1019,13 @@
 
 .genericPreview {
   width: 100%;
-  min-height: calc(100vh - 240px);
-  height: calc(100vh - 240px);
+  min-height: 320px;
+  max-height: calc(100vh - 240px);
+  height: auto;
   border: 0;
   border-radius: 18px;
   background: #fff;
+  overflow: hidden;
 }
 
 .stateMessage,
@@ -994,6 +1063,7 @@
   .lessonActions,
   .fileActions,
   .modalButtons,
+  .fullscreenActions,
   .fullscreenHeader {
     flex-direction: column;
     align-items: stretch;

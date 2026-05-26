@@ -1,5 +1,5 @@
 // src/pages/BooksLessons.jsx
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/teacherBooksLessons.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
@@ -22,14 +22,9 @@ export default function TeacherBooksLessons() {
   const [showCoverModal, setShowCoverModal] = useState(false);
   const [coverFile, setCoverFile] = useState(null);
   const [editingBookId, setEditingBookId] = useState(null);
-  const [showLessonModal, setShowLessonModal] = useState(false);
-  const [selectedBook, setSelectedBook] = useState("");
-  const [uploadingLesson, setUploadingLesson] = useState(false);
-  const [lessonData, setLessonData] = useState({
-    title: "",
-    content: "",
-    file: null,
-  });
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [archivingBookId, setArchivingBookId] = useState(null);
+  const [archivingBookTitle, setArchivingBookTitle] = useState("");
 
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
   const teacherId = localStorage.getItem("teacher_id") || storedUser.id || storedUser.user_id || storedUser.userId || null;
@@ -117,106 +112,30 @@ export default function TeacherBooksLessons() {
     }
   };
 
-  const handleDeleteBook = async (bookId) => {
-    if (!window.confirm("Are you sure you want to delete this book?")) return;
+  const handleArchiveBook = (bookId, bookTitle) => {
+    setArchivingBookId(bookId);
+    setArchivingBookTitle(bookTitle);
+    setShowArchiveConfirm(true);
+  };
+
+  const confirmArchiveBook = async () => {
+    if (!archivingBookId) return;
 
     try {
-      const response = await fetch(`http://localhost:3001/api/books/${bookId}?teacher_id=${encodeURIComponent(teacherId)}`, {
-        method: "DELETE",
+      const response = await fetch(`http://localhost:3001/api/books/${archivingBookId}/archive?teacher_id=${encodeURIComponent(teacherId)}`, {
+        method: "PUT",
       });
 
-      if (!response.ok) throw new Error("Failed to delete book");
+      if (!response.ok) throw new Error("Failed to archive book");
 
-      notify?.("Book deleted successfully", "success");
+      notify?.("Book archived successfully", "success");
+      setShowArchiveConfirm(false);
+      setArchivingBookId(null);
+      setArchivingBookTitle("");
       fetchBooks();
     } catch (err) {
-      console.error("Error deleting book:", err);
+      console.error("Error archiving book:", err);
       notify?.(`Error: ${err.message}`, "error");
-    }
-  };
-
-  const openLessonModal = (bookId = "") => {
-    setSelectedBook(bookId ? String(bookId) : "");
-    setShowLessonModal(true);
-  };
-
-  const closeLessonModal = () => {
-    setShowLessonModal(false);
-    setSelectedBook("");
-    setLessonData({
-      title: "",
-      content: "",
-      file: null,
-    });
-  };
-
-  const handleLessonFileChange = (e) => {
-    const file = e.target.files?.[0] || null;
-    if (!file) {
-      setLessonData({ ...lessonData, file: null });
-      return;
-    }
-
-    const allowedTypes = [
-      "application/pdf",
-      "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "text/plain",
-    ];
-
-    if (!allowedTypes.includes(file.type)) {
-      notify?.("Only PDF, DOC, DOCX, and TXT files are allowed", "error");
-      e.target.value = "";
-      return;
-    }
-
-    setLessonData({ ...lessonData, file });
-  };
-
-  const handleUploadLesson = async () => {
-    if (!selectedBook.trim()) {
-      notify?.("Please select a book", "error");
-      return;
-    }
-
-    if (!lessonData.title.trim()) {
-      notify?.("Lesson title is required", "error");
-      return;
-    }
-
-    if (!lessonData.file) {
-      notify?.("Please select a file to upload", "error");
-      return;
-    }
-
-    try {
-      setUploadingLesson(true);
-
-      const formData = new FormData();
-      formData.append("book_id", selectedBook);
-      formData.append("title", lessonData.title);
-      formData.append("content", lessonData.content || "");
-      formData.append("file", lessonData.file);
-      formData.append("teacher_id", teacherId);
-
-      const response = await fetch(`${API_BASE}/api/lessons`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.message || "Failed to create lesson");
-      }
-
-      notify?.("Lesson uploaded successfully!", "success");
-      closeLessonModal();
-      fetchBooks();
-    } catch (err) {
-      console.error("Error uploading lesson:", err);
-      notify?.(`Error: ${err.message}`, "error");
-    } finally {
-      setUploadingLesson(false);
     }
   };
 
@@ -267,19 +186,12 @@ export default function TeacherBooksLessons() {
                   <a href={`/teacherBooksLessons/${book.book_id}`}>
                     <button type="button" className={styles.viewBtn}>View</button>
                   </a>
-                  <button
-                    type="button"
-                    className={styles.viewBtn}
-                    onClick={() => openLessonModal(book.book_id)}
-                  >
-                    Upload Lesson
-                  </button>
                   <button 
                     type="button"
                     className={styles.deleteBtn}
-                    onClick={() => handleDeleteBook(book.book_id)}
+                    onClick={() => handleArchiveBook(book.book_id, book.title)}
                   >
-                    Delete
+                    Archive
                   </button>
                   <button
                     type="button"
@@ -370,71 +282,6 @@ export default function TeacherBooksLessons() {
         </div>
       )}
 
-      {/* Upload Lesson Modal */}
-      {showLessonModal && (
-        <div className={styles.modal}>
-          <div className={`${styles.modalContent} ${styles.lessonModalContent}`}>
-            <h2>Upload Lesson</h2>
-            <p className={styles.autoLessonNote}>
-              The lesson number will be assigned automatically.
-            </p>
-
-            <label>
-              Lesson Title:
-              <input
-                className={styles.lessonInput}
-                type="text"
-                placeholder="Enter lesson title"
-                value={lessonData.title}
-                onChange={(e) =>
-                  setLessonData({ ...lessonData, title: e.target.value })
-                }
-              />
-            </label>
-
-            <label>
-              File:
-              <input
-                className={styles.lessonInput}
-                type="file"
-                accept=".pdf,.doc,.docx,.txt"
-                onChange={handleLessonFileChange}
-              />
-            </label>
-
-            {lessonData.file && (
-              <p className={styles.selectedFileName}>{lessonData.file.name}</p>
-            )}
-
-            <label>
-              Description (optional):
-              <textarea
-                className={styles.lessonTextarea}
-                placeholder="Write additional notes for this lesson..."
-                value={lessonData.content}
-                onChange={(e) =>
-                  setLessonData({ ...lessonData, content: e.target.value })
-                }
-              />
-            </label>
-
-            <div className={styles.modalButtons}>
-              <button
-                type="button"
-                onClick={handleUploadLesson}
-                className={styles.confirmBtn}
-                disabled={uploadingLesson}
-              >
-                {uploadingLesson ? "Uploading..." : "Upload"}
-              </button>
-              <button type="button" onClick={closeLessonModal} className={styles.cancelBtn}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Edit Cover Modal */}
       {showCoverModal && (
         <div className={styles.modal}>
@@ -476,6 +323,36 @@ export default function TeacherBooksLessons() {
                 Save
               </button>
               <button className={styles.cancelBtn} onClick={() => { setShowCoverModal(false); setCoverFile(null); setEditingBookId(null); }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Archive Confirmation Modal */}
+      {showArchiveConfirm && (
+        <div className={styles.modal}>
+          <div className={styles.modalContent}>
+            <h2>Archive Book</h2>
+            <p>Are you sure you want to archive the book <strong>"{archivingBookTitle}"</strong>?</p>
+            <p style={{ fontSize: "14px", color: "#666" }}>This will archive the book and all its associated lessons.</p>
+
+            <div className={styles.modalButtons}>
+              <button
+                className={styles.confirmBtn}
+                onClick={confirmArchiveBook}
+              >
+                Archive
+              </button>
+              <button 
+                className={styles.cancelBtn} 
+                onClick={() => { 
+                  setShowArchiveConfirm(false); 
+                  setArchivingBookId(null); 
+                  setArchivingBookTitle(""); 
+                }}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
