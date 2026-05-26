@@ -226,8 +226,8 @@
 .panelHeader {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
   align-items: flex-start;
+  gap: 12px;
   margin-bottom: 14px;
 }
 
@@ -235,6 +235,8 @@
   display: flex;
   gap: 12px;
   align-items: flex-start;
+  min-width: 0;
+  flex: 1 1 0;
 }
 
 .panelIcon {
@@ -261,6 +263,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 1 auto;
+  width: fit-content;
   min-height: 36px;
   padding: 8px 12px;
   border-radius: 14px;
@@ -269,7 +273,9 @@
   color: #26423b;
   font-weight: 600;
   text-decoration: none;
-  white-space: nowrap;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.15;
   box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
 }
 
@@ -305,14 +311,16 @@
   color: #13251f;
   font-weight: 700;
   line-height: 1.35;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .itemSub {
   margin-top: 4px;
   color: #5e7268;
   font-size: 0.92rem;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .itemMeta {
@@ -334,13 +342,42 @@
   color: #5e7268;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1400px) {
   .hero {
     grid-template-columns: 1fr;
   }
 
   .panelGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1116px) {
+  .panelGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .panelHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .panelHeading {
+    align-items: flex-start;
+  }
+
+  .panelAction {
+    width: 100%;
+  }
+
+  .itemRow {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .itemMeta {
+    white-space: normal;
+    justify-self: start;
   }
 }
 

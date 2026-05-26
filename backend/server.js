@@ -14,7 +14,7 @@ dotenv.config();
 const PORT = process.env.PORT || 3001;
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USER || "root";
-const DB_PASSWORD = process.env.DB_PASSWORD || "LORAKLANG0405++";    // <- your password here
+const DB_PASSWORD = process.env.DB_PASSWORD || "Aj1182014";    // <- your password here
 const DB_NAME = process.env.DB_NAME || "jen_academia"; // your schema
 
 const app = express();
@@ -1006,7 +1006,11 @@ const assignmentSelect = `
          a.teacher_id AS teacherId,
          a.student_id AS studentId,
          CONCAT(student.first_name, ' ', student.last_name) AS student,
+         student.profile_image_url AS studentProfileImageUrl,
+         student.profile_image_url AS student_profile_image_url,
          CONCAT(teacher.first_name, ' ', teacher.last_name) AS teacherName,
+         teacher.profile_image_url AS teacherProfileImageUrl,
+         teacher.profile_image_url AS teacher_profile_image_url,
          a.course_id AS courseId,
          c.course_name AS subject,
          a.title AS name,

@@ -6,6 +6,8 @@ import styles from "../assets/studentSchedule.module.css";
 import {
   DEFAULT_TIMEZONE,
   convertDateTime,
+  formatDateInTimezone,
+  formatTimeInTimezone,
   getUserTimezone,
   humanTime as formatHumanTime,
   normalizeTimeKey,
@@ -842,12 +844,24 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
 
     const teacherTimezone = teacherAvailabilityRecord?.teacher_timezone || DEFAULT_TIMEZONE;
+    const currentViewerDate = formatDateInTimezone(new Date(), viewerTimezone);
+    const currentViewerTime = formatTimeInTimezone(new Date(), viewerTimezone);
+    const currentViewerMinutes = timeToMinutes(currentViewerTime);
     const finalSlots = finalSlotsInTeacherTimezone
       .map(slot => {
         const converted = convertDateTime(dateKey, slot, teacherTimezone, viewerTimezone);
         return converted.date === dateKey ? converted.time : null;
       })
-      .filter(Boolean);
+      .filter(Boolean)
+      .filter((slot) => {
+        if (!slot) return false;
+        if (dateKey < currentViewerDate) return false;
+        if (dateKey === currentViewerDate && currentViewerMinutes != null) {
+          const slotMinutes = timeToMinutes(slot);
+          return slotMinutes != null && slotMinutes > currentViewerMinutes;
+        }
+        return true;
+      });
 
     setAvailableTimeSlots(finalSlots);
   };

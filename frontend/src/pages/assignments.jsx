@@ -38,6 +38,28 @@ function formatDueDate(row) {
   return "No due date";
 }
 
+function formatDateGiven(row) {
+  const postedAt = row.postedAt || row.createdAt || "";
+  if (!postedAt) return "Not available";
+
+  const normalized = String(postedAt).replace(" ", "T");
+  const date = new Date(normalized);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(postedAt);
+  }
+
+  return date.toLocaleString(undefined, {
+    timeZone: getStoredUserTimezone(),
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 export default function Assignments() {
   const [rows, setRows] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -93,10 +115,10 @@ export default function Assignments() {
           <thead className={styles.theadLight}>
             <tr>
               <th scope="col">Assignments</th>
+              <th scope="col">Date Given</th>
               <th scope="col">Due</th>
               <th scope="col">Subject</th>
               <th scope="col">Action</th>
-              <th scope="col">Score</th>
             </tr>
           </thead>
 
@@ -123,6 +145,7 @@ export default function Assignments() {
               rows.map((r) => (
                 <tr key={r.id}>
                   <td>{getAssignmentDisplayText(r)}</td>
+                  <td>{formatDateGiven(r)}</td>
                   <td>{formatDueDate(r)}</td>
                   <td>{r.subject || "General"}</td>
                   <td>
@@ -134,7 +157,6 @@ export default function Assignments() {
                       View
                     </Link>
                   </td>
-                  <td>{r.score || "Pending"}</td>
                 </tr>
               ))
             )}
