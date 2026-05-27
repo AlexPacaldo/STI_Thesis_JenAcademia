@@ -14,7 +14,7 @@ dotenv.config();
 const PORT = process.env.PORT || 3001;
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USER || "root";
-const DB_PASSWORD = process.env.DB_PASSWORD || "Aj1182014";    // <- your password here
+const DB_PASSWORD = process.env.DB_PASSWORD || "DBPASSWORD";    // <- your password here
 const DB_NAME = process.env.DB_NAME || "jen_academia"; // your schema
 
 const app = express();
@@ -366,6 +366,7 @@ const MS_TENANT_ID = process.env.MS_TENANT_ID || "";
 const MS_CLIENT_ID = process.env.MS_CLIENT_ID || "";
 const MS_CLIENT_SECRET = process.env.MS_CLIENT_SECRET || "";
 const MS_TEAMS_ORGANIZER_UPN = process.env.MS_TEAMS_ORGANIZER_UPN || "";
+const JITSI_BASE_URL = process.env.JITSI_BASE_URL || "https://meet.jit.si";
 
 async function getMicrosoftGraphAccessToken() {
   if (!MS_TENANT_ID || !MS_CLIENT_ID || !MS_CLIENT_SECRET) {
@@ -458,17 +459,35 @@ async function createTeamsMeeting(subject, date, startTime, endTime, organizerEm
   }
 
   const data = await response.json();
-  if (!data.joinUrl) {
-    throw new Error("Graph meeting response missing joinUrl");
+  const joinUrl = data.joinWebUrl || data.joinUrl;
+  if (!joinUrl) {
+    throw new Error("Graph meeting response missing joinWebUrl");
   }
 
-  return data.joinUrl;
+  return joinUrl;
 }
 
-function generateTeamsMeetingLink() {
-  const uuid = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString("hex");
-  const safeMeetingId = encodeURIComponent(`19:meeting_${uuid}@thread.v2`);
-  return `https://teams.microsoft.com/l/meetup-join/${safeMeetingId}/0?context=%7B%22Tid%22%3A%22placeholder%22%2C%22Oid%22%3A%22placeholder%22%7D`;
+function slugifyMeetingPart(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
+function generateJitsiMeetingLink({ className, scheduledDate, startTime, teacherId, studentId }) {
+  const roomParts = [
+    "jen-academia",
+    slugifyMeetingPart(className) || "class",
+    slugifyMeetingPart(scheduledDate),
+    slugifyMeetingPart(startTime),
+    `t${teacherId}`,
+    `s${studentId}`,
+    crypto.randomBytes(4).toString("hex"),
+  ].filter(Boolean);
+
+  const baseUrl = JITSI_BASE_URL.replace(/\/+$/, "");
+  return `${baseUrl}/${roomParts.join("-")}`;
 }
 
 async function columnExists(tableName, columnName) {
@@ -2342,26 +2361,15 @@ app.post("/api/calendar/class", async (req, res) => {
       return res.status(409).json({ message: "That time overlaps with an existing class." });
     }
 
-    const [teacherRows] = await connection.query(
-      `SELECT first_name, last_name, email FROM users WHERE user_id = ?`,
-      [teacher_id]
-    );
-    const teacherEmail = teacherRows.length > 0 ? teacherRows[0].email : null;
-
     let classLinkToSave = class_link?.trim();
     if (!classLinkToSave) {
-      try {
-        classLinkToSave = await createTeamsMeeting(
-          class_name,
-          scheduled_date,
-          start_time,
-          computedEndTime,
-          teacherEmail || MS_TEAMS_ORGANIZER_UPN
-        );
-      } catch (meetingErr) {
-        console.error("Teams meeting creation failed", meetingErr);
-        classLinkToSave = generateTeamsMeetingLink();
-      }
+      classLinkToSave = generateJitsiMeetingLink({
+        className: class_name,
+        scheduledDate: scheduled_date,
+        startTime: start_time,
+        teacherId: teacher_id,
+        studentId: student_id,
+      });
     }
 
     const [result] = await connection.query(
