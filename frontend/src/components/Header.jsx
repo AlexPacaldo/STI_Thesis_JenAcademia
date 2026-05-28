@@ -10,6 +10,7 @@ import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessi
 import { API_BASE_URL } from "../utils/api.js";
 
 const API = API_BASE_URL;
+const BADGE_REFRESH_MS = 60 * 1000;
 
 function profileSrc(user) {
   const url = user?.profileImageUrl || user?.profile_image_url;
@@ -146,8 +147,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
   useEffect(() => {
     if (currentUserId && (role === "student" || role === "teacher" || role === "admin")) {
       fetchUnreadCount();
-      // Poll for new notifications every 30 seconds
-      const interval = setInterval(fetchUnreadCount, 30000);
+      const interval = setInterval(fetchUnreadCount, BADGE_REFRESH_MS);
       return () => clearInterval(interval);
     }
   }, [currentUserId, role]);
@@ -169,7 +169,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
     };
 
     fetchChatUnreadCount();
-    const interval = setInterval(fetchChatUnreadCount, 30000);
+    const interval = setInterval(fetchChatUnreadCount, BADGE_REFRESH_MS);
     return () => clearInterval(interval);
   }, [currentUserId, role]);
 

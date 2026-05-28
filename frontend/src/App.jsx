@@ -12,6 +12,7 @@ import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from ".
 import { API_BASE_URL } from "./utils/api.js";
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 60 * 1000; // 5 hours
+const ACCOUNT_STATUS_CHECK_MS = 60 * 1000;
 const PUBLIC_PATHS = ["/", "/login", "/register"];
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
 
@@ -184,7 +185,7 @@ function App() {
       }
 
       checkAccountStatus();
-      const accountStatusTimer = window.setInterval(checkAccountStatus, 10000);
+      const accountStatusTimer = window.setInterval(checkAccountStatus, ACCOUNT_STATUS_CHECK_MS);
       window.addEventListener("focus", checkAccountStatus);
 
       const stayLoggedIn = isStayLoggedIn(user);

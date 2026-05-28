@@ -199,31 +199,20 @@ export default function Dashboard({ mode }) {
       setError("");
 
       try {
-        const coursesPromise = axios.get(`${API}/api/courses`).catch(() => null);
+        const dashboardRes = await axios.get(`${API}/api/dashboard/${isTeacher ? "teacher" : "student"}/${currentUserId}`, {
+          params: { scheduled_date: getTodayDate() },
+        });
+        const dashboard = dashboardRes.data || {};
 
         if (isTeacher) {
-          const [classesRes, studentsRes, assignmentsRes, submissionsRes, booksRes, coursesRes] = await Promise.all([
-            axios.get(`${API}/api/calendar/classes-by-date`, {
-              params: {
-                teacher_id: currentUserId,
-                scheduled_date: getTodayDate(),
-              },
-            }),
-            axios.get(`${API}/api/teacher/${currentUserId}/students`),
-            axios.get(`${API}/api/teacher/${currentUserId}/assignments`),
-            axios.get(`${API}/api/teacher/${currentUserId}/submissions`),
-            axios.get(`${API}/api/books`, { params: { teacher_id: currentUserId } }),
-            coursesPromise,
-          ]);
-
           if (ignore) return;
 
-          const courses = coursesRes?.data?.courses || [];
+          const courses = dashboard.courses || [];
           const nextCourseMap = new Map(courses.map((course) => [String(course.course_id), course.course_name]));
           setCourseMap(nextCourseMap);
 
           setTeacherData({
-            classesToday: (classesRes.data.classes || []).map((cls) => ({
+            classesToday: (dashboard.classes || []).map((cls) => ({
               id: cls.class_id || cls.id,
               student: cls.student_name
                 ? `${cls.student_name} ${cls.student_last_name || ""}`.trim()
@@ -233,44 +222,21 @@ export default function Dashboard({ mode }) {
               scheduledDate: cls.scheduled_date || null,
               raw: cls,
             })),
-            students: studentsRes.data.students || [],
-            assignments: assignmentsRes.data.assignments || [],
-            submissions: submissionsRes.data.submissions || [],
-            books: booksRes.data.books || [],
+            students: dashboard.students || [],
+            assignments: dashboard.assignments || [],
+            submissions: dashboard.submissions || [],
+            books: dashboard.books || [],
           });
         } else {
-          const [classesRes, remarksRes, assignmentsRes, booksRes, progressRes, packageRes, assignedTeacherRes, teachersRes, coursesRes] =
-            await Promise.all([
-              axios.get(`${API}/api/calendar/classes-by-date`, {
-                params: {
-                  student_id: currentUserId,
-                  scheduled_date: getTodayDate(),
-                },
-              }),
-              axios.get(`${API}/api/student/${currentUserId}/remarks`),
-              axios.get(`${API}/api/student/${currentUserId}/assignments`),
-              axios.get(`${API}/api/books`, { params: { student_id: currentUserId } }),
-              axios.get(`${API}/api/lesson-progress`, { params: { student_id: currentUserId } }),
-              axios.get(`${API}/api/calendar/student-package/${currentUserId}`).catch(() => null),
-              axios.get(`${API}/api/student/assigned-teacher/${currentUserId}`).catch(() => null),
-              axios.get(`${API}/api/admin/users?role=teacher&status=active`).catch(() => null),
-              coursesPromise,
-            ]);
-
           if (ignore) return;
 
-          const teachers = teachersRes?.data || [];
-          const courses = coursesRes?.data?.courses || [];
+          const teachers = dashboard.assignedTeacher ? [dashboard.assignedTeacher] : [];
+          const courses = dashboard.courses || [];
           const nextCourseMap = new Map(courses.map((course) => [String(course.course_id), course.course_name]));
           setCourseMap(nextCourseMap);
 
-          const packageData = packageRes?.data?.package || null;
-          const assignedTeacherId = assignedTeacherRes?.data?.assigned_teacher_id || null;
-          const assignedTeacher =
-            teachers.find((teacher) => String(teacher.user_id ?? teacher.id) === String(assignedTeacherId)) || null;
-
           setStudentData({
-            classesToday: (classesRes.data.classes || []).map((cls) => ({
+            classesToday: (dashboard.classes || []).map((cls) => ({
               id: cls.class_id || cls.id,
               title: cls.class_name || cls.className || cls.subject || "Class",
               teacher: cls.teacher_name ? `${cls.teacher_name} ${cls.teacher_last_name || ""}`.trim() : cls.teacherName || "Teacher",
@@ -278,12 +244,12 @@ export default function Dashboard({ mode }) {
               scheduledDate: cls.scheduled_date || cls.date || null,
               raw: cls,
             })),
-            remarks: remarksRes.data.remarks || [],
-            assignments: assignmentsRes.data.assignments || [],
-            books: booksRes.data.books || [],
-            package: packageData,
-            lessonProgress: progressRes.data.progress || [],
-            assignedTeacher,
+            remarks: dashboard.remarks || [],
+            assignments: dashboard.assignments || [],
+            books: dashboard.books || [],
+            package: dashboard.package || null,
+            lessonProgress: dashboard.progress || [],
+            assignedTeacher: dashboard.assignedTeacher || null,
             teachers,
           });
         }
@@ -327,7 +293,7 @@ export default function Dashboard({ mode }) {
       .map((student) => ({
         id: student.user_id || student.id,
         primary: `${student.first_name || student.firstName || ""} ${student.last_name || student.lastName || ""}`.trim() || "Student",
-        secondary: `${formatProficiencyLevel(student.proficiency_level)}${student.course_id ? ` • ${getCourseName(courseMap, student.course_id) || `Course ${student.course_id}`}` : ""}`,
+        secondary: `${formatProficiencyLevel(student.proficiency_level)}${student.course_id ? ` â€¢ ${getCourseName(courseMap, student.course_id) || `Course ${student.course_id}`}` : ""}`,
         meta: student.email || "",
       }));
 
@@ -337,7 +303,7 @@ export default function Dashboard({ mode }) {
         id: submission.submissionId || submission.id,
         primary: submission.assignmentName || "Assignment",
         secondary: submission.student || "Student",
-        meta: `${submission.status || "Submitted"} • ${formatDate(submission.submittedAt)}`,
+        meta: `${submission.status || "Submitted"} â€¢ ${formatDate(submission.submittedAt)}`,
       }));
 
     return [
