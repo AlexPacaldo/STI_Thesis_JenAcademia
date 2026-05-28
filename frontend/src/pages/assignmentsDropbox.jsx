@@ -4,8 +4,8 @@ import { useLocation } from "react-router-dom";
 import styles from "../assets/assignmentsDropbox.module.css";
 import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
-import { getStoredUserTimezone } from "../utils/timezone.js";
 import { readStoredUser } from "../utils/sessionUser.js";
+import { getStoredUserTimezone } from "../utils/timezone.js";
 
 const API = "http://localhost:3001";
 
@@ -129,6 +129,7 @@ export default function AssignmentsDropbox() {
   const [isLoading, setIsLoading] = useState(false);
   const [showSubmission, setShowSubmission] = useState(false);
   const [showResubmissionEditor, setShowResubmissionEditor] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null);
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const assignmentId = searchParams.get("assignmentId");
@@ -282,6 +283,50 @@ export default function AssignmentsDropbox() {
     }
   };
 
+  const closeConfirmAction = () => setConfirmAction(null);
+
+  const requestSubmitAssignment = () => {
+    if (!selectedAssignment) {
+      setSubmitMessage("Please open an assignment before submitting.");
+      return;
+    }
+
+    if (!currentStudentId) {
+      setSubmitMessage("Please log in as a student before submitting.");
+      return;
+    }
+
+    if (isAssignmentPastDue()) {
+      setSubmitMessage("This assignment is past due and can no longer be submitted.");
+      return;
+    }
+
+    if (isAttemptLimitReached) {
+      setSubmitMessage("Attempt limit reached. You can no longer submit this assignment.");
+      return;
+    }
+
+    if (!comment.trim() && !selectedFile) {
+      setSubmitMessage("Please write a comment or attach a file before submitting.");
+      return;
+    }
+
+    setConfirmAction({
+      type: "submit-assignment",
+      title: submitButtonLabel === "Submit Again" ? "Submit again?" : "Submit assignment?",
+      message: `Are you sure you want to ${submitButtonLabel.toLowerCase()}?`,
+      confirmLabel: submitButtonLabel,
+    });
+  };
+
+  const performConfirmAction = async () => {
+    if (!confirmAction) return;
+    if (confirmAction.type === "submit-assignment") {
+      await onSubmitComment();
+    }
+    closeConfirmAction();
+  };
+
   return (
     <div className={styles.cont}>
       <div className={styles.center}>
@@ -421,7 +466,7 @@ export default function AssignmentsDropbox() {
                       <button
                         type="button"
                         className={styles.submitComment}
-                        onClick={onSubmitComment}
+                        onClick={requestSubmitAssignment}
                         disabled={!selectedAssignment || isAssignmentPastDue() || isAttemptLimitReached}
                       >
                         {submitButtonLabel}
@@ -480,6 +525,26 @@ export default function AssignmentsDropbox() {
           </div>
         </div>
       </div>
+      {confirmAction && (
+        <div className={styles.modalBackdrop} onClick={closeConfirmAction}>
+          <section className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h2>{confirmAction.title}</h2>
+            </div>
+            <div className={styles.modalBody}>
+              <p>{confirmAction.message}</p>
+            </div>
+            <div className={styles.modalActions}>
+              <button type="button" className={styles.textBtn} onClick={closeConfirmAction}>
+                Cancel
+              </button>
+              <button type="button" className={styles.primaryBtn} onClick={performConfirmAction}>
+                {confirmAction.confirmLabel}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

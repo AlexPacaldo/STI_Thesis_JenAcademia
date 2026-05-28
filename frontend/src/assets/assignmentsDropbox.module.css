@@ -432,6 +432,81 @@
   background: #e3ede7;
 }
 
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  padding: 24px;
+}
+
+.confirmModal {
+  width: min(100%, 440px);
+  background: #fff;
+  border-radius: 28px;
+  padding: 24px;
+  box-shadow: 0 22px 50px rgba(18, 34, 30, 0.18);
+  border: 1px solid rgba(38, 66, 59, 0.12);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.modalHeader h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  color: #13251f;
+}
+
+.modalBody {
+  margin-bottom: 22px;
+  color: #4b5563;
+  line-height: 1.7;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.textBtn {
+  min-width: 120px;
+  border: 1px solid rgba(38, 66, 59, 0.16);
+  background: #f8fbf9;
+  color: #26423b;
+  border-radius: 18px;
+  padding: 12px 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.textBtn:hover {
+  background: #e3ede7;
+}
+
+.primaryBtn {
+  min-width: 120px;
+  border: 1px solid #26423b;
+  background: #26423b;
+  color: #fff;
+  border-radius: 18px;
+  padding: 12px 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primaryBtn:hover {
+  background: #1f3a34;
+}
+
 .submissionViewer {
   display: grid;
   gap: 14px;

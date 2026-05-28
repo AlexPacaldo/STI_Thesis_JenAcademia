@@ -2,14 +2,14 @@ import axios from "axios";
 import { useEffect, useState } from "react";
 import styles from "../assets/notificationPanel.module.css";
 import {
-  clearLocalNotificationsForUser,
-  getLocalNotificationsForUser,
-  markAllLocalNotificationsReadForUser,
-  markLocalNotificationRead,
-  mergeNotifications,
+    clearLocalNotificationsForUser,
+    getLocalNotificationsForUser,
+    markAllLocalNotificationsReadForUser,
+    markLocalNotificationRead,
+    mergeNotifications,
 } from "../utils/localNotificationStore.js";
-import { getStoredUserTimezone } from "../utils/timezone.js";
 import { readStoredUser } from "../utils/sessionUser.js";
+import { getStoredUserTimezone } from "../utils/timezone.js";
 import { useNotification } from "./NotificationContainer";
 
 const API = "http://localhost:3001";
@@ -22,6 +22,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
   const [totalNotifications, setTotalNotifications] = useState(0);
   const [selectedType, setSelectedType] = useState("all"); // filter by type
   const [actionInProgress, setActionInProgress] = useState(null); // track which notification is being acted on
+  const [confirmAction, setConfirmAction] = useState(null);
 
   // Fetch all notifications for this user
   const loadNotifications = async (pageNum = 1, type = "all") => {
@@ -94,61 +95,142 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
     }
   };
 
-  // Delete all notifications
-  const handleClearAll = async () => {
+  const closeConfirmAction = () => setConfirmAction(null);
+
+  const requestDeleteNotification = (notificationId) => {
+    setConfirmAction({
+      type: "delete-notification",
+      notificationId,
+      title: "Delete notification?",
+      message: "Are you sure you want to delete this notification? This cannot be undone.",
+      confirmLabel: "Delete"
+    });
+  };
+
+  const requestClearAllNotifications = () => {
+    setConfirmAction({
+      type: "clear-all-notifications",
+      title: "Clear all notifications?",
+      message: "Are you sure you want to clear all notifications? This will remove them permanently.",
+      confirmLabel: "Clear All"
+    });
+  };
+
+  const requestMarkAllAsRead = () => {
+    setConfirmAction({
+      type: "mark-all-read",
+      title: "Mark all notifications as read?",
+      message: "Are you sure you want to mark all notifications as read? This will clear the unread badge.",
+      confirmLabel: "Mark All as Read"
+    });
+  };
+
+  const requestApproveReschedule = (notificationId, relatedId) => {
+    setConfirmAction({
+      type: "approve-reschedule",
+      notificationId,
+      relatedId,
+      title: "Approve reschedule?",
+      message: "Approve this reschedule request? This will update the calendar.",
+      confirmLabel: "Approve"
+    });
+  };
+
+  const requestRejectReschedule = (notificationId, relatedId) => {
+    setConfirmAction({
+      type: "reject-reschedule",
+      notificationId,
+      relatedId,
+      title: "Reject reschedule?",
+      message: "Reject this reschedule request? The requester will be notified.",
+      confirmLabel: "Reject"
+    });
+  };
+
+  const performConfirmAction = async () => {
+    if (!confirmAction) return;
+
+    const action = confirmAction;
     const currentUser = readStoredUser() || {};
     const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
-    try {
-      await axios.delete(`${API}/api/notifications/user/${userId}`);
-      clearLocalNotificationsForUser({ userId, userName });
-      setNotifications([]);
-      setTotalNotifications(0);
-      notify("All notifications cleared", "success");
-    } catch (err) {
-      console.error("Error clearing notifications:", err);
-      clearLocalNotificationsForUser({ userId, userName });
-      setNotifications([]);
-      setTotalNotifications(0);
-      notify("All notifications cleared", "success");
-    }
-  };
 
-  // Approve reschedule request
-  const handleApproveReschedule = async (notificationId, relatedId) => {
-    setActionInProgress(notificationId);
-    try {
-      await axios.post(`${API}/api/calendar/reschedule-requests/${relatedId}/approve`, {
-        user_id: userId
-      });
-      notify("Reschedule request approved and calendar updated!", "success");
-      // Remove the notification from the list
-      setNotifications(prev => prev.filter(n => n.notification_id !== notificationId));
-      setTotalNotifications(Math.max(0, totalNotifications - 1));
-    } catch (err) {
-      console.error("Error approving reschedule:", err);
-      notify("Failed to approve reschedule request", "error");
-    } finally {
-      setActionInProgress(null);
+    if (action.type === "delete-notification") {
+      try {
+        await axios.delete(`${API}/api/notifications/${action.notificationId}`);
+        setNotifications(prev => prev.filter(n => n.notification_id !== action.notificationId));
+        setTotalNotifications(prev => Math.max(0, prev - 1));
+        notify("Notification deleted", "success");
+      } catch (err) {
+        console.error("Error deleting notification:", err);
+        notify("Failed to delete notification", "error");
+      }
     }
-  };
 
-  // Reject reschedule request
-  const handleRejectReschedule = async (notificationId, relatedId) => {
-    setActionInProgress(notificationId);
-    try {
-      await axios.post(`${API}/api/calendar/reschedule-requests/${relatedId}/reject`, {
-        user_id: userId
-      });
-      notify("Reschedule request rejected", "success");
-      // Remove the notification from the list
-      setNotifications(prev => prev.filter(n => n.notification_id !== notificationId));
-      setTotalNotifications(Math.max(0, totalNotifications - 1));
-    } catch (err) {
-      console.error("Error rejecting reschedule:", err);
-      notify("Failed to reject reschedule request", "error");
-    } finally {
-      setActionInProgress(null);
+    if (action.type === "clear-all-notifications") {
+      try {
+        await axios.delete(`${API}/api/notifications/user/${userId}`);
+        clearLocalNotificationsForUser({ userId, userName });
+        setNotifications([]);
+        setTotalNotifications(0);
+        notify("All notifications cleared", "success");
+      } catch (err) {
+        console.error("Error clearing notifications:", err);
+        clearLocalNotificationsForUser({ userId, userName });
+        setNotifications([]);
+        setTotalNotifications(0);
+        notify("All notifications cleared", "success");
+      }
     }
+
+    if (action.type === "mark-all-read") {
+      try {
+        await axios.put(`${API}/api/users/${userId}/notifications/read-all`);
+        markAllLocalNotificationsReadForUser({ userId, userName });
+        setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+        notify("All notifications marked as read", "success");
+      } catch (err) {
+        console.error("Error marking all as read:", err);
+        markAllLocalNotificationsReadForUser({ userId, userName });
+        setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+        notify("All notifications marked as read", "success");
+      }
+    }
+
+    if (action.type === "approve-reschedule") {
+      setActionInProgress(action.notificationId);
+      try {
+        await axios.post(`${API}/api/calendar/reschedule-requests/${action.relatedId}/approve`, {
+          user_id: userId
+        });
+        notify("Reschedule request approved and calendar updated!", "success");
+        setNotifications(prev => prev.filter(n => n.notification_id !== action.notificationId));
+        setTotalNotifications(Math.max(0, totalNotifications - 1));
+      } catch (err) {
+        console.error("Error approving reschedule:", err);
+        notify("Failed to approve reschedule request", "error");
+      } finally {
+        setActionInProgress(null);
+      }
+    }
+
+    if (action.type === "reject-reschedule") {
+      setActionInProgress(action.notificationId);
+      try {
+        await axios.post(`${API}/api/calendar/reschedule-requests/${action.relatedId}/reject`, {
+          user_id: userId
+        });
+        notify("Reschedule request rejected", "success");
+        setNotifications(prev => prev.filter(n => n.notification_id !== action.notificationId));
+        setTotalNotifications(Math.max(0, totalNotifications - 1));
+      } catch (err) {
+        console.error("Error rejecting reschedule:", err);
+        notify("Failed to reject reschedule request", "error");
+      } finally {
+        setActionInProgress(null);
+      }
+    }
+
+    closeConfirmAction();
   };
 
   // Get notification icon based on type
@@ -255,7 +337,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                         <>
                           <button
                             className={styles.approveBtn}
-                            onClick={() => handleApproveReschedule(notif.notification_id, notif.related_id)}
+                            onClick={() => requestApproveReschedule(notif.notification_id, notif.related_id)}
                             title="Approve reschedule"
                             disabled={actionInProgress === notif.notification_id}
                           >
@@ -263,7 +345,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                           </button>
                           <button
                             className={styles.rejectBtn}
-                            onClick={() => handleRejectReschedule(notif.notification_id, notif.related_id)}
+                            onClick={() => requestRejectReschedule(notif.notification_id, notif.related_id)}
                             title="Reject reschedule"
                             disabled={actionInProgress === notif.notification_id}
                           >
@@ -283,7 +365,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                           )}
                           <button
                             className={styles.deleteBtn}
-                            onClick={() => handleDelete(notif.notification_id)}
+                            onClick={() => requestDeleteNotification(notif.notification_id)}
                             title="Delete"
                           >
                             ✕
@@ -322,16 +404,18 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
               <div className={styles.footerActions}>
                 {unreadCount > 0 && (
                   <button
+                    type="button"
                     className={styles.markAllReadBtn}
-                    onClick={handleMarkAllAsRead}
+                    onClick={requestMarkAllAsRead}
                   >
                     Mark All as Read
                   </button>
                 )}
                 {notifications.length > 0 && (
                   <button
+                    type="button"
                     className={styles.clearAllBtn}
-                    onClick={handleClearAll}
+                    onClick={requestClearAllNotifications}
                   >
                     Clear All
                   </button>
@@ -340,6 +424,66 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
             </>
           )}
         </div>
+        {confirmAction && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(0,0,0,0.35)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1200,
+              padding: "20px",
+            }}
+            onClick={closeConfirmAction}
+          >
+            <div
+              style={{
+                background: "#fff",
+                borderRadius: "16px",
+                padding: "24px",
+                maxWidth: "420px",
+                width: "100%",
+                boxShadow: "0 24px 60px rgba(0,0,0,0.16)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: "0 0 12px", fontSize: "1.1rem" }}>{confirmAction.title}</h3>
+              <p style={{ margin: "0 0 24px", color: "#55606c", lineHeight: 1.6 }}>{confirmAction.message}</p>
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                <button
+                  onClick={closeConfirmAction}
+                  style={{
+                    padding: "10px 16px",
+                    borderRadius: "12px",
+                    border: "1px solid #d0d5db",
+                    background: "#fff",
+                    color: "#13251f",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={performConfirmAction}
+                  style={{
+                    padding: "10px 16px",
+                    borderRadius: "12px",
+                    border: "none",
+                    background: "#26423b",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                  }}
+                >
+                  {confirmAction.confirmLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

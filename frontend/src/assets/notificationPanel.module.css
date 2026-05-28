@@ -367,6 +367,7 @@
 /* Mark All Read Button */
 .markAllReadBtn {
   flex: 1;
+  min-width: 150px;
   padding: 12px 16px;
   background: var(--primary, #26423b);
   color: #fff;
@@ -398,6 +399,7 @@
 /* Clear All Button */
 .clearAllBtn {
   flex: 1;
+  min-width: 150px;
   padding: 12px 16px;
   background: #d66a55;
   color: #fff;
