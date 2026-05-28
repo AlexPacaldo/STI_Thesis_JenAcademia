@@ -1,5 +1,6 @@
 import axios from "axios";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import styles from "../assets/notificationPanel.module.css";
 import {
     clearLocalNotificationsForUser,
@@ -16,6 +17,7 @@ const API = "http://localhost:3001";
 
 export default function NotificationPanel({ userId, isOpen, onClose }) {
   const { notify } = useNotification() || {};
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
@@ -105,6 +107,45 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
       message: "Are you sure you want to delete this notification? This cannot be undone.",
       confirmLabel: "Delete"
     });
+  };
+
+  const getNotificationTargetUrl = (notification) => {
+    const actionUrl = notification.action_url || notification.actionUrl;
+    const relatedId = notification.related_id ?? notification.relatedId;
+    const currentUser = readStoredUser() || {};
+    const role = currentUser.role;
+
+    if (actionUrl && typeof actionUrl === "string" && actionUrl.trim()) {
+      return actionUrl;
+    }
+
+    if (notification.type === "assignment" && relatedId) {
+      return `/assignmentsDropbox?assignmentId=${relatedId}`;
+    }
+    if (notification.type === "remark") {
+      return "/remarks";
+    }
+    if (notification.type === "reschedule" || notification.type === "class_reminder") {
+      return "/Calendar";
+    }
+    if (notification.type === "announcement") {
+      if (role === "teacher") return "/TeacherDashboard";
+      if (role === "admin") return "/AdminDashboard";
+      return "/StudentDashboard";
+    }
+    return "/";
+  };
+
+  const handleNotificationClick = async (notification) => {
+    if (!notification) return;
+
+    if (!notification.is_read) {
+      handleMarkAsRead(notification.notification_id);
+    }
+
+    const targetUrl = getNotificationTargetUrl(notification);
+    navigate(targetUrl);
+    onClose?.();
   };
 
   const requestClearAllNotifications = () => {
@@ -318,6 +359,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                     key={notif.notification_id}
                     className={`${styles.notificationItem} ${!notif.is_read ? styles.unread : ""}`}
                     style={{ borderLeftColor: getNotificationColor(notif.type) }}
+                    onClick={() => handleNotificationClick(notif)}
                   >
                     <div className={styles.notifIcon}>{getNotificationIcon(notif.type)}</div>
                     
@@ -337,7 +379,10 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                         <>
                           <button
                             className={styles.approveBtn}
-                            onClick={() => requestApproveReschedule(notif.notification_id, notif.related_id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              requestApproveReschedule(notif.notification_id, notif.related_id);
+                            }}
                             title="Approve reschedule"
                             disabled={actionInProgress === notif.notification_id}
                           >
@@ -345,7 +390,10 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                           </button>
                           <button
                             className={styles.rejectBtn}
-                            onClick={() => requestRejectReschedule(notif.notification_id, notif.related_id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              requestRejectReschedule(notif.notification_id, notif.related_id);
+                            }}
                             title="Reject reschedule"
                             disabled={actionInProgress === notif.notification_id}
                           >
@@ -357,7 +405,10 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                           {!notif.is_read && (
                             <button
                               className={styles.markReadBtn}
-                              onClick={() => handleMarkAsRead(notif.notification_id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMarkAsRead(notif.notification_id);
+                              }}
                               title="Mark as read"
                             >
                               ✓
@@ -365,7 +416,10 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                           )}
                           <button
                             className={styles.deleteBtn}
-                            onClick={() => requestDeleteNotification(notif.notification_id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              requestDeleteNotification(notif.notification_id);
+                            }}
                             title="Delete"
                           >
                             ✕
