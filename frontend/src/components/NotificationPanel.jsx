@@ -80,6 +80,26 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
     }
   };
 
+  const markNotificationReadLocally = (notificationId) => {
+    markLocalNotificationRead(notificationId);
+    setNotifications(prev =>
+      prev.map(n => n.notification_id === notificationId ? { ...n, is_read: true } : n)
+    );
+  };
+
+  const handleNotificationClick = async (notification) => {
+    if (!notification) return;
+
+    if (!notification.is_read) {
+      markNotificationReadLocally(notification.notification_id);
+      handleMarkAsRead(notification.notification_id).catch(() => {});
+    }
+
+    const targetUrl = getNotificationTargetUrl(notification);
+    navigate(targetUrl);
+    onClose?.();
+  };
+
   // Mark all as read
   const handleMarkAllAsRead = async () => {
     const currentUser = readStoredUser() || {};
@@ -134,18 +154,6 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
       return "/StudentDashboard";
     }
     return "/";
-  };
-
-  const handleNotificationClick = async (notification) => {
-    if (!notification) return;
-
-    if (!notification.is_read) {
-      handleMarkAsRead(notification.notification_id);
-    }
-
-    const targetUrl = getNotificationTargetUrl(notification);
-    navigate(targetUrl);
-    onClose?.();
   };
 
   const requestClearAllNotifications = () => {
