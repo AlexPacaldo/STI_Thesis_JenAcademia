@@ -17,10 +17,10 @@ const DB_USER = process.env.DB_USER || "root";
 const DB_PASSWORD = process.env.DB_PASSWORD || "";
 const DB_NAME = process.env.DB_NAME || "jen_academia";
 const DB_PORT = Number(process.env.DB_PORT || 3306);
-const requestedConnectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 2);
+const requestedConnectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 1);
 const DB_CONNECTION_LIMIT = Number.isFinite(requestedConnectionLimit)
-  ? Math.min(Math.max(requestedConnectionLimit, 1), 2)
-  : 2;
+  ? Math.min(Math.max(requestedConnectionLimit, 1), 1)
+  : 1;
 
 const app = express();
 app.use(cors());
@@ -97,6 +97,14 @@ function decryptFields(row, fields) {
 
 function decryptRows(rows, fields) {
   return Array.isArray(rows) ? rows.map((row) => decryptFields(row, fields)) : [];
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isMysqlConnectionLimitError(err) {
+  return err?.code === "ER_USER_LIMIT_REACHED" || err?.errno === 1226;
 }
 
 const uploadDir = path.join(process.cwd(), "uploads", "assignments");
@@ -1077,7 +1085,7 @@ async function encryptExistingPlaintextMessages() {
   }
 }
 
-try {
+async function prepareDatabase() {
   await ensureAssignmentAttemptColumns();
   await ensureBooksColumns();
   await ensureLessonsColumns();
@@ -1100,11 +1108,31 @@ try {
   await ensureTeacherCoursesTable();
   await expireDepletedPackages();
   await deletePastTeacherAvailability();
-  
-} catch (err) {
-  console.error("Error preparing database columns:", err);
-  process.exit(1);
 }
+
+async function prepareDatabaseWithRetry() {
+  const maxAttempts = Number(process.env.DB_PREPARE_MAX_ATTEMPTS || 24);
+  const retryDelayMs = Number(process.env.DB_PREPARE_RETRY_DELAY_MS || 5000);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await prepareDatabase();
+      return;
+    } catch (err) {
+      if (!isMysqlConnectionLimitError(err) || attempt === maxAttempts) {
+        console.error("Error preparing database columns:", err);
+        process.exit(1);
+      }
+
+      console.warn(
+        `Database connection limit reached while preparing schema; retrying in ${Math.round(retryDelayMs / 1000)}s (${attempt}/${maxAttempts}).`
+      );
+      await sleep(retryDelayMs);
+    }
+  }
+}
+
+await prepareDatabaseWithRetry();
 
 async function resolveCourseIdByIdOrName(value) {
   if (!value) return null;
