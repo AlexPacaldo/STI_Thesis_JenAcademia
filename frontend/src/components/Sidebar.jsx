@@ -7,8 +7,9 @@ import { getLocalUnreadCount } from "../utils/localNotificationStore.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import NotificationPanel from "./NotificationPanel.jsx";
 import Logo from "../assets/img/Navbar/LOGO.png";
+import { API_BASE_URL } from "../utils/api.js";
 
-const API = "http://localhost:3001";
+const API = API_BASE_URL;
 
 function isProfileComplete(user) {
   return Boolean(user?.profileCompleted);

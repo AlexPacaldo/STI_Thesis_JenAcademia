@@ -7,8 +7,9 @@ import { getLocalUnreadCount } from "../utils/localNotificationStore.js";
 import ChatPanel from "./ChatPanel";
 import NotificationPanel from "./NotificationPanel";
 import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
+import { API_BASE_URL } from "../utils/api.js";
 
-const API = "http://localhost:3001";
+const API = API_BASE_URL;
 
 function profileSrc(user) {
   const url = user?.profileImageUrl || user?.profile_image_url;

@@ -6,6 +6,7 @@ import { readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
 import { PROFICIENCY_LEVEL_OPTIONS, formatProficiencyLevel } from "../utils/proficiencyLevels.js";
 import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/studentSchedule.module.css";
+import { API_BASE_URL } from "../utils/api.js";
 import {
   DEFAULT_TIMEZONE,
   convertDateTime,
@@ -17,7 +18,7 @@ import {
 } from "../utils/timezone.js";
 
 // API base
-const API = "http://localhost:3001";
+const API = API_BASE_URL;
 
 const AI_CRITERIA_OPTIONS = {
   learningGoal: [

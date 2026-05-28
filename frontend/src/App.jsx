@@ -9,6 +9,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useNotification } from "./components/NotificationContainer.jsx";
 import { clearStoredUser, readStoredUser } from "./utils/sessionUser.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "./utils/storageKeys.js";
+import { API_BASE_URL } from "./utils/api.js";
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 60 * 1000; // 5 hours
 const PUBLIC_PATHS = ["/", "/login", "/register"];
@@ -160,7 +161,7 @@ function App() {
       async function checkAccountStatus() {
         if (!currentUserId) return;
         try {
-          const response = await fetch(`http://localhost:3001/api/users/${currentUserId}`);
+          const response = await fetch(`${API_BASE_URL}/api/users/${currentUserId}`);
           if (!response.ok) {
             if (response.status === 404) {
               clearSession();

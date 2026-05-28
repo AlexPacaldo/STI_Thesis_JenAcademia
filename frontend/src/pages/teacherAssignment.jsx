@@ -4,8 +4,9 @@ import styles from "../assets/teacherAssignment.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { addLocalNotification } from "../utils/localNotificationStore.js";
 import { readStoredUser } from "../utils/sessionUser.js";
+import { API_BASE_URL } from "../utils/api.js";
 
-const API = "http://localhost:3001";
+const API = API_BASE_URL;
 
 function normalizeFileUrl(url) {
   if (!url) return "";

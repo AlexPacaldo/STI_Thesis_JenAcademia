@@ -8,8 +8,9 @@ import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
+import { API_BASE_URL } from "../utils/api.js";
 
-const API_BASE = "http://localhost:3001";
+const API_BASE = API_BASE_URL;
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const getProgressPercentage = (item) => {

@@ -12,8 +12,9 @@ import {
 import { readStoredUser } from "../utils/sessionUser.js";
 import { getStoredUserTimezone } from "../utils/timezone.js";
 import { useNotification } from "./NotificationContainer";
+import { API_BASE_URL } from "../utils/api.js";
 
-const API = "http://localhost:3001";
+const API = API_BASE_URL;
 
 export default function NotificationPanel({ userId, isOpen, onClose }) {
   const { notify } = useNotification() || {};

@@ -6,8 +6,9 @@ import pfp from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
 import { getUserTimezone } from "../utils/timezone.js";
+import { API_BASE_URL } from "../utils/api.js";
 
-const API = "http://localhost:3001";
+const API = API_BASE_URL;
 const CROP_SIZE = 320;
 const COUNTRY_OPTIONS = [
   "Australia",

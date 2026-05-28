@@ -14,8 +14,9 @@ dotenv.config();
 const PORT = process.env.PORT || 3001;
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USER || "root";
-const DB_PASSWORD = process.env.DB_PASSWORD || "Aj1182014";    // <- your password here
-const DB_NAME = process.env.DB_NAME || "jen_academia"; // your schema
+const DB_PASSWORD = process.env.DB_PASSWORD || "";
+const DB_NAME = process.env.DB_NAME || "jen_academia";
+const DB_PORT = Number(process.env.DB_PORT || 3306);
 
 const app = express();
 app.use(cors());
@@ -131,6 +132,7 @@ app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 // MySQL pool
 export const pool = mysql.createPool({
   host: DB_HOST,
+  port: DB_PORT,
   user: DB_USER,
   password: DB_PASSWORD,
   database: DB_NAME,

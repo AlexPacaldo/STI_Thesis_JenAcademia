@@ -4,6 +4,7 @@ import styles from "../assets/teacherBooksDropbox.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
+import { API_BASE_URL } from "../utils/api.js";
 
 export default function TeacherBooksDropbox() {
   const { notify } = useNotification() || {};
@@ -27,7 +28,7 @@ export default function TeacherBooksDropbox() {
   const fetchBooks = async () => {
     try {
       const response = await fetch(
-        `http://localhost:3001/api/teacher/books?teacher_id=${teacherId}`
+        `${API_BASE_URL}/api/teacher/books?teacher_id=${teacherId}`
       );
       if (!response.ok) throw new Error("Failed to fetch books");
 
@@ -90,7 +91,7 @@ export default function TeacherBooksDropbox() {
       formData.append("file", lessonData.file);
       formData.append("teacher_id", teacherId);
 
-      const response = await fetch("http://localhost:3001/api/lessons", {
+      const response = await fetch(`${API_BASE_URL}/api/lessons`, {
         method: "POST",
         body: formData,
       });

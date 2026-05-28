@@ -3,9 +3,10 @@ import axios from "axios";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/studentSchedule.module.css";
 import { readStoredUser } from "../utils/sessionUser.js";
+import { API_BASE_URL } from "../utils/api.js";
 
 // API base
-const API = "http://localhost:3001";
+const API = API_BASE_URL;
 
 // helper to format ISO date string
 const fmtDate = (d) => (d ? d.toISOString().slice(0, 10) : "");
