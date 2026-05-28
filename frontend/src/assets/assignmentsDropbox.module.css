@@ -11,6 +11,7 @@
   max-width: 1500px;
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .leftCard,
@@ -215,9 +216,10 @@
 
 .instructionContent {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 440px);
   gap: 24px;
   align-items: start;
+  min-width: 0;
 }
 
 .leftSide,
@@ -581,6 +583,7 @@
   border: 1px solid rgba(38, 66, 59, 0.1);
   background: #fff;
   box-shadow: 0 18px 40px rgba(18, 34, 30, 0.06);
+  min-width: 0;
 }
 
 .summaryHeader {
@@ -728,6 +731,29 @@
   transition: width 180ms ease;
 }
 
+@media (max-width: 1180px) {
+  .cont {
+    padding: 28px 20px 48px;
+  }
+
+  .instructionContent {
+    grid-template-columns: 1fr;
+  }
+
+  .leftSide {
+    min-height: auto;
+  }
+
+  .rightSide {
+    min-height: auto;
+    position: static;
+  }
+
+  .summaryCard {
+    height: auto;
+  }
+}
+
 @media (max-width: 900px) {
   .instructionContent {
     grid-template-columns: 1fr;
@@ -744,6 +770,31 @@
   .leftSide,
   .rightSide {
     padding: 16px;
+    border-radius: 20px;
+  }
+
+  .centerContent h1 {
+    font-size: clamp(1.45rem, 8vw, 1.9rem);
+  }
+
+  .assignmentMeta {
+    font-size: 0.9rem;
+  }
+
+  .instructionSheet,
+  .summaryCard {
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .instructionText {
+    padding: 16px;
+    min-height: 140px;
+    border-radius: 18px;
+  }
+
+  .detailGrid {
+    grid-template-columns: 1fr;
   }
 
   .tabButton,
