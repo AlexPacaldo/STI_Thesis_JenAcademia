@@ -17,7 +17,10 @@ const DB_USER = process.env.DB_USER || "root";
 const DB_PASSWORD = process.env.DB_PASSWORD || "";
 const DB_NAME = process.env.DB_NAME || "jen_academia";
 const DB_PORT = Number(process.env.DB_PORT || 3306);
-const DB_CONNECTION_LIMIT = Number(process.env.DB_CONNECTION_LIMIT || 4);
+const requestedConnectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 2);
+const DB_CONNECTION_LIMIT = Number.isFinite(requestedConnectionLimit)
+  ? Math.min(Math.max(requestedConnectionLimit, 1), 2)
+  : 2;
 
 const app = express();
 app.use(cors());
@@ -140,7 +143,7 @@ export const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: DB_CONNECTION_LIMIT,
   maxIdle: DB_CONNECTION_LIMIT,
-  idleTimeout: 60000,
+  idleTimeout: 10000,
   queueLimit: 0,
 });
 
