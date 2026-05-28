@@ -199,10 +199,76 @@ export default function Dashboard({ mode }) {
       setError("");
 
       try {
-        const dashboardRes = await axios.get(`${API}/api/dashboard/${isTeacher ? "teacher" : "student"}/${currentUserId}`, {
-          params: { scheduled_date: getTodayDate() },
-        });
-        const dashboard = dashboardRes.data || {};
+        let dashboard = {};
+        try {
+          const dashboardRes = await axios.get(`${API}/api/dashboard/${isTeacher ? "teacher" : "student"}/${currentUserId}`, {
+            params: { scheduled_date: getTodayDate() },
+          });
+          dashboard = dashboardRes.data || {};
+        } catch (dashboardErr) {
+          console.warn("Fast dashboard endpoint unavailable; using legacy dashboard requests.", dashboardErr);
+
+          const coursesPromise = axios.get(`${API}/api/courses`).catch(() => null);
+
+          if (isTeacher) {
+            const [classesRes, studentsRes, assignmentsRes, submissionsRes, booksRes, coursesRes] = await Promise.all([
+              axios.get(`${API}/api/calendar/classes-by-date`, {
+                params: {
+                  teacher_id: currentUserId,
+                  scheduled_date: getTodayDate(),
+                },
+              }),
+              axios.get(`${API}/api/teacher/${currentUserId}/students`),
+              axios.get(`${API}/api/teacher/${currentUserId}/assignments`),
+              axios.get(`${API}/api/teacher/${currentUserId}/submissions`),
+              axios.get(`${API}/api/books`, { params: { teacher_id: currentUserId } }),
+              coursesPromise,
+            ]);
+
+            dashboard = {
+              classes: classesRes.data.classes || [],
+              students: studentsRes.data.students || [],
+              assignments: assignmentsRes.data.assignments || [],
+              submissions: submissionsRes.data.submissions || [],
+              books: booksRes.data.books || [],
+              courses: coursesRes?.data?.courses || [],
+            };
+          } else {
+            const [classesRes, remarksRes, assignmentsRes, booksRes, progressRes, packageRes, assignedTeacherRes, teachersRes, coursesRes] =
+              await Promise.all([
+                axios.get(`${API}/api/calendar/classes-by-date`, {
+                  params: {
+                    student_id: currentUserId,
+                    scheduled_date: getTodayDate(),
+                  },
+                }),
+                axios.get(`${API}/api/student/${currentUserId}/remarks`),
+                axios.get(`${API}/api/student/${currentUserId}/assignments`),
+                axios.get(`${API}/api/books`, { params: { student_id: currentUserId } }),
+                axios.get(`${API}/api/lesson-progress`, { params: { student_id: currentUserId } }),
+                axios.get(`${API}/api/calendar/student-package/${currentUserId}`).catch(() => null),
+                axios.get(`${API}/api/student/assigned-teacher/${currentUserId}`).catch(() => null),
+                axios.get(`${API}/api/admin/users?role=teacher&status=active`).catch(() => null),
+                coursesPromise,
+              ]);
+
+            const teachers = teachersRes?.data || [];
+            const assignedTeacherId = assignedTeacherRes?.data?.assigned_teacher_id || null;
+            const assignedTeacher =
+              teachers.find((teacher) => String(teacher.user_id ?? teacher.id) === String(assignedTeacherId)) || null;
+
+            dashboard = {
+              classes: classesRes.data.classes || [],
+              remarks: remarksRes.data.remarks || [],
+              assignments: assignmentsRes.data.assignments || [],
+              books: booksRes.data.books || [],
+              progress: progressRes.data.progress || [],
+              package: packageRes?.data?.package || null,
+              assignedTeacher,
+              courses: coursesRes?.data?.courses || [],
+            };
+          }
+        }
 
         if (isTeacher) {
           if (ignore) return;
