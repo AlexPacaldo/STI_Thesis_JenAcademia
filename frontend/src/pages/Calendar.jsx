@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { useNotification } from "../components/NotificationContainer.jsx";
@@ -194,6 +194,47 @@ const formatRemarkDate = (value) => {
   const datePart = String(value).slice(0, 10);
   const parsed = new Date(`${datePart}T00:00:00`);
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleDateString();
+};
+
+const remarkSectionStyle = {
+  marginTop: 12,
+  borderTop: "1px solid #d7e5d9",
+  paddingTop: 12,
+};
+
+const remarkHeadingStyle = {
+  fontSize: "0.9rem",
+  fontWeight: 700,
+  marginBottom: 8,
+  color: "#23443a",
+};
+
+const remarkCardStyle = {
+  padding: 12,
+  border: "1px solid #d7e5d9",
+  borderRadius: 18,
+  background: "#f6fbf8",
+  boxShadow: "0 1px 0 rgba(35, 68, 58, 0.04)",
+};
+
+const remarkTitleStyle = {
+  fontSize: "0.78rem",
+  fontWeight: 700,
+  color: "#23443a",
+};
+
+const remarkMetaStyle = {
+  fontSize: "0.72rem",
+  color: "#587068",
+  marginTop: 2,
+};
+
+const remarkBodyStyle = {
+  marginTop: 6,
+  fontSize: "0.82rem",
+  color: "#294238",
+  lineHeight: 1.45,
+  whiteSpace: "pre-wrap",
 };
 
 // Helper: check if a class is joinable (30 mins before start until class end)
@@ -411,6 +452,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [availability, setAvailability] = useState({});
   const [classesCache, setClassesCache] = useState({}); // map date->classes array
   const [studentPackage, setStudentPackage] = useState(null);
+  const [calendarRefreshToken, setCalendarRefreshToken] = useState(0);
 
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -423,6 +465,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [requestTime, setRequestTime] = useState("");
   const [requestReason, setRequestReason] = useState("");
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+  const [requestConfirmOpen, setRequestConfirmOpen] = useState(false);
   const [isMarkingClassDone, setIsMarkingClassDone] = useState(false);
   const [classDoneConfirmOpen, setClassDoneConfirmOpen] = useState(false);
   const [classDoneAssessmentOpen, setClassDoneAssessmentOpen] = useState(false);
@@ -447,6 +490,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [studentBookingSubject, setStudentBookingSubject] = useState("");
   const [studentBookingError, setStudentBookingError] = useState("");
   const [isSubmittingStudentBooking, setIsSubmittingStudentBooking] = useState(false);
+  const [studentBookingConfirmOpen, setStudentBookingConfirmOpen] = useState(false);
   const [courses, setCourses] = useState([]);
   const [contractRequestOpen, setContractRequestOpen] = useState(false);
   const [contractCourseId, setContractCourseId] = useState("");
@@ -493,10 +537,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     ? (studentRemarks.find((remark) => String(remark.class_id) === String(selectedClass.id)) || studentRemarks[0] || null)
     : (studentRemarks[0] || null);
   const selectedTeacherFullName = selectedClass
-    ? [selectedClass.teacherName, selectedClass.teacherLastName]
+    ? selectedClass.teacherFullName || selectedClass.teacherName || [selectedClass.teacher_first_name, selectedClass.teacher_last_name]
         .filter(Boolean)
         .join(" ")
-        .trim() || selectedClass.teacherFullName || selectedClass.teacherName
+        .trim()
     : "";
   const contractLearningGoalOptions = useMemo(
     () => AI_CRITERIA_OPTIONS.learningGoal.filter((option) => optionAppliesToCourses(option, selectedContractCourseNames)),
@@ -517,9 +561,16 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [availabilityStatus, setAvailabilityStatus] = useState("available"); // "available" or "unavailable"
   const [availabilityError, setAvailabilityError] = useState("");
   const [isSubmittingAvailability, setIsSubmittingAvailability] = useState(false);
+  const [availabilityConfirmOpen, setAvailabilityConfirmOpen] = useState(false);
   const [teacherSelectedDate, setTeacherSelectedDate] = useState(null);
   const [teacherAvailabilityList, setTeacherAvailabilityList] = useState([]); // list of availability records for current month
   const [teacherAvailabilityRecordForDate, setTeacherAvailabilityRecordForDate] = useState(null); // individual selected date record
+  const triggerCalendarRefresh = useCallback(() => {
+    setClassesCache({});
+    setTeacherClassesCache({});
+    setTeacherAvailabilityRecordForDate(null);
+    setCalendarRefreshToken(token => token + 1);
+  }, []);
 
   // Read user info from localStorage
   useEffect(() => {
@@ -550,6 +601,28 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     return () => window.removeEventListener("userProfileUpdated", handleProfileUpdate);
   }, []);
 
+  useEffect(() => {
+    if (!localUserId || localRole === "admin") return;
+
+    const stream = new EventSource(`${API}/api/calendar/stream/${localUserId}`);
+    const handleCalendarChange = () => {
+      triggerCalendarRefresh();
+    };
+
+    ["class-booked", "class-rescheduled", "availability-changed"].forEach(eventName => {
+      stream.addEventListener(eventName, handleCalendarChange);
+    });
+
+    stream.onerror = () => {};
+
+    return () => {
+      ["class-booked", "class-rescheduled", "availability-changed"].forEach(eventName => {
+        stream.removeEventListener(eventName, handleCalendarChange);
+      });
+      stream.close();
+    };
+  }, [localUserId, localRole, triggerCalendarRefresh]);
+
   // Fetch booked dates when user changes
   useEffect(() => {
     if (!localUserId || localRole === "admin") return;
@@ -576,7 +649,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         }
       })
       .catch(() => setBookedDates([]));
-  }, [localUserId, localRole, viewerTimezone]);
+  }, [localUserId, localRole, viewerTimezone, calendarRefreshToken]);
 
   // Helper to normalize date to YYYY-MM-DD format
   const normalizeDate = (dateVal) => {
@@ -630,7 +703,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       .catch((err) => {
         console.error("❌ Error fetching availability:", err);
       });
-  }, [year, month, localRole, localUserId, teacherId, assignedTeacherId]);
+  }, [year, month, localRole, localUserId, teacherId, assignedTeacherId, calendarRefreshToken]);
 
   // fetch student package when we know student id
   useEffect(() => {
@@ -640,7 +713,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         .then(r => setStudentPackage(r.data.package))
         .catch(() => setStudentPackage(null));
     }
-  }, [localRole, localUserId]);
+  }, [localRole, localUserId, calendarRefreshToken]);
 
     useEffect(() => {
     if (!selectedClass?.student_id) {
@@ -684,7 +757,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
   useEffect(() => {
     loadContractRequests();
-  }, [localRole, localUserId]);
+  }, [localRole, localUserId, calendarRefreshToken]);
 
   // fetch assigned teacher directly from student_profiles using the resolved local user id
   useEffect(() => {
@@ -783,8 +856,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 };
 
 // helper to load classes for a particular date
-  const loadClassesForDate = (dateStr) => {
-    if (!dateStr || classesCache[dateStr]) return;
+  const loadClassesForDate = (dateStr, force = false) => {
+    if (!dateStr || (!force && classesCache[dateStr])) return;
     const params = { scheduled_date: dateStr };
 
     // If teacherId prop is provided (admin viewing specific teacher), show that teacher's classes
@@ -812,9 +885,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       });
   };
 
-  const loadTeacherClassesForDate = (dateStr, tId) => {
+  const loadTeacherClassesForDate = (dateStr, tId, force = false) => {
     const dateKey = normalizeDate(dateStr);
-    if (!dateKey || !tId || teacherClassesCache[dateKey]) return;
+    if (!dateKey || !tId || (!force && teacherClassesCache[dateKey])) return;
 
     axios
       .get(`${API}/api/calendar/classes-by-date`, {
@@ -958,7 +1031,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     if (selectedDate) {
       loadClassesForDate(selectedDate);
     }
-  }, [selectedDate, localRole, localUserId, teacherId, studentId, searchParams]);
+  }, [selectedDate, localRole, localUserId, teacherId, studentId, searchParams, calendarRefreshToken]);
 
   useEffect(() => {
     if (selectedDate) {
@@ -976,7 +1049,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     if (studentBookingMode && studentBookingDate && assignedTeacherId) {
       loadTeacherClassesForDate(studentBookingDate, assignedTeacherId);
     }
-  }, [studentBookingMode, studentBookingDate, assignedTeacherId]);
+  }, [studentBookingMode, studentBookingDate, assignedTeacherId, calendarRefreshToken]);
 
   // Load teacher availability records for the current month when student enters booking mode
   useEffect(() => {
@@ -1006,13 +1079,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
           setTeacherAvailabilityList([]);
         });
     }
-  }, [studentBookingMode, assignedTeacherId, localRole, studentBookingDate]);
+  }, [studentBookingMode, assignedTeacherId, localRole, studentBookingDate, calendarRefreshToken]);
 
   useEffect(() => {
     if (studentBookingMode && studentBookingDate && assignedTeacherId && localRole === "student") {
       loadTeacherAvailabilityRecordForDate(studentBookingDate, assignedTeacherId);
     }
-  }, [studentBookingMode, studentBookingDate, assignedTeacherId, localRole]);
+  }, [studentBookingMode, studentBookingDate, assignedTeacherId, localRole, calendarRefreshToken]);
 
   // Load teacher's own availability records when entering reschedule request mode
   useEffect(() => {
@@ -1066,7 +1139,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     } else {
       console.log("⚠️ No teacherId to load. localUserId=" + localUserId + ", role=" + localRole);
     }
-  }, [requestMode, requestDate, localRole, localUserId, teacherId, assignedTeacherId, year, month]);
+  }, [requestMode, requestDate, localRole, localUserId, teacherId, assignedTeacherId, year, month, calendarRefreshToken]);
 
   // Load available time slots AFTER classes are loaded for the selected date or student booking date
   useEffect(() => {
@@ -1079,7 +1152,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     if (requestMode && requestDate && selectedClass?.teacher_id && classesCache[requestDate] !== undefined) {
       loadAvailableTimeSlots(requestDate, selectedClass.teacher_id, selectedClassDuration, selectedClass.id);
     }
-  }, [selectedDate, teacherId, classesCache, availability, studentBookingMode, studentBookingDate, assignedTeacherId, teacherClassesCache, teacherAvailabilityList, studentPackage, studentProfile, requestMode, requestDate, selectedClass?.teacher_id, selectedClass?.id, selectedClassDuration]);
+  }, [selectedDate, teacherId, classesCache, availability, studentBookingMode, studentBookingDate, assignedTeacherId, teacherClassesCache, teacherAvailabilityList, studentPackage, studentProfile, requestMode, requestDate, selectedClass?.teacher_id, selectedClass?.id, selectedClassDuration, calendarRefreshToken]);
 
   // preload every day in the month so cells with classes are colored on load
   useEffect(() => {
@@ -1092,14 +1165,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       const dateStr = fmtDate(new Date(year, month, d));
       loadClassesForDate(dateStr);
     }
-  }, [year, month, localRole, localUserId, teacherId, studentId]);
+  }, [year, month, localRole, localUserId, teacherId, studentId, calendarRefreshToken]);
 
   // Load teacher availability records for current month when teacher enters availability mode
   useEffect(() => {
     if (setAvailabilityMode && localRole === "teacher" && localUserId) {
       loadTeacherAvailabilityForMonth();
     }
-  }, [setAvailabilityMode, localRole, localUserId]);
+  }, [setAvailabilityMode, localRole, localUserId, calendarRefreshToken]);
 
   const viewDate = new Date(year, month, 1);
   const monthName = viewDate.toLocaleString("default", { month: "long" });
@@ -1646,12 +1719,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       });
 
       notify("Availability updated successfully", "success");
+      setAvailabilityConfirmOpen(false);
       setAvailabilityError("");
       setAvailabilityStartTime("");
       setAvailabilityEndTime("");
       setAvailabilityBreakStart("");
       setAvailabilityBreakEnd("");
       setAvailabilityDate(fmtDate(today));
+      triggerCalendarRefresh();
       loadTeacherAvailabilityForMonth();
       
       // Refresh availability cache
@@ -1671,6 +1746,20 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
   };
 
+  const openAvailabilityConfirmation = () => {
+    const error = validateAvailabilityInputs();
+    if (error) {
+      setAvailabilityError(error);
+      return;
+    }
+    setAvailabilityConfirmOpen(true);
+  };
+
+  const confirmTeacherAvailability = async () => {
+    setAvailabilityConfirmOpen(false);
+    await submitTeacherAvailability();
+  };
+
   // Delete teacher availability
   const deleteTeacherAvailability = async (recordId) => {
     if (!window.confirm("Are you sure you want to delete this availability record?")) return;
@@ -1678,6 +1767,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     try {
       await axios.delete(`${API}/api/calendar/availability/${recordId}`);
       notify("Availability deleted successfully", "success");
+      triggerCalendarRefresh();
       loadTeacherAvailabilityForMonth();
       
       // Refresh availability cache
@@ -1738,6 +1828,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       });
       
       notify("Reschedule request sent successfully! The teacher will review your request.", "success");
+      setRequestConfirmOpen(false);
       setRequestMode(false);
       setRequestDate("");
       setRequestTime("");
@@ -1750,6 +1841,57 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     } finally {
       setIsSubmittingRequest(false);
     }
+  };
+
+  const openRequestConfirmation = () => {
+    setRequestError("");
+    if (!selectedClass || !selectedClass.id) {
+      setRequestError("Please select a class first");
+      return;
+    }
+    if (!requestDate) {
+      setRequestError("Please select a new date");
+      return;
+    }
+    if (!requestTime) {
+      setRequestError("Please select a new time");
+      return;
+    }
+    if (!requestReason || requestReason.trim().length < 5) {
+      setRequestError("Please provide a reason (at least 5 characters)");
+      return;
+    }
+    if (getRescheduleAvailabilityStatus(requestDate) !== "available") {
+      setRequestError("Please choose a date with available schedule.");
+      return;
+    }
+    if (isRescheduleToSameDateTime(requestDate, requestTime)) {
+      setRequestError("Cannot reschedule to the same date and time. Please choose a different time.");
+      return;
+    }
+    if (isTimeBookedForReschedule(requestDate, requestTime)) {
+      setRequestError(getBookedSlotErrorMessage());
+      return;
+    }
+    if (isCounterpartyDateTimeBooked(requestDate, requestTime)) {
+      setRequestError(getCounterpartyUnavailableMessage());
+      return;
+    }
+    if (isTimeConflictingWithTeacherBreak(requestDate, requestTime)) {
+      setRequestError(localRole === "teacher" ? "This time conflicts with your break. Please choose another time." : "This time conflicts with teacher's break. Please choose another time.");
+      return;
+    }
+    if (isTimeOutsideTeacherAvailability(requestDate, requestTime)) {
+      setRequestError(localRole === "teacher" ? "This time is outside your availability window. Please choose another time." : "This time is outside the teacher's availability window. Please choose another time.");
+      return;
+    }
+
+    setRequestConfirmOpen(true);
+  };
+
+  const confirmRequestReschedule = async () => {
+    setRequestConfirmOpen(false);
+    await submitRequest();
   };
 
   const countAvailable = days.reduce(
@@ -1950,6 +2092,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   })();
   const effectivePercent = effectiveClassesLimit > 0 ? Math.min(100, Math.round((effectiveClassesUsed / effectiveClassesLimit) * 100)) : 0;
   const hasNoClassesLeft = localRole === "student" && Number(effectiveBookableClasses) <= 0;
+  const studentBookingEndTime = studentBookingTime && timeToMinutes(studentBookingTime) != null
+    ? minutesToTime(timeToMinutes(studentBookingTime) + studentClassDuration)
+    : "";
+  const requestEndTime = requestTime && timeToMinutes(requestTime) != null
+    ? minutesToTime(timeToMinutes(requestTime) + selectedClassDuration)
+    : "";
 
   const studentMonthMin = fmtDate(new Date(today.getFullYear(), today.getMonth(), 1));
   const studentMonthMax = fmtDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
@@ -2128,14 +2276,50 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         delete updated[teacherBookingDate];
         return updated;
       });
-      loadClassesForDate(teacherBookingDate);
-      loadTeacherClassesForDate(teacherBookingDate, assignedTeacherId);
+      loadClassesForDate(teacherBookingDate, true);
+      loadTeacherClassesForDate(teacherBookingDate, assignedTeacherId, true);
+      triggerCalendarRefresh();
     } catch (err) {
       console.error(err);
       setStudentBookingError(err?.response?.data?.message || "Unable to book class. Please try again.");
     } finally {
       setIsSubmittingStudentBooking(false);
     }
+  };
+
+  const openStudentBookingConfirmation = () => {
+    setStudentBookingError("");
+    if (!studentBookingDate) {
+      setStudentBookingError("Please select a date within the current month.");
+      return;
+    }
+    if (!studentBookingTime) {
+      setStudentBookingError("Please select a time slot.");
+      return;
+    }
+    if (!assignedTeacherId) {
+      setStudentBookingError("Unable to book because your assigned teacher is not available.");
+      return;
+    }
+    if (hasNoClassesLeft) {
+      setStudentBookingError("You have no classes left to book. Contact the admin for a new contract.");
+      return;
+    }
+    if (studentBookingDate < studentMonthMin || studentBookingDate > studentMonthMax) {
+      setStudentBookingError("Please pick a date in the current month only.");
+      return;
+    }
+    if (isTeacherDateTimeBooked(studentBookingDate, studentBookingTime)) {
+      setStudentBookingError("The teacher is already booked at this time. Please choose another slot.");
+      return;
+    }
+
+    setStudentBookingConfirmOpen(true);
+  };
+
+  const confirmStudentBooking = async () => {
+    setStudentBookingConfirmOpen(false);
+    await submitStudentBooking();
   };
 
   return (
@@ -2309,30 +2493,24 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                     </div>
                   </div>
                   {isTeacherOrAdmin && (
-                    <div style={{ marginTop: 12, borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
-                      <div style={{ fontSize: "0.9rem", fontWeight: 700, marginBottom: 8, color: "#111827" }}>Latest Remark</div>
+                    <div style={remarkSectionStyle}>
+                      <div style={remarkHeadingStyle}>Latest Remark</div>
                       {latestRemark ? (
-                        <div
-                          style={{
-                            padding: 10,
-                            border: "1px solid #e5e7eb",
-                            borderRadius: 8,
-                            background: "#fafafa",
-                          }}
-                        >
-                          <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#111827" }}>
+                        <div style={remarkCardStyle}>
+                          <div style={remarkTitleStyle}>
                             {latestRemark.class_name || "Class"}
                           </div>
-                                                    <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: 2 }}>
+                          <div style={remarkMetaStyle}>
+                            {latestRemark.class_name || "Class"}{" "}
                             {formatRemarkDate(latestRemark.scheduled_date) || "Date unavailable"}
                             {latestRemark.start_time ? ` - ${humanTime(latestRemark.start_time)}` : ""}
                           </div>
-                          <div style={{ marginTop: 6, fontSize: "0.82rem", color: "#374151", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>
+                          <div style={remarkBodyStyle}>
                             {latestRemark.remarks || "No remark text"}
                           </div>
                         </div>
                       ) : (
-                        <div style={{ padding: 10, fontSize: "0.82rem", color: "#6b7280", background: "#fafafa", border: "1px solid #e5e7eb", borderRadius: 8 }}>
+                        <div style={{ padding: 10, fontSize: "0.82rem", color: "#587068", background: "#f6fbf8", border: "1px solid #d7e5d9", borderRadius: 18 }}>
                           No remarks yet.
                         </div>
                       )}
@@ -2533,7 +2711,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         <button type="button" onClick={() => { setRequestMode(false); setRequestError(""); }} disabled={isSubmittingRequest} style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, cursor: isSubmittingRequest ? "not-allowed" : "pointer", opacity: isSubmittingRequest ? 0.6 : 1 }}>
                           Cancel
                         </button>
-                        <button type="button" onClick={submitRequest} disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError} style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}>
+                        <button type="button" onClick={openRequestConfirmation} disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError} style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}>
                           {isSubmittingRequest ? "Sending..." : "Send Request"}
                         </button>
                       </div>
@@ -2568,7 +2746,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                             {cls.time || cls.startTime || ""} - {getEndTime(cls.time || cls.startTime, cls.duration) || ""}
                           </div>
                           {cls.studentName && <div style={{ fontSize: "0.85em", color: "#666" }}>Student: {cls.studentName}</div>}
-                          {isAdmin && cls.teacherName && <div style={{ fontSize: "0.85em", color: "#666" }}>Teacher: {cls.teacherName}</div>}
+                          {(cls.teacherFullName || cls.teacherName || cls.teacher) && (
+                            <div style={{ fontSize: "0.85em", color: "#666" }}>
+                              Teacher: {cls.teacherFullName || cls.teacherName || cls.teacher}
+                            </div>
+                          )}
                         </button>
                       ))
                     ) : (
@@ -3236,7 +3418,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         </button>
                         <button
                           type="button"
-                          onClick={submitTeacherAvailability}
+                          onClick={openAvailabilityConfirmation}
                           disabled={isSubmittingAvailability}
                           style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: isSubmittingAvailability ? "#999" : "#4CAF50", color: "#fff", borderRadius: 6, cursor: isSubmittingAvailability ? "not-allowed" : "pointer" }}
                         >
@@ -3319,7 +3501,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         <div><strong>{selectedClass.className}</strong></div>
                         <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration)}</div>
                       </div>
-                                            {selectedClass.teacherName && (
+                      {selectedTeacherFullName && (
                         <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <img
@@ -3340,18 +3522,23 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           <div style={{ fontSize: "0.75em", marginTop: "4px", wordBreak: "break-all" }}>{selectedClass.teacherEmail}</div>
                         </div>
                       )}
-                      {latestRemark && (
-                        <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                          <div><strong>Latest Remark:</strong></div>
-                          <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: 2 }}>
+                  {latestRemark && (
+                      <div style={remarkSectionStyle}>
+                        <div style={remarkHeadingStyle}>Latest Remark</div>
+                        <div style={remarkCardStyle}>
+                          <div style={remarkTitleStyle}>
                             {latestRemark.class_name || "Class"}
+                          </div>
+                          <div style={remarkMetaStyle}>
+                            {latestRemark.class_name || "Class"}{" "}
                             {formatRemarkDate(latestRemark.scheduled_date) || "Date unavailable"}
                             {latestRemark.start_time ? ` - ${humanTime(latestRemark.start_time)}` : ""}
                           </div>
-                          <div style={{ marginTop: 6, fontSize: "0.82rem", color: "#374151", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>
+                          <div style={remarkBodyStyle}>
                             {latestRemark.remarks || "No remark text"}
                           </div>
                         </div>
+                      </div>
                       )}
                     </div>
                     <button
@@ -3536,7 +3723,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         <button type="button" onClick={() => { setRequestMode(false); setRequestError(""); }} disabled={isSubmittingRequest} style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, cursor: isSubmittingRequest ? "not-allowed" : "pointer", opacity: isSubmittingRequest ? 0.6 : 1 }}>
                           Cancel
                         </button>
-                        <button type="button" onClick={submitRequest} disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError} style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}>
+                        <button type="button" onClick={openRequestConfirmation} disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError} style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}>
                           {isSubmittingRequest ? "Sending..." : "Send Request"}
                         </button>
                       </div>
@@ -3571,7 +3758,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                             <div style={{ fontSize: "0.85em", marginTop: "4px" }}>
                               {cls.time || cls.startTime || ""} - {getEndTime(cls.time || cls.startTime, cls.duration) || ""}
                             </div>
-                            {cls.teacher && <div style={{ fontSize: "0.85em", color: "#666" }}>Teacher: {cls.teacher}</div>}
+                            {(cls.teacherFullName || cls.teacherName || cls.teacher) && (
+                              <div style={{ fontSize: "0.85em", color: "#666" }}>
+                                Teacher: {cls.teacherFullName || cls.teacherName || cls.teacher}
+                              </div>
+                            )}
                           </button>
                         ))
                       ) : (
@@ -3690,7 +3881,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           </button>
                           <button
                             type="button"
-                            onClick={submitStudentBooking}
+                            onClick={openStudentBookingConfirmation}
                             disabled={isSubmittingStudentBooking || !studentBookingTime || assignedTeacherId == null || hasNoClassesLeft}
                             style={{ padding: "10px 16px", fontSize: "0.9em", border: "none", background: "#4CAF50", color: "#fff", borderRadius: 6, cursor: (isSubmittingStudentBooking || !studentBookingTime || assignedTeacherId == null || hasNoClassesLeft) ? "not-allowed" : "pointer" }}
                           >
@@ -3957,6 +4148,372 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         </div>
       </section>
     </main>
+    {availabilityConfirmOpen && (
+      <div
+        role="presentation"
+        onClick={() => {
+          if (!isSubmittingAvailability) setAvailabilityConfirmOpen(false);
+        }}
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(15, 23, 42, 0.45)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 20,
+          zIndex: 2000,
+          animation: "fadeIn 0.2s ease-out",
+        }}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="availability-confirm-title"
+          onClick={(event) => event.stopPropagation()}
+          style={{
+            width: "min(460px, 100%)",
+            background: "#fff",
+            borderRadius: 12,
+            boxShadow: "0 24px 60px rgba(15, 23, 42, 0.22)",
+            padding: 24,
+            animation: "slideIn 0.22s ease-out",
+          }}
+        >
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              background: "#e8f5e9",
+              color: "#2e7d32",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 800,
+              fontSize: 18,
+              marginBottom: 14,
+            }}
+          >
+            SCH
+          </div>
+          <h3 id="availability-confirm-title" style={{ margin: "0 0 8px", fontSize: "1.15rem", color: "#111827" }}>
+            Confirm availability
+          </h3>
+          <p style={{ margin: "0 0 16px", color: "#4b5563", lineHeight: 1.5, fontSize: "0.92rem" }}>
+            Please review the schedule before saving it.
+          </p>
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 10,
+              background: "#f9fafb",
+              padding: "12px 14px",
+              marginBottom: 20,
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            <div style={{ fontWeight: 700, color: "#111827" }}>
+              {availabilityDate ? new Date(availabilityDate + "T00:00:00").toLocaleDateString() : "Selected date"}
+            </div>
+            <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+              Status: {availabilityStatus === "available" ? "Available" : "Unavailable"}
+            </div>
+            {availabilityStatus === "available" && (
+              <>
+                <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+                  Time: {humanTime(availabilityStartTime)} - {humanTime(availabilityEndTime)}
+                </div>
+                <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+                  Break: {availabilityBreakStart && availabilityBreakEnd ? `${humanTime(availabilityBreakStart)} - ${humanTime(availabilityBreakEnd)}` : "None"}
+                </div>
+              </>
+            )}
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => setAvailabilityConfirmOpen(false)}
+              disabled={isSubmittingAvailability}
+              style={{
+                border: "1px solid #d1d5db",
+                background: "#fff",
+                color: "#111827",
+                borderRadius: 8,
+                padding: "10px 14px",
+                fontWeight: 700,
+                cursor: isSubmittingAvailability ? "not-allowed" : "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmTeacherAvailability}
+              disabled={isSubmittingAvailability}
+              style={{
+                border: "none",
+                background: "#2e7d32",
+                color: "#fff",
+                borderRadius: 8,
+                padding: "10px 16px",
+                fontWeight: 700,
+                cursor: isSubmittingAvailability ? "not-allowed" : "pointer",
+                boxShadow: "0 8px 18px rgba(46, 125, 50, 0.22)",
+              }}
+            >
+              {isSubmittingAvailability ? "Saving..." : "Save Availability"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    {requestConfirmOpen && selectedClass && (
+      <div
+        role="presentation"
+        onClick={() => {
+          if (!isSubmittingRequest) setRequestConfirmOpen(false);
+        }}
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(15, 23, 42, 0.45)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 20,
+          zIndex: 2000,
+          animation: "fadeIn 0.2s ease-out",
+        }}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reschedule-confirm-title"
+          onClick={(event) => event.stopPropagation()}
+          style={{
+            width: "min(460px, 100%)",
+            background: "#fff",
+            borderRadius: 12,
+            boxShadow: "0 24px 60px rgba(15, 23, 42, 0.22)",
+            padding: 24,
+            animation: "slideIn 0.22s ease-out",
+          }}
+        >
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              background: "#eef2ff",
+              color: "#4338ca",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 800,
+              fontSize: 18,
+              marginBottom: 14,
+            }}
+          >
+            RS
+          </div>
+          <h3 id="reschedule-confirm-title" style={{ margin: "0 0 8px", fontSize: "1.15rem", color: "#111827" }}>
+            Send reschedule request?
+          </h3>
+          <p style={{ margin: "0 0 16px", color: "#4b5563", lineHeight: 1.5, fontSize: "0.92rem" }}>
+            This will send the request to {localRole === "teacher" ? "the student" : "your teacher"} for review.
+          </p>
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 10,
+              background: "#f9fafb",
+              padding: "12px 14px",
+              marginBottom: 20,
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            <div style={{ fontWeight: 700, color: "#111827" }}>
+              {selectedClass.className || "Selected class"}
+            </div>
+            <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+              Current: {selectedClass.scheduled_date ? new Date(selectedClass.scheduled_date + "T00:00:00").toLocaleDateString() : "Current date"} at {humanTime(selectedClass.start_time || selectedClass.time)}
+            </div>
+            <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+              Requested: {requestDate ? new Date(requestDate + "T00:00:00").toLocaleDateString() : "Not selected"} at {humanTime(requestTime)}{requestEndTime ? ` - ${humanTime(requestEndTime)}` : ""}
+            </div>
+            <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+              Duration: {selectedClassDuration} minutes
+            </div>
+            <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+              {localRole === "teacher" ? "Student" : "Teacher"}: {localRole === "teacher" ? selectedClass.studentName || selectedClass.studentFullName || "Student" : selectedTeacherFullName || "Teacher"}
+            </div>
+            <div style={{ fontSize: "0.88rem", color: "#4b5563", borderTop: "1px solid #e5e7eb", paddingTop: 8 }}>
+              Reason: {requestReason.trim()}
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => setRequestConfirmOpen(false)}
+              disabled={isSubmittingRequest}
+              style={{
+                border: "1px solid #d1d5db",
+                background: "#fff",
+                color: "#111827",
+                borderRadius: 8,
+                padding: "10px 14px",
+                fontWeight: 700,
+                cursor: isSubmittingRequest ? "not-allowed" : "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmRequestReschedule}
+              disabled={isSubmittingRequest}
+              style={{
+                border: "none",
+                background: "#4338ca",
+                color: "#fff",
+                borderRadius: 8,
+                padding: "10px 16px",
+                fontWeight: 700,
+                cursor: isSubmittingRequest ? "not-allowed" : "pointer",
+                boxShadow: "0 8px 18px rgba(67, 56, 202, 0.22)",
+              }}
+            >
+              {isSubmittingRequest ? "Sending..." : "Send Request"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    {studentBookingConfirmOpen && (
+      <div
+        role="presentation"
+        onClick={() => {
+          if (!isSubmittingStudentBooking) setStudentBookingConfirmOpen(false);
+        }}
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(15, 23, 42, 0.45)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 20,
+          zIndex: 2000,
+          animation: "fadeIn 0.2s ease-out",
+        }}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="student-booking-confirm-title"
+          onClick={(event) => event.stopPropagation()}
+          style={{
+            width: "min(430px, 100%)",
+            background: "#fff",
+            borderRadius: 12,
+            boxShadow: "0 24px 60px rgba(15, 23, 42, 0.22)",
+            padding: 24,
+            animation: "slideIn 0.22s ease-out",
+          }}
+        >
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              background: "#e8f5e9",
+              color: "#2e7d32",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 800,
+              fontSize: 18,
+              marginBottom: 14,
+            }}
+          >
+            OK
+          </div>
+          <h3 id="student-booking-confirm-title" style={{ margin: "0 0 8px", fontSize: "1.15rem", color: "#111827" }}>
+            Confirm class booking
+          </h3>
+          <p style={{ margin: "0 0 16px", color: "#4b5563", lineHeight: 1.5, fontSize: "0.92rem" }}>
+            Please review your class schedule before booking.
+          </p>
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 10,
+              background: "#f9fafb",
+              padding: "12px 14px",
+              marginBottom: 20,
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            <div style={{ fontWeight: 700, color: "#111827" }}>
+              {studentProfile?.course_name || "General English"}
+            </div>
+            <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+              Date: {studentBookingDate ? new Date(studentBookingDate + "T00:00:00").toLocaleDateString() : "Not selected"}
+            </div>
+            <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+              Time: {humanTime(studentBookingTime)}{studentBookingEndTime ? ` - ${humanTime(studentBookingEndTime)}` : ""}
+            </div>
+            <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+              Duration: {studentClassDuration} minutes
+            </div>
+            {assignedTeacherName && (
+              <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+                Teacher: {assignedTeacherName}
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => setStudentBookingConfirmOpen(false)}
+              disabled={isSubmittingStudentBooking}
+              style={{
+                border: "1px solid #d1d5db",
+                background: "#fff",
+                color: "#111827",
+                borderRadius: 8,
+                padding: "10px 14px",
+                fontWeight: 700,
+                cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmStudentBooking}
+              disabled={isSubmittingStudentBooking}
+              style={{
+                border: "none",
+                background: "#2e7d32",
+                color: "#fff",
+                borderRadius: 8,
+                padding: "10px 16px",
+                fontWeight: 700,
+                cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer",
+                boxShadow: "0 8px 18px rgba(46, 125, 50, 0.22)",
+              }}
+            >
+              {isSubmittingStudentBooking ? "Booking..." : "Confirm Booking"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     {classDoneConfirmOpen && selectedClass && (
       <div
         role="presentation"

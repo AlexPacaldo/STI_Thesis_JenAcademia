@@ -14,7 +14,7 @@ dotenv.config();
 const PORT = process.env.PORT || 3001;
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USER || "root";
-const DB_PASSWORD = process.env.DB_PASSWORD || "LORAKLANG0405++";    // <- your password here
+const DB_PASSWORD = process.env.DB_PASSWORD || "Aj1182014";    // <- your password here
 const DB_NAME = process.env.DB_NAME || "jen_academia"; // your schema
 
 const app = express();
@@ -140,6 +140,48 @@ export const pool = mysql.createPool({
 
 const chatStreamClients = new Map();
 const chatPresenceUsers = new Map();
+const calendarStreamClients = new Map();
+
+function addCalendarStreamClient(userId, res) {
+  const key = String(userId);
+  if (!calendarStreamClients.has(key)) {
+    calendarStreamClients.set(key, new Set());
+  }
+  calendarStreamClients.get(key).add(res);
+}
+
+function removeCalendarStreamClient(userId, res) {
+  const key = String(userId);
+  const clients = calendarStreamClients.get(key);
+  if (!clients) return;
+  clients.delete(res);
+  if (clients.size === 0) {
+    calendarStreamClients.delete(key);
+  }
+}
+
+function sendCalendarStreamEvent(userId, eventName, payload) {
+  const clients = calendarStreamClients.get(String(userId));
+  if (!clients || !clients.size) return;
+
+  const message = `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
+  clients.forEach((res) => {
+    try {
+      res.write(message);
+    } catch {
+      removeCalendarStreamClient(userId, res);
+    }
+  });
+}
+
+function broadcastCalendarChange(userIds, eventName, payload = {}) {
+  [...new Set((Array.isArray(userIds) ? userIds : [userIds]).filter(Boolean).map(String))]
+    .forEach((userId) => sendCalendarStreamEvent(userId, eventName, {
+      ...payload,
+      event: eventName,
+      updated_at: new Date().toISOString(),
+    }));
+}
 
 function addChatStreamClient(userId, res) {
   const key = String(userId);
@@ -2390,6 +2432,35 @@ app.put("/api/users/:userId/status", async (req, res) => {
 
 // ==================== CALENDAR ENDPOINTS ====================
 
+app.get("/api/calendar/stream/:user_id", (req, res) => {
+  const { user_id } = req.params;
+  if (!user_id) {
+    return res.status(400).json({ message: "Missing user_id" });
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+
+  addCalendarStreamClient(user_id, res);
+  res.write(`event: connected\ndata: ${JSON.stringify({ user_id, connected: true })}\n\n`);
+
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(`event: heartbeat\ndata: ${JSON.stringify({ at: new Date().toISOString() })}\n\n`);
+    } catch {
+      clearInterval(heartbeat);
+      removeCalendarStreamClient(user_id, res);
+    }
+  }, 25000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    removeCalendarStreamClient(user_id, res);
+  });
+});
+
 // Get teacher availability for a month
 app.get("/api/calendar/teacher-availability", async (req, res) => {
   try {
@@ -2703,6 +2774,14 @@ app.post("/api/calendar/class", async (req, res) => {
     );
 
     await connection.commit();
+    broadcastCalendarChange([teacher_id, student_id], "class-booked", {
+      class_id: result.insertId,
+      teacher_id,
+      student_id,
+      scheduled_date,
+      start_time,
+      end_time: computedEndTime,
+    });
     res.status(201).json({ class_id: result.insertId, class_link: classLinkToSave, message: "Class created successfully" });
   } catch (err) {
     try {
@@ -3174,7 +3253,14 @@ app.post("/api/calendar/reschedule-requests/:id/approve", async (req, res) => {
 
     // Get current class end_time to calculate duration
     const [classData] = await pool.query(
-      `SELECT teacher_id, student_id, start_time, end_time, duration FROM classes WHERE class_id = ?`,
+      `SELECT teacher_id,
+              student_id,
+              DATE_FORMAT(scheduled_date, '%Y-%m-%d') AS scheduled_date,
+              start_time,
+              end_time,
+              duration
+       FROM classes
+       WHERE class_id = ?`,
       [class_id]
     );
 
@@ -3183,6 +3269,8 @@ app.post("/api/calendar/reschedule-requests/:id/approve", async (req, res) => {
     }
 
     const classInfo = classData[0];
+    const previousDate = normalizeDateKey(classInfo.scheduled_date);
+    const previousTime = normalizeTimeKey(classInfo.start_time);
     const classDuration = parseInt(classInfo.duration, 10) || DEFAULT_CLASS_DURATION;
     const requestedRange = getRangeMinutes(requested_time, classDuration);
     if (!requestedRange) {
@@ -3288,6 +3376,17 @@ app.post("/api/calendar/reschedule-requests/:id/approve", async (req, res) => {
       newDate: requested_date,
       newTime: requested_time,
       newEndTime: newEndTime
+    });
+    broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-rescheduled", {
+      class_id,
+      teacher_id: classInfo.teacher_id,
+      student_id: classInfo.student_id,
+      previous_date: previousDate,
+      previous_time: previousTime,
+      scheduled_date: normalizeDateKey(requested_date),
+      start_time: normalizeTimeKey(requested_time),
+      end_time: newEndTime,
+      request_id: id,
     });
   } catch (err) {
     console.error(err);
@@ -4193,7 +4292,7 @@ app.get("/api/teacher/:teacher_id/submissions", async (req, res) => {
       [teacher_id]
     );
 
-    res.json({ submissions: decryptRows(rows, ["comments", "feedback"]) });
+    res.json({ submissions: decryptRows(rows, ["comments", "feedback", "assignmentInstructions"]) });
   } catch (err) {
     console.error("GET /api/teacher/:teacher_id/submissions error:", err);
     res.status(500).json({ message: "Error fetching assignment submissions" });
@@ -4813,6 +4912,17 @@ app.post("/api/calendar/set-availability", async (req, res) => {
       );
     }
 
+    broadcastCalendarChange([teacher_id, ...studentRows.map((student) => student.user_id)], "availability-changed", {
+      availability_id: availabilityId,
+      teacher_id,
+      available_date,
+      status,
+      start_time: start_time || null,
+      end_time: end_time || null,
+      break_start: break_start || null,
+      break_end: break_end || null,
+    });
+
     res.json({ message: "Availability updated successfully", id: result.insertId });
   } catch (err) {
     console.error(err);
@@ -4824,6 +4934,13 @@ app.post("/api/calendar/set-availability", async (req, res) => {
 app.delete("/api/calendar/availability/:availability_id", async (req, res) => {
   try {
     const { availability_id } = req.params;
+    const [availabilityRows] = await pool.query(
+      `SELECT teacher_id, DATE_FORMAT(available_date, '%Y-%m-%d') AS available_date
+       FROM teacher_availability
+       WHERE availability_id = ?
+       LIMIT 1`,
+      [availability_id]
+    );
 
     const [result] = await pool.query(
       `DELETE FROM teacher_availability WHERE availability_id = ?`,
@@ -4832,6 +4949,26 @@ app.delete("/api/calendar/availability/:availability_id", async (req, res) => {
 
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: "Availability record not found" });
+    }
+
+    if (availabilityRows.length) {
+      const { teacher_id, available_date } = availabilityRows[0];
+      const [studentRows] = await pool.query(
+        `SELECT u.user_id
+         FROM student_profiles sp
+         JOIN users u ON u.user_id = sp.user_id
+         WHERE sp.assigned_teacher_id = ?
+           AND u.role = 'student'
+           AND u.status = 'active'`,
+        [teacher_id]
+      );
+
+      broadcastCalendarChange([teacher_id, ...studentRows.map((student) => student.user_id)], "availability-changed", {
+        availability_id,
+        teacher_id,
+        available_date,
+        status: "deleted",
+      });
     }
 
     res.json({ message: "Availability deleted successfully" });

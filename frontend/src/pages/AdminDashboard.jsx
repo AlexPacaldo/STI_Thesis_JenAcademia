@@ -246,6 +246,7 @@ export default function AdminDashboard() {
   const [contractRequestsLoading, setContractRequestsLoading] = useState(false);
   const [updatingContractRequestId, setUpdatingContractRequestId] = useState(null);
   const [contractSubTab, setContractSubTab] = useState("packages");
+  const [adminConfirm, setAdminConfirm] = useState(null);
   const selectedTeacherCourseNames = courses
     .filter((course) => tForm.courseIds.includes(String(course.course_id)))
     .map((course) => course.course_name);
@@ -338,11 +339,10 @@ export default function AdminDashboard() {
   }, [teachers, teacherCourses]);
 
   // ---- actions: create teacher ----
-  async function createTeacher(e) {
-    e.preventDefault();
+  async function createTeacher(payloadSource = tForm) {
     setLoading(true);
     try {
-      const payload = { ...tForm, role: "teacher", password: "teacher" };
+      const payload = { ...payloadSource, role: "teacher", password: "teacher" };
       await axios.post(`${API}/api/admin/users`, payload); // creates teacher
       notify("Teacher created successfully!", "success");
       setTForm({
@@ -369,16 +369,10 @@ export default function AdminDashboard() {
   }
 
   // ---- actions: create student ----
-  async function createStudent(e) {
-    e.preventDefault();
-    if (!sForm.courseId) {
-      notify("Please select the student's course.", "error");
-      return;
-    }
-
+  async function createStudent(payloadSource = sForm) {
     setLoading(true);
     try {
-      const payload = { ...sForm, role: "student", password: "student" };
+      const payload = { ...payloadSource, role: "student", password: "student" };
       await axios.post(`${API}/api/admin/users`, payload); // creates student
       notify("Student created successfully!", "success");
       setSForm({
@@ -408,6 +402,38 @@ export default function AdminDashboard() {
       notify(e?.response?.data?.message || "Failed to create student", "error");
     } finally {
       setLoading(false);
+    }
+  }
+
+  function openAdminConfirm(config) {
+    setAdminConfirm(config);
+  }
+
+  function closeAdminConfirm() {
+    setAdminConfirm(null);
+  }
+
+  async function executeAdminConfirm() {
+    if (!adminConfirm) return;
+
+    try {
+      if (adminConfirm.action === "create_teacher") {
+        await createTeacher(adminConfirm.payload);
+      } else if (adminConfirm.action === "create_student") {
+        await createStudent(adminConfirm.payload);
+      } else if (adminConfirm.action === "save_teacher_courses") {
+        await saveManagedTeacherCourses(adminConfirm.payload.teacherId, adminConfirm.payload.courseIds);
+      } else if (adminConfirm.action === "archive_user") {
+        await archiveUser(adminConfirm.payload.userId);
+      } else if (adminConfirm.action === "restore_user") {
+        await unarchiveUser(adminConfirm.payload.userId);
+      } else if (adminConfirm.action === "save_contract") {
+        await saveContract(adminConfirm.payload.row);
+      } else if (adminConfirm.action === "contract_request") {
+        await updateContractRequest(adminConfirm.payload.requestId, adminConfirm.payload.status);
+      }
+    } finally {
+      setAdminConfirm(null);
     }
   }
 
@@ -492,9 +518,9 @@ export default function AdminDashboard() {
     }));
   }
 
-  async function saveManagedTeacherCourses(teacherId) {
+  async function saveManagedTeacherCourses(teacherId, courseIdsOverride = null) {
     const teacherKey = String(teacherId);
-    const courseIds = teacherCourseDrafts[teacherKey] || [];
+    const courseIds = courseIdsOverride || teacherCourseDrafts[teacherKey] || [];
     if (!courseIds.length) {
       notify("Please select at least one course for this teacher.", "error");
       return;
@@ -852,6 +878,168 @@ export default function AdminDashboard() {
     setAiRecommendation(null);
   };
 
+  function handleCreateTeacherSubmit(e) {
+    e.preventDefault();
+    if (e.currentTarget && !e.currentTarget.reportValidity()) return;
+    openAdminConfirm({
+      action: "create_teacher",
+      title: "Create teacher account?",
+      message: "This will create the teacher account with the details you entered.",
+      confirmLabel: "Create Teacher",
+      tone: "primary",
+      payload: { ...tForm },
+    });
+  }
+
+  function handleCreateStudentSubmit(e) {
+    e.preventDefault();
+    if (e.currentTarget && !e.currentTarget.reportValidity()) return;
+    if (!sForm.courseId) {
+      notify("Please select the student's course.", "error");
+      return;
+    }
+    openAdminConfirm({
+      action: "create_student",
+      title: "Create student account?",
+      message: "This will create the student account with the details you entered.",
+      confirmLabel: "Create Student",
+      tone: "primary",
+      payload: { ...sForm },
+    });
+  }
+
+  function requestSaveTeacherCourses(teacherId) {
+    const teacherKey = String(teacherId);
+    const courseIds = teacherCourseDrafts[teacherKey] || [];
+    if (!courseIds.length) {
+      notify("Please select at least one course for this teacher.", "error");
+      return;
+    }
+    const teacher = teachers.find((item) => String(item.user_id) === teacherKey);
+    openAdminConfirm({
+      action: "save_teacher_courses",
+      title: "Save teacher courses?",
+      message: "This will update the courses assigned to this teacher.",
+      confirmLabel: "Save",
+      tone: "primary",
+      payload: {
+        teacherId,
+        courseIds,
+        teacherName: teacher ? `${teacher.first_name} ${teacher.last_name}` : "Selected teacher",
+      },
+    });
+  }
+
+  function requestArchiveUser(userId) {
+    const user = [...students, ...teachers].find((item) => String(item.user_id) === String(userId));
+    openAdminConfirm({
+      action: "archive_user",
+      title: "Archive user?",
+      message: "This will archive the selected active account.",
+      confirmLabel: "Archive",
+      tone: "danger",
+      payload: {
+        userId,
+        label: user ? `${user.first_name} ${user.last_name}` : "Selected user",
+      },
+    });
+  }
+
+  function requestRestoreUser(userId) {
+    openAdminConfirm({
+      action: "restore_user",
+      title: "Restore user?",
+      message: "This will restore the archived account.",
+      confirmLabel: "Restore",
+      tone: "primary",
+      payload: {
+        userId,
+      },
+    });
+  }
+
+  function requestSaveContract(row) {
+    openAdminConfirm({
+      action: "save_contract",
+      title: row.package_id ? "Save contract?" : "Create contract?",
+      message: "This will save the class package updates for this student.",
+      confirmLabel: row.package_id ? "Save" : "Create",
+      tone: "primary",
+      payload: {
+        row: { ...row },
+      },
+    });
+  }
+
+  function requestUpdateContractRequest(requestId, status, requestRow) {
+    openAdminConfirm({
+      action: "contract_request",
+      title: status === "approved" ? "Approve contract request?" : "Decline contract request?",
+      message: status === "approved"
+        ? "This will approve the student's contract request."
+        : "This will decline the student's contract request.",
+      confirmLabel: status === "approved" ? "Approve" : "Decline",
+      tone: status === "approved" ? "primary" : "danger",
+      payload: {
+        requestId,
+        status,
+        requestRow: { ...requestRow },
+      },
+    });
+  }
+
+  const adminConfirmLines = adminConfirm ? (() => {
+    const payload = adminConfirm.payload || {};
+    if (adminConfirm.action === "create_teacher") {
+      return [
+        `Name: ${payload.firstName || ""} ${payload.lastName || ""}`.trim(),
+        `Email: ${payload.email || "-"}`,
+        `Courses: ${(payload.courseIds || []).length || 0}`,
+      ];
+    }
+    if (adminConfirm.action === "create_student") {
+      const course = courses.find((item) => String(item.course_id) === String(payload.courseId));
+      const teacher = teachers.find((item) => String(item.user_id) === String(payload.teacherId));
+      return [
+        `Name: ${payload.firstName || ""} ${payload.lastName || ""}`.trim(),
+        `Course: ${course?.course_name || "Not set"}`,
+        `Teacher: ${teacher ? `${teacher.first_name} ${teacher.last_name}` : "Not assigned"}`,
+      ];
+    }
+    if (adminConfirm.action === "save_teacher_courses") {
+      return [
+        `Teacher: ${payload.teacherName || "Selected teacher"}`,
+        `Courses selected: ${payload.courseIds?.length || 0}`,
+      ];
+    }
+    if (adminConfirm.action === "archive_user" || adminConfirm.action === "restore_user") {
+      return [
+        `User: ${payload.label || "Selected user"}`,
+      ];
+    }
+    if (adminConfirm.action === "save_contract") {
+      const row = payload.row || {};
+      const teacher = teachers.find((item) => String(item.user_id) === String(row.assigned_teacher_id));
+      const course = courses.find((item) => String(item.course_id) === String(row.course_id));
+      return [
+        `Student: ${row.first_name || ""} ${row.last_name || ""}`.trim(),
+        `Course: ${course?.course_name || row.course_name || "Not set"}`,
+        `Teacher: ${teacher ? `${teacher.first_name} ${teacher.last_name}` : "Unassigned"}`,
+        `Classes: ${row.total_classes || 0} total, ${row.classes_used || 0} used`,
+      ];
+    }
+    if (adminConfirm.action === "contract_request") {
+      const requestRow = payload.requestRow || {};
+      const course = courses.find((item) => String(item.course_id) === String(requestRow.course_id));
+      return [
+        `Student: ${requestRow.first_name || ""} ${requestRow.last_name || ""}`.trim(),
+        `Course: ${course?.course_name || requestRow.course_name || "Not set"}`,
+        `Action: ${payload.status === "approved" ? "Approve" : "Decline"}`,
+      ];
+    }
+    return [];
+  })() : [];
+
   return (
     <div className={styles.Center}>
     <div className={styles.page}>
@@ -916,7 +1104,7 @@ export default function AdminDashboard() {
                             <button
                               className={styles.primary}
                               type="button"
-                              onClick={() => saveManagedTeacherCourses(teacher.user_id)}
+                              onClick={() => requestSaveTeacherCourses(teacher.user_id)}
                               disabled={savingTeacherCoursesId === teacher.user_id}
                             >
                               {savingTeacherCoursesId === teacher.user_id ? "Saving..." : "Save"}
@@ -958,7 +1146,7 @@ export default function AdminDashboard() {
             <div className={styles.cardHead}>
               <h2>Create Teacher Account</h2>
             </div>
-            <form className={styles.form} onSubmit={createTeacher}>
+            <form className={styles.form} onSubmit={handleCreateTeacherSubmit}>
               <div className={styles.grid2}>
                 <div>
                   <label>First Name</label>
@@ -1114,7 +1302,7 @@ export default function AdminDashboard() {
             <div className={styles.cardHead}>
               <h2>Create Student Account</h2>
             </div>
-            <form className={styles.form} onSubmit={createStudent}>
+            <form className={styles.form} onSubmit={handleCreateStudentSubmit}>
               <div className={styles.grid2}>
                 <div>
                   <label>First Name</label>
@@ -1554,7 +1742,7 @@ export default function AdminDashboard() {
                                 <button
                                   className={styles.approve}
                                   type="button"
-                                  onClick={() => updateContractRequest(request.request_id, "approved")}
+                                onClick={() => requestUpdateContractRequest(request.request_id, "approved", request)}
                                   disabled={updatingContractRequestId === request.request_id}
                                 >
                                   Approve
@@ -1562,7 +1750,7 @@ export default function AdminDashboard() {
                                 <button
                                   className={styles.decline}
                                   type="button"
-                                  onClick={() => updateContractRequest(request.request_id, "declined")}
+                                onClick={() => requestUpdateContractRequest(request.request_id, "declined", request)}
                                   disabled={updatingContractRequestId === request.request_id}
                                 >
                                   Decline
@@ -1711,7 +1899,7 @@ export default function AdminDashboard() {
                             <button
                               className={styles.approve}
                               type="button"
-                              onClick={() => saveContract(row)}
+                              onClick={() => requestSaveContract(row)}
                               disabled={savingContractId === row.user_id}
                             >
                               {savingContractId === row.user_id ? "Saving..." : row.package_id ? "Save" : "Create"}
@@ -1750,7 +1938,7 @@ export default function AdminDashboard() {
                     <li key={s.user_id} className={styles.listRow}>
                       <span>{s.first_name} {s.last_name} - {s.email}</span>
                       <div>
-                        <button className={styles.warn} onClick={() => archiveUser(s.user_id)}>Archive</button>
+                        <button className={styles.warn} onClick={() => requestArchiveUser(s.user_id)}>Archive</button>
                       </div>
                     </li>
                   ))}
@@ -1764,7 +1952,7 @@ export default function AdminDashboard() {
                     <li key={t.user_id} className={styles.listRow}>
                       <span>{t.first_name} {t.last_name} - {t.email}</span>
                       <div>
-                        <button className={styles.warn} onClick={() => archiveUser(t.user_id)}>Archive</button>
+                        <button className={styles.warn} onClick={() => requestArchiveUser(t.user_id)}>Archive</button>
                       </div>
                     </li>
                   ))}
@@ -1774,7 +1962,7 @@ export default function AdminDashboard() {
 
             <details className={styles.archivedBox}>
               <summary>Show Archived Users</summary>
-              <ArchivedUsers onUnarchive={unarchiveUser} refresh={archiveRefresh} search={archiveSearch} />
+              <ArchivedUsers onUnarchive={requestRestoreUser} refresh={archiveRefresh} search={archiveSearch} />
             </details>
           </section>
         )}
@@ -2062,6 +2250,82 @@ export default function AdminDashboard() {
                   }}
                 >
                   {deleteConfirm.confirmLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {adminConfirm && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0,0,0,0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1100,
+            }}
+            onClick={() => closeAdminConfirm()}
+          >
+            <div
+              style={{
+                background: "#fff",
+                borderRadius: "8px",
+                padding: "24px",
+                maxWidth: "460px",
+                width: "100%",
+                boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: "0 0 12px 0", fontSize: "1.1em" }}>
+                {adminConfirm.title}
+              </h3>
+              <p style={{ margin: "0 0 16px 0", color: "#666", lineHeight: "1.6" }}>
+                {adminConfirm.message}
+              </p>
+              {adminConfirmLines.length > 0 && (
+                <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, background: "#f9fafb", padding: 12, marginBottom: 20 }}>
+                  {adminConfirmLines.map((line) => (
+                    <div key={line} style={{ fontSize: "0.9em", color: "#374151", marginBottom: 6, wordBreak: "break-word" }}>
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                <button
+                  onClick={closeAdminConfirm}
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: "0.9em",
+                    fontWeight: "600",
+                    border: "1px solid #d0d0d0",
+                    background: "#fff",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={executeAdminConfirm}
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: "0.9em",
+                    fontWeight: "600",
+                    border: "none",
+                    background: adminConfirm.tone === "danger" ? "#dc3545" : "#0f0f0f",
+                    color: "#fff",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                  }}
+                >
+                  {adminConfirm.confirmLabel || "Confirm"}
                 </button>
               </div>
             </div>
