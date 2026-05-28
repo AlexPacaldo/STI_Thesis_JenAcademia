@@ -5,6 +5,7 @@ import styles from "../assets/assignmentsDropbox.module.css";
 import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { getStoredUserTimezone } from "../utils/timezone.js";
+import { readStoredUser } from "../utils/sessionUser.js";
 
 const API = "http://localhost:3001";
 
@@ -32,11 +33,7 @@ function getFileName(url) {
 }
 
 function getCurrentUser() {
-  try {
-    return JSON.parse(localStorage.getItem("user") || "{}");
-  } catch {
-    return {};
-  }
+  return readStoredUser() || {};
 }
 
 function getAssignmentDisplayText(assignment) {

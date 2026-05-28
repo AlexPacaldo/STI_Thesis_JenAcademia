@@ -9,6 +9,7 @@ import {
   mergeNotifications,
 } from "../utils/localNotificationStore.js";
 import { getStoredUserTimezone } from "../utils/timezone.js";
+import { readStoredUser } from "../utils/sessionUser.js";
 import { useNotification } from "./NotificationContainer";
 
 const API = "http://localhost:3001";
@@ -26,7 +27,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
   const loadNotifications = async (pageNum = 1, type = "all") => {
     if (!userId) return;
     setLoading(true);
-    const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const currentUser = readStoredUser() || {};
     const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
     let localNotifications = getLocalNotificationsForUser({ userId, userName });
     if (type !== "all") {
@@ -78,7 +79,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
 
   // Mark all as read
   const handleMarkAllAsRead = async () => {
-    const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const currentUser = readStoredUser() || {};
     const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
     try {
       await axios.put(`${API}/api/users/${userId}/notifications/read-all`);
@@ -95,7 +96,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
 
   // Delete all notifications
   const handleClearAll = async () => {
-    const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const currentUser = readStoredUser() || {};
     const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
     try {
       await axios.delete(`${API}/api/notifications/user/${userId}`);

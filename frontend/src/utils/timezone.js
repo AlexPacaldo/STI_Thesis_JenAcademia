@@ -1,3 +1,5 @@
+import { readStoredUser } from "./sessionUser.js";
+
 export const DEFAULT_TIMEZONE = "Asia/Manila";
 
 export function getUserTimezone(user, fallback = DEFAULT_TIMEZONE) {
@@ -6,11 +8,7 @@ export function getUserTimezone(user, fallback = DEFAULT_TIMEZONE) {
 }
 
 export function getStoredUserTimezone(fallback = DEFAULT_TIMEZONE) {
-  try {
-    return getUserTimezone(JSON.parse(localStorage.getItem("user") || "{}"), fallback);
-  } catch {
-    return fallback;
-  }
+  return getUserTimezone(readStoredUser() || {}, fallback);
 }
 
 export function isValidTimezone(timezone) {

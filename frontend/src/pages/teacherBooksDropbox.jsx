@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 import styles from "../assets/teacherBooksDropbox.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
+import { readStoredUser } from "../utils/sessionUser.js";
+import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
 
 export default function TeacherBooksDropbox() {
   const { notify } = useNotification() || {};
@@ -15,8 +17,8 @@ export default function TeacherBooksDropbox() {
     file: null,
   });
 
-  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
-  const teacherId = localStorage.getItem("teacher_id") || storedUser.id || storedUser.user_id || storedUser.userId || null;
+  const storedUser = readStoredUser() || {};
+  const teacherId = readNamespacedStorageValue(STORAGE_KEYS.teacherId, LEGACY_STORAGE_KEYS.teacherId) || storedUser.id || storedUser.user_id || storedUser.userId || null;
 
   useEffect(() => {
     fetchBooks();

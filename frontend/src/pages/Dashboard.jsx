@@ -9,15 +9,13 @@ import {
   getUserTimezone,
   humanTime as formatHumanTime,
 } from "../utils/timezone.js";
+import { readStoredUser } from "../utils/sessionUser.js";
+import { formatProficiencyLevel } from "../utils/proficiencyLevels.js";
 
 const API = "http://localhost:3001";
 
 function getCurrentUser() {
-  try {
-    return JSON.parse(localStorage.getItem("user") || "{}");
-  } catch {
-    return {};
-  }
+  return readStoredUser() || {};
 }
 
 function getTodayDate() {
@@ -180,13 +178,11 @@ export default function Dashboard({ mode }) {
   });
 
   useEffect(() => {
-    const stored = localStorage.getItem("user");
-    if (!stored) {
+    const currentUser = readStoredUser();
+    if (!currentUser) {
       navigate("/");
       return;
     }
-
-    const currentUser = JSON.parse(stored);
     if (!currentUser.profileCompleted) {
       navigate("/account");
     }
@@ -330,7 +326,7 @@ export default function Dashboard({ mode }) {
       .map((student) => ({
         id: student.user_id || student.id,
         primary: `${student.first_name || student.firstName || ""} ${student.last_name || student.lastName || ""}`.trim() || "Student",
-        secondary: `${student.proficiency_level || "No level"}${student.course_id ? ` • ${getCourseName(courseMap, student.course_id) || `Course ${student.course_id}`}` : ""}`,
+        secondary: `${formatProficiencyLevel(student.proficiency_level)}${student.course_id ? ` • ${getCourseName(courseMap, student.course_id) || `Course ${student.course_id}`}` : ""}`,
         meta: student.email || "",
       }));
 

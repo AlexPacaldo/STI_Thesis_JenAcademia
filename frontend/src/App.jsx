@@ -7,21 +7,15 @@ import Sidebar from './components/Sidebar'
 
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useNotification } from "./components/NotificationContainer.jsx";
+import { clearStoredUser, readStoredUser } from "./utils/sessionUser.js";
+import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "./utils/storageKeys.js";
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 60 * 1000; // 5 hours
 const PUBLIC_PATHS = ["/", "/login", "/register"];
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
 
-function hasRequiredProfileFields(user) {
-  return Boolean(
-    String(user?.contact || user?.contact_number || "").trim()
-    && String(user?.profileImageUrl || user?.profile_image_url || "").trim()
-    && (user?.passwordChanged || user?.password_changed)
-  );
-}
-
 function isProfileComplete(user) {
-  return Boolean(user?.profileCompleted && hasRequiredProfileFields(user));
+  return Boolean(user?.profileCompleted);
 }
 
 function App() {
@@ -31,16 +25,6 @@ function App() {
   // footer visibility will be computed after hideHeaderPaths
   const idleTimerRef = useRef(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-
-  function parseUser() {
-    const stored = localStorage.getItem("user");
-    if (!stored) return null;
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return null;
-    }
-  }
 
   function isAuthenticated(user) {
     return Boolean(user && (user.id || user.user_id || user.userId));
@@ -119,8 +103,9 @@ function App() {
   }
 
   function clearSession() {
-    localStorage.removeItem("user");
-    localStorage.removeItem("lastActivityAt");
+    clearStoredUser();
+    localStorage.removeItem(STORAGE_KEYS.lastActivityAt);
+    localStorage.removeItem(LEGACY_STORAGE_KEYS.lastActivityAt);
     window.dispatchEvent(new Event("userLoggedOut"));
   }
 
@@ -131,10 +116,10 @@ function App() {
   }
 
   function resetIdleTimer() {
-    const user = parseUser();
+    const user = readStoredUser();
     if (!isAuthenticated(user)) return;
 
-    localStorage.setItem("lastActivityAt", String(Date.now()));
+    localStorage.setItem(STORAGE_KEYS.lastActivityAt, String(Date.now()));
     if (idleTimerRef.current) {
       window.clearTimeout(idleTimerRef.current);
     }
@@ -143,7 +128,7 @@ function App() {
 
   useEffect(() => {
     const path = location.pathname.toLowerCase();
-    const user = parseUser();
+    const user = readStoredUser();
     const authenticated = isAuthenticated(user);
     const role = getRole(user);
     const defaultPath = getDefaultDashboardPath(role);
@@ -203,7 +188,7 @@ function App() {
 
       const stayLoggedIn = isStayLoggedIn(user);
       if (!stayLoggedIn) {
-        const lastActivity = Number(localStorage.getItem("lastActivityAt") || 0);
+        const lastActivity = Number(readNamespacedStorageValue(STORAGE_KEYS.lastActivityAt, LEGACY_STORAGE_KEYS.lastActivityAt) || 0);
         const now = Date.now();
         if (lastActivity && now - lastActivity >= IDLE_TIMEOUT_MS) {
           logoutDueToInactivity();
@@ -243,9 +228,9 @@ function App() {
   const hideHeaderPaths = ["/", "/login", "/register"];
   const shouldShowHeader = !hideHeaderPaths.includes(location.pathname);
   const isAccountPage = location.pathname === "/account";
-  const isAccountPageNewUser = isAccountPage && !isProfileComplete(parseUser());
+  const isAccountPageNewUser = isAccountPage && !isProfileComplete(readStoredUser());
   const shouldShowSidebar = shouldShowHeader && !isAccountPageNewUser;
-  const showFooter = location.pathname === "/" && !isAuthenticated(parseUser());
+  const showFooter = location.pathname === "/" && !isAuthenticated(readStoredUser());
   const isFullBleedPath = location.pathname === "/" || location.pathname === "/login";
 
   return (

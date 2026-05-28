@@ -4,6 +4,8 @@ import axios from "axios";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/AdminDashboard.module.css";
 import Calendar from "./Calendar.jsx"; // admin calendar view
+import { readStoredUser } from "../utils/sessionUser.js";
+import { PROFICIENCY_LEVEL_OPTIONS } from "../utils/proficiencyLevels.js";
 
 const API = "http://localhost:3001";
 
@@ -95,7 +97,7 @@ const TEACHER_AI_OPTIONS = {
     ["business english", "Business English", ["Business English", "Job Interview", "TOEIC"]],
     ["job interview coaching", "Job Interview Coaching", ["Job Interview", "Business English"]],
     ["news discussion", "News Discussion", ["News", "Conversational English"]],
-    ["kids and beginner english", "Kids and Beginner English", ["Online English"]],
+    ["kids and novice english", "Kids and Novice English", ["Online English"]],
   ],
   teachingStyle: [
     ["", "Select Teaching Style"],
@@ -258,12 +260,11 @@ export default function AdminDashboard() {
 
   // ---- role gate (admin only) ----
    useEffect(() => {
-     const raw = localStorage.getItem("user");
-     if (!raw) {
+     const u = readStoredUser();
+     if (!u) {
        window.location.href = "/";
        return;
      }
-     const u = JSON.parse(raw);
      setMe(u);
      if (u.role !== "admin") {
        // only admin can access
@@ -520,8 +521,8 @@ export default function AdminDashboard() {
     const hasCriteria = Object.values(sForm.aiCriteria).some((value) => (
       Array.isArray(value) ? value.length > 0 : Boolean(value)
     ));
-    if (!sForm.trialNotes.trim() && !hasCriteria) {
-      notify("Please add trial notes or choose matching criteria before analyzing.", "error");
+    if (!sForm.trialNotes.trim() && !hasCriteria && !sForm.level) {
+      notify("Please add trial notes, choose a proficiency level, or choose matching criteria before analyzing.", "error");
       return;
     }
 
@@ -531,6 +532,7 @@ export default function AdminDashboard() {
         trialNotes: sForm.trialNotes,
         criteria: sForm.aiCriteria,
         courseId: sForm.courseId,
+        proficiencyLevel: sForm.level,
         teacherId: sForm.teacherId,
       });
       const teacher = r.data?.teacher;
@@ -542,7 +544,6 @@ export default function AdminDashboard() {
       setSForm((prev) => ({
         ...prev,
         teacherId: teacher.user_id,
-        level: prev.level || "beginner",
       }));
       setAiRecommendation(r.data);
       notify(`AI matched ${teacher.first_name} ${teacher.last_name}.`, "success");
@@ -1128,9 +1129,30 @@ export default function AdminDashboard() {
                   <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>Trial Class Assessment</h3>
                 </div>
                 <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
-                  Add trial notes and choose the student's learning criteria. The AI matcher will prioritize teachers below 2 active students, then choose the least-loaded teacher if everyone already has 2 or more.
+                  Add trial notes, choose the student's proficiency level, and choose the learning criteria. The AI matcher will prioritize teachers below 2 active students, then choose the least-loaded teacher if everyone already has 2 or more.
                 </p>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
+                  <div>
+                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Proficiency Level</label>
+                    <select
+                      value={sForm.level}
+                      onChange={(e)=>setSForm({...sForm, level:e.target.value})}
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        border: "1px solid #d0d0d0",
+                        borderRadius: "6px",
+                        fontFamily: "inherit",
+                        fontSize: "0.9em",
+                        background: "#fff"
+                      }}
+                    >
+                      <option value="">Select Level</option>
+                      {PROFICIENCY_LEVEL_OPTIONS.map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div>
                     <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Learning Goal</label>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "8px" }}>
@@ -1292,33 +1314,9 @@ export default function AdminDashboard() {
                   <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>AI Recommendations</h3>
                 </div>
                 <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
-                  Review the recommended level, teacher, and course before creating the student account.
+                  Review the recommended teacher and course before creating the student account.
                 </p>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-                  <div>
-                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Proficiency Level</label>
-                    <select
-                      value={sForm.level}
-                      onChange={(e)=>setSForm({...sForm, level:e.target.value})}
-                      style={{
-                        width: "100%",
-                        padding: "10px",
-                        border: "1px solid #d0d0d0",
-                        borderRadius: "6px",
-                        fontFamily: "inherit",
-                        fontSize: "0.9em",
-                        background: "#fff"
-                      }}
-                    >
-                      <option value="">Select Level</option>
-                      <option value="beginner">Beginner</option>
-                      <option value="elementary">Elementary</option>
-                      <option value="intermediate">Intermediate</option>
-                      <option value="upper-intermediate">Upper Intermediate</option>
-                      <option value="advanced">Advanced</option>
-                      <option value="proficient">Proficient</option>
-                    </select>
-                  </div>
                   <div>
                     <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Assigned Teacher</label>
                     <select

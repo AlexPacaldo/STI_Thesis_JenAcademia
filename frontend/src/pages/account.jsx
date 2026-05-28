@@ -5,6 +5,7 @@ import styles from "../assets/account.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { getUserTimezone } from "../utils/timezone.js";
+import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
 
 const API = "http://localhost:3001";
 const CROP_SIZE = 320;
@@ -88,6 +89,22 @@ function mapUser(u = {}) {
   };
 }
 
+function toStoredUser(user) {
+  return {
+    id: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    role: user.role,
+    profileCompleted: user.profileCompleted,
+    passwordChanged: user.passwordChanged,
+    profileImageUrl: user.profileImageUrl,
+    assignedTeacherId: user.assignedTeacherId,
+    timezone: user.timezone,
+    courseId: user.courseId ?? null,
+    stayLoggedIn: user.stayLoggedIn ?? false,
+  };
+}
+
 function formFromUser(user) {
   return {
     firstName: user.firstName,
@@ -139,16 +156,8 @@ function formatAccountDate(value, timezone) {
   return date.toLocaleDateString("en-US", { timeZone: getUserTimezone({ timezone }) });
 }
 
-function hasRequiredCompletionFields(user) {
-  return Boolean(
-    String(user?.contact || "").trim()
-    && String(user?.profileImageUrl || "").trim()
-    && user?.passwordChanged
-  );
-}
-
 function isCompleteUser(user) {
-  return Boolean(user?.profileCompleted && hasRequiredCompletionFields(user));
+  return Boolean(user?.profileCompleted);
 }
 
 function Stat({ label, value }) {
@@ -193,12 +202,8 @@ export default function Account() {
   const [crop, setCrop] = useState({ x: 0, y: 0, zoom: 1 });
   const [cropImageSize, setCropImageSize] = useState({ width: 0, height: 0 });
   const storedUser = useMemo(() => {
-    try {
-      const stored = localStorage.getItem("user");
-      return stored ? mapUser(JSON.parse(stored)) : null;
-    } catch {
-      return null;
-    }
+    const stored = readStoredUser();
+    return stored ? mapUser(stored) : null;
   }, []);
 
   const details = user?.roleDetails || {};
@@ -265,7 +270,7 @@ export default function Account() {
       setProfileEditing(true);
       setPasswordEditing(!refreshed.passwordChanged);
     }
-    localStorage.setItem("user", JSON.stringify(refreshed));
+    writeStoredUser(toStoredUser(refreshed));
     window.dispatchEvent(new CustomEvent("userProfileUpdated", { detail: refreshed }));
     return refreshed;
   }
@@ -343,7 +348,7 @@ export default function Account() {
   }, [cameraOpen, notify]);
 
   function handleLogout() {
-    localStorage.removeItem("user");
+    clearStoredUser();
     window.location.href = "/";
   }
 

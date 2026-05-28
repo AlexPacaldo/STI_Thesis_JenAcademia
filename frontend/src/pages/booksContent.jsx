@@ -6,6 +6,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import styles from "../assets/booksContent.module.css";
 import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
+import { readStoredUser } from "../utils/sessionUser.js";
+import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
 
 const API_BASE = "http://localhost:3001";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -246,12 +248,12 @@ export default function BooksContent({ mode = "student" }) {
 
   const isTeacherView = mode === "teacher";
   const teacherId = useMemo(() => {
-    const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
-    return localStorage.getItem("teacher_id") || storedUser.id || storedUser.user_id || storedUser.userId || null;
+    const storedUser = readStoredUser() || {};
+    return readNamespacedStorageValue(STORAGE_KEYS.teacherId, LEGACY_STORAGE_KEYS.teacherId) || storedUser.id || storedUser.user_id || storedUser.userId || null;
   }, []);
   const studentId = useMemo(() => {
-    const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
-    return storedUser.id || storedUser.user_id || storedUser.userId || localStorage.getItem("student_id") || null;
+    const storedUser = readStoredUser() || {};
+    return storedUser.id || storedUser.user_id || storedUser.userId || readNamespacedStorageValue(STORAGE_KEYS.studentId, LEGACY_STORAGE_KEYS.studentId) || null;
   }, []);
 
   useEffect(() => {
@@ -266,7 +268,7 @@ export default function BooksContent({ mode = "student" }) {
         setAccessError("");
 
         if (!isTeacherView) {
-          const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+          const storedUser = readStoredUser() || {};
           const currentStudentId = storedUser.id || storedUser.user_id || storedUser.userId || studentId;
           const packageResponse = await fetch(`${API_BASE}/api/calendar/student-package/${currentStudentId}`);
 

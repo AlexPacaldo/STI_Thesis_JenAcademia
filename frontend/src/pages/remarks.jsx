@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import teacherPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/remarks.module.css";
 import { getStoredUserTimezone } from "../utils/timezone.js";
+import { readStoredUser } from "../utils/sessionUser.js";
 
 const API = "http://localhost:3001";
 
@@ -61,18 +62,9 @@ export default function Remarks() {
   };
 
   useEffect(() => {
-    const stored = localStorage.getItem("user");
-    if (!stored) {
+    const user = readStoredUser();
+    if (!user) {
       setError("Please log in to view your remarks.");
-      setLoading(false);
-      return;
-    }
-
-    let user;
-    try {
-      user = JSON.parse(stored);
-    } catch (err) {
-      setError("Unable to read current user information.");
       setLoading(false);
       return;
     }

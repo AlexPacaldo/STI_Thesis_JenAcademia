@@ -4,21 +4,14 @@ import { Link, useLocation } from "react-router-dom";
 import styles from "../assets/sidebar.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
 import { getLocalUnreadCount } from "../utils/localNotificationStore.js";
+import { readStoredUser } from "../utils/sessionUser.js";
 import NotificationPanel from "./NotificationPanel.jsx";
 import Logo from "../assets/img/Navbar/LOGO.png";
 
 const API = "http://localhost:3001";
 
-function hasRequiredProfileFields(user) {
-  return Boolean(
-    String(user?.contact || user?.contact_number || "").trim()
-    && String(user?.profileImageUrl || user?.profile_image_url || "").trim()
-    && (user?.passwordChanged || user?.password_changed)
-  );
-}
-
 function isProfileComplete(user) {
-  return Boolean(user?.profileCompleted && hasRequiredProfileFields(user));
+  return Boolean(user?.profileCompleted);
 }
 
 function profileSrc(user) {
@@ -30,14 +23,7 @@ function profileSrc(user) {
 
 function Sidebar({ isMobileOpen = false, onClose }) {
   const location = useLocation();
-  const storedUser = (() => {
-    try {
-      const stored = localStorage.getItem("user");
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
-  })();
+  const storedUser = readStoredUser();
 
   const [user, setUser] = useState(storedUser);
   const [role, setRole] = useState(storedUser?.role || null);
@@ -49,15 +35,14 @@ function Sidebar({ isMobileOpen = false, onClose }) {
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem("user");
-      if (stored) {
-        const parsedUser = JSON.parse(stored);
+      const parsedUser = readStoredUser();
+      if (parsedUser) {
         setUser(parsedUser);
         setRole(parsedUser.role || null);
         setProfileCompleted(isProfileComplete(parsedUser));
       }
     } catch (e) {
-      console.warn("Failed to read user from localStorage:", e);
+      console.warn("Failed to read user from storage:", e);
     }
   }, [location]);
 
@@ -71,9 +56,8 @@ function Sidebar({ isMobileOpen = false, onClose }) {
     };
 
     const handleStorageChange = () => {
-      const stored = localStorage.getItem("user");
-      if (stored) {
-        const parsedUser = JSON.parse(stored);
+      const parsedUser = readStoredUser();
+      if (parsedUser) {
         setUser(parsedUser);
         setRole(parsedUser.role || null);
         setProfileCompleted(isProfileComplete(parsedUser));
@@ -124,7 +108,7 @@ function Sidebar({ isMobileOpen = false, onClose }) {
   }, [currentUserId, role, location]);
 
   const fetchUnreadCount = async () => {
-    const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const currentUser = readStoredUser() || {};
     const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
     const localCount = getLocalUnreadCount({ userId: currentUserId, userName });
     try {

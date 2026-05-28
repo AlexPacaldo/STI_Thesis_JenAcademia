@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/teacherSchedule.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
+import { formatProficiencyLevel } from "../utils/proficiencyLevels.js";
+import { readStoredUser } from "../utils/sessionUser.js";
 
 const API = "http://localhost:3001";
 
@@ -24,18 +26,9 @@ export default function PassRemarks() {
   const [teacherName, setTeacherName] = useState("");
 
   useEffect(() => {
-    const stored = localStorage.getItem("user");
-    if (!stored) {
+    const user = readStoredUser();
+    if (!user) {
       setError("Please log in first.");
-      setLoading(false);
-      return;
-    }
-
-    let user;
-    try {
-      user = JSON.parse(stored);
-    } catch (err) {
-      setError("Unable to read current user data.");
       setLoading(false);
       return;
     }
@@ -189,7 +182,7 @@ export default function PassRemarks() {
                     <h1>Personal Information</h1>
                     <p>Email: {selectedStudent.email}</p>
                     <p>Contact: {selectedStudent.contact || "Not provided"}</p>
-                    <p>Level: {selectedStudent.proficiency_level || "Unknown"}</p>
+                    <p>Level: {formatProficiencyLevel(selectedStudent.proficiency_level) || "Unknown"}</p>
                     <p>Course ID: {selectedStudent.course_id || "N/A"}</p>
                     <p>Enrolled with: {teacherName || "You"}</p>
                   </div>

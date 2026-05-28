@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import axios from "axios";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/studentSchedule.module.css";
+import { readStoredUser } from "../utils/sessionUser.js";
 
 // API base
 const API = "http://localhost:3001";
@@ -31,10 +32,8 @@ export default function teacherScheduleEditor({ title = "Teacher Availability" }
 
   // load teacher ID from local storage
   useEffect(() => {
-    try {
-      const u = JSON.parse(localStorage.getItem("user") || "null");
-      if (u && u.id) setLocalUserId(u.id);
-    } catch {}
+    const u = readStoredUser();
+    if (u?.id) setLocalUserId(u.id);
   }, []);
 
   const viewDate = new Date(year, month, 1);
