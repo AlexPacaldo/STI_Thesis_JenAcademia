@@ -1421,6 +1421,225 @@ app.get("/api/teacher-courses", async (_req, res) => {
   }
 });
 
+app.get("/api/dashboard/:role/:user_id", async (req, res) => {
+  try {
+    const { role, user_id } = req.params;
+    const scheduledDate = req.query.scheduled_date;
+
+    if (!["student", "teacher"].includes(role)) {
+      return res.status(400).json({ message: "Invalid dashboard role" });
+    }
+
+    if (!scheduledDate) {
+      return res.status(400).json({ message: "scheduled_date is required" });
+    }
+
+    await autoMarkPastClassesAsNoShow(pool);
+
+    const classIdColumn = role === "teacher" ? "teacher_id" : "student_id";
+    const classesPromise = pool.query(
+      `SELECT ${classSelectFields},
+              stu.first_name as student_name,
+              stu.last_name as student_last_name,
+              stu.email as student_email,
+              stu.profile_image_url AS student_profile_image_url,
+              stu.profile_image_url AS studentProfileImageUrl,
+              stu.timezone as student_timezone,
+              sp.proficiency_level AS student_proficiency_level,
+              tea.first_name as teacher_name,
+              tea.last_name as teacher_last_name,
+              tea.email as teacher_email,
+              tea.profile_image_url AS teacher_profile_image_url,
+              tea.timezone as teacher_timezone,
+              COALESCE(c.class_link, vs.teams_meeting_link) as class_link
+       FROM classes c
+       LEFT JOIN video_sessions vs ON vs.class_id = c.class_id
+       JOIN users stu ON c.student_id = stu.user_id
+       LEFT JOIN student_profiles sp ON sp.user_id = stu.user_id
+       JOIN users tea ON c.teacher_id = tea.user_id
+       WHERE c.scheduled_date = ?
+         AND c.status = 'scheduled'
+         AND c.scheduled_date >= CURDATE()
+         AND c.${classIdColumn} = ?
+       ORDER BY c.start_time ASC, c.class_id ASC`,
+      [scheduledDate, user_id]
+    );
+
+    const coursesPromise = pool.query("SELECT course_id, course_name FROM courses ORDER BY course_name");
+
+    if (role === "teacher") {
+      const [classesResult, coursesResult, studentsResult, assignmentsResult, submissionsResult, booksResult] =
+        await Promise.all([
+          classesPromise,
+          coursesPromise,
+          pool.query(
+            `SELECT u.user_id, u.first_name, u.last_name, u.email, u.contact_number AS contact,
+                    u.profile_image_url,
+                    sp.proficiency_level, sp.assigned_teacher_id, sp.course_id, sp.trial_notes
+             FROM users u
+             JOIN student_profiles sp ON u.user_id = sp.user_id
+             WHERE sp.assigned_teacher_id = ?`,
+            [user_id]
+          ),
+          pool.query(
+            `${assignmentSelect}
+             WHERE a.teacher_id = ?
+             ORDER BY a.created_at DESC, a.assignment_id DESC`,
+            [user_id]
+          ),
+          pool.query(
+            `${submissionSelect}
+             WHERE a.teacher_id = ?
+             ORDER BY s.submitted_at DESC, s.submission_id DESC`,
+            [user_id]
+          ),
+          pool.query(
+            `SELECT b.*,
+                    TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS teacher_name,
+                    NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), '') AS author
+             FROM books b
+             LEFT JOIN users u ON u.user_id = b.teacher_id
+             WHERE b.status = 'active' AND b.teacher_id = ?
+             ORDER BY b.created_at DESC`,
+            [user_id]
+          ),
+        ]);
+
+      const students = studentsResult[0].map((student) => ({
+        user_id: student.user_id,
+        first_name: student.first_name,
+        last_name: student.last_name,
+        email: student.email,
+        contact: decryptNullableText(student.contact),
+        profileImageUrl: student.profile_image_url,
+        profile_image_url: student.profile_image_url,
+        proficiency_level: student.proficiency_level,
+        assigned_teacher_id: student.assigned_teacher_id,
+        course_id: student.course_id,
+        trial_notes: decryptNullableText(student.trial_notes),
+      }));
+
+      return res.json({
+        classes: decryptRows(classesResult[0], ["class_link"]),
+        courses: coursesResult[0],
+        students,
+        assignments: decryptRows(assignmentsResult[0], ["instructions", "description", "comments", "feedback"]),
+        submissions: decryptRows(submissionsResult[0], ["comments", "feedback", "assignmentInstructions"]),
+        books: booksResult[0],
+      });
+    }
+
+    const profile = await getStudentProfile(user_id);
+    const booksPromise = profile?.assigned_teacher_id
+      ? pool.query(
+          `SELECT b.*,
+                  TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS teacher_name,
+                  NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), '') AS author
+           FROM books b
+           LEFT JOIN users u ON u.user_id = b.teacher_id
+           WHERE b.status = 'active'
+             AND b.teacher_id = ?
+             ${profile.course_id ? "AND b.course_id = ?" : ""}
+           ORDER BY b.created_at DESC`,
+          profile.course_id ? [profile.assigned_teacher_id, profile.course_id] : [profile.assigned_teacher_id]
+        )
+      : Promise.resolve([[]]);
+
+    const assignedTeacherPromise = profile?.assigned_teacher_id
+      ? pool.query(
+          `SELECT user_id, first_name, last_name, email, profile_image_url
+           FROM users
+           WHERE user_id = ? AND role = 'teacher' AND status = 'active'
+           LIMIT 1`,
+          [profile.assigned_teacher_id]
+        )
+      : Promise.resolve([[]]);
+
+    const packagePromise = getStudentPackageAvailability(pool, user_id).catch(() => ({
+      package: null,
+      bookedClasses: 0,
+      bookableClasses: 0,
+    }));
+
+    const [
+      classesResult,
+      coursesResult,
+      remarksResult,
+      assignmentsResult,
+      booksResult,
+      progressResult,
+      assignedTeacherResult,
+      packageAvailability,
+    ] = await Promise.all([
+      classesPromise,
+      coursesPromise,
+      pool.query(
+        `SELECT cr.*, c.class_name, c.scheduled_date, c.start_time, c.end_time,
+                t.first_name AS teacher_first, t.last_name AS teacher_last,
+                t.profile_image_url AS teacher_profile_image_url
+         FROM class_remarks cr
+         JOIN classes c ON cr.class_id = c.class_id
+         JOIN users t ON cr.teacher_id = t.user_id
+         WHERE cr.student_id = ?
+         ORDER BY cr.created_at DESC`,
+        [user_id]
+      ),
+      pool.query(
+        `${assignmentSelect}
+         WHERE a.student_id = ?
+         ORDER BY a.due_date ASC, a.due_time ASC, a.created_at DESC`,
+        [user_id]
+      ),
+      booksPromise,
+      pool.query(
+        `SELECT lp.* FROM lesson_progress lp
+         JOIN lessons l ON lp.lesson_id = l.lesson_id
+         WHERE lp.student_id = ?
+         ORDER BY lp.updated_at DESC`,
+        [user_id]
+      ),
+      assignedTeacherPromise,
+      packagePromise,
+    ]);
+
+    const remarks = remarksResult[0].map((row) => ({
+      remark_id: row.remark_id,
+      class_id: row.class_id,
+      class_name: row.class_name,
+      teacher_name: `${row.teacher_first} ${row.teacher_last}`,
+      teacher_profile_image_url: row.teacher_profile_image_url,
+      remarks: decryptNullableText(row.remarks),
+      rating: row.rating,
+      created_at: row.created_at,
+      scheduled_date: row.scheduled_date,
+      start_time: row.start_time,
+      end_time: row.end_time,
+    }));
+
+    const packageInfo = packageAvailability.package
+      ? {
+          ...packageAvailability.package,
+          booked_classes: packageAvailability.bookedClasses,
+          bookable_classes: packageAvailability.bookableClasses,
+        }
+      : null;
+
+    res.json({
+      classes: decryptRows(classesResult[0], ["class_link"]),
+      courses: coursesResult[0],
+      remarks,
+      assignments: decryptRows(assignmentsResult[0], ["instructions", "description", "comments", "feedback"]),
+      books: booksResult[0],
+      progress: progressResult[0],
+      package: packageInfo,
+      assignedTeacher: assignedTeacherResult[0][0] || null,
+    });
+  } catch (err) {
+    console.error("GET /api/dashboard/:role/:user_id error:", err);
+    res.status(500).json({ message: "Error fetching dashboard data" });
+  }
+});
+
 app.put("/api/admin/teachers/:teacherId/courses", async (req, res) => {
   const connection = await pool.getConnection();
   try {
