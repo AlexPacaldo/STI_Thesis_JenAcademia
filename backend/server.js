@@ -623,6 +623,22 @@ async function columnExists(tableName, columnName) {
   return rows.length > 0;
 }
 
+async function indexExists(tableName, indexName) {
+  const [rows] = await pool.query(
+    `SELECT INDEX_NAME
+     FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND INDEX_NAME = ?
+     LIMIT 1`,
+    [DB_NAME, tableName, indexName]
+  );
+  return rows.length > 0;
+}
+
+async function ensureIndex(tableName, indexName, columnsSql) {
+  if (await indexExists(tableName, indexName)) return;
+  await pool.query(`ALTER TABLE ${tableName} ADD INDEX ${indexName} (${columnsSql})`);
+}
+
 async function deletePastTeacherAvailability(teacherId = null) {
   if (teacherId) {
     await pool.query(
@@ -633,6 +649,33 @@ async function deletePastTeacherAvailability(teacherId = null) {
   }
 
   await pool.query("DELETE FROM teacher_availability WHERE available_date < CURDATE()");
+}
+
+async function ensurePerformanceIndexes() {
+  const indexes = [
+    ["classes", "idx_classes_teacher_day_status_time", "teacher_id, scheduled_date, status, start_time"],
+    ["classes", "idx_classes_student_day_status_time", "student_id, scheduled_date, status, start_time"],
+    ["classes", "idx_classes_student_status_created", "student_id, status, created_at"],
+    ["assignments", "idx_assignments_teacher_created", "teacher_id, created_at, assignment_id"],
+    ["assignments", "idx_assignments_student_due", "student_id, due_date, due_time, created_at"],
+    ["assignment_submissions", "idx_submissions_assignment_submitted", "assignment_id, submitted_at, submission_id"],
+    ["books", "idx_books_status_teacher_course_created", "status, teacher_id, course_id, created_at"],
+    ["class_remarks", "idx_remarks_student_created", "student_id, created_at"],
+    ["lesson_progress", "idx_lesson_progress_student_updated", "student_id, updated_at"],
+    ["messages", "idx_messages_recipient_read", "recipient_id, is_read"],
+    ["messages", "idx_messages_pair_sent", "sender_id, recipient_id, sent_at"],
+    ["notifications", "idx_notifications_user_read", "user_id, is_read"],
+    ["notifications", "idx_notifications_user_created", "user_id, created_at"],
+    ["student_class_packages", "idx_packages_student_status_created", "student_id, status, created_at"],
+  ];
+
+  for (const [tableName, indexName, columnsSql] of indexes) {
+    try {
+      await ensureIndex(tableName, indexName, columnsSql);
+    } catch (err) {
+      console.warn(`Could not ensure index ${indexName}:`, err.message);
+    }
+  }
 }
 
 async function ensureAssignmentAttemptColumns() {
@@ -1043,6 +1086,7 @@ try {
   await ensureStudentProficiencyLevels();
   await ensureMessagesTable();
   await ensureSensitiveEncryptedColumnTypes();
+  await ensurePerformanceIndexes();
   await encryptExistingPlaintextMessages();
   await encryptExistingSensitiveData();
   await removeStudentPackageDateColumns();

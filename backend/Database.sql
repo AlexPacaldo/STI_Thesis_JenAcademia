@@ -38,6 +38,7 @@ CREATE TABLE `assignment_submissions` (
   KEY `student_id` (`student_id`),
   KEY `idx_assignment_id` (`assignment_id`),
   KEY `idx_submitted_at` (`submitted_at`),
+  KEY `idx_submissions_assignment_submitted` (`assignment_id`,`submitted_at`,`submission_id`),
   CONSTRAINT `assignment_submissions_ibfk_1` FOREIGN KEY (`assignment_id`) REFERENCES `assignments` (`assignment_id`),
   CONSTRAINT `assignment_submissions_ibfk_2` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -79,6 +80,8 @@ CREATE TABLE `assignments` (
   KEY `idx_student_id` (`student_id`),
   KEY `idx_due_date` (`due_date`),
   KEY `idx_status` (`status`),
+  KEY `idx_assignments_teacher_created` (`teacher_id`,`created_at`,`assignment_id`),
+  KEY `idx_assignments_student_due` (`student_id`,`due_date`,`due_time`,`created_at`),
   CONSTRAINT `assignments_ibfk_1` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`user_id`),
   CONSTRAINT `assignments_ibfk_2` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`),
   CONSTRAINT `assignments_ibfk_3` FOREIGN KEY (`course_id`) REFERENCES `courses` (`course_id`)
@@ -118,6 +121,7 @@ CREATE TABLE `books` (
   KEY `idx_course_id` (`course_id`),
   KEY `idx_teacher_id` (`teacher_id`),
   KEY `idx_books_status` (`status`),
+  KEY `idx_books_status_teacher_course_created` (`status`,`teacher_id`,`course_id`,`created_at`),
   CONSTRAINT `books_ibfk_1` FOREIGN KEY (`course_id`) REFERENCES `courses` (`course_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=20 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -152,6 +156,7 @@ CREATE TABLE `class_remarks` (
   KEY `teacher_id` (`teacher_id`),
   KEY `idx_class_id` (`class_id`),
   KEY `idx_student_id` (`student_id`),
+  KEY `idx_remarks_student_created` (`student_id`,`created_at`),
   CONSTRAINT `class_remarks_ibfk_1` FOREIGN KEY (`class_id`) REFERENCES `classes` (`class_id`),
   CONSTRAINT `class_remarks_ibfk_2` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`user_id`),
   CONSTRAINT `class_remarks_ibfk_3` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`),
@@ -194,6 +199,9 @@ CREATE TABLE `classes` (
   KEY `idx_student_id` (`student_id`),
   KEY `idx_scheduled_date` (`scheduled_date`),
   KEY `idx_status` (`status`),
+  KEY `idx_classes_teacher_day_status_time` (`teacher_id`,`scheduled_date`,`status`,`start_time`),
+  KEY `idx_classes_student_day_status_time` (`student_id`,`scheduled_date`,`status`,`start_time`),
+  KEY `idx_classes_student_status_created` (`student_id`,`status`,`created_at`),
   CONSTRAINT `classes_ibfk_1` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`user_id`),
   CONSTRAINT `classes_ibfk_2` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -298,6 +306,7 @@ CREATE TABLE `lesson_progress` (
   KEY `lesson_id` (`lesson_id`),
   KEY `idx_student_id` (`student_id`),
   KEY `idx_is_completed` (`is_completed`),
+  KEY `idx_lesson_progress_student_updated` (`student_id`,`updated_at`),
   CONSTRAINT `lesson_progress_ibfk_1` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`),
   CONSTRAINT `lesson_progress_ibfk_2` FOREIGN KEY (`lesson_id`) REFERENCES `lessons` (`lesson_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=27 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -367,6 +376,8 @@ CREATE TABLE `messages` (
   KEY `idx_recipient_id` (`recipient_id`),
   KEY `idx_is_read` (`is_read`),
   KEY `idx_sent_at` (`sent_at`),
+  KEY `idx_messages_recipient_read` (`recipient_id`,`is_read`),
+  KEY `idx_messages_pair_sent` (`sender_id`,`recipient_id`,`sent_at`),
   CONSTRAINT `messages_ibfk_1` FOREIGN KEY (`sender_id`) REFERENCES `users` (`user_id`),
   CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`recipient_id`) REFERENCES `users` (`user_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -406,6 +417,8 @@ CREATE TABLE `notifications` (
   KEY `idx_is_read` (`is_read`),
   KEY `idx_type` (`type`),
   KEY `idx_created_at` (`created_at`),
+  KEY `idx_notifications_user_read` (`user_id`,`is_read`),
+  KEY `idx_notifications_user_created` (`user_id`,`created_at`),
   CONSTRAINT `notifications_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=199 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -475,6 +488,7 @@ CREATE TABLE `student_class_packages` (
   PRIMARY KEY (`package_id`),
   KEY `idx_student_id` (`student_id`),
   KEY `idx_status` (`status`),
+  KEY `idx_packages_student_status_created` (`student_id`,`status`,`created_at`),
   CONSTRAINT `student_class_packages_ibfk_1` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=40 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
