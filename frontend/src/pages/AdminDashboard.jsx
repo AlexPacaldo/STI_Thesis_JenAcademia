@@ -1,11 +1,11 @@
+import axios from "axios";
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import axios from "axios";
-import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/AdminDashboard.module.css";
-import Calendar from "./Calendar.jsx"; // admin calendar view
-import { readStoredUser } from "../utils/sessionUser.js";
+import { useNotification } from "../components/NotificationContainer.jsx";
 import { PROFICIENCY_LEVEL_OPTIONS } from "../utils/proficiencyLevels.js";
+import { readStoredUser } from "../utils/sessionUser.js";
+import Calendar from "./Calendar.jsx"; // admin calendar view
 
 const API = "http://localhost:3001";
 
@@ -236,6 +236,7 @@ export default function AdminDashboard() {
   const [requestFilter, setRequestFilter] = useState("all"); // 'all', 'pending', 'approved', 'declined'
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null); // { id, status, action }
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { id, action }
   const [contracts, setContracts] = useState([]);
   const [contractSearch, setContractSearch] = useState("");
   const [contractsLoading, setContractsLoading] = useState(false);
@@ -620,7 +621,6 @@ export default function AdminDashboard() {
   }
 
   async function deleteAllRequests() {
-    if (!window.confirm("Are you sure you want to delete all reschedule requests?")) return;
     try {
       await axios.delete(`${API}/api/admin/reschedule-requests`);
       notify("All requests deleted successfully", "success");
@@ -628,6 +628,40 @@ export default function AdminDashboard() {
     } catch (e) {
       console.error(e);
       notify("Failed to delete requests", "error");
+    }
+  }
+
+  function requestDeleteRequest(id) {
+    setDeleteConfirm({
+      action: "single",
+      id,
+      title: "Delete request?",
+      message: "Are you sure you want to delete this reschedule request? This cannot be undone.",
+      confirmLabel: "Delete"
+    });
+  }
+
+  function requestDeleteAllRequests() {
+    setDeleteConfirm({
+      action: "all",
+      id: null,
+      title: "Delete all requests?",
+      message: "Are you sure you want to delete all reschedule requests? This cannot be undone.",
+      confirmLabel: "Delete All"
+    });
+  }
+
+  async function confirmDeleteRequests() {
+    if (!deleteConfirm) return;
+
+    try {
+      if (deleteConfirm.action === "single") {
+        await deleteRequest(deleteConfirm.id);
+      } else {
+        await deleteAllRequests();
+      }
+    } finally {
+      setDeleteConfirm(null);
     }
   }
 
@@ -1786,7 +1820,7 @@ export default function AdminDashboard() {
             {requests.length > 0 && (
               <div style={{ marginBottom: "16px", textAlign: "right" }}>
                 <button
-                  onClick={deleteAllRequests}
+                  onClick={requestDeleteAllRequests}
                   className={styles.warn}
                   style={{ fontSize: "0.9em" }}
                 >
@@ -1879,7 +1913,7 @@ export default function AdminDashboard() {
                             <td style={{ padding: "12px", verticalAlign: "top" }}>
                               <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                                 <button
-                                  onClick={() => deleteRequest(r.request_id)}
+                                  onClick={() => requestDeleteRequest(r.request_id)}
                                   className={styles.warn}
                                   style={{ fontSize: "0.8em", padding: "6px 10px" }}
                                 >
@@ -1961,6 +1995,73 @@ export default function AdminDashboard() {
                   }}
                 >
                   {confirmDialog.status === "approved" ? "Approve" : "Decline"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {deleteConfirm && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0,0,0,0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+            }}
+            onClick={() => setDeleteConfirm(null)}
+          >
+            <div
+              style={{
+                background: "#fff",
+                borderRadius: "8px",
+                padding: "24px",
+                maxWidth: "400px",
+                width: "100%",
+                boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: "0 0 12px 0", fontSize: "1.1em" }}>
+                {deleteConfirm.title}
+              </h3>
+              <p style={{ margin: "0 0 24px 0", color: "#666", lineHeight: "1.6" }}>
+                {deleteConfirm.message}
+              </p>
+              <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: "0.9em",
+                    fontWeight: "600",
+                    border: "1px solid #d0d0d0",
+                    background: "#fff",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteRequests}
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: "0.9em",
+                    fontWeight: "600",
+                    border: "none",
+                    background: "#dc3545",
+                    color: "#fff",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                  }}
+                >
+                  {deleteConfirm.confirmLabel}
                 </button>
               </div>
             </div>

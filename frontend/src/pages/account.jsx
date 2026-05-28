@@ -4,8 +4,8 @@ import { useNavigate } from "react-router-dom";
 import styles from "../assets/account.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
-import { getUserTimezone } from "../utils/timezone.js";
 import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
+import { getUserTimezone } from "../utils/timezone.js";
 
 const API = "http://localhost:3001";
 const CROP_SIZE = 320;
@@ -199,6 +199,7 @@ export default function Account() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraStarting, setCameraStarting] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null);
   const [crop, setCrop] = useState({ x: 0, y: 0, zoom: 1 });
   const [cropImageSize, setCropImageSize] = useState({ width: 0, height: 0 });
   const storedUser = useMemo(() => {
@@ -348,8 +349,88 @@ export default function Account() {
   }, [cameraOpen, notify]);
 
   function handleLogout() {
+    setConfirmAction({
+      type: "logout",
+      title: "Log out?",
+      message: "Are you sure you want to log out?",
+      confirmLabel: "Log Out",
+    });
+  }
+
+  function performLogout() {
     clearStoredUser();
     window.location.href = "/";
+  }
+
+  function closeConfirmAction() {
+    setConfirmAction(null);
+  }
+
+  function requestSaveProfile() {
+    setConfirmAction({
+      type: "save-profile",
+      title: "Save profile changes?",
+      message: "Are you sure you want to save the profile changes?",
+      confirmLabel: "Save Changes",
+    });
+  }
+
+  function requestSavePicture() {
+    setConfirmAction({
+      type: "save-picture",
+      title: "Save profile picture?",
+      message: "Are you sure you want to save this profile picture?",
+      confirmLabel: "Save Picture",
+    });
+  }
+
+  function requestSavePassword() {
+    setConfirmAction({
+      type: "save-password",
+      title: "Update password?",
+      message: "Are you sure you want to update your password?",
+      confirmLabel: "Update Password",
+    });
+  }
+
+  async function saveProfileConfirmed() {
+    setSaving(true);
+    try {
+      await axios.put(`${API}/api/users/${user.id}`, form);
+      const updated = await loadUser(user.id);
+      setProfileEditing(!updated.profileCompleted);
+      notify("Profile updated successfully.", "success");
+
+      if (updated.profileCompleted && isProfileIncomplete) {
+        setTimeout(() => {
+          if (updated.role === "teacher") navigate("/TeacherDashboard");
+          else if (updated.role === "admin") navigate("/AdminDashboard");
+          else navigate("/StudentDashboard");
+        }, 400);
+      }
+    } catch (err) {
+      notify(err?.response?.data?.message || "Could not update profile.", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function performConfirmAction() {
+    if (!confirmAction) return;
+    if (confirmAction.type === "logout") {
+      performLogout();
+      return;
+    }
+    if (confirmAction.type === "save-profile") {
+      await saveProfileConfirmed();
+    }
+    if (confirmAction.type === "save-picture") {
+      saveCroppedProfilePicture();
+    }
+    if (confirmAction.type === "save-password") {
+      await savePasswordConfirmed();
+    }
+    closeConfirmAction();
   }
 
   function onChange(e) {
@@ -409,24 +490,9 @@ export default function Account() {
       return;
     }
 
-    setSaving(true);
-    try {
-      await axios.put(`${API}/api/users/${user.id}`, form);
-      const updated = await loadUser(user.id);
-      setProfileEditing(!updated.profileCompleted);
-      notify("Profile updated successfully.", "success");
-
-      if (updated.profileCompleted && isProfileIncomplete) {
-        setTimeout(() => {
-          if (updated.role === "teacher") navigate("/TeacherDashboard");
-          else if (updated.role === "admin") navigate("/AdminDashboard");
-          else navigate("/StudentDashboard");
-        }, 400);
-      }
-    } catch (err) {
-      notify(err?.response?.data?.message || "Could not update profile.", "error");
-    } finally {
-      setSaving(false);
+    if (!confirmAction || confirmAction.type !== "save-profile") {
+      requestSaveProfile();
+      return;
     }
   }
 
@@ -571,7 +637,13 @@ export default function Account() {
       notify("New password and confirm password do not match.", "error");
       return;
     }
+    if (!confirmAction || confirmAction.type !== "save-password") {
+      requestSavePassword();
+      return;
+    }
+  }
 
+  async function savePasswordConfirmed() {
     setPwdSaving(true);
     try {
       const res = await axios.put(`${API}/api/users/${user.id}/password`, {
@@ -885,7 +957,7 @@ export default function Account() {
               <p><strong>Role:</strong> {formatRole(user.role)}</p>
               <p><strong>Created:</strong> {formatAccountDate(user.createdAt, user.timezone)}</p>
             </div>
-            <button className={styles.logoutBtn} onClick={handleLogout}>Log out</button>
+            <button className={styles.logoutBtn} type="button" onClick={handleLogout}>Log out</button>
           </section>
         </section>
       </div>
@@ -935,7 +1007,7 @@ export default function Account() {
             </div>
             <div className={styles.modalActions}>
               <button type="button" className={styles.textBtn} onClick={closeCropModal}>Cancel</button>
-              <button type="button" className={styles.primaryBtn} onClick={saveCroppedProfilePicture} disabled={pictureUploading}>
+              <button type="button" className={styles.primaryBtn} onClick={requestSavePicture} disabled={pictureUploading}>
                 {pictureUploading ? "Saving..." : "Save Picture"}
               </button>
             </div>
@@ -943,6 +1015,29 @@ export default function Account() {
         </div>
       )}
 
+      {confirmAction && (
+        <div
+          className={styles.modalBackdrop}
+          onClick={closeConfirmAction}
+        >
+          <section className={styles.cropModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h2>{confirmAction.title}</h2>
+            </div>
+            <div style={{ padding: "0 24px 24px" }}>
+              <p style={{ margin: 0, color: "#444", lineHeight: 1.6 }}>{confirmAction.message}</p>
+            </div>
+            <div className={styles.modalActions} style={{ justifyContent: "flex-end" }}>
+              <button type="button" className={styles.textBtn} onClick={closeConfirmAction}>
+                Cancel
+              </button>
+              <button type="button" className={styles.primaryBtn} onClick={performConfirmAction}>
+                {confirmAction.confirmLabel}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       {cameraOpen && (
         <div className={styles.modalBackdrop}>
           <section className={styles.cameraModal}>

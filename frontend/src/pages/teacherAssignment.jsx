@@ -118,11 +118,79 @@ export default function AssignTask() {
   const [teacherAssignments, setTeacherAssignments] = useState([]);
   const [submissions, setSubmissions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null);
 
   const currentUser = useMemo(() => readStoredUser() || {}, []);
 
   const currentTeacherId = currentUser.id ?? currentUser.user_id ?? null;
   const teacherName = getUserName(currentUser) || "You";
+
+  const closeConfirmAction = () => setConfirmAction(null);
+  const requestCreateAssignment = () => {
+    if (!selectedStudent) {
+      notify?.("Please select a student before posting an assignment.", "warning");
+      return;
+    }
+    const selectedStudentName = selectedStudent?.name || "selected student";
+    setConfirmAction({
+      type: "create-assignment",
+      title: `Give assignment to ${selectedStudentName}?`,
+      message: `Are you sure you want to post this assignment for ${selectedStudentName}?`,
+      confirmLabel: "Post Assignment"
+    });
+  };
+
+  const createAssignment = async () => {
+    try {
+      const res = await fetch(`${API}/api/assignments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teacherId: currentTeacherId,
+          studentId: selectedStudent.id,
+          courseId: selectedStudent.courseId,
+          title: `Task for ${selectedStudent.name}`,
+          instructions,
+          due,
+          attemptLimit: hasAttemptLimit ? Number(attemptLimit) : null,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Could not create assignment");
+      }
+
+      setTeacherAssignments((prev) => [data.assignment, ...prev]);
+
+      addLocalNotification({
+        recipientId: selectedStudent.id,
+        recipientName: selectedStudent.name,
+        senderName: teacherName,
+        message: `New assignment posted by ${teacherName}: "${data.assignment.name}"${data.assignment.due ? ` due ${data.assignment.due}` : ""}.`,
+        type: "assignment",
+        title: "New Assignment",
+        relatedId: data.assignment.id,
+      });
+
+      notify?.("Assignment posted to student!", "success");
+      setInstructions("");
+      setDue("");
+      setHasAttemptLimit(false);
+      setAttemptLimit("1");
+    } catch (err) {
+      console.error("Create assignment error:", err);
+      notify?.(err.message || "Could not create assignment.", "error");
+    }
+  };
+
+  const performConfirmAction = async () => {
+    if (!confirmAction) return;
+    if (confirmAction.type === "create-assignment") {
+      await createAssignment();
+    }
+    closeConfirmAction();
+  };
 
   useEffect(() => {
     if (!currentTeacherId) return;
@@ -240,47 +308,7 @@ export default function AssignTask() {
       return;
     }
 
-    try {
-      const res = await fetch(`${API}/api/assignments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          teacherId: currentTeacherId,
-          studentId: selectedStudent.id,
-          courseId: selectedStudent.courseId,
-          title: `Task for ${selectedStudent.name}`,
-          instructions,
-          due,
-          attemptLimit: parsedAttemptLimit,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "Could not create assignment");
-      }
-
-      setTeacherAssignments((prev) => [data.assignment, ...prev]);
-
-      addLocalNotification({
-        recipientId: selectedStudent.id,
-        recipientName: selectedStudent.name,
-        senderName: teacherName,
-        message: `New assignment posted by ${teacherName}: "${data.assignment.name}"${data.assignment.due ? ` due ${data.assignment.due}` : ""}.`,
-        type: "assignment",
-        title: "New Assignment",
-        relatedId: data.assignment.id,
-      });
-
-      notify?.("Assignment posted to student!", "success");
-      setInstructions("");
-      setDue("");
-      setHasAttemptLimit(false);
-      setAttemptLimit("1");
-    } catch (err) {
-      console.error("Create assignment error:", err);
-      notify?.(err.message || "Could not create assignment.", "error");
-    }
+    requestCreateAssignment();
   };
 
   return (
@@ -501,6 +529,68 @@ export default function AssignTask() {
           </div>
         </div>
       </div>
+      {confirmAction && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1200,
+            padding: "20px",
+          }}
+          onClick={closeConfirmAction}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              padding: "24px",
+              maxWidth: "420px",
+              width: "100%",
+              boxShadow: "0 24px 60px rgba(0,0,0,0.16)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: "0 0 12px", fontSize: "1.1rem" }}>{confirmAction.title}</h3>
+            <p style={{ margin: "0 0 24px", color: "#55606c", lineHeight: 1.6 }}>{confirmAction.message}</p>
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={closeConfirmAction}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: "12px",
+                  border: "1px solid #d0d5db",
+                  background: "#fff",
+                  color: "#13251f",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={performConfirmAction}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: "12px",
+                  border: "none",
+                  background: "#26423b",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                {confirmAction.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
