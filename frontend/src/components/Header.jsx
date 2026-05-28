@@ -6,6 +6,7 @@ import pfp from "../assets/img/Navbar/user.jpg";
 import { getLocalUnreadCount } from "../utils/localNotificationStore.js";
 import ChatPanel from "./ChatPanel";
 import NotificationPanel from "./NotificationPanel";
+import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
 
 const API = "http://localhost:3001";
 
@@ -31,10 +32,8 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem("user");
-      console.log('Header: Reading from localStorage:', stored);
-      if (stored) {
-        const parsedUser = JSON.parse(stored);
+      const parsedUser = readStoredUser();
+      if (parsedUser) {
         console.log('Header: Parsed user:', parsedUser);
         setUser(parsedUser);
         setRole(parsedUser.role);
@@ -43,7 +42,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
         setProfileCompleted(!!parsedUser.profileCompleted);
       }
     } catch (e) {
-      console.warn("Failed to read user from localStorage:", e);
+      console.warn("Failed to read user from storage:", e);
     }
   }, [location]);
 
@@ -109,9 +108,8 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
     };
     
     const handleStorageChange = () => {
-      const stored = localStorage.getItem("user");
-      if (stored) {
-        const parsedUser = JSON.parse(stored);
+      const parsedUser = readStoredUser();
+      if (parsedUser) {
         console.log('Header detected storage change:', parsedUser);
         setUser(parsedUser);
         setRole(parsedUser.role);
@@ -219,7 +217,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
   }, [currentUserId, role, location]);
 
   const fetchUnreadCount = async () => {
-    const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const currentUser = readStoredUser() || {};
     const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
     const localCount = getLocalUnreadCount({ userId: currentUserId, userName });
     try {

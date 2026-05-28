@@ -3,6 +3,7 @@ import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/teacherAssignment.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { addLocalNotification } from "../utils/localNotificationStore.js";
+import { readStoredUser } from "../utils/sessionUser.js";
 
 const API = "http://localhost:3001";
 
@@ -118,13 +119,7 @@ export default function AssignTask() {
   const [submissions, setSubmissions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const currentUser = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("user") || "{}");
-    } catch {
-      return {};
-    }
-  }, []);
+  const currentUser = useMemo(() => readStoredUser() || {}, []);
 
   const currentTeacherId = currentUser.id ?? currentUser.user_id ?? null;
   const teacherName = getUserName(currentUser) || "You";

@@ -14,12 +14,85 @@ dotenv.config();
 const PORT = process.env.PORT || 3001;
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_USER = process.env.DB_USER || "root";
-const DB_PASSWORD = process.env.DB_PASSWORD || "DBPASSWORD";    // <- your password here
+const DB_PASSWORD = process.env.DB_PASSWORD || "Aj1182014";    // <- your password here
 const DB_NAME = process.env.DB_NAME || "jen_academia"; // your schema
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const ENCRYPTED_VALUE_PREFIX = "enc:v1:";
+const ENCRYPTION_SECRET =
+  process.env.CHAT_ENCRYPTION_KEY ||
+  process.env.ENCRYPTION_KEY ||
+  process.env.JWT_SECRET ||
+  DB_PASSWORD;
+const ENCRYPTION_KEY = crypto.scryptSync(String(ENCRYPTION_SECRET), "jen-academia-chat-v1", 32);
+
+if (!process.env.CHAT_ENCRYPTION_KEY && !process.env.ENCRYPTION_KEY && !process.env.JWT_SECRET) {
+  console.warn("CHAT_ENCRYPTION_KEY is not set; using DB_PASSWORD as the chat encryption secret.");
+}
+
+function encryptNullableText(value) {
+  if (value === null || value === undefined) return null;
+
+  const text = String(value);
+  if (!text || text.startsWith(ENCRYPTED_VALUE_PREFIX)) return text;
+
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
+  const encrypted = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+
+  return [
+    ENCRYPTED_VALUE_PREFIX.slice(0, -1),
+    iv.toString("base64"),
+    tag.toString("base64"),
+    encrypted.toString("base64"),
+  ].join(":");
+}
+
+function decryptNullableText(value) {
+  if (value === null || value === undefined) return null;
+
+  const text = String(value);
+  if (!text.startsWith(ENCRYPTED_VALUE_PREFIX)) return text;
+
+  try {
+    const [, , ivBase64, tagBase64, encryptedBase64] = text.split(":");
+    if (!ivBase64 || !tagBase64 || !encryptedBase64) return "";
+
+    const decipher = crypto.createDecipheriv(
+      "aes-256-gcm",
+      ENCRYPTION_KEY,
+      Buffer.from(ivBase64, "base64")
+    );
+    decipher.setAuthTag(Buffer.from(tagBase64, "base64"));
+
+    return Buffer.concat([
+      decipher.update(Buffer.from(encryptedBase64, "base64")),
+      decipher.final(),
+    ]).toString("utf8");
+  } catch (err) {
+    console.error("Could not decrypt stored text:", err);
+    return "";
+  }
+}
+
+function decryptFields(row, fields) {
+  if (!row) return row;
+  const next = { ...row };
+  fields.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(next, field)) {
+      next[field] = decryptNullableText(next[field]);
+    }
+  });
+  return next;
+}
+
+function decryptRows(rows, fields) {
+  return Array.isArray(rows) ? rows.map((row) => decryptFields(row, fields)) : [];
+}
 
 const uploadDir = path.join(process.cwd(), "uploads", "assignments");
 fs.mkdirSync(uploadDir, { recursive: true });
@@ -314,7 +387,7 @@ async function getStudentPackageAvailability(connection, studentId) {
   const db = connection || pool;
   await autoMarkPastClassesAsNoShow(db);
   const [packageRows] = await db.query(
-    `SELECT package_id, student_id, total_classes, classes_used, classes_left, class_duration, status
+    `SELECT package_id, student_id, total_classes, classes_used, classes_left, class_duration, status, created_at
      FROM student_class_packages
      WHERE student_id = ? AND status = 'active'
      ORDER BY created_at DESC
@@ -326,21 +399,26 @@ async function getStudentPackageAvailability(connection, studentId) {
     return { package: null, bookedClasses: 0, bookableClasses: 0 };
   }
 
+  const packageInfo = packageRows[0];
+
   const [scheduledRows] = await db.query(
     `SELECT COUNT(*) AS booked_count
      FROM classes
-     WHERE student_id = ? AND status IN ('scheduled', 'completed')`,
-    [studentId]
+     WHERE student_id = ?
+       AND status IN ('scheduled', 'completed')
+       AND created_at >= ?`,
+    [studentId, packageInfo.created_at]
   );
 
   const bookedClasses = Number(scheduledRows[0]?.booked_count || 0);
-  const packageInfo = packageRows[0];
   const totalClasses = Number(packageInfo.total_classes || 0);
+  const classesLeft = Number(packageInfo.classes_left ?? Math.max(0, totalClasses - Number(packageInfo.classes_used || 0)));
+  const scheduleSlotsLeft = Math.max(0, totalClasses - bookedClasses);
 
   return {
     package: packageInfo,
     bookedClasses,
-    bookableClasses: Math.max(0, totalClasses - bookedClasses),
+    bookableClasses: Math.max(0, Math.min(classesLeft, scheduleSlotsLeft)),
   };
 }
 
@@ -641,8 +719,12 @@ async function ensureUserDemographicsColumns() {
   }
 
   if (!(await columnExists("users", "birth_date"))) {
-    await pool.query("ALTER TABLE users ADD COLUMN birth_date DATE DEFAULT NULL AFTER country");
+    await pool.query("ALTER TABLE users ADD COLUMN birth_date TEXT DEFAULT NULL AFTER country");
+  } else {
+    await pool.query("ALTER TABLE users MODIFY COLUMN birth_date TEXT DEFAULT NULL");
   }
+
+  await pool.query("ALTER TABLE users MODIFY COLUMN contact_number TEXT DEFAULT NULL");
 }
 
 async function refreshProfileCompletion(userId) {
@@ -709,6 +791,8 @@ async function ensureStudentContractRequestsTable() {
   if (!(await columnExists("student_contract_requests", "ai_criteria"))) {
     await pool.query("ALTER TABLE student_contract_requests ADD COLUMN ai_criteria TEXT DEFAULT NULL AFTER trial_notes");
   }
+
+  await pool.query("ALTER TABLE student_contract_requests MODIFY COLUMN admin_response TEXT DEFAULT NULL");
 }
 
 async function ensureStudentClassPackageDurationColumn() {
@@ -720,6 +804,33 @@ async function ensureStudentClassPackageDurationColumn() {
 async function ensureClassStatusSupportsNoShow() {
   await pool.query(
     "ALTER TABLE classes MODIFY COLUMN status ENUM('scheduled','completed','cancelled','no-show') DEFAULT 'scheduled'"
+  );
+}
+
+async function ensureStudentProficiencyLevels() {
+  await pool.query("ALTER TABLE student_profiles MODIFY COLUMN proficiency_level VARCHAR(50) DEFAULT 'novice-low'");
+  await pool.query(`
+    UPDATE student_profiles
+    SET proficiency_level = CASE proficiency_level
+      WHEN 'beginner' THEN 'novice-low'
+      WHEN 'elementary' THEN 'novice-high'
+      WHEN 'intermediate' THEN 'intermediate-mid'
+      WHEN 'upper-intermediate' THEN 'intermediate-high'
+      WHEN 'proficient' THEN 'advanced'
+      WHEN 'fluent' THEN 'advanced'
+      WHEN 'novice-low' THEN 'novice-low'
+      WHEN 'novice-mid' THEN 'novice-mid'
+      WHEN 'novice-high' THEN 'novice-high'
+      WHEN 'intermediate-low' THEN 'intermediate-low'
+      WHEN 'intermediate-mid' THEN 'intermediate-mid'
+      WHEN 'intermediate-high' THEN 'intermediate-high'
+      WHEN 'advanced' THEN 'advanced'
+      ELSE 'novice-low'
+    END
+    WHERE proficiency_level IS NOT NULL
+  `);
+  await pool.query(
+    "ALTER TABLE student_profiles MODIFY COLUMN proficiency_level ENUM('novice-low','novice-mid','novice-high','intermediate-low','intermediate-mid','intermediate-high','advanced') DEFAULT 'novice-low'"
   );
 }
 
@@ -778,6 +889,98 @@ async function ensureMessagesTable() {
       CONSTRAINT messages_ibfk_2 FOREIGN KEY (recipient_id) REFERENCES users (user_id)
     )
   `);
+
+  await pool.query("ALTER TABLE messages MODIFY COLUMN subject TEXT DEFAULT NULL");
+}
+
+async function ensureSensitiveEncryptedColumnTypes() {
+  const statements = [
+    "ALTER TABLE classes MODIFY COLUMN class_link TEXT DEFAULT NULL",
+    "ALTER TABLE video_sessions MODIFY COLUMN teams_meeting_link TEXT DEFAULT NULL",
+  ];
+
+  for (const statement of statements) {
+    try {
+      await pool.query(statement);
+    } catch (err) {
+      console.warn(`Could not update encrypted column type: ${statement}`, err.message);
+    }
+  }
+}
+
+async function encryptExistingPlaintextColumn(tableName, columnName, whereClause = "") {
+  const [rows] = await pool.query(
+    `SELECT ${columnName} AS value, ${whereClause ? `${whereClause},` : ""} 1 AS marker
+     FROM ${tableName}
+     WHERE ${columnName} IS NOT NULL
+       AND ${columnName} <> ''
+       AND ${columnName} NOT LIKE ?`,
+    [`${ENCRYPTED_VALUE_PREFIX}%`]
+  );
+
+  for (const row of rows) {
+    await pool.query(
+      `UPDATE ${tableName}
+       SET ${columnName} = ?
+       WHERE ${columnName} = ?`,
+      [encryptNullableText(row.value), row.value]
+    );
+  }
+
+  if (rows.length) {
+    console.log(`Encrypted ${rows.length} existing ${tableName}.${columnName} value(s).`);
+  }
+}
+
+async function encryptExistingSensitiveData() {
+  const sensitiveColumns = [
+    ["users", "contact_number"],
+    ["users", "birth_date"],
+    ["class_remarks", "remarks"],
+    ["reschedule_requests", "reason"],
+    ["student_contract_requests", "trial_notes"],
+    ["student_contract_requests", "ai_criteria"],
+    ["student_contract_requests", "admin_response"],
+    ["student_profiles", "trial_notes"],
+    ["assignment_submissions", "submission_text"],
+    ["assignment_submissions", "feedback"],
+    ["notifications", "title"],
+    ["notifications", "message"],
+    ["classes", "class_link"],
+    ["video_sessions", "teams_meeting_link"],
+  ];
+
+  for (const [tableName, columnName] of sensitiveColumns) {
+    await encryptExistingPlaintextColumn(tableName, columnName);
+  }
+}
+
+async function encryptExistingPlaintextMessages() {
+  const [rows] = await pool.query(
+    `SELECT message_id, subject, content
+     FROM messages
+     WHERE (subject IS NOT NULL AND subject NOT LIKE ?)
+        OR (content IS NOT NULL AND content NOT LIKE ?)`,
+    [`${ENCRYPTED_VALUE_PREFIX}%`, `${ENCRYPTED_VALUE_PREFIX}%`]
+  );
+
+  for (const row of rows) {
+    await pool.query(
+      `UPDATE messages
+       SET subject = ?,
+           content = ?
+       WHERE message_id = ?`,
+      [
+        encryptNullableText(row.subject),
+        encryptNullableText(row.content || ""),
+        row.message_id,
+      ]
+    );
+  }
+
+  if (rows.length) {
+    console.log(`Encrypted ${rows.length} existing plaintext chat message(s).`);
+  }
 }
 
 try {
@@ -793,7 +996,11 @@ try {
   await ensureStudentContractRequestsTable();
   await ensureStudentClassPackageDurationColumn();
   await ensureClassStatusSupportsNoShow();
+  await ensureStudentProficiencyLevels();
   await ensureMessagesTable();
+  await ensureSensitiveEncryptedColumnTypes();
+  await encryptExistingPlaintextMessages();
+  await encryptExistingSensitiveData();
   await removeStudentPackageDateColumns();
   await ensureTeacherCoursesTable();
   await expireDepletedPackages();
@@ -884,7 +1091,7 @@ function buildTeacherAiBio({ bio, teachingStyle, personalityStrength, idealStude
     .join("\n\n");
 }
 
-function scoreTeacherForStudent(teacher, criteria, trialNotes, courseId) {
+function scoreTeacherForStudent(teacher, criteria, trialNotes, courseId, proficiencyLevel = "") {
   const profileText = [
     teacher.first_name,
     teacher.last_name,
@@ -929,6 +1136,16 @@ function scoreTeacherForStudent(teacher, criteria, trialNotes, courseId) {
   if (aiValueIncludes(criteria.personality, "shy")) score += profileText.includes("patient") || profileText.includes("supportive") ? 5 : 0;
   if (aiValueIncludes(criteria.pace, "slow")) score += profileText.includes("patient") ? 4 : 0;
 
+  const normalizedProficiencyLevel = normalizeProficiencyLevel(proficiencyLevel);
+  if (normalizedProficiencyLevel) {
+    const aliases = PROFICIENCY_LEVEL_ALIASES[normalizedProficiencyLevel] || [normalizedProficiencyLevel];
+    const matched = aliases.some((alias) => profileText.includes(alias) || notes.includes(alias));
+    if (matched) {
+      score += 8;
+      reasons.push(`matches ${formatProficiencyLevel(normalizedProficiencyLevel)} level`);
+    }
+  }
+
   score -= Number(teacher.assigned_student_count || 0);
 
   return {
@@ -940,7 +1157,55 @@ function scoreTeacherForStudent(teacher, criteria, trialNotes, courseId) {
 
 const TEACHER_BALANCE_LIMIT = 2;
 
-async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = null, preferredTeacherId = null, db = pool }) {
+const PROFICIENCY_LEVELS = new Set([
+  "novice-low",
+  "novice-mid",
+  "novice-high",
+  "intermediate-low",
+  "intermediate-mid",
+  "intermediate-high",
+  "advanced",
+]);
+
+const PROFICIENCY_LEVEL_ALIASES = {
+  "novice-low": ["novice low", "novice-low", "beginner", "starter", "basic"],
+  "novice-mid": ["novice mid", "novice-mid", "beginner", "basic"],
+  "novice-high": ["novice high", "novice-high", "elementary", "high beginner"],
+  "intermediate-low": ["intermediate low", "intermediate-low", "lower intermediate"],
+  "intermediate-mid": ["intermediate mid", "intermediate-mid", "intermediate", "mid-level"],
+  "intermediate-high": ["intermediate high", "intermediate-high", "upper intermediate", "upper-intermediate"],
+  advanced: ["advanced", "fluent", "proficient", "near-native", "native-like", "high level"],
+};
+
+const PROFICIENCY_LEVEL_LABELS = {
+  "novice-low": "Novice Low",
+  "novice-mid": "Novice Mid",
+  "novice-high": "Novice High",
+  "intermediate-low": "Intermediate Low",
+  "intermediate-mid": "Intermediate Mid",
+  "intermediate-high": "Intermediate High",
+  advanced: "Advanced (Fluent)",
+};
+
+function formatProficiencyLevel(value) {
+  return PROFICIENCY_LEVEL_LABELS[value] || String(value || "").replace(/-/g, " ");
+}
+
+function normalizeProficiencyLevel(value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/\s+/g, "-");
+  const legacyMap = {
+    beginner: "novice-low",
+    elementary: "novice-high",
+    intermediate: "intermediate-mid",
+    "upper-intermediate": "intermediate-high",
+    proficient: "advanced",
+    fluent: "advanced",
+  };
+  if (legacyMap[normalized]) return legacyMap[normalized];
+  return PROFICIENCY_LEVELS.has(normalized) ? normalized : "";
+}
+
+async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = null, proficiencyLevel = "", preferredTeacherId = null, db = pool }) {
   const normalizedCriteria = normalizeCriteria(criteria);
   const courseFilter = courseId ? parseInt(courseId, 10) : null;
   const [teachers] = await db.query(
@@ -961,7 +1226,7 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
   );
 
   const ranked = teachers
-    .map((teacher) => scoreTeacherForStudent(teacher, normalizedCriteria, trialNotes, courseId))
+    .map((teacher) => scoreTeacherForStudent(teacher, normalizedCriteria, trialNotes, courseId, proficiencyLevel))
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       return Number(a.assigned_student_count || 0) - Number(b.assigned_student_count || 0);
@@ -1267,10 +1532,10 @@ app.post("/api/login", async (req, res) => {
         firstName: user.first_name,
         lastName: user.last_name,
         email: user.email,
-        contact: user.contact,
+        contact: decryptNullableText(user.contact),
         role: user.role,
         country: user.country,
-        birthDate: user.birth_date,
+        birthDate: decryptNullableText(user.birth_date),
         timezone: normalizeTimezone(user.timezone),
         profileCompleted: completion?.profile_completed,
         passwordChanged: completion?.password_changed,
@@ -1302,7 +1567,7 @@ app.get("/api/users/:id", async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ message: "User not found" });
 
-    const u = rows[0];
+    const u = decryptFields(rows[0], ["contact", "birth_date"]);
     let roleDetails = {};
 
     if (u.role === "student") {
@@ -1319,7 +1584,7 @@ app.get("/api/users/:id", async (req, res) => {
          LIMIT 1`,
         [req.params.id]
       );
-      roleDetails = studentRows[0] || {};
+      roleDetails = decryptFields(studentRows[0] || {}, ["trial_notes"]);
     } else if (u.role === "teacher") {
       const [teacherRows] = await pool.query(
         `SELECT tp.bio, tp.specialization, tp.experience_years, tp.hourly_rate,
@@ -1404,7 +1669,16 @@ app.put("/api/users/:id", async (req, res) => {
       `UPDATE users
        SET first_name = ?, last_name = ?, email = ?, contact_number = ?, country = ?, birth_date = ?, timezone = ?
        WHERE user_id = ?`,
-      [firstName, lastName, email, contact, normalizedCountry || null, normalizedBirthDate, resolvedTimezone, req.params.id]
+      [
+        firstName,
+        lastName,
+        email,
+        encryptNullableText(contact),
+        normalizedCountry || null,
+        encryptNullableText(normalizedBirthDate),
+        resolvedTimezone,
+        req.params.id,
+      ]
     );
     await refreshProfileCompletion(req.params.id);
 
@@ -1496,11 +1770,12 @@ app.put("/api/users/:id/password", async (req, res) => {
 
 app.post("/api/admin/recommend-teacher", async (req, res) => {
   try {
-    const { criteria, trialNotes, courseId, teacherId } = req.body || {};
+    const { criteria, trialNotes, courseId, proficiencyLevel, teacherId } = req.body || {};
     const recommendation = await recommendTeacher({
       criteria,
       trialNotes,
       courseId,
+      proficiencyLevel,
       preferredTeacherId: teacherId,
     });
 
@@ -1579,7 +1854,18 @@ app.post("/api/admin/users", async (req, res) => {
     const [ins] = await pool.query(`
       INSERT INTO users (email, password_hash, first_name, last_name, contact_number, country, birth_date, timezone, role, profile_completed)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [email, hash, firstName, lastName, contact || null, normalizedCountry, normalizedBirthDate, detectedTimezone, role, profileCompleted]);
+    `, [
+      email,
+      hash,
+      firstName,
+      lastName,
+      encryptNullableText(contact || null),
+      normalizedCountry,
+      encryptNullableText(normalizedBirthDate),
+      detectedTimezone,
+      role,
+      profileCompleted,
+    ]);
 
     const userId = ins.insertId;
     
@@ -1622,10 +1908,11 @@ app.post("/api/admin/users", async (req, res) => {
         criteria: aiCriteria,
         trialNotes,
         courseId,
+        proficiencyLevel: level,
         preferredTeacherId: teacherId,
       });
       const assignedTeacherId = recommendation.teacher?.user_id || null;
-      const proficiencyLevel = level || "beginner";
+      const proficiencyLevel = normalizeProficiencyLevel(level) || "novice-low";
       const courseIdValue = courseId ? parseInt(courseId, 10) : null;
       const classDurationValue = normalizeClassDuration(classDuration);
       const criteriaNotes = buildCriteriaNotes(recommendation.criteria);
@@ -1636,7 +1923,7 @@ app.post("/api/admin/users", async (req, res) => {
       await pool.query(`
         INSERT INTO student_profiles (user_id, proficiency_level, assigned_teacher_id, course_id, trial_notes)
         VALUES (?, ?, ?, ?, ?)
-      `, [userId, proficiencyLevel, assignedTeacherId, courseIdValue, finalTrialNotes || null]);
+      `, [userId, proficiencyLevel, assignedTeacherId, courseIdValue, encryptNullableText(finalTrialNotes || null)]);
       
       // Create student class package if classesAvailed is provided
       if (classesAvailed && parseInt(classesAvailed, 10) > 0) {
@@ -1823,8 +2110,8 @@ app.post("/api/student/contract-requests", async (req, res) => {
           parsedCourseId,
           parsedClasses,
           parsedDuration,
-          String(trial_notes || "").trim() || null,
-          JSON.stringify(normalizeCriteria(ai_criteria || {})),
+          encryptNullableText(String(trial_notes || "").trim() || null),
+          encryptNullableText(JSON.stringify(normalizeCriteria(ai_criteria || {}))),
           requestId,
         ]
       );
@@ -1851,7 +2138,7 @@ app.post("/api/student/contract-requests", async (req, res) => {
         await pool.query(
           `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
            VALUES ${adminRows.map(() => "(?, 'general', 'Updated Contract Request', ?, ?, 'contract_request', '/AdminDashboard')").join(", ")}`,
-          adminRows.flatMap((admin) => [admin.user_id, notificationMessage, requestId])
+          adminRows.flatMap((admin) => [admin.user_id, encryptNullableText(notificationMessage), requestId])
         );
       }
 
@@ -1866,8 +2153,8 @@ app.post("/api/student/contract-requests", async (req, res) => {
         parsedCourseId,
         parsedClasses,
         parsedDuration,
-        String(trial_notes || "").trim() || null,
-        JSON.stringify(normalizeCriteria(ai_criteria || {})),
+        encryptNullableText(String(trial_notes || "").trim() || null),
+        encryptNullableText(JSON.stringify(normalizeCriteria(ai_criteria || {}))),
       ]
     );
 
@@ -1893,7 +2180,7 @@ app.post("/api/student/contract-requests", async (req, res) => {
       await pool.query(
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
          VALUES ${adminRows.map(() => "(?, 'general', 'New Contract Request', ?, ?, 'contract_request', '/AdminDashboard')").join(", ")}`,
-        adminRows.flatMap((admin) => [admin.user_id, notificationMessage, result.insertId])
+        adminRows.flatMap((admin) => [admin.user_id, encryptNullableText(notificationMessage), result.insertId])
       );
     }
 
@@ -1917,7 +2204,7 @@ app.get("/api/student/contract-requests/:student_id", async (req, res) => {
       [student_id]
     );
 
-    res.json({ requests: rows });
+    res.json({ requests: decryptRows(rows, ["trial_notes", "ai_criteria", "admin_response"]) });
   } catch (err) {
     console.error("GET /api/student/contract-requests/:student_id error:", err);
     res.status(500).json({ message: "Error fetching contract requests" });
@@ -1935,7 +2222,7 @@ app.get("/api/admin/contract-requests", async (_req, res) => {
        ORDER BY FIELD(r.status, 'pending', 'approved', 'declined'), r.requested_at DESC`
     );
 
-    res.json({ requests: rows });
+    res.json({ requests: decryptRows(rows, ["trial_notes", "ai_criteria", "admin_response"]) });
   } catch (err) {
     console.error("GET /api/admin/contract-requests error:", err);
     res.status(500).json({ message: "Error fetching contract requests" });
@@ -1970,7 +2257,7 @@ app.put("/api/admin/contract-requests/:request_id", async (req, res) => {
       return res.status(404).json({ message: "Contract request not found" });
     }
 
-    const request = requestRows[0];
+    const request = decryptFields(requestRows[0], ["trial_notes", "ai_criteria", "admin_response"]);
     if (request.status !== "pending") {
       await connection.rollback();
       return res.status(409).json({ message: "This request has already been resolved" });
@@ -1978,7 +2265,7 @@ app.put("/api/admin/contract-requests/:request_id", async (req, res) => {
 
     if (status === "approved") {
       const [profileRows] = await connection.query(
-        `SELECT trial_notes, assigned_teacher_id
+        `SELECT trial_notes, assigned_teacher_id, proficiency_level
          FROM student_profiles
          WHERE user_id = ?
          LIMIT 1
@@ -1993,13 +2280,14 @@ app.put("/api/admin/contract-requests/:request_id", async (req, res) => {
 
       const requestCriteria = parseAiCriteriaJson(request.ai_criteria);
       const requestCriteriaNotes = buildCriteriaNotes(normalizeCriteria(requestCriteria));
-      const combinedTrialNotes = [profileRows[0].trial_notes || "", request.trial_notes || ""]
+      const combinedTrialNotes = [decryptNullableText(profileRows[0].trial_notes) || "", request.trial_notes || ""]
         .filter((part) => String(part).trim())
         .join("\n\nContract request notes:\n");
       const recommendation = await recommendTeacher({
         criteria: requestCriteria,
         trialNotes: combinedTrialNotes,
         courseId: request.course_id,
+        proficiencyLevel: profileRows[0].proficiency_level,
         preferredTeacherId: profileRows[0].assigned_teacher_id,
         db: connection,
       });
@@ -2019,7 +2307,7 @@ app.put("/api/admin/contract-requests/:request_id", async (req, res) => {
         [
           request.course_id,
           assignedTeacherId,
-          [profileRows[0].trial_notes || "", request.trial_notes || "", requestCriteriaNotes]
+          [decryptNullableText(profileRows[0].trial_notes) || "", request.trial_notes || "", requestCriteriaNotes]
             .filter((part) => String(part).trim())
             .join("\n\n"),
           request.student_id,
@@ -2045,7 +2333,7 @@ app.put("/api/admin/contract-requests/:request_id", async (req, res) => {
       `UPDATE student_contract_requests
        SET status = ?, admin_response = ?, resolved_at = NOW()
        WHERE request_id = ?`,
-      [status, admin_response || null, request_id]
+      [status, encryptNullableText(admin_response || null), request_id]
     );
 
     const notificationTitle = status === "approved"
@@ -2058,7 +2346,7 @@ app.put("/api/admin/contract-requests/:request_id", async (req, res) => {
     await connection.query(
       `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
        VALUES (?, 'general', ?, ?, ?, 'contract_request', '/Calendar')`,
-      [request.student_id, notificationTitle, notificationMessage, request.request_id]
+      [request.student_id, encryptNullableText(notificationTitle), encryptNullableText(notificationMessage), request.request_id]
     );
 
     await connection.commit();
@@ -2172,14 +2460,20 @@ app.get("/api/calendar/classes-by-date", async (req, res) => {
                        stu.first_name as student_name,
                        stu.last_name as student_last_name,
                        stu.email as student_email,
+                       stu.profile_image_url AS student_profile_image_url,
+                       stu.profile_image_url AS studentProfileImageUrl,
                        stu.timezone as student_timezone,
+                       sp.proficiency_level AS student_proficiency_level,
                        tea.first_name as teacher_name,
+                       tea.last_name as teacher_last_name,
                        tea.email as teacher_email,
+                       tea.profile_image_url AS teacher_profile_image_url,
                        tea.timezone as teacher_timezone,
                        COALESCE(c.class_link, vs.teams_meeting_link) as class_link
                  FROM classes c
                  LEFT JOIN video_sessions vs ON vs.class_id = c.class_id
                  JOIN users stu ON c.student_id = stu.user_id
+                 LEFT JOIN student_profiles sp ON sp.user_id = stu.user_id
                  JOIN users tea ON c.teacher_id = tea.user_id
                  WHERE c.scheduled_date = ?
                  AND c.status = 'scheduled'
@@ -2198,7 +2492,7 @@ app.get("/api/calendar/classes-by-date", async (req, res) => {
     query += ` ORDER BY c.start_time ASC, c.class_id ASC`;
 
     const [rows] = await pool.query(query, params);
-    res.json({ classes: rows });
+    res.json({ classes: decryptRows(rows, ["class_link"]) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching classes" });
@@ -2219,15 +2513,21 @@ app.get("/api/calendar/upcoming-classes", async (req, res) => {
                        stu.first_name as student_name, \
                        stu.last_name as student_last_name, \
                        stu.email as student_email, \
+                       stu.profile_image_url AS student_profile_image_url, \
+                       stu.profile_image_url AS studentProfileImageUrl, \
                        stu.timezone as student_timezone, \
+                       sp.proficiency_level AS student_proficiency_level, \
                        tea.first_name as teacher_name, \
                        tea.last_name as teacher_last_name, \
+                       tea.last_name as teacher_last_name, \
                        tea.email as teacher_email, \
+                       tea.profile_image_url AS teacher_profile_image_url, \
                        tea.timezone as teacher_timezone, \
                        COALESCE(c.class_link, vs.teams_meeting_link) as class_link \
                  FROM classes c \
                  LEFT JOIN video_sessions vs ON vs.class_id = c.class_id \
                  JOIN users stu ON c.student_id = stu.user_id \
+                 LEFT JOIN student_profiles sp ON sp.user_id = stu.user_id \
                  JOIN users tea ON c.teacher_id = tea.user_id \
                  WHERE c.status = 'scheduled' \
                  AND c.scheduled_date >= CURDATE()`;
@@ -2246,7 +2546,7 @@ app.get("/api/calendar/upcoming-classes", async (req, res) => {
     params.push(parseInt(limit, 10) || 10);
 
     const [rows] = await pool.query(query, params);
-    res.json({ classes: rows });
+    res.json({ classes: decryptRows(rows, ["class_link"]) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching upcoming classes" });
@@ -2269,7 +2569,7 @@ app.post("/api/calendar/class", async (req, res) => {
     await connection.beginTransaction();
 
     const [packageRows] = await connection.query(
-      `SELECT package_id, total_classes, class_duration
+      `SELECT package_id, total_classes, classes_used, classes_left, class_duration, created_at
        FROM student_class_packages
        WHERE student_id = ? AND status = 'active'
        ORDER BY created_at DESC
@@ -2286,12 +2586,16 @@ app.post("/api/calendar/class", async (req, res) => {
     const [scheduledRows] = await connection.query(
       `SELECT COUNT(*) AS booked_count
        FROM classes
-       WHERE student_id = ? AND status IN ('scheduled', 'completed')`,
-      [student_id]
+       WHERE student_id = ?
+         AND status IN ('scheduled', 'completed')
+         AND created_at >= ?`,
+      [student_id, packageRows[0].created_at]
     );
 
     const bookedClasses = Number(scheduledRows[0]?.booked_count || 0);
-    const remainingBookableClasses = Math.max(0, Number(packageRows[0].total_classes || 0) - bookedClasses);
+    const totalClasses = Number(packageRows[0].total_classes || 0);
+    const classesLeft = Number(packageRows[0].classes_left ?? Math.max(0, totalClasses - Number(packageRows[0].classes_used || 0)));
+    const remainingBookableClasses = Math.max(0, Math.min(classesLeft, totalClasses - bookedClasses));
     if (remainingBookableClasses <= 0) {
       await connection.rollback();
       return res.status(400).json({ message: "This student has reached the maximum number of classes in the active contract. Please contact the admin for a new contract." });
@@ -2375,13 +2679,13 @@ app.post("/api/calendar/class", async (req, res) => {
     const [result] = await connection.query(
       `INSERT INTO classes (class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, class_link, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')`,
-      [class_name, teacher_id, student_id, scheduled_date, start_time, computedEndTime, classDuration, classLinkToSave]
+      [class_name, teacher_id, student_id, scheduled_date, start_time, computedEndTime, classDuration, encryptNullableText(classLinkToSave)]
     );
 
     await connection.query(
       `INSERT INTO video_sessions (class_id, teacher_id, student_id, teams_meeting_link)
        VALUES (?, ?, ?, ?)`,
-      [result.insertId, teacher_id, student_id, classLinkToSave]
+      [result.insertId, teacher_id, student_id, encryptNullableText(classLinkToSave)]
     );
 
     const [studentRows] = await connection.query(
@@ -2395,7 +2699,7 @@ app.post("/api/calendar/class", async (req, res) => {
     await connection.query(
       `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [teacher_id, "general", "New Class Booked", notificationMessage, result.insertId, "class"]
+      [teacher_id, "general", encryptNullableText("New Class Booked"), encryptNullableText(notificationMessage), result.insertId, "class"]
     );
 
     await connection.commit();
@@ -2441,7 +2745,7 @@ app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
 
   try {
     const { class_id } = req.params;
-    const { teacher_id } = req.body;
+    const { teacher_id, proficiency_level, assessment_notes } = req.body;
 
     if (!class_id || !teacher_id) {
       return res.status(400).json({ message: "Missing class_id or teacher_id" });
@@ -2497,6 +2801,13 @@ app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
       return res.status(400).json({ message: "This student has no classes left" });
     }
 
+    const isFinalClass = Number(currentPackage.classes_left) === 1;
+    const normalizedAssessmentLevel = normalizeProficiencyLevel(proficiency_level);
+    if (isFinalClass && !normalizedAssessmentLevel) {
+      await connection.rollback();
+      return res.status(400).json({ message: "A proficiency level is required for the student's final class assessment" });
+    }
+
     await connection.query(
       `UPDATE classes SET status = 'completed' WHERE class_id = ?`,
       [class_id]
@@ -2520,6 +2831,43 @@ app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
       [currentPackage.package_id]
     );
 
+    if (isFinalClass) {
+      await connection.query(
+        `UPDATE student_profiles
+         SET proficiency_level = ?
+         WHERE user_id = ?`,
+        [normalizedAssessmentLevel, classInfo.student_id]
+      );
+
+      const trimmedAssessmentNotes = String(assessment_notes || "").trim();
+      if (trimmedAssessmentNotes) {
+        const [trialRows] = await connection.query(
+          `SELECT trial_notes
+           FROM student_profiles
+           WHERE user_id = ?
+           LIMIT 1
+           FOR UPDATE`,
+          [classInfo.student_id]
+        );
+
+        const currentTrialNotes = decryptNullableText(trialRows[0]?.trial_notes || null);
+        const finalAssessmentNotes = [
+          currentTrialNotes || "",
+          `Final assessment (${formatProficiencyLevel(normalizedAssessmentLevel)}):`,
+          trimmedAssessmentNotes,
+        ]
+          .filter((part) => String(part).trim())
+          .join("\n\n");
+
+        await connection.query(
+          `UPDATE student_profiles
+           SET trial_notes = ?
+           WHERE user_id = ?`,
+          [encryptNullableText(finalAssessmentNotes || null), classInfo.student_id]
+        );
+      }
+    }
+
     await connection.commit();
 
     res.json({
@@ -2529,6 +2877,8 @@ app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
         status: "completed",
       },
       package: updatedPackageRows[0],
+      assessment_updated: isFinalClass,
+      proficiency_level: isFinalClass ? normalizedAssessmentLevel : null,
     });
   } catch (err) {
     await connection.rollback();
@@ -2709,7 +3059,7 @@ app.post("/api/calendar/reschedule-request", async (req, res) => {
     const [result] = await pool.query(
       `INSERT INTO reschedule_requests (class_id, requested_by_id, requested_date, requested_time, reason)
        VALUES (?, ?, ?, ?, ?)`,
-      [class_id, requested_by_id, requestedDateKey, requestedTimeForDb, reason]
+      [class_id, requested_by_id, requestedDateKey, requestedTimeForDb, encryptNullableText(reason || null)]
     );
 
     // Create notification for the counterparty
@@ -2717,7 +3067,7 @@ app.post("/api/calendar/reschedule-request", async (req, res) => {
     await pool.query(
       `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [recipientId, "reschedule", `Reschedule Request`, notificationMessage, result.insertId, "reschedule_request"]
+      [recipientId, "reschedule", encryptNullableText("Reschedule Request"), encryptNullableText(notificationMessage), result.insertId, "reschedule_request"]
     );
 
     res.status(201).json({ id: result.insertId, message: "Reschedule request sent and notification created" });
@@ -2921,7 +3271,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", async (req, res) => {
       await pool.query(
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [requested_by_id, "reschedule", "Reschedule Approved", notificationMessage, id, "reschedule_request"]
+        [requested_by_id, "reschedule", encryptNullableText("Reschedule Approved"), encryptNullableText(notificationMessage), id, "reschedule_request"]
       );
       
       // Create notification for the other party (to inform them of the change)
@@ -2929,7 +3279,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", async (req, res) => {
       await pool.query(
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [otherPartyId, "reschedule", "Reschedule Approved", otherPartyMessage, id, "reschedule_request"]
+        [otherPartyId, "reschedule", encryptNullableText("Reschedule Approved"), encryptNullableText(otherPartyMessage), id, "reschedule_request"]
       );
     }
 
@@ -2989,7 +3339,7 @@ app.post("/api/calendar/reschedule-requests/:id/reject", async (req, res) => {
       await pool.query(
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [requested_by_id, "reschedule", "Reschedule Rejected", notificationMessage, id, "reschedule_request"]
+        [requested_by_id, "reschedule", encryptNullableText("Reschedule Rejected"), encryptNullableText(notificationMessage), id, "reschedule_request"]
       );
       
       // Create notification for the other party
@@ -2997,7 +3347,7 @@ app.post("/api/calendar/reschedule-requests/:id/reject", async (req, res) => {
       await pool.query(
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [otherPartyId, "reschedule", "Reschedule Rejected", otherPartyMessage, id, "reschedule_request"]
+        [otherPartyId, "reschedule", encryptNullableText("Reschedule Rejected"), encryptNullableText(otherPartyMessage), id, "reschedule_request"]
       );
     }
 
@@ -3029,7 +3379,7 @@ app.get("/api/admin/reschedule-requests", async (req, res) => {
     }
 
     const [rows] = await pool.query(query, params);
-    res.json({ requests: rows });
+    res.json({ requests: decryptRows(rows, ["reason"]) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching reschedule requests" });
@@ -3073,7 +3423,7 @@ app.post("/api/calendar/remarks", async (req, res) => {
       `INSERT INTO class_remarks (class_id, teacher_id, student_id, remarks, rating)
        VALUES (?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE remarks = ?, rating = ?`,
-      [class_id, teacher_id, student_id, remarks, rating, remarks, rating]
+      [class_id, teacher_id, student_id, encryptNullableText(remarks), rating, encryptNullableText(remarks), rating]
     );
 
     const [classRows] = await pool.query(
@@ -3114,8 +3464,8 @@ app.post("/api/calendar/remarks", async (req, res) => {
       [
         student_id,
         "remark",
-        "New teacher remark",
-        `Your teacher left a new remark for ${className}${scheduleText}`,
+        encryptNullableText("New teacher remark"),
+        encryptNullableText(`Your teacher left a new remark for ${className}${scheduleText}`),
         class_id,
         "class_remarks",
         "/remarks"
@@ -3152,7 +3502,7 @@ app.get("/api/student/:student_id/remarks", async (req, res) => {
       class_name: row.class_name,
       teacher_name: `${row.teacher_first} ${row.teacher_last}`,
       teacher_profile_image_url: row.teacher_profile_image_url,
-      remarks: row.remarks,
+      remarks: decryptNullableText(row.remarks),
       rating: row.rating,
       created_at: row.created_at,
       scheduled_date: row.scheduled_date,
@@ -3177,7 +3527,7 @@ app.get("/api/calendar/remarks/:class_id", async (req, res) => {
       [class_id]
     );
 
-    res.json({ remarks: rows.length ? rows[0] : null });
+    res.json({ remarks: rows.length ? decryptFields(rows[0], ["remarks"]) : null });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching remarks" });
@@ -3198,7 +3548,7 @@ app.post("/api/video-sessions", async (req, res) => {
     const [result] = await pool.query(
       `INSERT INTO video_sessions (class_id, teacher_id, student_id, teams_meeting_link)
        VALUES (?, ?, ?, ?)`,
-      [class_id, teacher_id, student_id, teams_meeting_link]
+      [class_id, teacher_id, student_id, encryptNullableText(teams_meeting_link)]
     );
 
     res.status(201).json({ id: result.insertId, message: "Video session created" });
@@ -3222,7 +3572,7 @@ app.get("/api/video-sessions/:class_id", async (req, res) => {
       return res.status(404).json({ message: "No video session found" });
     }
 
-    res.json({ session: rows[0] });
+    res.json({ session: decryptFields(rows[0], ["teams_meeting_link"]) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching video session" });
@@ -3240,7 +3590,7 @@ app.put("/api/video-sessions/:session_id", async (req, res) => {
 
     if (teams_meeting_link) {
       query += "teams_meeting_link = ?, ";
-      params.push(teams_meeting_link);
+      params.push(encryptNullableText(teams_meeting_link));
     }
     if (status) {
       query += "status = ?, ";
@@ -3272,7 +3622,7 @@ app.get("/api/video-sessions/user/:user_id", async (req, res) => {
       [user_id, user_id]
     );
 
-    res.json({ sessions: rows });
+    res.json({ sessions: decryptRows(rows, ["teams_meeting_link"]) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching video sessions" });
@@ -3415,7 +3765,12 @@ app.post("/api/chats/messages", async (req, res) => {
     const [result] = await pool.query(
       `INSERT INTO messages (sender_id, recipient_id, subject, content, is_read, sent_at)
        VALUES (?, ?, ?, ?, 0, CURRENT_TIMESTAMP)`,
-      [sender_id, recipient_id, subject || null, String(content).trim()]
+      [
+        sender_id,
+        recipient_id,
+        encryptNullableText(subject || null),
+        encryptNullableText(String(content).trim()),
+      ]
     );
 
     const [rows] = await pool.query(
@@ -3447,8 +3802,8 @@ app.post("/api/chats/messages", async (req, res) => {
           message_id: rows[0].message_id,
           sender_id: rows[0].sender_id,
           recipient_id: rows[0].recipient_id,
-          subject: rows[0].subject,
-          content: rows[0].content,
+          subject: decryptNullableText(rows[0].subject),
+          content: decryptNullableText(rows[0].content),
           is_read: Boolean(rows[0].is_read),
           sent_at: rows[0].sent_at,
           read_at: rows[0].read_at,
@@ -3518,7 +3873,7 @@ app.get("/api/notifications/:user_id", async (req, res) => {
     );
 
     res.json({ 
-      notifications: rows, 
+      notifications: decryptRows(rows, ["title", "message"]), 
       total: countResult[0].total,
       page,
       limit
@@ -3541,7 +3896,7 @@ app.post("/api/notifications", async (req, res) => {
     const [result] = await pool.query(
       `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [user_id, type, title || null, message, related_id || null, related_type || null, action_url || null]
+      [user_id, type, encryptNullableText(title || null), encryptNullableText(message), related_id || null, related_type || null, action_url || null]
     );
 
     res.status(201).json({ id: result.insertId, message: "Notification created" });
@@ -3711,11 +4066,15 @@ app.get("/api/student/profile/:student_id", async (req, res) => {
       const [scheduledRows] = await pool.query(
         `SELECT COUNT(*) AS booked_count
          FROM classes
-         WHERE student_id = ? AND status IN ('scheduled', 'completed')`,
-        [student_id]
+         WHERE student_id = ?
+           AND status IN ('scheduled', 'completed')
+           AND created_at >= ?`,
+        [student_id, packageInfo.created_at]
       );
       bookedClasses = Number(scheduledRows[0]?.booked_count || 0);
-      bookableClasses = Math.max(0, Number(packageInfo.total_classes || 0) - bookedClasses);
+      const totalClasses = Number(packageInfo.total_classes || 0);
+      const classesLeft = Number(packageInfo.classes_left ?? Math.max(0, totalClasses - Number(packageInfo.classes_used || 0)));
+      bookableClasses = Math.max(0, Math.min(classesLeft, totalClasses - bookedClasses));
     }
 
     res.json({
@@ -3727,7 +4086,7 @@ app.get("/api/student/profile/:student_id", async (req, res) => {
         proficiency_level: profile.proficiency_level,
         assigned_teacher_id: profile.assigned_teacher_id,
         teacher_name: profile.teacher_first && profile.teacher_last ? `${profile.teacher_first} ${profile.teacher_last}` : null,
-        trial_notes: profile.trial_notes,
+        trial_notes: decryptNullableText(profile.trial_notes),
         course_id: profile.course_id,
         course_name: profile.course_name,
         course_description: profile.course_description,
@@ -3789,13 +4148,13 @@ app.get("/api/teacher/:teacher_id/students", async (req, res) => {
       first_name: student.first_name,
       last_name: student.last_name,
       email: student.email,
-      contact: student.contact,
+      contact: decryptNullableText(student.contact),
       profileImageUrl: student.profile_image_url,
       profile_image_url: student.profile_image_url,
       proficiency_level: student.proficiency_level,
       assigned_teacher_id: student.assigned_teacher_id,
       course_id: student.course_id,
-      trial_notes: student.trial_notes,
+      trial_notes: decryptNullableText(student.trial_notes),
     }));
 
     res.json({ students });
@@ -3817,7 +4176,7 @@ app.get("/api/teacher/:teacher_id/assignments", async (req, res) => {
       [teacher_id]
     );
 
-    res.json({ assignments: rows });
+    res.json({ assignments: decryptRows(rows, ["instructions", "description", "comments", "feedback"]) });
   } catch (err) {
     console.error("GET /api/teacher/:teacher_id/assignments error:", err);
     res.status(500).json({ message: "Error fetching teacher assignments" });
@@ -3834,7 +4193,7 @@ app.get("/api/teacher/:teacher_id/submissions", async (req, res) => {
       [teacher_id]
     );
 
-    res.json({ submissions: rows });
+    res.json({ submissions: decryptRows(rows, ["comments", "feedback"]) });
   } catch (err) {
     console.error("GET /api/teacher/:teacher_id/submissions error:", err);
     res.status(500).json({ message: "Error fetching assignment submissions" });
@@ -3851,7 +4210,7 @@ app.get("/api/student/:student_id/assignments", async (req, res) => {
       [student_id]
     );
 
-    res.json({ assignments: rows });
+    res.json({ assignments: decryptRows(rows, ["instructions", "description", "comments", "feedback"]) });
   } catch (err) {
     console.error("GET /api/student/:student_id/assignments error:", err);
     res.status(500).json({ message: "Error fetching student assignments" });
@@ -3872,7 +4231,7 @@ app.get("/api/assignments/:assignment_id", async (req, res) => {
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    res.json({ assignment: rows[0] });
+    res.json({ assignment: decryptFields(rows[0], ["instructions", "description", "comments", "feedback"]) });
   } catch (err) {
     console.error("GET /api/assignments/:assignment_id error:", err);
     res.status(500).json({ message: "Error fetching assignment" });
@@ -3942,7 +4301,7 @@ app.post("/api/assignments", async (req, res) => {
         resolvedStudentId,
         resolvedCourseId,
         assignmentTitle,
-        assignmentInstructions,
+        encryptNullableText(assignmentInstructions),
         dueDate,
         dueTime,
         parsedAttemptLimit,
@@ -3954,7 +4313,7 @@ app.post("/api/assignments", async (req, res) => {
        VALUES (?, 'assignment', 'New Assignment', ?, ?, 'assignment', ?)`,
       [
         resolvedStudentId,
-        `New assignment posted: "${assignmentTitle}"${dueDate ? ` due ${dueDate}${dueTime ? ` ${dueTime.slice(0, 5)}` : ""}` : ""}.`,
+        encryptNullableText(`New assignment posted: "${assignmentTitle}"${dueDate ? ` due ${dueDate}${dueTime ? ` ${dueTime.slice(0, 5)}` : ""}` : ""}.`),
         result.insertId,
         `/assignmentsDropbox?assignmentId=${result.insertId}`,
       ]
@@ -3967,7 +4326,7 @@ app.post("/api/assignments", async (req, res) => {
       [result.insertId]
     );
 
-    res.status(201).json({ assignment: rows[0], message: "Assignment created" });
+    res.status(201).json({ assignment: decryptFields(rows[0], ["instructions", "description", "comments", "feedback"]), message: "Assignment created" });
   } catch (err) {
     console.error("POST /api/assignments error:", err);
     res.status(500).json({ message: "Error creating assignment" });
@@ -4058,7 +4417,7 @@ app.post("/api/assignments/:assignment_id/submissions", submissionUploader, asyn
                                 grade = NULL,
                                 feedback = NULL,
                                graded_at = NULL`,
-      [assignment_id, resolvedStudentId, text || null, finalFileUrl]
+      [assignment_id, resolvedStudentId, encryptNullableText(text || null), finalFileUrl]
     );
 
     await conn.query(
@@ -4071,7 +4430,7 @@ app.post("/api/assignments/:assignment_id/submissions", submissionUploader, asyn
        VALUES (?, 'assignment', 'Assignment Submitted', ?, ?, 'assignment', ?)`,
       [
         assignment.teacher_id,
-        `A student submitted "${assignment.title}".`,
+        encryptNullableText(`A student submitted "${assignment.title}".`),
         assignment_id,
         `/teacherAssignment`,
       ]
@@ -4087,7 +4446,7 @@ app.post("/api/assignments/:assignment_id/submissions", submissionUploader, asyn
       [assignment_id, resolvedStudentId]
     );
 
-    res.status(result.insertId ? 201 : 200).json({ submission: rows[0], message: "Assignment submitted" });
+    res.status(result.insertId ? 201 : 200).json({ submission: decryptFields(rows[0], ["comments", "feedback"]), message: "Assignment submitted" });
   } catch (err) {
     if (transactionStarted) {
       await conn.rollback();
@@ -4151,7 +4510,7 @@ app.post("/api/admin/student-profile", async (req, res) => {
     await pool.query(
       `INSERT INTO student_profiles (user_id, proficiency_level, assigned_teacher_id, course_id, trial_notes)
        VALUES (?, ?, ?, ?, ?)`,
-      [user_id, proficiency_level || "beginner", assigned_teacher_id || null, course_id || null, trial_notes || null]
+      [user_id, normalizeProficiencyLevel(proficiency_level) || "novice-low", assigned_teacher_id || null, course_id || null, encryptNullableText(trial_notes || null)]
     );
 
     res.json({ message: "Student profile created successfully" });
@@ -4447,8 +4806,8 @@ app.post("/api/calendar/set-availability", async (req, res) => {
          VALUES ${studentRows.map(() => "(?, 'announcement', ?, ?, ?, 'teacher_availability', '/Calendar')").join(", ")}`,
         studentRows.flatMap((student) => [
           student.user_id,
-          notificationTitle,
-          notificationMessage,
+          encryptNullableText(notificationTitle),
+          encryptNullableText(notificationMessage),
           availabilityId,
         ])
       );
@@ -4623,7 +4982,15 @@ async function createNotificationsForUsers(userIds, type, title, message, relate
   const params = [];
 
   userIds.forEach((userId) => {
-    params.push(userId, type, title || null, message, relatedId, relatedType, actionUrl);
+    params.push(
+      userId,
+      type,
+      encryptNullableText(title || null),
+      encryptNullableText(message),
+      relatedId,
+      relatedType,
+      actionUrl
+    );
   });
 
   await pool.query(
@@ -4647,6 +5014,24 @@ function formatChatUser(row, fallbackRole = null) {
   };
 }
 
+async function getActiveAdminChatContacts(excludeUserId = null) {
+  const params = [];
+  let query = `SELECT user_id, first_name, last_name, email, profile_image_url, role, status
+       FROM users
+       WHERE role = 'admin'
+         AND status = 'active'`;
+
+  if (excludeUserId) {
+    query += " AND user_id <> ?";
+    params.push(excludeUserId);
+  }
+
+  query += " ORDER BY first_name ASC, last_name ASC";
+
+  const [rows] = await pool.query(query, params);
+  return rows.map((row) => formatChatUser(row, "admin"));
+}
+
 async function getDefaultChatContacts(userId, role) {
   const normalizedRole = String(role || "").toLowerCase();
   if (!userId || !normalizedRole) return [];
@@ -4660,7 +5045,8 @@ async function getDefaultChatContacts(userId, role) {
        LIMIT 1`,
       [userId]
     );
-    return rows.map((row) => formatChatUser(row, "teacher"));
+    const admins = await getActiveAdminChatContacts(userId);
+    return [...rows.map((row) => formatChatUser(row, "teacher")), ...admins];
   }
 
   if (normalizedRole === "teacher") {
@@ -4674,7 +5060,8 @@ async function getDefaultChatContacts(userId, role) {
        ORDER BY u.first_name ASC, u.last_name ASC`,
       [userId]
     );
-    return rows.map((row) => formatChatUser(row, "student"));
+    const admins = await getActiveAdminChatContacts(userId);
+    return [...rows.map((row) => formatChatUser(row, "student")), ...admins];
   }
 
   if (normalizedRole === "admin") {
@@ -4737,7 +5124,7 @@ async function getChatConversationSummaries(userId) {
   return rows.map((row) => ({
     ...formatChatUser(row),
     last_message_id: row.last_message_id,
-    last_message: row.last_message || "",
+    last_message: decryptNullableText(row.last_message) || "",
     last_message_at: row.last_message_at || null,
     last_sender_id: row.last_sender_id || null,
     unread_count: Number(row.unread_count || 0),
@@ -4815,8 +5202,8 @@ async function getChatThread(userId, otherUserId) {
     message_id: row.message_id,
     sender_id: row.sender_id,
     recipient_id: row.recipient_id,
-    subject: row.subject,
-    content: row.content,
+    subject: decryptNullableText(row.subject),
+    content: decryptNullableText(row.content),
     is_read: Boolean(row.is_read),
     sent_at: row.sent_at,
     read_at: row.read_at,
@@ -5673,7 +6060,7 @@ async function refreshStudentBookProgress(studentId, lessonId) {
     await pool.query(
       `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
        VALUES (?, 'general', ?, ?, ?, 'book', ?)`,
-      [teacherId, notificationTitle, notificationMessage, bookId, `/teacherBooksLessons/${bookId}`]
+      [teacherId, encryptNullableText(notificationTitle), encryptNullableText(notificationMessage), bookId, `/teacherBooksLessons/${bookId}`]
     );
   }
 

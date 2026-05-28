@@ -1,4 +1,6 @@
-const STORAGE_KEY = "localNotifications";
+import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "./storageKeys.js";
+
+const STORAGE_KEY = STORAGE_KEYS.localNotifications;
 
 function safeParse(value) {
   if (!value) return [];
@@ -10,7 +12,10 @@ function safeParse(value) {
 }
 
 export function getAllLocalNotifications() {
-  return safeParse(localStorage.getItem(STORAGE_KEY));
+  const stored = readNamespacedStorageValue(STORAGE_KEY, LEGACY_STORAGE_KEYS.localNotifications);
+  const parsed = safeParse(stored);
+  if (stored) localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+  return parsed;
 }
 
 export function saveLocalNotifications(notifications) {

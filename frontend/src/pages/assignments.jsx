@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import styles from "../assets/assignments.module.css";
 import { getStoredUserTimezone } from "../utils/timezone.js";
+import { readStoredUser } from "../utils/sessionUser.js";
 
 const API = "http://localhost:3001";
 
@@ -66,12 +67,8 @@ export default function Assignments() {
   const [error, setError] = useState("");
 
   const currentStudentId = useMemo(() => {
-    try {
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
-      return user.id ?? user.user_id ?? null;
-    } catch {
-      return null;
-    }
+    const user = readStoredUser() || {};
+    return user.id ?? user.user_id ?? null;
   }, []);
 
   useEffect(() => {

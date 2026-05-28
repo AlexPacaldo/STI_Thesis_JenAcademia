@@ -5,6 +5,8 @@ import styles from "../assets/booksLessons.module.css";
 import topImage from "../assets/img/Books-Lessons/top.jpg";
 import userPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
+import { readStoredUser } from "../utils/sessionUser.js";
+import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
 
 const API_BASE = "http://localhost:3001";
 
@@ -16,7 +18,7 @@ export default function StudentBooksLessons() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const courseId = localStorage.getItem("course_id") || "1";
+  const courseId = readNamespacedStorageValue(STORAGE_KEYS.courseId, LEGACY_STORAGE_KEYS.courseId) || "1";
 
   useEffect(() => {
     fetchBooks();
@@ -25,7 +27,7 @@ export default function StudentBooksLessons() {
   const fetchBooks = async () => {
     try {
       setLoading(true);
-      const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+      const storedUser = readStoredUser() || {};
       const studentId = storedUser.id || storedUser.user_id || storedUser.userId;
 
       if (studentId) {

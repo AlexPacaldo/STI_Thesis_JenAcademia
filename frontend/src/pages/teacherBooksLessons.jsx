@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/teacherBooksLessons.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
+import { readStoredUser } from "../utils/sessionUser.js";
+import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
 
 const API_BASE = "http://localhost:3001";
 
@@ -26,8 +28,8 @@ export default function TeacherBooksLessons() {
   const [archivingBookId, setArchivingBookId] = useState(null);
   const [archivingBookTitle, setArchivingBookTitle] = useState("");
 
-  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
-  const teacherId = localStorage.getItem("teacher_id") || storedUser.id || storedUser.user_id || storedUser.userId || null;
+  const storedUser = readStoredUser() || {};
+  const teacherId = readNamespacedStorageValue(STORAGE_KEYS.teacherId, LEGACY_STORAGE_KEYS.teacherId) || storedUser.id || storedUser.user_id || storedUser.userId || null;
   const teacherProfileImageUrl = storedUser?.profileImageUrl || storedUser?.profile_image_url || "";
   const teacherPicUrl = useMemo(() => absoluteUrl(teacherProfileImageUrl) || userPic, [teacherProfileImageUrl]);
   const [teacherCourses, setTeacherCourses] = useState([]);

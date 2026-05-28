@@ -2,6 +2,9 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { useNotification } from "../components/NotificationContainer.jsx";
+import { readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
+import { PROFICIENCY_LEVEL_OPTIONS, formatProficiencyLevel } from "../utils/proficiencyLevels.js";
+import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/studentSchedule.module.css";
 import {
   DEFAULT_TIMEZONE,
@@ -178,6 +181,19 @@ const getEndTime = (startTime, durationMins) => {
   const duration = parseInt(durationMins, 10);
   if (start == null || !Number.isFinite(duration) || duration <= 0) return "";
   return humanTime(minutesToTime(start + duration));
+};
+
+const resolveProfileImageSrc = (url) => {
+  if (!url) return userPic;
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API}${url}`;
+};
+
+const formatRemarkDate = (value) => {
+  if (!value) return "";
+  const datePart = String(value).slice(0, 10);
+  const parsed = new Date(`${datePart}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleDateString();
 };
 
 // Helper: check if a class is joinable (30 mins before start until class end)
@@ -409,6 +425,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
   const [isMarkingClassDone, setIsMarkingClassDone] = useState(false);
   const [classDoneConfirmOpen, setClassDoneConfirmOpen] = useState(false);
+  const [classDoneAssessmentOpen, setClassDoneAssessmentOpen] = useState(false);
+  const [classDoneAssessmentLevel, setClassDoneAssessmentLevel] = useState("");
+  const [classDoneAssessmentNotes, setClassDoneAssessmentNotes] = useState("");
+  const [classDoneAssessmentError, setClassDoneAssessmentError] = useState("");
   const [requestError, setRequestError] = useState("");
   const [localRole, setLocalRole] = useState("");
   const [localUserId, setLocalUserId] = useState(null);
@@ -419,6 +439,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [studentProfile, setStudentProfile] = useState(null);
   const [assignedTeacherId, setAssignedTeacherId] = useState(null);
   const [assignedTeacherName, setAssignedTeacherName] = useState("");
+  const [studentRemarks, setStudentRemarks] = useState([]);
   const [teacherClassesCache, setTeacherClassesCache] = useState({});
   const [studentBookingMode, setStudentBookingMode] = useState(false);
   const [studentBookingDate, setStudentBookingDate] = useState(fmtDate(today));
@@ -468,6 +489,15 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const selectedClassDuration = Number(selectedClass?.duration) > 0
     ? Number(selectedClass.duration)
     : studentClassDuration;
+  const latestRemark = selectedClass?.id
+    ? (studentRemarks.find((remark) => String(remark.class_id) === String(selectedClass.id)) || studentRemarks[0] || null)
+    : (studentRemarks[0] || null);
+  const selectedTeacherFullName = selectedClass
+    ? [selectedClass.teacherName, selectedClass.teacherLastName]
+        .filter(Boolean)
+        .join(" ")
+        .trim() || selectedClass.teacherFullName || selectedClass.teacherName
+    : "";
   const contractLearningGoalOptions = useMemo(
     () => AI_CRITERIA_OPTIONS.learningGoal.filter((option) => optionAppliesToCourses(option, selectedContractCourseNames)),
     [selectedContractCourseNames]
@@ -494,9 +524,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   // Read user info from localStorage
   useEffect(() => {
     try {
-      const stored = localStorage.getItem("user");
-      if (stored) {
-        const parsed = JSON.parse(stored);
+      const parsed = readStoredUser();
+      if (parsed) {
         console.log("User info from localStorage:", parsed);
         setMe(parsed);
         const normalizedRole = parsed?.role ? String(parsed.role).toLowerCase() : "";
@@ -613,6 +642,28 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
   }, [localRole, localUserId]);
 
+    useEffect(() => {
+    if (!selectedClass?.student_id) {
+      setStudentRemarks([]);
+      return;
+    }
+
+    let active = true;
+    axios
+      .get(`${API}/api/student/${selectedClass.student_id}/remarks`)
+      .then((response) => {
+        if (!active) return;
+        setStudentRemarks(response.data?.remarks || []);
+      })
+      .catch(() => {
+        if (active) setStudentRemarks([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedClass?.student_id]);
+
   useEffect(() => {
     if (localRole !== "student") return;
 
@@ -650,15 +701,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
         if (teacherIdFromProfile) {
           try {
-            const stored = localStorage.getItem("user");
-            if (stored) {
-              const parsed = JSON.parse(stored);
+            const parsed = readStoredUser();
+            if (parsed) {
               const updated = {
                 ...parsed,
                 assignedTeacherId: teacherIdFromProfile,
                 assigned_teacher_id: teacherIdFromProfile,
               };
-              localStorage.setItem("user", JSON.stringify(updated));
+              writeStoredUser(updated);
             }
           } catch (e) {
             console.error("Error updating localStorage with assignedTeacherId:", e);
@@ -690,36 +740,49 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   }, [localRole, localUserId]);
 
   const formatClassForViewer = (c) => {
-    const sourceTimezone = c.teacher_timezone || DEFAULT_TIMEZONE;
-    const start = convertDateTime(c.scheduled_date, c.start_time || c.time, sourceTimezone, viewerTimezone);
-    const end = convertDateTime(c.scheduled_date, c.end_time, sourceTimezone, viewerTimezone);
+  const sourceTimezone = c.teacher_timezone || DEFAULT_TIMEZONE;
+  const start = convertDateTime(c.scheduled_date, c.start_time || c.time, sourceTimezone, viewerTimezone);
+  const end = convertDateTime(c.scheduled_date, c.end_time, sourceTimezone, viewerTimezone);
+  const studentFullName = [c.student_name || c.studentName, c.student_last_name || c.studentLastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const teacherFullName = [c.teacher_first_name || c.teacherName || c.teacher_name, c.teacher_last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
 
-    return {
-      ...c,
-      id: c.id || c.class_id,
-      className: c.className || c.class_name || c.name,
-      studentName: c.studentName || c.student_name,
-      studentEmail: c.studentEmail || c.student_email,
-      teacherName: c.teacherName || c.teacher_name,
-      teacherEmail: c.teacherEmail || c.teacher_email,
-      classLink: c.classLink || c.class_link,
-      source_scheduled_date: normalizeDate(c.scheduled_date),
-      source_start_time: c.start_time,
-      source_end_time: c.end_time,
-      scheduled_date: start.date,
-      start_time: addSeconds(start.time),
-      end_time: addSeconds(end.time),
-      time: c.time || formatHumanTime(start.time),
-      duration: c.duration,
-      status: c.status,
-      teacher_id: c.teacher_id,
-      student_id: c.student_id,
-      viewer_timezone: viewerTimezone,
-      source_timezone: sourceTimezone,
-    };
+  return {
+    ...c,
+    id: c.id || c.class_id,
+    className: c.className || c.class_name || c.name,
+    studentName: studentFullName || c.studentName || c.student_name,
+    studentFullName: studentFullName || c.studentFullName || c.studentName || c.student_name,
+    studentEmail: c.studentEmail || c.student_email,
+    studentProficiencyLevel: c.studentProficiencyLevel || c.student_proficiency_level || "",
+    teacherName: teacherFullName || c.teacherName || c.teacher_name,
+    teacherFullName: teacherFullName || c.teacherFullName || c.teacherName || c.teacher_name,
+    teacherLastName: c.teacherLastName || c.teacher_last_name || "",
+    teacherEmail: c.teacherEmail || c.teacher_email,
+    teacherProfileImageUrl: c.teacherProfileImageUrl || c.teacher_profile_image_url || "",
+    classLink: c.classLink || c.class_link,
+    source_scheduled_date: normalizeDate(c.scheduled_date),
+    source_start_time: c.start_time,
+    source_end_time: c.end_time,
+    scheduled_date: start.date,
+    start_time: addSeconds(start.time),
+    end_time: addSeconds(end.time),
+    time: c.time || formatHumanTime(start.time),
+    duration: c.duration,
+    status: c.status,
+    teacher_id: c.teacher_id,
+    student_id: c.student_id,
+    viewer_timezone: viewerTimezone,
+    source_timezone: sourceTimezone,
   };
+};
 
-  // helper to load classes for a particular date
+// helper to load classes for a particular date
   const loadClassesForDate = (dateStr) => {
     if (!dateStr || classesCache[dateStr]) return;
     const params = { scheduled_date: dateStr };
@@ -1721,11 +1784,42 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     setClassDoneConfirmOpen(true);
   };
 
-  const markSelectedClassDone = async () => {
+  const handleConfirmClassDone = async () => {
+    if (!selectedClass?.id || !selectedClass?.student_id) {
+      notify?.("Please select a class first.", "error");
+      return;
+    }
+
+    setIsMarkingClassDone(true);
+    try {
+      const profileResponse = await axios.get(`${API}/api/student/profile/${selectedClass.student_id}`);
+      const packageInfo = profileResponse.data?.package || null;
+      const isFinalClass = Number(packageInfo?.classes_left) === 1;
+
+      if (isFinalClass) {
+        setClassDoneAssessmentError("");
+        setClassDoneAssessmentLevel(profileResponse.data?.profile?.proficiency_level || "novice-low");
+        setClassDoneAssessmentNotes("");
+        setClassDoneConfirmOpen(false);
+        setClassDoneAssessmentOpen(true);
+        return;
+      }
+    } catch (error) {
+      console.warn("Could not load final-class assessment context:", error);
+    } finally {
+      setIsMarkingClassDone(false);
+    }
+
+    await markSelectedClassDone();
+  };
+
+  const markSelectedClassDone = async ({ proficiencyLevel = "", assessmentNotes = "" } = {}) => {
     setIsMarkingClassDone(true);
     try {
       const response = await axios.put(`${API}/api/calendar/classes/${selectedClass.id}/complete`, {
         teacher_id: localUserId,
+        proficiency_level: proficiencyLevel,
+        assessment_notes: assessmentNotes,
       });
 
       setClassesCache(prev => ({
@@ -1749,13 +1843,33 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       }
 
       setClassDoneConfirmOpen(false);
-      notify?.("Class marked as done. Student class count updated.", "success");
+      setClassDoneAssessmentOpen(false);
+      setClassDoneAssessmentError("");
+      notify?.(
+        response.data?.assessment_updated
+          ? "Class marked as done. Student proficiency updated."
+          : "Class marked as done. Student class count updated.",
+        "success"
+      );
     } catch (error) {
       const message = error.response?.data?.message || "Unable to mark class as done. Please try again.";
       notify?.(message, "error");
     } finally {
       setIsMarkingClassDone(false);
     }
+  };
+
+  const submitClassDoneAssessment = async () => {
+    if (!classDoneAssessmentLevel) {
+      setClassDoneAssessmentError("Please choose a proficiency level before completing the class.");
+      return;
+    }
+
+    setClassDoneAssessmentError("");
+    await markSelectedClassDone({
+      proficiencyLevel: classDoneAssessmentLevel,
+      assessmentNotes: classDoneAssessmentNotes,
+    });
   };
 
   const markSelectedClassNoShow = async () => {
@@ -1807,7 +1921,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const effectiveClassesUsed = (() => {
     if (studentPackage) {
       if (studentPackage.booked_classes != null) return studentPackage.booked_classes;
-      return studentPackage.classes_used || 0;
+      if (studentPackage.classes_used != null) return studentPackage.classes_used;
+      return 0;
     }
     if (classesUsed && classesUsed > 0) return classesUsed;
     return 0;
@@ -1818,7 +1933,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     return classesLimit;
   })();
   const effectiveClassesLeft = (() => {
-    if (studentPackage) return studentPackage.classes_left != null ? studentPackage.classes_left : Math.max(0, effectiveClassesLimit - effectiveClassesUsed);
+    if (studentPackage) {
+      if (studentPackage.classes_left != null) return studentPackage.classes_left;
+      return Math.max(0, effectiveClassesLimit - effectiveClassesUsed);
+    }
     if (localRole === "student") return 0;
     return Math.max(0, effectiveClassesLimit - effectiveClassesUsed);
   })();
@@ -2142,8 +2260,25 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                   <div className={styles.slotList}>
                     {selectedClass.studentName && (
                       <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                        <div><strong>Student:</strong></div>
-                        <div style={{ fontSize: "0.95em", marginTop: "4px" }}>{selectedClass.studentName}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <img
+                            src={resolveProfileImageSrc(selectedClass.student_profile_image_url || selectedClass.studentProfileImageUrl)}
+                            alt={selectedClass.studentFullName || selectedClass.studentName}
+                            style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", flex: "0 0 auto" }}
+                          />
+                          <div>
+                            <div><strong>Student:</strong></div>
+                            <div style={{ fontSize: "0.95em", marginTop: "4px" }}>{selectedClass.studentFullName || selectedClass.studentName}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {(selectedClass.studentProficiencyLevel || selectedClass.student_proficiency_level) && (
+                      <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
+                        <div><strong>Proficiency Level:</strong></div>
+                        <div style={{ fontSize: "0.85em", marginTop: "4px" }}>
+                          {formatProficiencyLevel(selectedClass.studentProficiencyLevel || selectedClass.student_proficiency_level)}
+                        </div>
                       </div>
                     )}
                     {selectedClass.studentEmail && (
@@ -2172,17 +2307,37 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                       <div><strong>Time:</strong></div>
                       <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration)}</div>
                     </div>
-                    {selectedClass.classLink && (
-                      <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                        <div><strong>Meeting Link:</strong></div>
-                        <div style={{ fontSize: "0.75em", marginTop: "4px", wordBreak: "break-all" }}>
-                          <a href={selectedClass.classLink} target="_blank" rel="noreferrer" style={{ color: "#0052cc", textDecoration: "underline" }}>
-                            Open Teams Meeting
-                          </a>
-                        </div>
-                      </div>
-                    )}
                   </div>
+                  {isTeacherOrAdmin && (
+                    <div style={{ marginTop: 12, borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
+                      <div style={{ fontSize: "0.9rem", fontWeight: 700, marginBottom: 8, color: "#111827" }}>Latest Remark</div>
+                      {latestRemark ? (
+                        <div
+                          style={{
+                            padding: 10,
+                            border: "1px solid #e5e7eb",
+                            borderRadius: 8,
+                            background: "#fafafa",
+                          }}
+                        >
+                          <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#111827" }}>
+                            {latestRemark.class_name || "Class"}
+                          </div>
+                                                    <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: 2 }}>
+                            {formatRemarkDate(latestRemark.scheduled_date) || "Date unavailable"}
+                            {latestRemark.start_time ? ` - ${humanTime(latestRemark.start_time)}` : ""}
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: "0.82rem", color: "#374151", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>
+                            {latestRemark.remarks || "No remark text"}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ padding: 10, fontSize: "0.82rem", color: "#6b7280", background: "#fafafa", border: "1px solid #e5e7eb", borderRadius: 8 }}>
+                          No remarks yet.
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <button
                     type="button"
                     disabled={isSelectedClassCompleted || !isClassJoinable(selectedClass, selectedDate)}
@@ -3164,16 +3319,38 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         <div><strong>{selectedClass.className}</strong></div>
                         <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration)}</div>
                       </div>
-                      {selectedClass.teacherName && (
+                                            {selectedClass.teacherName && (
                         <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                          <div><strong>Teacher:</strong></div>
-                          <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.teacherName}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <img
+                              src={resolveProfileImageSrc(selectedClass.teacherProfileImageUrl)}
+                              alt={selectedTeacherFullName || selectedClass.teacherFullName || selectedClass.teacherName}
+                              style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", flex: "0 0 auto" }}
+                            />
+                            <div>
+                              <div><strong>Teacher:</strong></div>
+                              <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedTeacherFullName || selectedClass.teacherFullName || selectedClass.teacherName}</div>
+                            </div>
+                          </div>
                         </div>
                       )}
                       {selectedClass.teacherEmail && (
                         <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
                           <div><strong>Email:</strong></div>
                           <div style={{ fontSize: "0.75em", marginTop: "4px", wordBreak: "break-all" }}>{selectedClass.teacherEmail}</div>
+                        </div>
+                      )}
+                      {latestRemark && (
+                        <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
+                          <div><strong>Latest Remark:</strong></div>
+                          <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: 2 }}>
+                            {latestRemark.class_name || "Class"}
+                            {formatRemarkDate(latestRemark.scheduled_date) || "Date unavailable"}
+                            {latestRemark.start_time ? ` - ${humanTime(latestRemark.start_time)}` : ""}
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: "0.82rem", color: "#374151", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>
+                            {latestRemark.remarks || "No remark text"}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -3871,7 +4048,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
             </button>
             <button
               type="button"
-              onClick={markSelectedClassDone}
+              onClick={handleConfirmClassDone}
               disabled={isMarkingClassDone}
               style={{
                 border: "none",
@@ -3885,6 +4062,152 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
               }}
             >
               {isMarkingClassDone ? "Confirming..." : "Confirm Done"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    {classDoneAssessmentOpen && selectedClass && (
+      <div
+        role="presentation"
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(15, 23, 42, 0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 20,
+          zIndex: 2100,
+        }}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="assessment-title"
+          style={{
+            width: "min(520px, 100%)",
+            background: "#fff",
+            borderRadius: 12,
+            boxShadow: "0 24px 60px rgba(15, 23, 42, 0.22)",
+            padding: 24,
+          }}
+        >
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              background: "#eef2ff",
+              color: "#4338ca",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 800,
+              fontSize: 18,
+              marginBottom: 14,
+            }}
+          >
+            QA
+          </div>
+          <h3 id="assessment-title" style={{ margin: "0 0 8px", fontSize: "1.15rem", color: "#111827" }}>
+            Final class assessment
+          </h3>
+          <p style={{ margin: "0 0 16px", color: "#4b5563", lineHeight: 1.5, fontSize: "0.92rem" }}>
+            This is the student's last class in the current contract. Please choose the updated proficiency level before finishing.
+          </p>
+          <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, background: "#f9fafb", padding: "12px 14px", marginBottom: 16 }}>
+            <div style={{ fontWeight: 700, color: "#111827", marginBottom: 4 }}>
+              {selectedClass.studentName || "Selected student"}
+            </div>
+            <div style={{ fontSize: "0.85rem", color: "#4b5563" }}>
+              {selectedClass.className || "Class"} - {selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration)}
+            </div>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 700, marginBottom: 6, color: "#374151" }}>
+              Proficiency level
+            </label>
+            <select
+              value={classDoneAssessmentLevel}
+              onChange={(e) => setClassDoneAssessmentLevel(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                border: "1px solid #d1d5db",
+                borderRadius: 8,
+                fontFamily: "inherit",
+                background: "#fff",
+              }}
+            >
+              <option value="">Select level</option>
+              {PROFICIENCY_LEVEL_OPTIONS.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 700, marginBottom: 6, color: "#374151" }}>
+              Notes
+            </label>
+            <textarea
+              value={classDoneAssessmentNotes}
+              onChange={(e) => setClassDoneAssessmentNotes(e.target.value)}
+              rows={4}
+              placeholder="Optional quick notes about the student's performance..."
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                border: "1px solid #d1d5db",
+                borderRadius: 8,
+                fontFamily: "inherit",
+                resize: "vertical",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+          {classDoneAssessmentError && (
+            <div style={{ marginBottom: 14, padding: 10, borderRadius: 8, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: 12 }}>
+              {classDoneAssessmentError}
+            </div>
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button
+              type="button"
+              onClick={() => {
+                setClassDoneAssessmentOpen(false);
+                setClassDoneConfirmOpen(true);
+                setClassDoneAssessmentError("");
+              }}
+              disabled={isMarkingClassDone}
+              style={{
+                border: "1px solid #d1d5db",
+                background: "#fff",
+                color: "#111827",
+                borderRadius: 8,
+                padding: "10px 14px",
+                fontWeight: 700,
+                cursor: isMarkingClassDone ? "not-allowed" : "pointer",
+              }}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={submitClassDoneAssessment}
+              disabled={isMarkingClassDone}
+              style={{
+                border: "none",
+                background: "#4338ca",
+                color: "#fff",
+                borderRadius: 8,
+                padding: "10px 16px",
+                fontWeight: 700,
+                cursor: isMarkingClassDone ? "not-allowed" : "pointer",
+                boxShadow: "0 8px 18px rgba(67, 56, 202, 0.22)",
+              }}
+            >
+              {isMarkingClassDone ? "Saving..." : "Save Assessment & Complete"}
             </button>
           </div>
         </div>

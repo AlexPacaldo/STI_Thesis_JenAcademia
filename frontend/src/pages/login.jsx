@@ -3,6 +3,8 @@ import styles from "../assets/login.module.css";
 import Girl from "../assets/img/homepage/Girl.png";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { Link } from "react-router-dom";
+import { writeStoredUser } from "../utils/sessionUser.js";
+import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, writeNamespacedStorageValue } from "../utils/storageKeys.js";
 
 export default function Login() {
   const { notify } = useNotification() || {};
@@ -39,17 +41,33 @@ export default function Login() {
       }
 
       const userToStore = {
-        ...data.user,
+        id: data.user.id,
+        firstName: data.user.firstName,
+        lastName: data.user.lastName,
+        role: data.user.role,
+        profileCompleted: data.user.profileCompleted,
+        profileImageUrl: data.user.profileImageUrl,
+        assignedTeacherId: data.user.assignedTeacherId || null,
+        timezone: data.user.timezone,
         stayLoggedIn: stayLoggedIn,
       };
-      localStorage.setItem("user", JSON.stringify(userToStore));
+      writeStoredUser(userToStore);
 
       if (data.user.role === "teacher") {
-        localStorage.setItem("teacher_id", String(data.user.id));
-        localStorage.removeItem("student_id");
+        writeNamespacedStorageValue(STORAGE_KEYS.teacherId, data.user.id, LEGACY_STORAGE_KEYS.teacherId);
+        localStorage.removeItem(STORAGE_KEYS.studentId);
+        localStorage.removeItem(STORAGE_KEYS.courseId);
+        localStorage.removeItem(LEGACY_STORAGE_KEYS.studentId);
+        localStorage.removeItem(LEGACY_STORAGE_KEYS.courseId);
       } else if (data.user.role === "student") {
-        localStorage.setItem("student_id", String(data.user.id));
-        localStorage.removeItem("teacher_id");
+        writeNamespacedStorageValue(STORAGE_KEYS.studentId, data.user.id, LEGACY_STORAGE_KEYS.studentId);
+        localStorage.removeItem(STORAGE_KEYS.teacherId);
+        if (data.user.assignedTeacherId) {
+          writeNamespacedStorageValue(STORAGE_KEYS.teacherId, data.user.assignedTeacherId, LEGACY_STORAGE_KEYS.teacherId);
+        }
+        if (data.user.courseId) {
+          writeNamespacedStorageValue(STORAGE_KEYS.courseId, data.user.courseId, LEGACY_STORAGE_KEYS.courseId);
+        }
       }
 
       if (!userToStore.profileCompleted) {
