@@ -190,22 +190,6 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
   }, [currentUserId]);
 
   useEffect(() => {
-    if (!currentUserId) return undefined;
-
-    const presenceStream = new EventSource(`${API}/api/chats/stream/${currentUserId}`);
-    const keepAlive = () => {};
-
-    presenceStream.addEventListener("open", keepAlive);
-    presenceStream.addEventListener("error", () => {
-      presenceStream?.close?.();
-    });
-
-    return () => {
-      presenceStream?.close?.();
-    };
-  }, [currentUserId]);
-
-  useEffect(() => {
     if (role !== "student" || !currentUserId) {
       setStudentPackage(null);
       return;

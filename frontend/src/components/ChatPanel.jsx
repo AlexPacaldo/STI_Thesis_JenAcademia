@@ -171,8 +171,7 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
     }
 
     loadConversations();
-    const interval = window.setInterval(loadConversations, 20000);
-    return () => window.clearInterval(interval);
+    return undefined;
   }, [isOpen, currentUserId]);
 
   useEffect(() => {
@@ -317,16 +316,6 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
       loadMessages(activeChatId);
     }
   }, [activeChatId]);
-
-  useEffect(() => {
-    if (!isOpen || !activeChatId || !currentUserId) return undefined;
-
-    const interval = window.setInterval(() => {
-      loadMessages(activeChatId);
-    }, 15000);
-
-    return () => window.clearInterval(interval);
-  }, [isOpen, activeChatId, currentUserId]);
 
   const filteredChats = useMemo(() => {
     const query = search.trim().toLowerCase();
