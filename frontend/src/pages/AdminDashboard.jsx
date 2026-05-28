@@ -6,8 +6,9 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { PROFICIENCY_LEVEL_OPTIONS } from "../utils/proficiencyLevels.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import Calendar from "./Calendar.jsx"; // admin calendar view
+import { API_BASE_URL } from "../utils/api.js";
 
-const API = "http://localhost:3001";
+const API = API_BASE_URL;
 
 const ADMIN_TABS = [
   "calendar",
@@ -2348,7 +2349,7 @@ function ArchivedUsers({ onUnarchive, refresh, search = "" }) {
   const [items, setItems] = useState([]);
   useEffect(() => {
     axios
-      .get(`http://localhost:3001/api/admin/users?status=archived`)
+      .get(`${API_BASE_URL}/api/admin/users?status=archived`)
       .then((r) => setItems(r.data || []))
       .catch(() => setItems([]));
   }, [refresh]);

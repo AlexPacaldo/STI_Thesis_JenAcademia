@@ -5,8 +5,9 @@ import styles from "../assets/teacherSchedule.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { formatProficiencyLevel } from "../utils/proficiencyLevels.js";
 import { readStoredUser } from "../utils/sessionUser.js";
+import { API_BASE_URL } from "../utils/api.js";
 
-const API = "http://localhost:3001";
+const API = API_BASE_URL;
 
 function studentProfileSrc(student) {
   const url = student?.profileImageUrl || student?.profile_image_url || student?.profile_picture;

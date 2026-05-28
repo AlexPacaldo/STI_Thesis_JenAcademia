@@ -5,6 +5,7 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { Link } from "react-router-dom";
 import { writeStoredUser } from "../utils/sessionUser.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, writeNamespacedStorageValue } from "../utils/storageKeys.js";
+import { API_BASE_URL } from "../utils/api.js";
 
 export default function Login() {
   const { notify } = useNotification() || {};
@@ -27,7 +28,7 @@ export default function Login() {
     e.preventDefault();
 
     try {
-      const res = await fetch("http://localhost:3001/api/login", {
+      const res = await fetch(`${API_BASE_URL}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),

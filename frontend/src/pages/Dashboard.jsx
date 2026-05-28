@@ -1,4 +1,4 @@
-ï»¿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import styles from "../assets/Dashboard.module.css";
@@ -11,8 +11,9 @@ import {
 } from "../utils/timezone.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { formatProficiencyLevel } from "../utils/proficiencyLevels.js";
+import { API_BASE_URL } from "../utils/api.js";
 
-const API = "http://localhost:3001";
+const API = API_BASE_URL;
 
 function getCurrentUser() {
   return readStoredUser() || {};
@@ -326,7 +327,7 @@ export default function Dashboard({ mode }) {
       .map((student) => ({
         id: student.user_id || student.id,
         primary: `${student.first_name || student.firstName || ""} ${student.last_name || student.lastName || ""}`.trim() || "Student",
-        secondary: `${formatProficiencyLevel(student.proficiency_level)}${student.course_id ? ` â€¢ ${getCourseName(courseMap, student.course_id) || `Course ${student.course_id}`}` : ""}`,
+        secondary: `${formatProficiencyLevel(student.proficiency_level)}${student.course_id ? ` • ${getCourseName(courseMap, student.course_id) || `Course ${student.course_id}`}` : ""}`,
         meta: student.email || "",
       }));
 
@@ -336,7 +337,7 @@ export default function Dashboard({ mode }) {
         id: submission.submissionId || submission.id,
         primary: submission.assignmentName || "Assignment",
         secondary: submission.student || "Student",
-        meta: `${submission.status || "Submitted"} â€¢ ${formatDate(submission.submittedAt)}`,
+        meta: `${submission.status || "Submitted"} • ${formatDate(submission.submittedAt)}`,
       }));
 
     return [

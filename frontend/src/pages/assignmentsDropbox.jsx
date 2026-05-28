@@ -6,8 +6,9 @@ import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { getStoredUserTimezone } from "../utils/timezone.js";
+import { API_BASE_URL } from "../utils/api.js";
 
-const API = "http://localhost:3001";
+const API = API_BASE_URL;
 
 function profileSrc(url) {
   if (!url) return teacherPic;

@@ -4,8 +4,9 @@ import { Link } from "react-router-dom";
 import styles from "../assets/assignments.module.css";
 import { getStoredUserTimezone } from "../utils/timezone.js";
 import { readStoredUser } from "../utils/sessionUser.js";
+import { API_BASE_URL } from "../utils/api.js";
 
-const API = "http://localhost:3001";
+const API = API_BASE_URL;
 
 function getAssignmentDisplayText(row) {
   return row.instructions || row.description || row.name || "Assignment";

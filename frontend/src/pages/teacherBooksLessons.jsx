@@ -5,8 +5,9 @@ import styles from "../assets/teacherBooksLessons.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
+import { API_BASE_URL } from "../utils/api.js";
 
-const API_BASE = "http://localhost:3001";
+const API_BASE = API_BASE_URL;
 
 function absoluteUrl(url) {
   if (!url) return "";
@@ -60,7 +61,7 @@ export default function TeacherBooksLessons() {
   const fetchBooks = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:3001/api/teacher/books?teacher_id=${teacherId}`);
+      const response = await fetch(`${API_BASE_URL}/api/teacher/books?teacher_id=${teacherId}`);
       if (!response.ok) throw new Error("Failed to fetch books");
       
       const data = await response.json();
@@ -95,7 +96,7 @@ export default function TeacherBooksLessons() {
         formData.append("cover", newBook.coverFile);
       }
 
-      const response = await fetch("http://localhost:3001/api/books", {
+      const response = await fetch(`${API_BASE_URL}/api/books`, {
         method: "POST",
         body: formData,
       });
@@ -124,7 +125,7 @@ export default function TeacherBooksLessons() {
     if (!archivingBookId) return;
 
     try {
-      const response = await fetch(`http://localhost:3001/api/books/${archivingBookId}/archive?teacher_id=${encodeURIComponent(teacherId)}`, {
+      const response = await fetch(`${API_BASE_URL}/api/books/${archivingBookId}/archive?teacher_id=${encodeURIComponent(teacherId)}`, {
         method: "PUT",
       });
 

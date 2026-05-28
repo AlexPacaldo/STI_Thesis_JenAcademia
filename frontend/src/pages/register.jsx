@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/register.module.css"; // keeps your look & feel
+import { API_BASE_URL } from "../utils/api.js";
 
 const TIMEZONES = [
   "Asia/Manila",
@@ -43,7 +44,7 @@ export default function Register() {
 
   // Load courses
   useEffect(() => {
-    fetch("http://localhost:3001/api/courses")
+    fetch(`${API_BASE_URL}/api/courses`)
       .then((r) => r.json())
       .then((data) => setCourses(data.courses || []))
       .catch(() => setCourses([]));
@@ -51,7 +52,7 @@ export default function Register() {
 
   // Load availability for the current month
   useEffect(() => {
-    fetch(`http://localhost:3001/api/trial/availability?year=${year}&month=${month + 1}`)
+    fetch(`${API_BASE_URL}/api/trial/availability?year=${year}&month=${month + 1}`)
       .then((r) => r.json())
       .then((data) => setAvailability(data.days || {}))
       .catch(() => setAvailability({}));
@@ -110,7 +111,7 @@ export default function Register() {
     };
 
     try {
-      const res = await fetch("http://localhost:3001/api/register", {
+      const res = await fetch(`${API_BASE_URL}/api/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

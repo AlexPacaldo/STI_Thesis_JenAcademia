@@ -1,8 +1,9 @@
 import axios from "axios";
 import { useEffect, useMemo, useState } from "react";
 import styles from "../assets/chatPanel.module.css";
+import { API_BASE_URL } from "../utils/api.js";
 
-const API = "http://localhost:3001";
+const API = API_BASE_URL;
 
 function profileSrc(url) {
   if (!url) return null;

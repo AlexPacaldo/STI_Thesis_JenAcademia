@@ -4,8 +4,9 @@ import teacherPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/remarks.module.css";
 import { getStoredUserTimezone } from "../utils/timezone.js";
 import { readStoredUser } from "../utils/sessionUser.js";
+import { API_BASE_URL } from "../utils/api.js";
 
-const API = "http://localhost:3001";
+const API = API_BASE_URL;
 
 function absoluteUrl(url) {
   if (!url) return "";
@@ -76,7 +77,7 @@ export default function Remarks() {
       return;
     }
 
-    fetch(`http://localhost:3001/api/student/${studentId}/remarks`)
+    fetch(`${API_BASE_URL}/api/student/${studentId}/remarks`)
       .then(async (res) => {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
