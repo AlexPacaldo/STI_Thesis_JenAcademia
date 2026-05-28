@@ -17,6 +17,7 @@ const DB_USER = process.env.DB_USER || "root";
 const DB_PASSWORD = process.env.DB_PASSWORD || "";
 const DB_NAME = process.env.DB_NAME || "jen_academia";
 const DB_PORT = Number(process.env.DB_PORT || 3306);
+const DB_CONNECTION_LIMIT = Number(process.env.DB_CONNECTION_LIMIT || 4);
 
 const app = express();
 app.use(cors());
@@ -137,7 +138,10 @@ export const pool = mysql.createPool({
   password: DB_PASSWORD,
   database: DB_NAME,
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: DB_CONNECTION_LIMIT,
+  maxIdle: DB_CONNECTION_LIMIT,
+  idleTimeout: 60000,
+  queueLimit: 0,
 });
 
 const chatStreamClients = new Map();
@@ -1357,19 +1361,36 @@ async function expireDepletedPackages(db = pool) {
   );
 }
 
+const AUTO_MARK_PAST_CLASSES_INTERVAL_MS = 60 * 1000;
+let lastAutoMarkPastClassesAt = 0;
+let autoMarkPastClassesPromise = null;
+
 async function autoMarkPastClassesAsNoShow(db = pool) {
-  await db.query(
-    `UPDATE classes
-     SET status = 'no-show'
-     WHERE status = 'scheduled'
-       AND (
-         scheduled_date < CURDATE()
-         OR (
-           scheduled_date = CURDATE()
-           AND TIMESTAMP(scheduled_date, end_time) <= NOW()
-         )
-       )`
-  );
+  const now = Date.now();
+  if (autoMarkPastClassesPromise) return autoMarkPastClassesPromise;
+  if (now - lastAutoMarkPastClassesAt < AUTO_MARK_PAST_CLASSES_INTERVAL_MS) return;
+
+  autoMarkPastClassesPromise = db
+    .query(
+      `UPDATE classes
+       SET status = 'no-show'
+       WHERE status = 'scheduled'
+         AND (
+           scheduled_date < CURDATE()
+           OR (
+             scheduled_date = CURDATE()
+             AND TIMESTAMP(scheduled_date, end_time) <= NOW()
+           )
+         )`
+    )
+    .then(() => {
+      lastAutoMarkPastClassesAt = Date.now();
+    })
+    .finally(() => {
+      autoMarkPastClassesPromise = null;
+    });
+
+  await autoMarkPastClassesPromise;
 }
 
 const assignmentSelect = `
@@ -2832,6 +2853,85 @@ app.get("/api/calendar/classes-by-date", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching classes" });
+  }
+});
+
+// Get all classes for a month, grouped by scheduled_date
+app.get("/api/calendar/classes-by-month", async (req, res) => {
+  try {
+    const { year, month, student_id, teacher_id } = req.query;
+
+    if (!year || !month) {
+      return res.status(400).json({ message: "Missing year or month" });
+    }
+
+    const monthIndex = parseInt(month, 10);
+    const yearValue = parseInt(year, 10);
+
+    if (
+      Number.isNaN(monthIndex) ||
+      Number.isNaN(yearValue) ||
+      monthIndex < 1 ||
+      monthIndex > 12
+    ) {
+      return res.status(400).json({ message: "Invalid year or month" });
+    }
+
+    await autoMarkPastClassesAsNoShow(pool);
+
+    const daysInMonth = new Date(yearValue, monthIndex, 0).getDate();
+    const startDate = `${yearValue}-${String(monthIndex).padStart(2, "0")}-01`;
+    const endDate = `${yearValue}-${String(monthIndex).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+
+    let query = `SELECT ${classSelectFields},
+                       stu.first_name as student_name,
+                       stu.last_name as student_last_name,
+                       stu.email as student_email,
+                       stu.profile_image_url AS student_profile_image_url,
+                       stu.profile_image_url AS studentProfileImageUrl,
+                       stu.timezone as student_timezone,
+                       sp.proficiency_level AS student_proficiency_level,
+                       tea.first_name as teacher_name,
+                       tea.last_name as teacher_last_name,
+                       tea.email as teacher_email,
+                       tea.profile_image_url AS teacher_profile_image_url,
+                       tea.timezone as teacher_timezone,
+                       COALESCE(c.class_link, vs.teams_meeting_link) as class_link
+                 FROM classes c
+                 LEFT JOIN video_sessions vs ON vs.class_id = c.class_id
+                 JOIN users stu ON c.student_id = stu.user_id
+                 LEFT JOIN student_profiles sp ON sp.user_id = stu.user_id
+                 JOIN users tea ON c.teacher_id = tea.user_id
+                 WHERE c.scheduled_date BETWEEN ? AND ?
+                 AND c.status = 'scheduled'
+                 AND c.scheduled_date >= CURDATE()`;
+    const params = [startDate, endDate];
+
+    if (student_id) {
+      query += ` AND c.student_id = ?`;
+      params.push(student_id);
+    }
+    if (teacher_id) {
+      query += ` AND c.teacher_id = ?`;
+      params.push(teacher_id);
+    }
+
+    query += ` ORDER BY c.scheduled_date ASC, c.start_time ASC, c.class_id ASC`;
+
+    const [rows] = await pool.query(query, params);
+    const classesByDate = decryptRows(rows, ["class_link"]).reduce((acc, row) => {
+      const dateKey = row.scheduled_date instanceof Date
+        ? row.scheduled_date.toISOString().slice(0, 10)
+        : String(row.scheduled_date).slice(0, 10);
+      acc[dateKey] = acc[dateKey] || [];
+      acc[dateKey].push(row);
+      return acc;
+    }, {});
+
+    res.json({ classesByDate });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching monthly classes" });
   }
 });
 

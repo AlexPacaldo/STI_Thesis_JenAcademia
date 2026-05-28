@@ -1161,11 +1161,45 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     const targetUserId = teacherId || studentId || localUserId;
     if (!targetUserId) return;
 
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = fmtDate(new Date(year, month, d));
-      loadClassesForDate(dateStr);
+    const params = { year, month: month + 1 };
+    if (teacherId) {
+      params.teacher_id = teacherId;
+    } else if (studentId) {
+      params.student_id = studentId;
+    } else {
+      if (localRole === "student") params.student_id = localUserId;
+      if (localRole === "teacher") params.teacher_id = localUserId;
     }
+
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const emptyMonthCache = {};
+    for (let d = 1; d <= daysInMonth; d++) {
+      emptyMonthCache[fmtDate(new Date(year, month, d))] = [];
+    }
+
+    let active = true;
+    axios
+      .get(`${API}/api/calendar/classes-by-month`, { params })
+      .then(r => {
+        if (!active) return;
+        const monthlyClasses = r.data?.classesByDate || {};
+        const nextMonthCache = { ...emptyMonthCache };
+
+        Object.entries(monthlyClasses).forEach(([dateStr, classes]) => {
+          nextMonthCache[dateStr] = (classes || []).map(formatClassForViewer);
+        });
+
+        setClassesCache(prev => ({ ...prev, ...nextMonthCache }));
+      })
+      .catch(() => {
+        if (active) {
+          setClassesCache(prev => ({ ...prev, ...emptyMonthCache }));
+        }
+      });
+
+    return () => {
+      active = false;
+    };
   }, [year, month, localRole, localUserId, teacherId, studentId, calendarRefreshToken]);
 
   // Load teacher availability records for current month when teacher enters availability mode
