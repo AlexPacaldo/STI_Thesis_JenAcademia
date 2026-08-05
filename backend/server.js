@@ -12,15 +12,40 @@ import path from "path";
 dotenv.config();
 
 const PORT = process.env.PORT || 3001;
-const DB_HOST = process.env.DB_HOST || "localhost";
-const DB_USER = process.env.DB_USER || "root";
-const DB_PASSWORD = process.env.DB_PASSWORD || "";
-const DB_NAME = process.env.DB_NAME || "jen_academia";
-const DB_PORT = Number(process.env.DB_PORT || 3306);
-const requestedConnectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 1);
+const mysqlUrl = process.env.MYSQL_URL || process.env.DATABASE_URL || "";
+
+function parseMysqlUrl(url) {
+  if (!url) return {};
+
+  try {
+    const parsed = new URL(url);
+    if (!["mysql:", "mysql2:"].includes(parsed.protocol)) return {};
+
+    return {
+      host: parsed.hostname,
+      port: parsed.port ? Number(parsed.port) : undefined,
+      user: decodeURIComponent(parsed.username || ""),
+      password: decodeURIComponent(parsed.password || ""),
+      database: parsed.pathname ? decodeURIComponent(parsed.pathname.replace(/^\//, "")) : "",
+    };
+  } catch (err) {
+    console.warn("Ignoring invalid MYSQL_URL/DATABASE_URL:", err.message);
+    return {};
+  }
+}
+
+const mysqlUrlConfig = parseMysqlUrl(mysqlUrl);
+const DB_HOST = process.env.DB_HOST || process.env.MYSQLHOST || mysqlUrlConfig.host || "localhost";
+const DB_USER = process.env.DB_USER || process.env.MYSQLUSER || mysqlUrlConfig.user || "root";
+const DB_PASSWORD =
+  process.env.DB_PASSWORD || process.env.MYSQLPASSWORD || mysqlUrlConfig.password || "";
+const DB_NAME = process.env.DB_NAME || process.env.MYSQLDATABASE || mysqlUrlConfig.database || "jen_academia";
+const DB_PORT = Number(process.env.DB_PORT || process.env.MYSQLPORT || mysqlUrlConfig.port || 3306);
+const requestedConnectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 5);
 const DB_CONNECTION_LIMIT = Number.isFinite(requestedConnectionLimit)
-  ? Math.min(Math.max(requestedConnectionLimit, 1), 1)
-  : 1;
+  ? Math.min(Math.max(requestedConnectionLimit, 1), 10)
+  : 5;
+const UPLOAD_ROOT = path.resolve(process.env.UPLOAD_ROOT || path.join(process.cwd(), "uploads"));
 
 const app = express();
 app.use(cors());
@@ -107,9 +132,9 @@ function isMysqlConnectionLimitError(err) {
   return err?.code === "ER_USER_LIMIT_REACHED" || err?.errno === 1226;
 }
 
-const uploadDir = path.join(process.cwd(), "uploads", "assignments");
+const uploadDir = path.join(UPLOAD_ROOT, "assignments");
 fs.mkdirSync(uploadDir, { recursive: true });
-const profileUploadDir = path.join(process.cwd(), "uploads", "profiles");
+const profileUploadDir = path.join(UPLOAD_ROOT, "profiles");
 fs.mkdirSync(profileUploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
@@ -139,10 +164,14 @@ const profileUpload = multer({
     cb(new Error("Only JPG, PNG, WEBP, and GIF profile images are allowed"));
   },
 });
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+app.use("/uploads", express.static(UPLOAD_ROOT));
+
+app.get("/healthz", (_req, res) => {
+  res.json({ ok: true });
+});
 
 // MySQL pool
-export const pool = mysql.createPool({
+const poolConfig = {
   host: DB_HOST,
   port: DB_PORT,
   user: DB_USER,
@@ -153,7 +182,13 @@ export const pool = mysql.createPool({
   maxIdle: DB_CONNECTION_LIMIT,
   idleTimeout: 10000,
   queueLimit: 0,
-});
+};
+
+if (String(process.env.DB_SSL || "").toLowerCase() === "true") {
+  poolConfig.ssl = { rejectUnauthorized: false };
+}
+
+export const pool = mysql.createPool(poolConfig);
 
 const chatStreamClients = new Map();
 const chatPresenceUsers = new Map();
@@ -5377,7 +5412,7 @@ app.delete("/api/calendar/availability/:availability_id", async (req, res) => {
 // ========== BOOKS/LESSONS MODULE ==========
 
 // Create multer storage for lessons (separate from assignments)
-const lessonUploadDir = path.join(process.cwd(), "uploads", "lessons");
+const lessonUploadDir = path.join(UPLOAD_ROOT, "lessons");
 fs.mkdirSync(lessonUploadDir, { recursive: true });
 
 const lessonStorage = multer.diskStorage({
@@ -5401,7 +5436,7 @@ const lessonUpload = multer({
 });
 
 // Create multer storage for book covers
-const bookCoverUploadDir = path.join(process.cwd(), "uploads", "books");
+const bookCoverUploadDir = path.join(UPLOAD_ROOT, "books");
 fs.mkdirSync(bookCoverUploadDir, { recursive: true });
 
 const bookCoverStorage = multer.diskStorage({
