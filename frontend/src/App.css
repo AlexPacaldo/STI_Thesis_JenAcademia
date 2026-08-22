@@ -84,6 +84,12 @@ body{
 
 @media (max-width: 800px){
     .app-layout{ grid-template-columns: 1fr; padding: 12px; }
+    .content-area{ margin: 0 0 1.25rem; }
     .content-inner{ padding: 16px; }
+}
+
+@media (max-width: 480px){
+    .app-layout{ padding: 8px; }
+    .content-inner{ padding: 12px; border-radius: 14px; }
 }
 

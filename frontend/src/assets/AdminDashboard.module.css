@@ -272,6 +272,18 @@
   gap: 14px;
 }
 
+.responsiveFormGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 16px;
+}
+
+.choiceGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 8px;
+}
+
 .compactSearch,
 .searchBar {
   margin: 0 0 18px;
@@ -439,6 +451,20 @@
   padding: 14px;
 }
 
+.filterTabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 12px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.filterTabs button {
+  flex: 0 0 auto;
+}
+
 @media (max-width: 900px) {
   .Center {
     padding: 16px;
@@ -465,9 +491,109 @@
   }
 }
 
+@media (max-width: 700px) {
+  .Center,
+  .page,
+  .main,
+  .card,
+  .tableWrap {
+    min-width: 0;
+  }
+
+  .tableWrap {
+    width: 100%;
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+
+  .table {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0 12px;
+  }
+
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .table tbody,
+  .table tr,
+  .table td {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .table tr {
+    box-sizing: border-box;
+    border: 1px solid #e1ebe5;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 8px 20px rgba(47, 77, 62, 0.07);
+    overflow: hidden;
+  }
+
+  .table td {
+    min-width: 0;
+    padding: 11px 12px !important;
+    border-bottom: 1px solid #edf3ef;
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
+  }
+
+  .table td:last-child {
+    border-bottom: 0;
+  }
+
+  .table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 5px;
+    color: #60736a;
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0;
+  }
+
+  .table td:not([data-label])::before {
+    content: none;
+  }
+
+  .table input,
+  .table select {
+    width: 100% !important;
+    max-width: 100%;
+  }
+
+  .table [style*="max-width"] {
+    max-width: 100% !important;
+  }
+}
+
 @media (max-width: 560px) {
   .Center {
-    padding: 12px;
+    padding: 4px 0 12px;
+  }
+
+  .header h1,
+  .cardHead h2 {
+    font-size: 22px;
+  }
+
+  .tabs,
+  .subTabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
   }
 
   .card {
@@ -485,5 +611,9 @@
   .warn,
   .secondaryBtn {
     width: 100%;
+  }
+
+  .filterTabs button {
+    padding: 8px 12px !important;
   }
 }
