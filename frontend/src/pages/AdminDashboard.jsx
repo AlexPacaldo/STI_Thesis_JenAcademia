@@ -1354,7 +1354,7 @@ export default function AdminDashboard() {
                 <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
                   Add trial notes, choose the student's proficiency level, and choose the learning criteria. The AI matcher will prioritize teachers below 2 active students, then choose the least-loaded teacher if everyone already has 2 or more.
                 </p>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
+                <div className={styles.responsiveFormGrid} style={{ marginBottom: "16px" }}>
                   <div>
                     <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Proficiency Level</label>
                     <select
@@ -1378,7 +1378,7 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Learning Goal</label>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "8px" }}>
+                    <div className={styles.choiceGrid}>
                       {studentLearningGoalOptions.length ? studentLearningGoalOptions.map(([value, label]) => (
                         <label
                           key={value}
@@ -1421,7 +1421,7 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Focus Area</label>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "8px" }}>
+                    <div className={styles.choiceGrid}>
                       {studentFocusAreaOptions.length ? studentFocusAreaOptions.map(([value, label]) => (
                         <label
                           key={value}
@@ -1539,7 +1539,7 @@ export default function AdminDashboard() {
                 <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
                   Review the recommended teacher and course before creating the student account.
                 </p>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div className={styles.responsiveFormGrid}>
                   <div>
                     <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Assigned Teacher</label>
                     <select
@@ -1582,7 +1582,7 @@ export default function AdminDashboard() {
                 <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
                   Specify the number of classes this student has purchased or availed in their package. This helps track their remaining classes and package utilization.
                 </p>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
+                <div className={styles.responsiveFormGrid}>
                   <div>
                     <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Number of Classes Availed</label>
                     <select
@@ -1717,14 +1717,14 @@ export default function AdminDashboard() {
                     <tbody>
                       {filteredContractRequests.map((request) => (
                         <tr key={request.request_id}>
-                          <td>
+                          <td data-label="Student">
                             <strong>{request.first_name} {request.last_name}</strong>
                             <div style={{ fontSize: "0.8em", color: "#666" }}>{request.email}</div>
                           </td>
-                          <td>{request.course_name || "Course not set"}</td>
-                          <td>{request.requested_classes}</td>
-                          <td>{request.class_duration || 50} min</td>
-                          <td>
+                          <td data-label="Requested Course">{request.course_name || "Course not set"}</td>
+                          <td data-label="Classes">{request.requested_classes}</td>
+                          <td data-label="Duration">{request.class_duration || 50} min</td>
+                          <td data-label="Status">
                             <span style={{
                               padding: "4px 8px",
                               borderRadius: 999,
@@ -1736,8 +1736,8 @@ export default function AdminDashboard() {
                               {request.status}
                             </span>
                           </td>
-                          <td>{formatDate(request.requested_at)}</td>
-                          <td>
+                          <td data-label="Requested">{formatDate(request.requested_at)}</td>
+                          <td data-label="Actions">
                             {request.status === "pending" ? (
                               <div className={styles.rowActions}>
                                 <button
@@ -1812,11 +1812,11 @@ export default function AdminDashboard() {
                       const classesLeft = Math.max(0, total - used);
                       return (
                         <tr key={row.user_id}>
-                          <td>
+                          <td data-label="Student">
                             <strong>{row.first_name} {row.last_name}</strong>
                             <div style={{ fontSize: "0.8em", color: "#666" }}>{row.email}</div>
                           </td>
-                          <td>
+                          <td data-label="Course">
                             <select
                               value={row.course_id}
                               onChange={(e) => updateContractRow(row.user_id, "course_id", e.target.value)}
@@ -1829,7 +1829,7 @@ export default function AdminDashboard() {
                               ))}
                             </select>
                           </td>
-                          <td>
+                          <td data-label="Teacher">
                             <select
                               value={row.assigned_teacher_id}
                               onChange={(e) => updateContractRow(row.user_id, "assigned_teacher_id", e.target.value)}
@@ -1844,7 +1844,7 @@ export default function AdminDashboard() {
                               ))}
                             </select>
                           </td>
-                          <td>
+                          <td data-label="Duration">
                             <select
                               value={row.class_duration || 50}
                               onChange={(e) => updateContractRow(row.user_id, "class_duration", e.target.value)}
@@ -1853,7 +1853,7 @@ export default function AdminDashboard() {
                               <option value="50">50 min</option>
                             </select>
                           </td>
-                          <td>
+                          <td data-label="Total">
                             <input
                               type="number"
                               min="0"
@@ -1862,7 +1862,7 @@ export default function AdminDashboard() {
                               style={{ width: 78 }}
                             />
                           </td>
-                          <td>
+                          <td data-label="Used">
                             <input
                               type="number"
                               min="0"
@@ -1872,7 +1872,7 @@ export default function AdminDashboard() {
                               style={{ width: 78 }}
                             />
                           </td>
-                          <td>
+                          <td data-label="Left">
                             <span style={{
                               display: "inline-block",
                               minWidth: 34,
@@ -1886,7 +1886,7 @@ export default function AdminDashboard() {
                               {classesLeft}
                             </span>
                           </td>
-                          <td>
+                          <td data-label="Status">
                             <select
                               value={row.package_status}
                               onChange={(e) => updateContractRow(row.user_id, "package_status", e.target.value)}
@@ -1896,7 +1896,7 @@ export default function AdminDashboard() {
                               <option value="cancelled">Cancelled</option>
                             </select>
                           </td>
-                          <td>
+                          <td data-label="Actions">
                             <button
                               className={styles.approve}
                               type="button"
@@ -1975,7 +1975,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Filter Tabs */}
-            <div style={{ display: "flex", gap: "8px", marginBottom: "16px", borderBottom: "1px solid #e0e0e0", paddingBottom: "12px" }}>
+            <div className={styles.filterTabs}>
               {["all", "pending", "approved", "declined"].map((status) => {
                 const counts = {
                   all: requests.length,
@@ -2019,7 +2019,7 @@ export default function AdminDashboard() {
             )}
 
             {/* Requests List */}
-            <div style={{ overflowX: "auto" }}>
+            <div className={styles.tableWrap}>
               {requestsLoading ? (
                 <div style={{ textAlign: "center", padding: "32px", color: "#999" }}>
                   Loading requests...
@@ -2029,7 +2029,7 @@ export default function AdminDashboard() {
                   No reschedule requests at this time
                 </div>
               ) : (
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9em" }}>
+                <table className={styles.table}>
                   <thead>
                     <tr style={{ background: "#f5f5f5", borderBottom: "2px solid #e0e0e0" }}>
                       <th style={{ padding: "12px", textAlign: "left", fontWeight: "600", color: "#333" }}>Class</th>
@@ -2053,7 +2053,7 @@ export default function AdminDashboard() {
 
                         return (
                           <tr key={r.request_id} style={{ borderBottom: "1px solid #e0e0e0", background: "#fff" }}>
-                            <td style={{ padding: "12px", verticalAlign: "top" }}>
+                            <td data-label="Class" style={{ padding: "12px", verticalAlign: "top" }}>
                               <div style={{ fontWeight: "500", color: "#333" }}>{r.class_name || "Untitled Class"}</div>
                               <div style={{ fontSize: "0.8em", color: "#666", marginTop: "2px" }}>
                                 Teacher: {r.teacher_first} {r.teacher_last}
@@ -2069,19 +2069,19 @@ export default function AdminDashboard() {
                                 </div>
                               )}
                             </td>
-                            <td style={{ padding: "12px", verticalAlign: "top" }}>
+                            <td data-label="Requester" style={{ padding: "12px", verticalAlign: "top" }}>
                               <div style={{ fontWeight: "500" }}>{r.requester_first} {r.requester_last}</div>
                               <div style={{ fontSize: "0.8em", color: "#666" }}>{r.requester_email || ""}</div>
                             </td>
-                            <td style={{ padding: "12px", verticalAlign: "top" }}>
+                            <td data-label="Current Schedule" style={{ padding: "12px", verticalAlign: "top" }}>
                               <div style={{ fontWeight: "500" }}>{formatDate(r.scheduled_date)}</div>
                               <div style={{ fontSize: "0.8em", color: "#666" }}>{r.start_time || "-"}</div>
                             </td>
-                            <td style={{ padding: "12px", verticalAlign: "top" }}>
+                            <td data-label="Requested Schedule" style={{ padding: "12px", verticalAlign: "top" }}>
                               <div style={{ fontWeight: "500" }}>{formatDate(r.requested_date)}</div>
                               <div style={{ fontSize: "0.8em", color: "#666" }}>{r.requested_time || "-"}</div>
                             </td>
-                            <td style={{ padding: "12px", verticalAlign: "top" }}>
+                            <td data-label="Status" style={{ padding: "12px", verticalAlign: "top" }}>
                               <span style={{
                                 padding: "4px 8px",
                                 borderRadius: "12px",
@@ -2099,7 +2099,7 @@ export default function AdminDashboard() {
                                 </div>
                               )}
                             </td>
-                            <td style={{ padding: "12px", verticalAlign: "top" }}>
+                            <td data-label="Actions" style={{ padding: "12px", verticalAlign: "top" }}>
                               <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                                 <button
                                   onClick={() => requestDeleteRequest(r.request_id)}
