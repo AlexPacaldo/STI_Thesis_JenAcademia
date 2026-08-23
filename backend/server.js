@@ -60,7 +60,7 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   credentials: true
 }));
-app.options("*", cors());
+app.options(/(.*)/, cors());
 app.use(express.json());
 
 const ENCRYPTED_VALUE_PREFIX = "enc:v1:";
