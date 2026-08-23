@@ -2,18 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/register.module.css"; // keeps your look & feel
 import { API_BASE_URL } from "../utils/api.js";
+import { formatTimezoneLabel, getTimezoneOptions } from "../utils/timezone.js";
 
-const TIMEZONES = [
-  "Asia/Manila",
-  "Asia/Tokyo",
-  "Asia/Singapore",
-  "Asia/Hong_Kong",
-  "Australia/Sydney",
-  "Europe/London",
-  "Europe/Berlin",
-  "America/Los_Angeles",
-  "America/New_York",
-];
+const TIMEZONES = getTimezoneOptions();
 
 const SLOTS = ["09:00", "13:00", "19:00"]; // simple example; server blocks already-booked
 
@@ -194,7 +185,7 @@ export default function Register() {
           <label htmlFor="timezone">Time zone</label>
           <select id="timezone" name="timezone" value={form.timezone} onChange={handleChange}>
             {TIMEZONES.map((tz) => (
-              <option key={tz} value={tz}>{tz}</option>
+              <option key={tz} value={tz}>{formatTimezoneLabel(tz)}</option>
             ))}
           </select>
 

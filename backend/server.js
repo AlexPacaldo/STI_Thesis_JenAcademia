@@ -332,11 +332,13 @@ const COUNTRY_TIMEZONES = {
   Philippines: "Asia/Manila",
   Singapore: "Asia/Singapore",
   "South Korea": "Asia/Seoul",
+  Taiwan: "Asia/Taipei",
   Thailand: "Asia/Bangkok",
   "United Arab Emirates": "Asia/Dubai",
   "United Kingdom": "Europe/London",
   "United States": "America/New_York",
   Vietnam: "Asia/Ho_Chi_Minh",
+  Samoa: "Pacific/Pago_Pago",
 };
 
 function timezoneFromCountry(country) {
@@ -417,6 +419,16 @@ function humanTime(timeStr) {
 function normalizeDateKey(value) {
   const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
   return match ? `${match[1]}-${match[2]}-${match[3]}` : "";
+}
+
+function formatDateKey(date) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function addDaysToDateKey(dateKey, days) {
+  const match = normalizeDateKey(dateKey).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  return formatDateKey(new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days));
 }
 
 function normalizeTimeKey(value) {
@@ -1578,6 +1590,9 @@ app.get("/api/dashboard/:role/:user_id", async (req, res) => {
     }
 
     await autoMarkPastClassesAsNoShow(pool);
+    const scheduledDateText = normalizeDateKey(scheduledDate);
+    const sourceStartDate = addDaysToDateKey(scheduledDateText, -1) || scheduledDateText;
+    const sourceEndDate = addDaysToDateKey(scheduledDateText, 1) || scheduledDateText;
 
     const classIdColumn = role === "teacher" ? "teacher_id" : "student_id";
     const classesPromise = pool.query(
@@ -1600,12 +1615,12 @@ app.get("/api/dashboard/:role/:user_id", async (req, res) => {
        JOIN users stu ON c.student_id = stu.user_id
        LEFT JOIN student_profiles sp ON sp.user_id = stu.user_id
        JOIN users tea ON c.teacher_id = tea.user_id
-       WHERE c.scheduled_date = ?
+       WHERE c.scheduled_date BETWEEN ? AND ?
          AND c.status = 'scheduled'
          AND c.scheduled_date >= CURDATE()
          AND c.${classIdColumn} = ?
        ORDER BY c.start_time ASC, c.class_id ASC`,
-      [scheduledDate, user_id]
+      [sourceStartDate, sourceEndDate, user_id]
     );
 
     const coursesPromise = pool.query("SELECT course_id, course_name FROM courses ORDER BY course_name");
@@ -2841,21 +2856,30 @@ app.get("/api/calendar/teacher-availability", async (req, res) => {
     const daysInMonth = new Date(yearValue, monthIndex, 0).getDate();
     const startDate = `${yearValue}-${String(monthIndex).padStart(2, "0")}-01`;
     const endDate = `${yearValue}-${String(monthIndex).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+    const sourceStartDate = addDaysToDateKey(startDate, -1) || startDate;
+    const sourceEndDate = addDaysToDateKey(endDate, 1) || endDate;
 
     const [rows] = await pool.query(
-      `SELECT DATE_FORMAT(available_date, '%Y-%m-%d') as available_date, status FROM teacher_availability 
-       WHERE teacher_id = ? AND available_date BETWEEN ? AND ?
-       ORDER BY available_date`,
-      [teacher_id, startDate, endDate]
+      `SELECT DATE_FORMAT(ta.available_date, '%Y-%m-%d') as available_date,
+              ta.status,
+              TIME_FORMAT(ta.start_time, '%H:%i:%s') AS start_time,
+              TIME_FORMAT(ta.end_time, '%H:%i:%s') AS end_time,
+              u.timezone AS teacher_timezone
+       FROM teacher_availability ta
+       JOIN users u ON u.user_id = ta.teacher_id
+       WHERE ta.teacher_id = ? AND ta.available_date BETWEEN ? AND ?
+       ORDER BY ta.available_date`,
+      [teacher_id, sourceStartDate, sourceEndDate]
     );
 
     const availability = {};
+    const records = [];
     rows.forEach(row => {
-      // DATE_FORMAT already returns a string in YYYY-MM-DD format
       availability[row.available_date] = row.status;
+      records.push(row);
     });
 
-    res.json({ availability });
+    res.json({ availability, records });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching availability" });
@@ -2983,7 +3007,7 @@ app.get("/api/calendar/classes-by-month", async (req, res) => {
                  WHERE c.scheduled_date BETWEEN ? AND ?
                  AND c.status = 'scheduled'
                  AND c.scheduled_date >= CURDATE()`;
-    const params = [startDate, endDate];
+    const params = [sourceStartDate, sourceEndDate];
 
     if (student_id) {
       query += ` AND c.student_id = ?`;
@@ -5128,6 +5152,8 @@ app.get("/api/calendar/teacher-availability-records", async (req, res) => {
     const daysInMonth = new Date(yearValue, monthIndex, 0).getDate();
     const startDate = `${yearValue}-${String(monthIndex).padStart(2, "0")}-01`;
     const endDate = `${yearValue}-${String(monthIndex).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+    const sourceStartDate = addDaysToDateKey(startDate, -1) || startDate;
+    const sourceEndDate = addDaysToDateKey(endDate, 1) || endDate;
 
     const [rows] = await pool.query(
       `SELECT ta.availability_id as id,
@@ -5144,7 +5170,7 @@ app.get("/api/calendar/teacher-availability-records", async (req, res) => {
        JOIN users u ON u.user_id = ta.teacher_id
        WHERE ta.teacher_id = ? AND ta.available_date BETWEEN ? AND ?
        ORDER BY ta.available_date ASC`,
-      [teacher_id, startDate, endDate]
+      [teacher_id, sourceStartDate, sourceEndDate]
     );
 
     res.json({ records: rows });

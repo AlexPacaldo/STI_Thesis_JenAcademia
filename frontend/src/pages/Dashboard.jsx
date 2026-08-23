@@ -31,6 +31,11 @@ function formatClassTime(cls, viewerTimezone) {
   return `${formatHumanTime(start.time)} - ${formatHumanTime(end.time)}`;
 }
 
+function getClassDateForViewer(cls, viewerTimezone) {
+  const sourceTimezone = cls.teacher_timezone || DEFAULT_TIMEZONE;
+  return convertDateTime(cls.scheduled_date, cls.start_time, sourceTimezone, viewerTimezone).date;
+}
+
 function formatDate(value) {
   if (!value) return "No date";
   const date = new Date(value);
@@ -151,11 +156,13 @@ export default function Dashboard({ mode }) {
   const viewerTimezone = getUserTimezone(user);
   const currentUserId = user.id ?? user.user_id ?? null;
   const displayName = getDisplayName(user);
+  const todayDate = getTodayDate();
   const todayLabel = useMemo(() => new Date().toLocaleDateString(undefined, {
+    timeZone: viewerTimezone,
     weekday: "long",
     month: "long",
     day: "numeric",
-  }), []);
+  }), [viewerTimezone]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -283,14 +290,16 @@ export default function Dashboard({ mode }) {
           setCourseMap(nextCourseMap);
 
           setTeacherData({
-            classesToday: (dashboard.classes || []).map((cls) => ({
+            classesToday: (dashboard.classes || [])
+              .filter((cls) => getClassDateForViewer(cls, viewerTimezone) === todayDate)
+              .map((cls) => ({
               id: cls.class_id || cls.id,
               student: cls.student_name
                 ? `${cls.student_name} ${cls.student_last_name || ""}`.trim()
                 : cls.studentName || "Student",
               subject: cls.class_name || cls.className || "Class",
               time: formatClassTime(cls, viewerTimezone),
-              scheduledDate: cls.scheduled_date || null,
+              scheduledDate: getClassDateForViewer(cls, viewerTimezone) || cls.scheduled_date || null,
               raw: cls,
             })),
             students: dashboard.students || [],
@@ -307,12 +316,14 @@ export default function Dashboard({ mode }) {
           setCourseMap(nextCourseMap);
 
           setStudentData({
-            classesToday: (dashboard.classes || []).map((cls) => ({
+            classesToday: (dashboard.classes || [])
+              .filter((cls) => getClassDateForViewer(cls, viewerTimezone) === todayDate)
+              .map((cls) => ({
               id: cls.class_id || cls.id,
               title: cls.class_name || cls.className || cls.subject || "Class",
               teacher: cls.teacher_name ? `${cls.teacher_name} ${cls.teacher_last_name || ""}`.trim() : cls.teacherName || "Teacher",
               time: formatClassTime(cls, viewerTimezone),
-              scheduledDate: cls.scheduled_date || cls.date || null,
+              scheduledDate: getClassDateForViewer(cls, viewerTimezone) || cls.scheduled_date || cls.date || null,
               raw: cls,
             })),
             remarks: dashboard.remarks || [],
@@ -339,7 +350,7 @@ export default function Dashboard({ mode }) {
     return () => {
       ignore = true;
     };
-  }, [currentUserId, isTeacher, viewerTimezone]);
+  }, [currentUserId, isTeacher, todayDate, viewerTimezone]);
 
   const stats = useMemo(() => {
     if (isTeacher) {

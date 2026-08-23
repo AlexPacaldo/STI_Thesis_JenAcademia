@@ -109,7 +109,7 @@ export default function Homepage() {
 
         <div className={styles.heroSection}>
           <div className={styles.heroContent}>
-            <span className={styles.heroBadge}>Personalized Learning, Better Results</span>
+            {/* <span className={styles.heroBadge}>Personalized Learning, Better Results</span> */}
             <h3 className={styles.heroTitle}>Personalized Online Tutoring for Every Student</h3>
             <p className={styles.heroDescription}>
               Learn smarter, achieve better with JEN Academia. Get matched with tutors, book classes, and

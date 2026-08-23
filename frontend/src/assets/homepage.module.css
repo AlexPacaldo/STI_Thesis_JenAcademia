@@ -6,14 +6,19 @@
 }
 
 .heroHeader {
-  position: relative;
+  /* position: relative; */
   min-height: 100vh;
-  padding: 2.5rem 1.5rem 2rem;
-  background: linear-gradient(180deg, #fbf7ef 0%, #f6f1e8 32%, #f4f2ee 100%);
-  overflow: hidden;
+  padding: 2.5rem 1.5rem 2rem;  
+  background-color: #fbf7ef;
+  background-image: url("./img/homepage/background.jpg");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+  /* background: linear-gradient(180deg, #fbf7ef 0%, #f6f1e8 32%, #f4f2ee 100%);  */
+  /* overflow: hidden; */
 }
 
-.heroHeader::before {
+/* .heroHeader::before {
   content: "";
   position: absolute;
   top: -10%;
@@ -37,7 +42,7 @@
   border-radius: 50%;
   filter: blur(24px);
   z-index: 0;
-}
+} */
 
 .heroTop {
   display: flex;
@@ -301,7 +306,7 @@
 }
 
 .heroVisualCard img {
-  max-width: 135%;
+  max-width: 90%;
   height: auto;
   display: block;
   

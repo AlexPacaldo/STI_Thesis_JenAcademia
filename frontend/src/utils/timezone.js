@@ -2,6 +2,38 @@ import { readStoredUser } from "./sessionUser.js";
 
 export const DEFAULT_TIMEZONE = "Asia/Manila";
 
+const TIMEZONE_OPTIONS = [
+  "Asia/Manila",
+  "Asia/Ho_Chi_Minh",
+  "Asia/Taipei",
+  "Asia/Seoul",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "Pacific/Pago_Pago",
+];
+
+const TIMEZONE_LABELS = {
+  "Asia/Manila": "Philippines - Asia/Manila",
+  "Asia/Ho_Chi_Minh": "Vietnam - Asia/Ho_Chi_Minh",
+  "Asia/Taipei": "Taiwan - Asia/Taipei",
+  "Asia/Seoul": "Korea - Asia/Seoul",
+  "America/New_York": "US Eastern - America/New_York",
+  "America/Chicago": "US Central - America/Chicago",
+  "America/Denver": "US Mountain - America/Denver",
+  "America/Los_Angeles": "US Pacific - America/Los_Angeles",
+  "Pacific/Pago_Pago": "Pacific/Pago_Pago (SST)",
+};
+
+export function formatTimezoneLabel(timezone) {
+  return TIMEZONE_LABELS[timezone] || timezone;
+}
+
+export function getTimezoneOptions() {
+  return TIMEZONE_OPTIONS.filter(isValidTimezone);
+}
+
 export function getUserTimezone(user, fallback = DEFAULT_TIMEZONE) {
   const timezone = user?.timezone || user?.time_zone || user?.timezoneName;
   return isValidTimezone(timezone) ? timezone : fallback;

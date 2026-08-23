@@ -219,6 +219,18 @@
   flex-direction: column;
   gap: 12px;
   align-items: stretch;
+  min-width: 0;
+}
+
+.availabilityManager {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.availabilityStatus,
+.availabilityActions,
+.availabilityRecordHeader {
+  min-width: 0;
 }
 
 .legendTitle {
@@ -393,7 +405,15 @@
 }
 
 @media (max-width: 900px) {
-  .wrapper { grid-template-columns: 1fr; }
+  .wrapper {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .calendarCard,
+  .bookPanel {
+    width: 100%;
+  }
+
   .bookPanel { order: -1; }
 }
 
@@ -411,6 +431,36 @@
   .calendarCard {
     padding: 12px;
     border-radius: 18px;
+  }
+
+  .availabilityManager {
+    padding: 12px !important;
+  }
+
+  .availabilityStatus {
+    gap: 8px !important;
+  }
+
+  .availabilityStatus button {
+    min-width: 0;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+  }
+
+  .availabilityActions {
+    justify-content: stretch !important;
+  }
+
+  .availabilityActions button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  .availabilityRecordHeader {
+    gap: 8px;
+    flex-wrap: wrap;
   }
 
   .weekHeader,
@@ -450,5 +500,23 @@
 
   .cell {
     font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 320px) {
+  .center {
+    width: 100%;
+  }
+
+  .availabilityStatus {
+    flex-direction: column;
+  }
+
+  .availabilityStatus button {
+    width: 100%;
+  }
+
+  .breakTimeFields {
+    grid-template-columns: 1fr !important;
   }
 }
