@@ -454,6 +454,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [classesCache, setClassesCache] = useState({}); // map date->classes array
   const [studentPackage, setStudentPackage] = useState(null);
   const [calendarRefreshToken, setCalendarRefreshToken] = useState(0);
+  const [isUserReady, setIsUserReady] = useState(false);
+  const [isInitialCalendarLoading, setIsInitialCalendarLoading] = useState(true);
 
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -589,6 +591,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       }
     } catch (e) {
       console.error("Error reading user from localStorage:", e);
+    } finally {
+      setIsUserReady(true);
     }
   }, []);
 
@@ -1158,8 +1162,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   // preload every day in the month so cells with classes are colored on load
   useEffect(() => {
     // If teacherId or studentId prop is provided, use those; otherwise use local user
+    if (!isUserReady) return;
+
     const targetUserId = teacherId || studentId || localUserId;
-    if (!targetUserId) return;
+    if (!targetUserId) {
+      setIsInitialCalendarLoading(false);
+      return;
+    }
 
     const params = { year, month: month + 1 };
     if (teacherId) {
@@ -1190,17 +1199,19 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         });
 
         setClassesCache(prev => ({ ...prev, ...nextMonthCache }));
+        setIsInitialCalendarLoading(false);
       })
       .catch(() => {
         if (active) {
           setClassesCache(prev => ({ ...prev, ...emptyMonthCache }));
+          setIsInitialCalendarLoading(false);
         }
       });
 
     return () => {
       active = false;
     };
-  }, [year, month, localRole, localUserId, teacherId, studentId, calendarRefreshToken]);
+  }, [year, month, localRole, localUserId, teacherId, studentId, calendarRefreshToken, isUserReady]);
 
   // Load teacher availability records for current month when teacher enters availability mode
   useEffect(() => {
@@ -2356,6 +2367,30 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     setStudentBookingConfirmOpen(false);
     await submitStudentBooking();
   };
+
+  if (isInitialCalendarLoading) {
+    return (
+      <main className={styles.page}>
+        <section className={styles.loadingScreen} aria-live="polite" aria-busy="true">
+          <div className={styles.loadingCalendar}>
+            <div className={styles.loadingCalendarHeader}>
+              <span></span>
+              <span></span>
+            </div>
+            <div className={styles.loadingCalendarGrid}>
+              {Array.from({ length: 35 }).map((_, index) => (
+                <span key={index}></span>
+              ))}
+            </div>
+          </div>
+          <div className={styles.loadingText}>
+            <h1>Loading calendar</h1>
+            <p>Preparing your schedule...</p>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <>
