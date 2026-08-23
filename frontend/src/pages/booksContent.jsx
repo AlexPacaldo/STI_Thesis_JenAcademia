@@ -6,9 +6,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import styles from "../assets/booksContent.module.css";
 import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
+import { API_BASE_URL } from "../utils/api.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
-import { API_BASE_URL } from "../utils/api.js";
 
 const API_BASE = API_BASE_URL;
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -227,7 +227,10 @@ export default function BooksContent({ mode = "student" }) {
   const [progressLoading, setProgressLoading] = useState(false);
   const [progressError, setProgressError] = useState("");
   const [accessError, setAccessError] = useState("");
-  const [readLessons, setReadLessons] = useState({});
+  const [hasScrolled, setHasScrolled] = useState(false);
+  const [autoOpenedLessonId, setAutoOpenedLessonId] = useState(null);
+  const [readerContentReady, setReaderContentReady] = useState(false);
+  const [selectedLessonAtBottom, setSelectedLessonAtBottom] = useState(false);
   const [showPdfFullscreen, setShowPdfFullscreen] = useState(false);
   const [showLessonModal, setShowLessonModal] = useState(false);
   const [uploadingLesson, setUploadingLesson] = useState(false);
@@ -237,6 +240,8 @@ export default function BooksContent({ mode = "student" }) {
     file: null,
   });
   const fullscreenReaderRef = useRef(null);
+  const bottomStabilityTimerRef = useRef(null);
+  const STABILITY_DELAY = 250; // ms
 
   useEffect(() => {
     if (!showPdfFullscreen) return undefined;
@@ -381,31 +386,101 @@ export default function BooksContent({ mode = "student" }) {
   const selectedLessonId = selectedLesson?.lesson_id;
   const selectedLessonCompleted = selectedLessonId ? isLessonCompleted(progress[selectedLessonId]) : false;
   const lessonRequiresScroll = Boolean(selectedFileUrl);
-  const selectedLessonReadReady = selectedLessonCompleted || !lessonRequiresScroll || Boolean(readLessons[selectedLessonId]);
+  const selectedLessonReadReady = (() => {
+    if (!selectedLessonId) return false;
+    if (selectedLessonCompleted) return true;
 
-  const markSelectedLessonRead = useCallback(() => {
-    if (!selectedLessonId) return;
-    setReadLessons((current) => {
-      if (current[selectedLessonId]) return current;
-      return { ...current, [selectedLessonId]: true };
-    });
-  }, [selectedLessonId]);
+    if (lessonRequiresScroll) {
+      return readerContentReady && selectedLessonAtBottom;
+    }
 
-  const checkReaderBottom = useCallback((viewport) => {
-    if (!viewport || !selectedLessonId || !lessonRequiresScroll) return;
+    // If lesson does NOT require scrolling, allow readiness only if
+    // the lesson was not auto-opened, or the user has interacted (scrolled).
+    return !autoOpenedLessonId || hasScrolled;
+  })();
+
+  const isReaderAtBottom = useCallback((viewport) => {
+    if (!viewport) return false;
+
+    const contentFits = viewport.scrollHeight <= viewport.clientHeight + 12;
+    if (contentFits) return true;
 
     const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-    if (distanceFromBottom <= 12) {
-      markSelectedLessonRead();
-    }
-  }, [lessonRequiresScroll, markSelectedLessonRead, selectedLessonId]);
+    return distanceFromBottom <= 12;
+  }, []);
 
+  // Called when the user actually scrolls the viewport.
   const handleFullscreenScroll = useCallback(() => {
-    checkReaderBottom(fullscreenReaderRef.current);
-  }, [checkReaderBottom]);
+    setHasScrolled(true);
+    // If this lesson was auto-opened, clear the auto-open block on actual user interaction.
+    if (autoOpenedLessonId === selectedLessonId) {
+      setAutoOpenedLessonId(null);
+    }
+
+    const viewport = fullscreenReaderRef.current;
+    if (!viewport || !selectedLessonId || !lessonRequiresScroll) return;
+    if (!readerContentReady) return;
+
+    const atBottom = isReaderAtBottom(viewport);
+    setSelectedLessonAtBottom(atBottom);
+
+    // If at bottom, start a short stability timer before enabling the button.
+    if (atBottom) {
+      if (bottomStabilityTimerRef.current) {
+        clearTimeout(bottomStabilityTimerRef.current);
+        bottomStabilityTimerRef.current = null;
+      }
+
+      bottomStabilityTimerRef.current = window.setTimeout(() => {
+        const vp = fullscreenReaderRef.current;
+        if (!vp) return;
+        setSelectedLessonAtBottom(isReaderAtBottom(vp));
+
+        bottomStabilityTimerRef.current = null;
+      }, STABILITY_DELAY);
+    } else {
+      setSelectedLessonAtBottom(false);
+      if (bottomStabilityTimerRef.current) {
+        clearTimeout(bottomStabilityTimerRef.current);
+        bottomStabilityTimerRef.current = null;
+      }
+    }
+  }, [autoOpenedLessonId, isReaderAtBottom, lessonRequiresScroll, readerContentReady, selectedLessonId]);
+
+  // Called when the content finishes rendering (not a user scroll).
+  const handleRendered = useCallback(() => {
+    setReaderContentReady(true);
+    window.requestAnimationFrame(() => {
+      setSelectedLessonAtBottom(isReaderAtBottom(fullscreenReaderRef.current));
+    });
+  }, [isReaderAtBottom]);
+
+  // If the PDF renderer places its own scrollable container inside the
+  // fullscreen reader, attach a scroll listener directly to it so user
+  // scrolls inside the PDF are detected immediately.
+  useEffect(() => {
+    if (!showPdfFullscreen || !selectedLessonId) return undefined;
+
+    const viewport = fullscreenReaderRef.current;
+    if (!viewport) return undefined;
+
+    const pdfInner = viewport.querySelector?.(`.${styles.pdfPages}`) || null;
+    if (!pdfInner) return undefined;
+
+    // Use the existing handler reference.
+    pdfInner.addEventListener("scroll", handleFullscreenScroll, { passive: true });
+    return () => {
+      pdfInner.removeEventListener("scroll", handleFullscreenScroll);
+    };
+  }, [showPdfFullscreen, selectedLessonId, handleFullscreenScroll]);
 
   useEffect(() => {
     if (!showPdfFullscreen || !selectedLessonId) return undefined;
+
+    // Reset reader state when opening a lesson in fullscreen.
+    setHasScrolled(false);
+    setReaderContentReady(false);
+    setSelectedLessonAtBottom(false);
 
     const resetScroll = window.setTimeout(() => {
       const viewport = fullscreenReaderRef.current;
@@ -414,7 +489,13 @@ export default function BooksContent({ mode = "student" }) {
       viewport.scrollTop = 0;
     }, 120);
 
-    return () => window.clearTimeout(resetScroll);
+    return () => {
+      window.clearTimeout(resetScroll);
+      if (bottomStabilityTimerRef.current) {
+        clearTimeout(bottomStabilityTimerRef.current);
+        bottomStabilityTimerRef.current = null;
+      }
+    };
   }, [selectedLessonId, selectedFileUrl, showPdfFullscreen]);
 
   const handleLessonClick = (lesson) => {
@@ -431,11 +512,19 @@ export default function BooksContent({ mode = "student" }) {
 
     setSelectedLesson(lesson);
     setShowPdfFullscreen(false);
+    // Manual selection clears any auto-open block and reader-ready state.
+    setAutoOpenedLessonId(null);
+    setReaderContentReady(false);
+    setSelectedLessonAtBottom(false);
   };
 
   const markLessonComplete = async () => {
     if (!selectedLesson || isTeacherView || selectedLessonCompleted) return;
-    if (!selectedLessonReadReady) {
+    const readerAtBottomNow = !lessonRequiresScroll || (
+      readerContentReady && isReaderAtBottom(fullscreenReaderRef.current)
+    );
+    if (!selectedLessonReadReady || !readerAtBottomNow) {
+      setSelectedLessonAtBottom(false);
       notify?.("Please scroll to the bottom of the lesson file before marking it complete.", "warning");
       return;
     }
@@ -477,6 +566,14 @@ export default function BooksContent({ mode = "student" }) {
 
       if (nextLesson) {
         setSelectedLesson(nextLesson);
+        // Mark that this lesson was auto-opened so we don't immediately allow marking
+        // it as complete until the user interacts (scrolls). Also reset the
+        // hasScrolled and reader-ready flags so leftover scroll state from the
+        // previous lesson doesn't unintentionally enable the button.
+        setAutoOpenedLessonId(nextLesson.lesson_id);
+        setHasScrolled(false);
+        setReaderContentReady(false);
+        setSelectedLessonAtBottom(false);
         notify?.("Lesson completed. Next lesson unlocked.", "success");
       } else {
         notify?.("Lesson marked as completed.", "success");
@@ -1029,24 +1126,24 @@ export default function BooksContent({ mode = "student" }) {
               <PdfLessonViewer
                 fileUrl={selectedFileUrl}
                 title={selectedLesson?.title || "Lesson file"}
-                onRendered={handleFullscreenScroll}
+                onRendered={handleRendered}
               />
             ) : fileExtension && ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(fileExtension) ? (
               <div className={styles.imagePreview}>
-                <img src={selectedFileUrl} alt={selectedFileName} className={styles.previewImage} onLoad={handleFullscreenScroll} />
+                <img src={selectedFileUrl} alt={selectedFileName} className={styles.previewImage} onLoad={handleRendered} />
               </div>
             ) : fileExtension && ["txt", "md", "csv", "json", "log"].includes(fileExtension) ? (
               <InlineFilePreview
                 fileUrl={selectedFileUrl}
                 fileName={selectedFileName}
-                onRendered={handleFullscreenScroll}
+                onRendered={handleRendered}
               />
             ) : (
               <iframe
                 title={`${selectedFileName} preview`}
                 src={selectedFileUrl}
                 className={styles.genericPreview}
-                onLoad={handleFullscreenScroll}
+                onLoad={handleRendered}
               />
             )}
           </div>
