@@ -431,6 +431,24 @@ const addSeconds = (time) => {
   return normalized ? `${normalized}:00` : "";
 };
 
+const addDaysToDateKey = (dateKey, days) => {
+  const match = String(dateKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days);
+  return fmtDate(date);
+};
+
+const nearbyDateKeys = (dateKey) => {
+  const normalized = String(dateKey || "").slice(0, 10);
+  return [addDaysToDateKey(normalized, -1), normalized, addDaysToDateKey(normalized, 1)].filter(Boolean);
+};
+
+const dateKeyToLocalDate = (dateKey) => {
+  const match = String(dateKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+};
+
 /**
  * Calendar view for teachers and students. Data is loaded from the backend using
  * the SQL schema tables (teacher_availability, classes, student_class_packages).
@@ -512,6 +530,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [isSubmittingContractRequest, setIsSubmittingContractRequest] = useState(false);
   const isAdmin = localRole === "admin"; // helper for rendering
   const viewerTimezone = useMemo(() => getUserTimezone(me), [me]);
+  const viewerTodayKey = useMemo(() => formatDateInTimezone(new Date(), viewerTimezone), [viewerTimezone]);
+  const viewerToday = useMemo(() => dateKeyToLocalDate(viewerTodayKey) || new Date(), [viewerTodayKey]);
+  const initialBrowserToday = useRef(today);
+  const initialBrowserTodayKey = useRef(fmtDate(today));
 
   // booking form state
   const [bookingFormOpen, setBookingFormOpen] = useState(false);
@@ -656,6 +678,23 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       .catch(() => setBookedDates([]));
   }, [localUserId, localRole, viewerTimezone, calendarRefreshToken]);
 
+  useEffect(() => {
+    if (!me || viewerTodayKey === initialBrowserTodayKey.current) return;
+
+    setYear((currentYear) => (
+      currentYear === initialBrowserToday.current.getFullYear() ? viewerToday.getFullYear() : currentYear
+    ));
+    setMonth((currentMonth) => (
+      currentMonth === initialBrowserToday.current.getMonth() ? viewerToday.getMonth() : currentMonth
+    ));
+    setStudentBookingDate((currentDate) => (
+      currentDate === initialBrowserTodayKey.current ? viewerTodayKey : currentDate
+    ));
+    setAvailabilityDate((currentDate) => (
+      currentDate === initialBrowserTodayKey.current ? viewerTodayKey : currentDate
+    ));
+  }, [me, viewerToday, viewerTodayKey]);
+
   // Helper to normalize date to YYYY-MM-DD format
   const normalizeDate = (dateVal) => {
     if (!dateVal) return "";
@@ -672,6 +711,36 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     if (isNaN(d.getTime())) return "";
     return fmtDate(d);
   };
+
+  const formatAvailabilityRecordForViewer = (record) => {
+    const sourceDate = normalizeDate(record?.source_available_date || record?.available_date);
+    const sourceTimezone = record?.teacher_timezone || record?.source_timezone || DEFAULT_TIMEZONE;
+    const start = convertDateTime(sourceDate, record?.start_time || "00:00", sourceTimezone, viewerTimezone);
+    const end = record?.end_time
+      ? convertDateTime(sourceDate, record.end_time, sourceTimezone, viewerTimezone)
+      : null;
+
+    return {
+      ...record,
+      source_available_date: sourceDate,
+      source_start_time: record?.start_time || null,
+      source_end_time: record?.end_time || null,
+      source_break_start: record?.break_start || null,
+      source_break_end: record?.break_end || null,
+      available_date: start.date || sourceDate,
+      start_time: start.time ? addSeconds(start.time) : record?.start_time,
+      end_time: end?.time ? addSeconds(end.time) : record?.end_time,
+      source_timezone: sourceTimezone,
+    };
+  };
+
+  const buildAvailabilityMapForViewer = (records = []) => (
+    records.map(formatAvailabilityRecordForViewer).reduce((acc, record) => {
+      const dateKey = normalizeDate(record.available_date);
+      if (dateKey) acc[dateKey] = record.status;
+      return acc;
+    }, {})
+  );
 
   // fetch teacher availability whenever month/year or user changes
   useEffect(() => {
@@ -696,13 +765,15 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     const y = year;
     const m = month + 1; // 1-based for API
     axios
-      .get(`${API}/api/calendar/teacher-availability`, {
+      .get(`${API}/api/calendar/teacher-availability-records`, {
         params: { teacher_id: targetTeacherId, year: y, month: m }
       })
       .then(r => {
         console.log("✅ Availability data received:", r.data);
-        if (r.data && r.data.availability) {
-          setAvailability(r.data.availability);
+        if (r.data?.records) {
+          setAvailability(buildAvailabilityMapForViewer(r.data.records));
+        } else {
+          setAvailability({});
         }
       })
       .catch((err) => {
@@ -850,7 +921,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     scheduled_date: start.date,
     start_time: addSeconds(start.time),
     end_time: addSeconds(end.time),
-    time: c.time || formatHumanTime(start.time),
+    time: formatHumanTime(start.time),
     duration: c.duration,
     status: c.status,
     teacher_id: c.teacher_id,
@@ -860,10 +931,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   };
 };
 
-// helper to load classes for a particular date
-  const loadClassesForDate = (dateStr, force = false) => {
-    if (!dateStr || (!force && classesCache[dateStr])) return;
-    const params = { scheduled_date: dateStr };
+  const buildClassQueryParams = (scheduledDate) => {
+    const params = { scheduled_date: scheduledDate };
 
     // If teacherId prop is provided (admin viewing specific teacher), show that teacher's classes
     if (teacherId) {
@@ -876,14 +945,29 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       if (localRole === "teacher") params.teacher_id = localUserId;
     }
 
-    axios
-      .get(`${API}/api/calendar/classes-by-date`, { params })
-      .then(r => {
-        if (r.data && r.data.classes) {
-          // normalize the returned rows to camelCase / unified fields
-          const formatted = r.data.classes.map(formatClassForViewer);
-          setClassesCache(prev => ({ ...prev, [dateStr]: formatted }));
-        }
+    return params;
+  };
+
+// helper to load classes for a particular viewer date
+  const loadClassesForDate = (dateStr, force = false) => {
+    if (!dateStr || (!force && classesCache[dateStr])) return;
+
+    Promise.all(
+      nearbyDateKeys(dateStr).map(sourceDate =>
+        axios
+          .get(`${API}/api/calendar/classes-by-date`, { params: buildClassQueryParams(sourceDate) })
+          .then(r => r.data?.classes || [])
+          .catch(() => [])
+      )
+    )
+      .then(results => {
+        const byId = new Map();
+        results
+          .flat()
+          .map(formatClassForViewer)
+          .filter(cls => normalizeDate(cls.scheduled_date) === normalizeDate(dateStr))
+          .forEach(cls => byId.set(String(cls.id || cls.class_id), cls));
+        setClassesCache(prev => ({ ...prev, [dateStr]: Array.from(byId.values()) }));
       })
       .catch(() => {
         setClassesCache(prev => ({ ...prev, [dateStr]: [] }));
@@ -921,10 +1005,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       })
       .then(r => {
         if (r.data && r.data.record) {
-          setTeacherAvailabilityRecordForDate({
-            ...r.data.record,
-            available_date: normalizeDate(r.data.record.available_date),
-          });
+          setTeacherAvailabilityRecordForDate(formatAvailabilityRecordForViewer(r.data.record));
         } else {
           setTeacherAvailabilityRecordForDate(null);
         }
@@ -954,21 +1035,28 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       record => normalizeDate(record.available_date) === dateKey && record.status === "available"
     ) || (teacherAvailabilityRecordForDate && teacherAvailabilityRecordForDate.status === "available" ? teacherAvailabilityRecordForDate : null);
 
-    if (!teacherAvailabilityRecord?.start_time || !teacherAvailabilityRecord?.end_time) {
+    if (
+      !(teacherAvailabilityRecord?.source_start_time || teacherAvailabilityRecord?.start_time) ||
+      !(teacherAvailabilityRecord?.source_end_time || teacherAvailabilityRecord?.end_time)
+    ) {
       setAvailableTimeSlots([]);
       return;
     }
 
     const duration = normalizeClassDuration(durationOverride ?? studentPackage?.class_duration ?? studentProfile?.course_duration);
-    const availabilityStart = timeToMinutes(teacherAvailabilityRecord.start_time);
-    const availabilityEnd = timeToMinutes(teacherAvailabilityRecord.end_time);
+    const availabilityStart = timeToMinutes(teacherAvailabilityRecord.source_start_time || teacherAvailabilityRecord.start_time);
+    const availabilityEnd = timeToMinutes(teacherAvailabilityRecord.source_end_time || teacherAvailabilityRecord.end_time);
     if (availabilityStart == null || availabilityEnd == null || availabilityEnd <= availabilityStart) {
       setAvailableTimeSlots([]);
       return;
     }
 
-    const breakStart = teacherAvailabilityRecord.break_start ? timeToMinutes(teacherAvailabilityRecord.break_start) : null;
-    const breakEnd = teacherAvailabilityRecord.break_end ? timeToMinutes(teacherAvailabilityRecord.break_end) : null;
+    const breakStart = teacherAvailabilityRecord.source_break_start || teacherAvailabilityRecord.break_start
+      ? timeToMinutes(teacherAvailabilityRecord.source_break_start || teacherAvailabilityRecord.break_start)
+      : null;
+    const breakEnd = teacherAvailabilityRecord.source_break_end || teacherAvailabilityRecord.break_end
+      ? timeToMinutes(teacherAvailabilityRecord.source_break_end || teacherAvailabilityRecord.break_end)
+      : null;
     const occupiedRanges = classes
       .filter(cls => cls?.id !== excludeClassId && (Number(cls.teacher_id) === Number(tId) || Number(cls.student_id) === Number(localUserId)))
       .map(getClassRange)
@@ -994,13 +1082,18 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       }
     });
 
-    const teacherTimezone = teacherAvailabilityRecord?.teacher_timezone || DEFAULT_TIMEZONE;
+    const teacherTimezone = teacherAvailabilityRecord?.source_timezone || teacherAvailabilityRecord?.teacher_timezone || DEFAULT_TIMEZONE;
     const currentViewerDate = formatDateInTimezone(new Date(), viewerTimezone);
     const currentViewerTime = formatTimeInTimezone(new Date(), viewerTimezone);
     const currentViewerMinutes = timeToMinutes(currentViewerTime);
     const finalSlots = finalSlotsInTeacherTimezone
       .map(slot => {
-        const converted = convertDateTime(dateKey, slot, teacherTimezone, viewerTimezone);
+        const converted = convertDateTime(
+          teacherAvailabilityRecord.source_available_date || dateKey,
+          slot,
+          teacherTimezone,
+          viewerTimezone
+        );
         return converted.date === dateKey ? converted.time : null;
       })
       .filter(Boolean)
@@ -1081,10 +1174,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         })
         .then(r => {
           if (r.data && r.data.records) {
-            const normalized = r.data.records.map(record => ({
-              ...record,
-              available_date: normalizeDate(record.available_date),
-            }));
+            const normalized = r.data.records.map(formatAvailabilityRecordForViewer);
             setTeacherAvailabilityList(normalized);
             console.log("Loaded teacher availability records:", normalized);
           }
@@ -1136,10 +1226,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         .then(r => {
           console.log(`✅ Raw API response:`, r.data);
           if (r.data && r.data.records) {
-            const normalized = r.data.records.map(record => ({
-              ...record,
-              available_date: normalizeDate(record.available_date),
-            }));
+            const normalized = r.data.records.map(formatAvailabilityRecordForViewer);
             setTeacherAvailabilityList(normalized);
             console.log("✅ Loaded teacher availability records for reschedule validation:", normalized);
           } else {
@@ -1205,7 +1292,18 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         const nextMonthCache = { ...emptyMonthCache };
 
         Object.entries(monthlyClasses).forEach(([dateStr, classes]) => {
-          nextMonthCache[dateStr] = (classes || []).map(formatClassForViewer);
+          (classes || []).map(formatClassForViewer).forEach((cls) => {
+            const viewerDate = normalizeDate(cls.scheduled_date || dateStr);
+            if (!viewerDate || nextMonthCache[viewerDate] === undefined) return;
+            const existingIndex = nextMonthCache[viewerDate].findIndex(
+              existing => String(existing.id || existing.class_id) === String(cls.id || cls.class_id)
+            );
+            if (existingIndex >= 0) {
+              nextMonthCache[viewerDate][existingIndex] = cls;
+            } else {
+              nextMonthCache[viewerDate].push(cls);
+            }
+          });
         });
 
         setClassesCache(prev => ({ ...prev, ...nextMonthCache }));
@@ -1247,9 +1345,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const statusOf = (d) => (d ? availability[fmtDate(d)] || "" : "");
   const isPastDate = (d) => {
     if (!d) return false;
-    const todayMidnight = new Date();
-    todayMidnight.setHours(0, 0, 0, 0);
-    return d < todayMidnight;
+    return fmtDate(d) < viewerTodayKey;
   };
 
   const handleCellClick = (d) => {
@@ -1389,15 +1485,22 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const getRescheduleAvailabilityRecord = (dateStr, timeStr = "00:00") => {
     const teacherDateTime = getRescheduleTeacherDateTime(dateStr, timeStr);
     const teacherDate = normalizeDate(teacherDateTime.date || dateStr);
-    return teacherAvailabilityList.find(record => normalizeDate(record.available_date) === teacherDate);
+    return teacherAvailabilityList.find(record => (
+      normalizeDate(record.source_available_date) === teacherDate ||
+      normalizeDate(record.available_date) === normalizeDate(dateStr)
+    ));
   };
 
   const getRescheduleAvailabilityStatus = (dateStr) => {
     const teacherDateTime = getRescheduleTeacherDateTime(dateStr, "00:00");
     const teacherDate = normalizeDate(teacherDateTime.date || dateStr);
     if (!teacherDate) return "";
-    if (availability[teacherDate]) return availability[teacherDate];
-    const record = teacherAvailabilityList.find(record => normalizeDate(record.available_date) === teacherDate);
+    const record = teacherAvailabilityList.find(record => (
+      normalizeDate(record.source_available_date) === teacherDate ||
+      normalizeDate(record.available_date) === normalizeDate(dateStr)
+    ));
+    if (record?.status) return record.status;
+    if (availability[normalizeDate(dateStr)]) return availability[normalizeDate(dateStr)];
     return record?.status || "";
   };
 
@@ -1421,13 +1524,16 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     const teacherTime = normalizeTime(teacherDateTime.time || timeStr);
     const availabilityRecord = getRescheduleAvailabilityRecord(dateStr, timeStr);
     
-    if (!availabilityRecord || !availabilityRecord.break_start || !availabilityRecord.break_end) {
+    const breakStartValue = availabilityRecord?.source_break_start || availabilityRecord?.break_start;
+    const breakEndValue = availabilityRecord?.source_break_end || availabilityRecord?.break_end;
+
+    if (!availabilityRecord || !breakStartValue || !breakEndValue) {
       return false;
     }
     
     // Ensure break times are valid (break_start < break_end)
-    const breakStart = availabilityRecord.break_start.substring(0, 5);
-    const breakEnd = availabilityRecord.break_end.substring(0, 5);
+    const breakStart = breakStartValue.substring(0, 5);
+    const breakEnd = breakEndValue.substring(0, 5);
     
     if (breakStart >= breakEnd) {
       return false; // Invalid break times
@@ -1465,13 +1571,16 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
     
     // If no start/end time set, assume available all day
-    if (!availabilityRecord.start_time || !availabilityRecord.end_time) {
+    const availabilityStartValue = availabilityRecord.source_start_time || availabilityRecord.start_time;
+    const availabilityEndValue = availabilityRecord.source_end_time || availabilityRecord.end_time;
+
+    if (!availabilityStartValue || !availabilityEndValue) {
       console.log(`✅ All-day availability (no specific times set)`);
       return false;
     }
     
-    const availStart = availabilityRecord.start_time.substring(0, 5);
-    const availEnd = availabilityRecord.end_time.substring(0, 5);
+    const availStart = availabilityStartValue.substring(0, 5);
+    const availEnd = availabilityEndValue.substring(0, 5);
     
     console.log(`⏰ Availability window: ${availStart} - ${availEnd}, Requested time: ${timeStr}`);
     
@@ -1543,23 +1652,23 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     } else setMonth((m) => m + 1);
   };
   const jumpToToday = () => {
-    setYear(today.getFullYear());
-    setMonth(today.getMonth());
+    setYear(viewerToday.getFullYear());
+    setMonth(viewerToday.getMonth());
     // also highlight today's cell
-    setSelectedDate(fmtDate(today));
+    setSelectedDate(viewerTodayKey);
   };
 
   const isPastDateString = (dateStr) => {
     const normalized = normalizeDate(dateStr);
-    return Boolean(normalized) && normalized < fmtDate(new Date());
+    return Boolean(normalized) && normalized < viewerTodayKey;
   };
 
   // Fetch teacher availability records for current month
   const loadTeacherAvailabilityForMonth = () => {
     if (localRole !== "teacher" || !localUserId) return;
 
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth() + 1;
+    const currentYear = viewerToday.getFullYear();
+    const currentMonth = viewerToday.getMonth() + 1;
 
     axios
       .get(`${API}/api/calendar/teacher-availability-records`, {
@@ -1568,10 +1677,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       .then(r => {
         if (r.data && r.data.records) {
           const normalized = r.data.records
-            .map(record => ({
-              ...record,
-              available_date: normalizeDate(record.available_date),
-            }))
+            .map(formatAvailabilityRecordForViewer)
             .filter(record => !isPastDateString(record.available_date));
           setTeacherAvailabilityList(normalized);
         }
@@ -1592,13 +1698,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     let targetYear = yearOverride;
     let targetMonth = monthOverride;
     if (!targetYear || !targetMonth) {
-      const refDate = requestDate ? new Date(requestDate + "T00:00:00") : today;
+      const refDate = requestDate ? new Date(requestDate + "T00:00:00") : viewerToday;
       if (!isNaN(refDate.getTime())) {
         targetYear = refDate.getFullYear();
         targetMonth = refDate.getMonth() + 1;
       } else {
-        targetYear = today.getFullYear();
-        targetMonth = today.getMonth() + 1;
+        targetYear = viewerToday.getFullYear();
+        targetMonth = viewerToday.getMonth() + 1;
       }
     }
 
@@ -1614,10 +1720,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         console.log(`📊 Number of records:`, r.data?.records?.length || 0);
         if (r.data && r.data.records && r.data.records.length > 0) {
           const normalized = r.data.records
-            .map(record => ({
-              ...record,
-              available_date: normalizeDate(record.available_date),
-            }))
+            .map(formatAvailabilityRecordForViewer)
             .filter(record => !isPastDateString(record.available_date));
           console.log(`✨ Setting normalized availability list:`, normalized);
           setTeacherAvailabilityList(normalized);
@@ -1644,8 +1747,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       return "Please select a date";
     }
 
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth();
+    const currentYear = viewerToday.getFullYear();
+    const currentMonth = viewerToday.getMonth();
     const [selYear, selMonth, selDay] = date.split('-').map(Number);
     const selectedDateObj = new Date(selYear, selMonth - 1, selDay, 0, 0, 0, 0);
 
@@ -1670,10 +1773,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         return "End time must be after start time";
       }
 
-      const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+      const todayMidnight = new Date(viewerToday.getFullYear(), viewerToday.getMonth(), viewerToday.getDate(), 0, 0, 0, 0);
       if (selectedDateObj.getTime() === todayMidnight.getTime()) {
-        const currentHours = today.getHours();
-        const currentMins = today.getMinutes();
+        const [currentHours, currentMins] = formatTimeInTimezone(new Date(), viewerTimezone).split(":").map(Number);
         const currentTotalMins = currentHours * 60 + currentMins;
 
         const [startHours, startMins] = startTime.split(":").map(Number);
@@ -1781,17 +1883,21 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       setAvailabilityEndTime("");
       setAvailabilityBreakStart("");
       setAvailabilityBreakEnd("");
-      setAvailabilityDate(fmtDate(today));
+      setAvailabilityDate(viewerTodayKey);
       triggerCalendarRefresh();
       loadTeacherAvailabilityForMonth();
       
       // Refresh availability cache
       const y = year;
       const m = month + 1;
-      axios.get(`${API}/api/calendar/teacher-availability`, {
+      axios.get(`${API}/api/calendar/teacher-availability-records`, {
         params: { teacher_id: localUserId, year: y, month: m }
       }).then(r => {
-        if (r.data && r.data.availability) setAvailability(r.data.availability);
+        if (r.data?.records) {
+          setAvailability(buildAvailabilityMapForViewer(r.data.records));
+        } else {
+          setAvailability({});
+        }
       });
     } catch (error) {
       const errMsg = error.response?.data?.message || "Failed to update availability. Please try again.";
@@ -1829,10 +1935,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       // Refresh availability cache
       const y = year;
       const m = month + 1;
-      axios.get(`${API}/api/calendar/teacher-availability`, {
+      axios.get(`${API}/api/calendar/teacher-availability-records`, {
         params: { teacher_id: localUserId, year: y, month: m }
       }).then(r => {
-        if (r.data && r.data.availability) setAvailability(r.data.availability);
+        if (r.data?.records) {
+          setAvailability(buildAvailabilityMapForViewer(r.data.records));
+        } else {
+          setAvailability({});
+        }
       });
     } catch (error) {
       notify("Failed to delete availability. Please try again.", "error");
@@ -2155,8 +2265,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     ? minutesToTime(timeToMinutes(requestTime) + selectedClassDuration)
     : "";
 
-  const studentMonthMin = fmtDate(new Date(today.getFullYear(), today.getMonth(), 1));
-  const studentMonthMax = fmtDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+  const studentMonthMin = fmtDate(new Date(viewerToday.getFullYear(), viewerToday.getMonth(), 1));
+  const studentMonthMax = fmtDate(new Date(viewerToday.getFullYear(), viewerToday.getMonth() + 1, 0));
 
   const openMonthlyBooking = () => {
     if (hasNoClassesLeft) {
@@ -2164,8 +2274,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       return;
     }
 
-    setYear(today.getFullYear());
-    setMonth(today.getMonth());
+    setYear(viewerToday.getFullYear());
+    setMonth(viewerToday.getMonth());
     setStudentBookingMode(true);
     // Clear date so user selects a day from the calendar cells
     setStudentBookingDate("");
@@ -2453,7 +2563,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                 const status = statusOf(d);
                 const hasClasses = hasClassesOnDate(d);
                 const formatted = d ? fmtDate(d) : "";
-                const isTodayCell = formatted === fmtDate(new Date());
+                const isTodayCell = formatted === viewerTodayKey;
                 const isSelected = formatted === selectedDate;
                 
                 // Check if date is in the past
@@ -3266,7 +3376,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         onClick={() => {
                           setSetAvailabilityMode(!setAvailabilityMode);
                           if (!setAvailabilityMode) {
-                            setAvailabilityDate(fmtDate(today));
+                            setAvailabilityDate(viewerTodayKey);
                             setAvailabilityStartTime("");
                             setAvailabilityEndTime("");
                             setAvailabilityBreakStart("");
@@ -3288,7 +3398,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
                   {/* Teacher Availability Manager */}
                   {setAvailabilityMode && localRole === "teacher" && (
-                    <div style={{ marginTop: 16, padding: 14, border: "1px solid #e0e0e0", borderRadius: 8, background: "#fafafa" }}>
+                    <div className={styles.availabilityManager} style={{ marginTop: 16, padding: 14, border: "1px solid #e0e0e0", borderRadius: 8, background: "#fafafa" }}>
                       <div style={{ marginBottom: 12 }}>
                         <h4 style={{ margin: "0 0 8px 0", fontSize: "0.95rem", color: "#333" }}>Set Your Schedule</h4>
                         <p style={{ margin: 0, fontSize: "0.8rem", color: "#666", lineHeight: 1.4 }}>
@@ -3323,7 +3433,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
                         <div>
                           <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Availability Status *</label>
-                          <div style={{ display: "flex", gap: 12 }}>
+                          <div className={styles.availabilityStatus} style={{ display: "flex", gap: 12 }}>
                             <button
                               type="button"
                               onClick={() => {
@@ -3427,7 +3537,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                             <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: 10, marginTop: 5 }}>
                               <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Break Time (Optional)</label>
                               
-                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                              <div className={styles.breakTimeFields} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
                                 <div>
                                   <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 500, marginBottom: 3, color: "#666" }}>Break Start</label>
                                   <input
@@ -3480,7 +3590,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         )}
                       </div>
 
-                      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginBottom: 16 }}>
+                      <div className={styles.availabilityActions} style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginBottom: 16 }}>
                         <button
                           type="button"
                           onClick={() => {
@@ -3524,7 +3634,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                                   fontSize: "0.8rem",
                                 }}
                               >
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                                <div className={styles.availabilityRecordHeader} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
                                   <div>
                                     <strong>{new Date(record.available_date + "T00:00:00").toLocaleDateString()}</strong>
                                     {record.status === "available" ? (

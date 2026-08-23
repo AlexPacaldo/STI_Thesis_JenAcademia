@@ -5,7 +5,7 @@ import styles from "../assets/account.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
-import { getUserTimezone } from "../utils/timezone.js";
+import { formatTimezoneLabel, getTimezoneOptions, getUserTimezone } from "../utils/timezone.js";
 import { API_BASE_URL } from "../utils/api.js";
 
 const API = API_BASE_URL;
@@ -21,11 +21,13 @@ const COUNTRY_OPTIONS = [
   "Philippines",
   "Singapore",
   "South Korea",
+  "Taiwan",
   "Thailand",
   "United Arab Emirates",
   "United Kingdom",
   "United States",
   "Vietnam",
+  "Samoa",
 ];
 const COUNTRY_TIMEZONES = {
   Australia: "Australia/Sydney",
@@ -38,30 +40,15 @@ const COUNTRY_TIMEZONES = {
   Philippines: "Asia/Manila",
   Singapore: "Asia/Singapore",
   "South Korea": "Asia/Seoul",
+  Taiwan: "Asia/Taipei",
   Thailand: "Asia/Bangkok",
   "United Arab Emirates": "Asia/Dubai",
   "United Kingdom": "Europe/London",
   "United States": "America/New_York",
   Vietnam: "Asia/Ho_Chi_Minh",
+  Samoa: "Pacific/Pago_Pago",
 };
-const TIMEZONE_OPTIONS = [
-  "Asia/Manila",
-  "Asia/Shanghai",
-  "Asia/Tokyo",
-  "Asia/Kolkata",
-  "Asia/Jakarta",
-  "Asia/Kuala_Lumpur",
-  "Asia/Singapore",
-  "Asia/Seoul",
-  "Asia/Bangkok",
-  "Asia/Dubai",
-  "Asia/Ho_Chi_Minh",
-  "Australia/Sydney",
-  "America/Toronto",
-  "America/New_York",
-  "Europe/London",
-  "UTC",
-];
+const TIMEZONE_OPTIONS = getTimezoneOptions();
 
 function absoluteUrl(url) {
   if (!url) return "";
@@ -462,7 +449,7 @@ export default function Account() {
       ...current,
       timezone: detectedTimezone,
     }));
-    notify(`Detected timezone: ${detectedTimezone}`, "success");
+    notify(`Detected timezone: ${formatTimezoneLabel(detectedTimezone)}`, "success");
   }
 
   function cancelProfileEdit() {
@@ -863,10 +850,10 @@ export default function Account() {
                     <select name="timezone" value={form.timezone} onChange={onChange} disabled={!profileEditing} required>
                       <option value="">Select timezone</option>
                       {form.timezone && !TIMEZONE_OPTIONS.includes(form.timezone) && (
-                        <option value={form.timezone}>{form.timezone}</option>
+                        <option value={form.timezone}>{formatTimezoneLabel(form.timezone)}</option>
                       )}
                       {TIMEZONE_OPTIONS.map((timezone) => (
-                        <option key={timezone} value={timezone}>{timezone}</option>
+                        <option key={timezone} value={timezone}>{formatTimezoneLabel(timezone)}</option>
                       ))}
                     </select>
                     <button
