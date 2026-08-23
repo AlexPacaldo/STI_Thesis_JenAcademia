@@ -52,7 +52,15 @@ const UPLOAD_ROOT = path.resolve(
 );
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    "https://jenacademia.vercel.app",
+    "http://localhost:5173" // keep for local dev
+  ],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  credentials: true
+}));
+app.options("*", cors());
 app.use(express.json());
 
 const ENCRYPTED_VALUE_PREFIX = "enc:v1:";
