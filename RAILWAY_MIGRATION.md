@@ -37,6 +37,8 @@ Then set:
 UPLOAD_ROOT=/app/uploads
 ```
 
+The backend also reads Railway's automatic `RAILWAY_VOLUME_MOUNT_PATH`, so `UPLOAD_ROOT` is optional if the volume is mounted directly to the directory you want to use for uploads.
+
 Without a volume, uploads can disappear when Railway replaces the container.
 
 ## Database Import From Clever Cloud
@@ -55,7 +57,17 @@ mysql -h "$MYSQLHOST" -P "$MYSQLPORT" -u "$MYSQLUSER" -p"$MYSQLPASSWORD" "$MYSQL
 
 You can get these values from the Railway MySQL service Variables tab, or run the command inside a linked Railway shell so the variables are already available.
 
-## Frontend
+## Frontend on Vercel
+
+The Vercel frontend must point to the Railway backend, not your local backend. In the Vercel project settings, add this environment variable:
+
+```env
+VITE_API_URL=https://your-backend-domain.up.railway.app
+```
+
+Redeploy the Vercel frontend after changing it. Without this variable, the frontend falls back to `http://localhost:3001`, which can make uploads hit the backend running on your PC.
+
+## Frontend on Railway
 
 If you also move the frontend to Railway:
 
