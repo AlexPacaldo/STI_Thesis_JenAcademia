@@ -974,15 +974,25 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       .map(getClassRange)
       .filter(Boolean);
 
-    const finalSlotsInTeacherTimezone = [];
-    for (let minute = availabilityStart; minute + duration <= availabilityEnd; minute += SLOT_STEP_MINUTES) {
-      const slotEnd = minute + duration;
-      const conflictsWithBreak = breakStart != null && breakEnd != null && rangesOverlap(minute, slotEnd, breakStart, breakEnd);
-      const conflictsWithClass = occupiedRanges.some(range => rangesOverlap(minute, slotEnd, range.start, range.end));
-      if (!conflictsWithBreak && !conflictsWithClass) {
-        finalSlotsInTeacherTimezone.push(minutesToTime(minute));
-      }
+    const availabilityRanges = [];
+    const hasValidBreak = breakStart != null && breakEnd != null && breakStart < breakEnd;
+    if (hasValidBreak && breakStart > availabilityStart && breakEnd < availabilityEnd) {
+      availabilityRanges.push({ start: availabilityStart, end: breakStart });
+      availabilityRanges.push({ start: breakEnd, end: availabilityEnd });
+    } else {
+      availabilityRanges.push({ start: availabilityStart, end: availabilityEnd });
     }
+
+    const finalSlotsInTeacherTimezone = [];
+    availabilityRanges.forEach(({ start, end }) => {
+      for (let minute = start; minute + duration <= end; minute += SLOT_STEP_MINUTES) {
+        const slotEnd = minute + duration;
+        const conflictsWithClass = occupiedRanges.some(range => rangesOverlap(minute, slotEnd, range.start, range.end));
+        if (!conflictsWithClass) {
+          finalSlotsInTeacherTimezone.push(minutesToTime(minute));
+        }
+      }
+    });
 
     const teacherTimezone = teacherAvailabilityRecord?.teacher_timezone || DEFAULT_TIMEZONE;
     const currentViewerDate = formatDateInTimezone(new Date(), viewerTimezone);
