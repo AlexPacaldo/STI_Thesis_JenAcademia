@@ -38,7 +38,7 @@ const mysqlUrlConfig = parseMysqlUrl(mysqlUrl);
 const DB_HOST = process.env.DB_HOST || process.env.MYSQLHOST || mysqlUrlConfig.host || "localhost";
 const DB_USER = process.env.DB_USER || process.env.MYSQLUSER || mysqlUrlConfig.user || "root";
 const DB_PASSWORD =
-  process.env.DB_PASSWORD || process.env.MYSQLPASSWORD || mysqlUrlConfig.password || "LORAKLANG0405++";
+  process.env.DB_PASSWORD || process.env.MYSQLPASSWORD || mysqlUrlConfig.password || "123";
 const DB_NAME = process.env.DB_NAME || process.env.MYSQLDATABASE || mysqlUrlConfig.database || "jen_academia";
 const DB_PORT = Number(process.env.DB_PORT || process.env.MYSQLPORT || mysqlUrlConfig.port || 3306);
 const requestedConnectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 5);
@@ -3007,7 +3007,7 @@ app.get("/api/calendar/classes-by-month", async (req, res) => {
                  WHERE c.scheduled_date BETWEEN ? AND ?
                  AND c.status = 'scheduled'
                  AND c.scheduled_date >= CURDATE()`;
-    const params = [sourceStartDate, sourceEndDate];
+    const params = [startDate, endDate];
 
     if (student_id) {
       query += ` AND c.student_id = ?`;
