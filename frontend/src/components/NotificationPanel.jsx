@@ -324,6 +324,26 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
     return titles[notification.type] || "Notification";
   };
 
+  const renderNotificationMessage = (message) => {
+    const lines = String(message || "").split("\n");
+
+    return lines.map((line, index) => {
+      if (line.trim().toLowerCase().startsWith("reason:")) {
+        return (
+          <span key={`${line}-${index}`} className={styles.reasonLine}>
+            {line}
+          </span>
+        );
+      }
+
+      return (
+        <span key={`${line}-${index}`}>
+          {line}
+        </span>
+      );
+    });
+  };
+
   if (!isOpen) return null;
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
@@ -377,7 +397,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                         <h4 className={styles.notifTitle}>{getNotificationTitle(notif)}</h4>
                         <span className={styles.notifType}>{notif.type}</span>
                       </div>
-                      <p className={styles.notifMessage}>{notif.message}</p>
+                      <p className={styles.notifMessage}>{renderNotificationMessage(notif.message)}</p>
                       <span className={styles.notifTime}>
                         {new Date(notif.created_at).toLocaleDateString([], { timeZone: getStoredUserTimezone() })} {new Date(notif.created_at).toLocaleTimeString([], { timeZone: getStoredUserTimezone(), hour: '2-digit', minute: '2-digit' })}
                       </span>

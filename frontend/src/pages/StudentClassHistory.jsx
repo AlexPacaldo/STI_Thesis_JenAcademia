@@ -15,6 +15,7 @@ const STATUS_LABELS = {
   student_confirmed: "Student Confirmed",
   in_progress: "In Progress",
   pending: "Pending",
+  incomplete: "Incomplete",
   missing: "No Log",
 };
 
@@ -25,6 +26,7 @@ const statusStyle = (status) => {
     student_confirmed: { background: "#dbeafe", color: "#1d4ed8" },
     in_progress: { background: "#e0f2fe", color: "#0369a1" },
     pending: { background: "#f3f4f6", color: "#374151" },
+    incomplete: { background: "#fee2e2", color: "#991b1b" },
     missing: { background: "#fee2e2", color: "#991b1b" },
   };
   return stylesByStatus[status] || stylesByStatus.pending;
@@ -86,6 +88,27 @@ const getMissingItems = (row) => {
   if (!row.summary) missing.push("summary");
   if (!row.proof_url) missing.push("screenshot");
   return missing;
+};
+
+const getRequiredClassMinutes = (duration) => {
+  const parsedDuration = parseInt(duration, 10);
+  const safeDuration = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 50;
+  return Math.max(1, Math.min(30, Math.ceil(safeDuration * 0.6)));
+};
+
+const getReviewReasons = (row) => {
+  const reasons = [];
+  const durationMinutes = Number(row.duration_minutes || 0);
+  const requiredMinutes = getRequiredClassMinutes(row.duration);
+
+  if (!row.teacher_started_at) reasons.push("Missing teacher start");
+  if (!row.student_joined_at) reasons.push("Missing student attendance");
+  if (!row.teacher_ended_at) reasons.push("Missing teacher end");
+  if (durationMinutes < requiredMinutes) reasons.push(`Duration too short: ${durationMinutes} / ${requiredMinutes} min`);
+  if (!row.summary) reasons.push("Missing class summary");
+  if (!row.proof_url) reasons.push("Missing screenshot proof");
+
+  return reasons;
 };
 
 export default function StudentClassHistory({ mode = "student" }) {
@@ -231,6 +254,7 @@ export default function StudentClassHistory({ mode = "student" }) {
     student_confirmed: history.filter((row) => getDisplayStatus(row) === "student_confirmed").length,
     in_progress: history.filter((row) => getDisplayStatus(row) === "in_progress").length,
     pending: history.filter((row) => getDisplayStatus(row) === "pending").length,
+    incomplete: history.filter((row) => getDisplayStatus(row) === "incomplete").length,
     missing: history.filter((row) => getDisplayStatus(row) === "missing").length,
   };
 
@@ -259,7 +283,7 @@ export default function StudentClassHistory({ mode = "student" }) {
             </div>
 
             <div className={styles.filterTabs} style={{ marginBottom: 14 }}>
-              {["all", "verified", "needs_review", "student_confirmed", "in_progress", "pending", "missing"].map((status) => {
+              {["all", "verified", "needs_review", "incomplete", "student_confirmed", "in_progress", "pending", "missing"].map((status) => {
                 const activeFilter = filter === status;
                 const colors = statusStyle(status === "all" ? "pending" : status);
                 return (
@@ -345,7 +369,7 @@ export default function StudentClassHistory({ mode = "student" }) {
               </button>
             </div>
 
-            <div className={styles.tableWrap}>
+            <div className={styles.verificationList}>
               {loading ? (
                 <div className={styles.empty}>Loading class history...</div>
               ) : history.length === 0 ? (
@@ -353,101 +377,105 @@ export default function StudentClassHistory({ mode = "student" }) {
               ) : filteredHistory.length === 0 ? (
                 <div className={styles.empty}>No class history matches your search</div>
               ) : (
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Class</th>
-                      <th>{otherPartyLabel}</th>
-                      <th>Schedule</th>
-                      <th>Evidence</th>
-                      <th>Status</th>
-                      <th>Proof</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pagedHistory.map((row) => {
-                      const displayStatus = getDisplayStatus(row);
-                      const statusColor = statusStyle(displayStatus);
-                      const otherPartyName = isTeacherMode
-                        ? `${row.student_first_name || ""} ${row.student_last_name || ""}`.trim() || "Student"
-                        : `${row.teacher_first_name || ""} ${row.teacher_last_name || ""}`.trim() || "Teacher";
-                      const otherPartyEmail = isTeacherMode ? row.student_email : row.teacher_email;
-                      const missingItems = getMissingItems(row);
-                      const hasRequiredEvidence = missingItems.length === 0;
+                pagedHistory.map((row) => {
+                  const displayStatus = getDisplayStatus(row);
+                  const statusColor = statusStyle(displayStatus);
+                  const otherPartyName = isTeacherMode
+                    ? `${row.student_first_name || ""} ${row.student_last_name || ""}`.trim() || "Student"
+                    : `${row.teacher_first_name || ""} ${row.teacher_last_name || ""}`.trim() || "Teacher";
+                  const otherPartyEmail = isTeacherMode ? row.student_email : row.teacher_email;
+                  const missingItems = getMissingItems(row);
+                  const reviewReasons = getReviewReasons(row);
+                  const hasRequiredEvidence = missingItems.length === 0;
+                  const needsReview = displayStatus === "needs_review";
 
-                      return (
-                        <tr key={row.class_id}>
-                          <td data-label="Class">
-                            <div style={{ fontWeight: 800 }}>{row.class_name || "Untitled Class"}</div>
-                            <div style={{ fontSize: "0.8em", color: "#667085", marginTop: 3 }}>
-                              Class status: {row.class_status || "scheduled"}
-                            </div>
-                          </td>
-                          <td data-label={otherPartyLabel}>
-                            <div style={{ fontWeight: 700 }}>{otherPartyName}</div>
-                            <div style={{ fontSize: "0.8em", color: "#667085", wordBreak: "break-all" }}>{otherPartyEmail || ""}</div>
-                          </td>
-                          <td data-label="Schedule">
-                            <div style={{ fontWeight: 700 }}>{formatDate(row.scheduled_date)}</div>
-                            <div style={{ fontSize: "0.82em", color: "#667085" }}>
-                              {formatTime(row.start_time)} - {formatTime(row.end_time)}
-                            </div>
-                            <div style={{ fontSize: "0.78em", color: "#667085" }}>{row.duration || 0} min class</div>
-                          </td>
-                          <td data-label="Evidence">
-                            <div style={{ display: "grid", gap: 3, fontSize: "0.82em" }}>
-                              <span>Start: {formatDateTime(row.teacher_started_at)}</span>
-                              <span>Attendance: {formatDateTime(row.student_joined_at)}</span>
-                              <span>End: {formatDateTime(row.teacher_ended_at)}</span>
-                              <span>Duration: {Number(row.duration_minutes || 0)} min</span>
-                            </div>
-                            {row.summary && (
-                              <div style={{ marginTop: 8, maxWidth: 320, color: "#475467", fontSize: "0.82em", lineHeight: 1.35 }}>
-                                {row.summary}
-                              </div>
-                            )}
-                          </td>
-                          <td data-label="Status">
-                            <span
-                              style={{
-                                display: "inline-flex",
-                                padding: "5px 9px",
-                                borderRadius: 999,
-                                background: statusColor.background,
-                                color: statusColor.color,
-                                fontWeight: 800,
-                                fontSize: "0.78em",
-                              }}
-                            >
-                              {STATUS_LABELS[displayStatus] || displayStatus}
-                            </span>
-                            <div style={{ marginTop: 6, fontSize: "0.78em", color: hasRequiredEvidence ? "#166534" : "#92400e" }}>
-                              {hasRequiredEvidence ? "Evidence complete" : `Missing: ${missingItems.join(", ")}`}
-                            </div>
-                          </td>
-                          <td data-label="Proof">
-                            {row.proof_url ? (
-                              <button
-                                type="button"
-                                className={`${styles.linkBtn} ${styles.tableActionBtn}`}
-                                onClick={() => setSelectedProof({
-                                  url: resolveUploadUrl(row.proof_url),
-                                  className: row.class_name || "Class",
-                                  otherPartyName,
-                                  schedule: `${formatDate(row.scheduled_date)} ${formatTime(row.start_time)}`,
-                                })}
-                              >
-                                Open Screenshot
-                              </button>
-                            ) : (
-                              <span style={{ color: "#98a2b3", fontSize: "0.85em" }}>No screenshot</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                  return (
+                    <article key={row.class_id} className={styles.verificationItem}>
+                      <div className={styles.verificationMain}>
+                        <div className={styles.verificationTitleRow}>
+                          <div>
+                            <h3>{row.class_name || "Untitled Class"}</h3>
+                            <p>{formatDate(row.scheduled_date)} · {formatTime(row.start_time)} - {formatTime(row.end_time)} · {row.duration || 0} min</p>
+                          </div>
+                          <span
+                            className={styles.statusPill}
+                            style={{ background: statusColor.background, color: statusColor.color }}
+                          >
+                            {STATUS_LABELS[displayStatus] || displayStatus}
+                          </span>
+                        </div>
+
+                        <div className={styles.verificationMetaGrid}>
+                          <div>
+                            <span>{otherPartyLabel}</span>
+                            <strong>{otherPartyName}</strong>
+                            <small>{otherPartyEmail || "-"}</small>
+                          </div>
+                          <div>
+                            <span>Class Status</span>
+                            <strong>{row.class_status || "scheduled"}</strong>
+                            <small>Calendar lifecycle</small>
+                          </div>
+                          <div>
+                            <span>Proof</span>
+                            <strong>{row.proof_url ? "Uploaded" : "Not uploaded"}</strong>
+                            <small>{row.proof_url ? "Screenshot available" : "No screenshot"}</small>
+                          </div>
+                          <div>
+                            <span>Evidence</span>
+                            <strong>{hasRequiredEvidence ? "Complete" : "Needs details"}</strong>
+                            <small>{hasRequiredEvidence ? "All checkpoints present" : `${missingItems.length} item(s) missing`}</small>
+                          </div>
+                        </div>
+
+                        <div className={styles.evidenceGrid}>
+                          <div><span>Start</span><strong>{formatDateTime(row.teacher_started_at)}</strong></div>
+                          <div><span>Attendance</span><strong>{formatDateTime(row.student_joined_at)}</strong></div>
+                          <div><span>End</span><strong>{formatDateTime(row.teacher_ended_at)}</strong></div>
+                          <div><span>Duration</span><strong>{Number(row.duration_minutes || 0)} min</strong></div>
+                        </div>
+
+                        {needsReview ? (
+                          <div className={styles.reviewReasonBox}>
+                            <strong>Review reason</strong>
+                            {reviewReasons.length
+                              ? reviewReasons.map((reason) => (
+                                  <span key={reason}>{reason}</span>
+                                ))
+                              : <span>Manual review required</span>}
+                          </div>
+                        ) : (
+                          <div className={hasRequiredEvidence ? styles.goodEvidenceNote : styles.missingEvidenceNote}>
+                            {hasRequiredEvidence ? "Evidence complete" : `Missing: ${missingItems.join(", ")}`}
+                          </div>
+                        )}
+
+                        {row.summary && (
+                          <p className={styles.verificationSummary}>{row.summary}</p>
+                        )}
+                      </div>
+
+                      <div className={styles.verificationActions}>
+                        {row.proof_url ? (
+                          <button
+                            type="button"
+                            className={`${styles.linkBtn} ${styles.tableActionBtn}`}
+                            onClick={() => setSelectedProof({
+                              url: resolveUploadUrl(row.proof_url),
+                              className: row.class_name || "Class",
+                              otherPartyName,
+                              schedule: `${formatDate(row.scheduled_date)} ${formatTime(row.start_time)}`,
+                            })}
+                          >
+                            Open Screenshot
+                          </button>
+                        ) : (
+                          <span className={styles.noProofText}>No screenshot</span>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })
               )}
             </div>
 

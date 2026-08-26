@@ -592,6 +592,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     ? selectedClasses.find(cls => cls.id === selectedClassId)
     : null;
   const [classVerification, setClassVerification] = useState(null);
+  const [classVerificationRefreshToken, setClassVerificationRefreshToken] = useState(0);
   const [isUpdatingVerification, setIsUpdatingVerification] = useState(false);
   const [verificationSummary, setVerificationSummary] = useState("");
   const [verificationProofUrl, setVerificationProofUrl] = useState("");
@@ -722,17 +723,23 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     const handleCalendarChange = () => {
       triggerCalendarRefresh();
     };
+    const handleClassVerificationChange = () => {
+      setClassVerificationRefreshToken(token => token + 1);
+      triggerCalendarRefresh();
+    };
 
-    ["class-booked", "class-rescheduled", "availability-changed"].forEach(eventName => {
+    ["class-booked", "class-rescheduled", "availability-changed", "class-completed", "class-no-show"].forEach(eventName => {
       stream.addEventListener(eventName, handleCalendarChange);
     });
+    stream.addEventListener("class-verification-changed", handleClassVerificationChange);
 
     stream.onerror = () => {};
 
     return () => {
-      ["class-booked", "class-rescheduled", "availability-changed"].forEach(eventName => {
+      ["class-booked", "class-rescheduled", "availability-changed", "class-completed", "class-no-show"].forEach(eventName => {
         stream.removeEventListener(eventName, handleCalendarChange);
       });
+      stream.removeEventListener("class-verification-changed", handleClassVerificationChange);
       stream.close();
     };
   }, [localUserId, localRole, triggerCalendarRefresh]);
@@ -930,7 +937,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     return () => {
       active = false;
     };
-  }, [selectedClass?.id, applyVerificationToSelectedClass]);
+  }, [selectedClass?.id, classVerificationRefreshToken, applyVerificationToSelectedClass]);
 
   useEffect(() => {
     return () => {
@@ -1103,16 +1110,26 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
   const loadTeacherClassesForDate = (dateStr, tId, force = false) => {
     const dateKey = normalizeDate(dateStr);
-    if (!dateKey || !tId || (!force && teacherClassesCache[dateKey])) return;
+    if (!dateKey || !tId || (!force && teacherClassesCache[dateKey])) return Promise.resolve();
 
-    axios
-      .get(`${API}/api/calendar/classes-by-date`, {
-        params: { scheduled_date: dateKey, teacher_id: tId }
-      })
-      .then(r => {
-        if (r.data && r.data.classes) {
-          setTeacherClassesCache(prev => ({ ...prev, [dateKey]: r.data.classes }));
-        }
+    return Promise.all(
+      nearbyDateKeys(dateKey).map(sourceDate =>
+        axios
+          .get(`${API}/api/calendar/classes-by-date`, {
+            params: { scheduled_date: sourceDate, teacher_id: tId }
+          })
+          .then(r => r.data?.classes || [])
+          .catch(() => [])
+      )
+    )
+      .then(results => {
+        const byId = new Map();
+        results
+          .flat()
+          .map(formatClassForViewer)
+          .filter(cls => normalizeDate(cls.scheduled_date) === dateKey)
+          .forEach(cls => byId.set(String(cls.id || cls.class_id), cls));
+        setTeacherClassesCache(prev => ({ ...prev, [dateKey]: Array.from(byId.values()) }));
       })
       .catch(() => {
         setTeacherClassesCache(prev => ({ ...prev, [dateKey]: [] }));
@@ -2758,7 +2775,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
     setIsSubmittingStudentBooking(true);
     try {
-      await axios.post(`${API}/api/calendar/class`, {
+      const response = await axios.post(`${API}/api/calendar/class`, {
         class_name: studentProfile?.course_name || "General English",
         teacher_id: assignedTeacherId,
         student_id: localUserId,
@@ -2768,6 +2785,21 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         duration,
         class_link: ""
       });
+      const bookedClass = formatClassForViewer({
+        class_id: response.data?.class_id,
+        class_name: studentProfile?.course_name || "General English",
+        teacher_id: assignedTeacherId,
+        student_id: localUserId,
+        scheduled_date: teacherBookingDate,
+        start_time: teacherBookingTime,
+        end_time: endTime,
+        duration,
+        status: "scheduled",
+        teacher_timezone: teacherTimezone,
+      });
+      const bookedViewerDate = normalizeDate(bookedClass.scheduled_date || studentBookingDate);
+      const requestedStart = timeToMinutes(studentBookingTime);
+      const requestedEnd = requestedStart == null ? null : requestedStart + duration;
 
       notify?.("Class booked for the current month.", "success");
       setStudentBookingMode(false);
@@ -2776,23 +2808,38 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       setSelectedDate(studentBookingDate);
       setBookedDates(prev => [
         ...prev,
-        { scheduled_date: studentBookingDate, start_time: studentBookingTime }
+        {
+          scheduled_date: bookedViewerDate,
+          start_time: bookedClass.start_time || studentBookingTime,
+          end_time: bookedClass.end_time,
+          duration,
+          teacher_id: assignedTeacherId,
+          student_id: localUserId,
+        }
       ]);
-      // Clear cache for this date so the load functions re-fetch
-      setClassesCache(prev => {
-        const updated = { ...prev };
-        delete updated[studentBookingDate];
-        delete updated[teacherBookingDate];
-        return updated;
-      });
-      setTeacherClassesCache(prev => {
-        const updated = { ...prev };
-        delete updated[studentBookingDate];
-        delete updated[teacherBookingDate];
-        return updated;
-      });
-      loadClassesForDate(teacherBookingDate, true);
-      loadTeacherClassesForDate(teacherBookingDate, assignedTeacherId, true);
+      setAvailableTimeSlots(prev => prev.filter((slot) => {
+        const slotStart = timeToMinutes(slot);
+        const slotEnd = slotStart == null ? null : slotStart + duration;
+        return requestedStart == null || requestedEnd == null || slotStart == null || slotEnd == null
+          ? true
+          : !rangesOverlap(slotStart, slotEnd, requestedStart, requestedEnd);
+      }));
+      setClassesCache(prev => ({
+        ...prev,
+        [bookedViewerDate]: [
+          ...(prev[bookedViewerDate] || []).filter(cls => String(cls.id || cls.class_id) !== String(bookedClass.id)),
+          bookedClass,
+        ],
+      }));
+      setTeacherClassesCache(prev => ({
+        ...prev,
+        [bookedViewerDate]: [
+          ...(prev[bookedViewerDate] || []).filter(cls => String(cls.id || cls.class_id) !== String(bookedClass.id)),
+          bookedClass,
+        ],
+      }));
+      loadClassesForDate(bookedViewerDate, true);
+      loadTeacherClassesForDate(bookedViewerDate, assignedTeacherId, true);
       triggerCalendarRefresh();
     } catch (err) {
       console.error(err);
@@ -4546,7 +4593,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         <div style={{ fontSize: 14, color: "#666" }}>Booked</div>
                         <div style={{ fontSize: 20, fontWeight: 700, marginTop: 6 }}>{effectiveClassesUsed} / {effectiveClassesLimit}</div>
                         <div style={{ marginTop: 6, color: "#374151", fontSize: 14 }}>Classes left: {effectiveClassesLeft}</div>
-                        <div style={{ marginTop: 4, color: "#2563eb", fontSize: 14, fontWeight: 600 }}>Available to book: {effectiveBookableClasses}</div>
+                        {/* Restore this line if you want to show the booking availability counter again. */}
+                        {/* <div style={{ marginTop: 4, color: "#2563eb", fontSize: 14, fontWeight: 600 }}>Available to book: {effectiveBookableClasses}</div> */}
                         <div style={{ marginTop: 8 }}>
                           <div style={{ height: 8, background: "#eef2ff", borderRadius: 8, overflow: "hidden" }}>
                             <div style={{ width: `${effectivePercent}%`, height: "100%", background: "#6366f1" }} />
