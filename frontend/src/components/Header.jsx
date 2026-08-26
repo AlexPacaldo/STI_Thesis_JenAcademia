@@ -229,10 +229,13 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
   const isAssignmentsDropbox = path === "/assignmentsDropbox";
   const isAssignmentsPage = path === "/assignments";
   const isRemarksPage = path === "/remarks";
+  const isClassHistoryPage = path === "/classHistory";
   const isBooksLessonsPage = path === "/booksLessons";
   const isBooksContentPage = path === "/booksContent" || path.startsWith("/booksContent/");
 
   const isTeacherDashboardPage = path === "/TeacherDashboard";
+  const isTeacherClassHistoryPage = path === "/teacherClassHistory";
+  const isTeacherStudentsPage = path === "/teacherStudents";
   const isPassRemarksPage = path === "/PassRemarks";
   const isTeacherAssignmentPage = path === "/teacherAssignment";
   const isTeacherBooksLessonsPage = path === "/teacherBooksLessons";
@@ -261,6 +264,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
     isAssignmentsDropbox ||
     isAssignmentsPage ||
     isRemarksPage ||
+    isClassHistoryPage ||
     isBooksLessonsPage ||
     isCalendarPage ||
     isBooksContentPage;
@@ -268,6 +272,8 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
   const isTeacherArea =
     isReschedulePage ||
     isTeacherDashboardPage ||
+    isTeacherClassHistoryPage ||
+    isTeacherStudentsPage ||
     isAllClassesPage ||
     isAccountPage ||
     isCalendarPage ||

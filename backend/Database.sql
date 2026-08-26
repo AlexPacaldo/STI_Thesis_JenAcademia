@@ -218,6 +218,39 @@ INSERT INTO `classes` VALUES (1,'Conversational English',67,69,'2026-05-28','11:
 UNLOCK TABLES;
 
 --
+-- Table structure for table `class_attendance_logs`
+--
+
+DROP TABLE IF EXISTS `class_attendance_logs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `class_attendance_logs` (
+  `log_id` int NOT NULL AUTO_INCREMENT,
+  `class_id` int NOT NULL,
+  `teacher_id` int NOT NULL,
+  `student_id` int NOT NULL,
+  `teacher_started_at` timestamp NULL DEFAULT NULL,
+  `student_joined_at` timestamp NULL DEFAULT NULL,
+  `teacher_ended_at` timestamp NULL DEFAULT NULL,
+  `duration_minutes` int NOT NULL DEFAULT '0',
+  `proof_url` varchar(1000) DEFAULT NULL,
+  `summary` text,
+  `verification_status` enum('pending','in_progress','student_confirmed','verified','needs_review','incomplete') NOT NULL DEFAULT 'pending',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`log_id`),
+  UNIQUE KEY `unique_class_attendance_log` (`class_id`),
+  KEY `idx_class_attendance_class` (`class_id`),
+  KEY `idx_class_attendance_teacher` (`teacher_id`),
+  KEY `idx_class_attendance_student` (`student_id`),
+  KEY `idx_class_attendance_status` (`verification_status`,`created_at`),
+  CONSTRAINT `class_attendance_class_fk` FOREIGN KEY (`class_id`) REFERENCES `classes` (`class_id`) ON DELETE CASCADE,
+  CONSTRAINT `class_attendance_teacher_fk` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`user_id`),
+  CONSTRAINT `class_attendance_student_fk` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `courses`
 --
 

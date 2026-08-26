@@ -408,8 +408,8 @@ export default function Dashboard({ mode }) {
         meta: `${teacherData.students.length} learners`,
         empty: "No assigned students yet.",
         rows: recentStudents,
-        actionLabel: "View assignments",
-        actionTo: "/teacherAssignment",
+        actionLabel: "View students",
+        actionTo: "/teacherStudents",
       },
       {
         title: "Recent Submissions",

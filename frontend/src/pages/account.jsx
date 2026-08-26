@@ -7,6 +7,7 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
 import { formatTimezoneLabel, getTimezoneOptions, getUserTimezone } from "../utils/timezone.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { compressFileIfImage } from "../utils/imageCompression.js";
 
 const API = API_BASE_URL;
 const CROP_SIZE = 320;
@@ -533,10 +534,14 @@ export default function Account() {
   async function uploadProfilePicture(file) {
     if (!file || !user?.id) return;
     const payload = new FormData();
-    payload.append("profile_picture", file, "profile-picture.png");
     setPictureUploading(true);
 
     try {
+      const uploadFile = await compressFileIfImage(
+        file instanceof File ? file : new File([file], "profile-picture.png", { type: file.type || "image/png" }),
+        { maxDimension: 512, quality: 0.88 }
+      );
+      payload.append("profile_picture", uploadFile, uploadFile.name || "profile-picture.webp");
       await axios.post(`${API}/api/users/${user.id}/profile-picture`, payload, {
         headers: { "Content-Type": "multipart/form-data" },
       });

@@ -7,6 +7,7 @@ import styles from "../assets/booksContent.module.css";
 import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { API_BASE_URL } from "../utils/api.js";
+import { compressFileIfImage } from "../utils/imageCompression.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
 
@@ -635,7 +636,8 @@ export default function BooksContent({ mode = "student" }) {
       formData.append("book_id", bookId);
       formData.append("title", lessonData.title);
       formData.append("content", lessonData.content || "");
-      formData.append("file", lessonData.file);
+      const uploadFile = await compressFileIfImage(lessonData.file);
+      formData.append("file", uploadFile, uploadFile.name);
       formData.append("teacher_id", teacherId);
 
       const response = await fetch(`${API_BASE}/api/lessons`, {
@@ -972,7 +974,8 @@ export default function BooksContent({ mode = "student" }) {
 
                   try {
                     const fd = new FormData();
-                    fd.append("cover", coverFile);
+                    const compressedCover = await compressFileIfImage(coverFile);
+                    fd.append("cover", compressedCover, compressedCover.name);
                     fd.append("title", book.title);
                     fd.append("description", book.description || "");
                     if (teacherId) {

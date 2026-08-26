@@ -148,6 +148,8 @@ const uploadDir = path.join(UPLOAD_ROOT, "assignments");
 fs.mkdirSync(uploadDir, { recursive: true });
 const profileUploadDir = path.join(UPLOAD_ROOT, "profiles");
 fs.mkdirSync(profileUploadDir, { recursive: true });
+const classProofUploadDir = path.join(UPLOAD_ROOT, "class-proofs");
+fs.mkdirSync(classProofUploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: uploadDir,
@@ -174,6 +176,24 @@ const profileUpload = multer({
       return;
     }
     cb(new Error("Only JPG, PNG, WEBP, and GIF profile images are allowed"));
+  },
+});
+const classProofStorage = multer.diskStorage({
+  destination: classProofUploadDir,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase() || ".webp";
+    cb(null, `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`);
+  },
+});
+const classProofUpload = multer({
+  storage: classProofStorage,
+  limits: { fileSize: 4 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (["image/jpeg", "image/png", "image/webp"].includes(file.mimetype)) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error("Only JPG, PNG, and WEBP class proof screenshots are allowed"));
   },
 });
 app.use("/uploads", express.static(UPLOAD_ROOT));
@@ -558,6 +578,24 @@ async function deleteLocalProfileImage(imageUrl) {
   }
 }
 
+async function deleteLocalClassProofImage(imageUrl) {
+  if (!imageUrl || !String(imageUrl).startsWith("/uploads/class-proofs/")) return;
+
+  const fileName = path.basename(decodeURIComponent(String(imageUrl)));
+  const filePath = path.resolve(classProofUploadDir, fileName);
+  const proofDir = path.resolve(classProofUploadDir);
+
+  if (!filePath.startsWith(proofDir + path.sep)) return;
+
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      console.warn("Could not delete class proof image:", err.message);
+    }
+  }
+}
+
 const MS_TENANT_ID = process.env.MS_TENANT_ID || "";
 const MS_CLIENT_ID = process.env.MS_CLIENT_ID || "";
 const MS_CLIENT_SECRET = process.env.MS_CLIENT_SECRET || "";
@@ -734,6 +772,7 @@ async function ensurePerformanceIndexes() {
     ["assignments", "idx_assignments_student_due", "student_id, due_date, due_time, created_at"],
     ["assignment_submissions", "idx_submissions_assignment_submitted", "assignment_id, submitted_at, submission_id"],
     ["books", "idx_books_status_teacher_course_created", "status, teacher_id, course_id, created_at"],
+    ["class_attendance_logs", "idx_class_attendance_status", "verification_status, created_at"],
     ["class_remarks", "idx_remarks_student_created", "student_id, created_at"],
     ["lesson_progress", "idx_lesson_progress_student_updated", "student_id, updated_at"],
     ["messages", "idx_messages_recipient_read", "recipient_id, is_read"],
@@ -834,6 +873,34 @@ async function ensureLessonProgressTable() {
   } else {
     await pool.query("ALTER TABLE lesson_progress MODIFY COLUMN updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
   }
+}
+
+async function ensureClassAttendanceLogsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS class_attendance_logs (
+      log_id INT NOT NULL AUTO_INCREMENT,
+      class_id INT NOT NULL,
+      teacher_id INT NOT NULL,
+      student_id INT NOT NULL,
+      teacher_started_at TIMESTAMP NULL DEFAULT NULL,
+      student_joined_at TIMESTAMP NULL DEFAULT NULL,
+      teacher_ended_at TIMESTAMP NULL DEFAULT NULL,
+      duration_minutes INT NOT NULL DEFAULT 0,
+      proof_url VARCHAR(1000) DEFAULT NULL,
+      summary TEXT DEFAULT NULL,
+      verification_status ENUM('pending','in_progress','student_confirmed','verified','needs_review','incomplete') NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (log_id),
+      UNIQUE KEY unique_class_attendance_log (class_id),
+      KEY idx_class_attendance_class (class_id),
+      KEY idx_class_attendance_teacher (teacher_id),
+      KEY idx_class_attendance_student (student_id),
+      CONSTRAINT class_attendance_class_fk FOREIGN KEY (class_id) REFERENCES classes (class_id) ON DELETE CASCADE,
+      CONSTRAINT class_attendance_teacher_fk FOREIGN KEY (teacher_id) REFERENCES users (user_id),
+      CONSTRAINT class_attendance_student_fk FOREIGN KEY (student_id) REFERENCES users (user_id)
+    )
+  `);
 }
 
 async function ensureStudentCourseProgressTable() {
@@ -1149,6 +1216,7 @@ async function prepareDatabase() {
   await ensureBooksColumns();
   await ensureLessonsColumns();
   await ensureLessonProgressTable();
+  await ensureClassAttendanceLogsTable();
   await ensureStudentCourseProgressTable();
   await ensureUserProfileImageColumn();
   await ensureUserPasswordChangedColumn();
@@ -2928,9 +2996,17 @@ app.get("/api/calendar/classes-by-date", async (req, res) => {
                        tea.email as teacher_email,
                        tea.profile_image_url AS teacher_profile_image_url,
                        tea.timezone as teacher_timezone,
+                       cal.teacher_started_at,
+                       cal.student_joined_at,
+                       cal.teacher_ended_at,
+                       cal.duration_minutes AS verified_duration_minutes,
+                       cal.proof_url AS class_proof_url,
+                       cal.summary AS class_summary,
+                       cal.verification_status,
                        COALESCE(c.class_link, vs.teams_meeting_link) as class_link
                  FROM classes c
                  LEFT JOIN video_sessions vs ON vs.class_id = c.class_id
+                 LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
                  JOIN users stu ON c.student_id = stu.user_id
                  LEFT JOIN student_profiles sp ON sp.user_id = stu.user_id
                  JOIN users tea ON c.teacher_id = tea.user_id
@@ -2951,7 +3027,7 @@ app.get("/api/calendar/classes-by-date", async (req, res) => {
     query += ` ORDER BY c.start_time ASC, c.class_id ASC`;
 
     const [rows] = await pool.query(query, params);
-    res.json({ classes: decryptRows(rows, ["class_link"]) });
+    res.json({ classes: decryptRows(rows, ["class_link", "class_summary"]) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching classes" });
@@ -2998,9 +3074,17 @@ app.get("/api/calendar/classes-by-month", async (req, res) => {
                        tea.email as teacher_email,
                        tea.profile_image_url AS teacher_profile_image_url,
                        tea.timezone as teacher_timezone,
+                       cal.teacher_started_at,
+                       cal.student_joined_at,
+                       cal.teacher_ended_at,
+                       cal.duration_minutes AS verified_duration_minutes,
+                       cal.proof_url AS class_proof_url,
+                       cal.summary AS class_summary,
+                       cal.verification_status,
                        COALESCE(c.class_link, vs.teams_meeting_link) as class_link
                  FROM classes c
                  LEFT JOIN video_sessions vs ON vs.class_id = c.class_id
+                 LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
                  JOIN users stu ON c.student_id = stu.user_id
                  LEFT JOIN student_profiles sp ON sp.user_id = stu.user_id
                  JOIN users tea ON c.teacher_id = tea.user_id
@@ -3021,7 +3105,7 @@ app.get("/api/calendar/classes-by-month", async (req, res) => {
     query += ` ORDER BY c.scheduled_date ASC, c.start_time ASC, c.class_id ASC`;
 
     const [rows] = await pool.query(query, params);
-    const classesByDate = decryptRows(rows, ["class_link"]).reduce((acc, row) => {
+    const classesByDate = decryptRows(rows, ["class_link", "class_summary"]).reduce((acc, row) => {
       const dateKey = row.scheduled_date instanceof Date
         ? row.scheduled_date.toISOString().slice(0, 10)
         : String(row.scheduled_date).slice(0, 10);
@@ -3088,6 +3172,454 @@ app.get("/api/calendar/upcoming-classes", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching upcoming classes" });
+  }
+});
+
+const getRequiredClassMinutes = (duration) => {
+  const parsedDuration = normalizeClassDuration(duration);
+  return Math.max(1, Math.min(30, Math.ceil(parsedDuration * 0.6)));
+};
+
+const hasCompleteSentence = (value) => {
+  const text = String(value || "").trim();
+  const words = text.match(/[A-Za-z0-9]+/g) || [];
+  return words.length >= 4 && /[.!?]$/.test(text);
+};
+
+const classVerificationSelect = `
+  cal.log_id,
+  cal.class_id,
+  cal.teacher_id,
+  cal.student_id,
+  cal.teacher_started_at,
+  cal.student_joined_at,
+  cal.teacher_ended_at,
+  cal.duration_minutes,
+  cal.proof_url,
+  cal.summary,
+  cal.verification_status,
+  cal.created_at,
+  cal.updated_at
+`;
+
+async function getClassVerification(connection, classId) {
+  const [rows] = await connection.query(
+    `SELECT ${classVerificationSelect}
+     FROM class_attendance_logs cal
+     WHERE cal.class_id = ?
+     LIMIT 1`,
+    [classId]
+  );
+
+  return rows.length ? decryptFields(rows[0], ["summary"]) : null;
+}
+
+app.get("/api/calendar/classes/:class_id/verification", async (req, res) => {
+  try {
+    const { class_id } = req.params;
+    const verification = await getClassVerification(pool, class_id);
+    res.json({ verification });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching class verification" });
+  }
+});
+
+app.post("/api/calendar/classes/:class_id/start", async (req, res) => {
+  try {
+    const { class_id } = req.params;
+    const { teacher_id } = req.body;
+
+    if (!class_id || !teacher_id) {
+      return res.status(400).json({ message: "Missing class_id or teacher_id" });
+    }
+
+    const [classRows] = await pool.query(
+      `SELECT class_id, teacher_id, student_id, status
+       FROM classes
+       WHERE class_id = ?
+       LIMIT 1`,
+      [class_id]
+    );
+
+    if (!classRows.length) {
+      return res.status(404).json({ message: "Class not found" });
+    }
+
+    const classInfo = classRows[0];
+    if (String(classInfo.teacher_id) !== String(teacher_id)) {
+      return res.status(403).json({ message: "Only the assigned teacher can start this class" });
+    }
+
+    if (classInfo.status !== "scheduled") {
+      return res.status(400).json({ message: "Only scheduled classes can be started" });
+    }
+
+    await pool.query(
+      `INSERT INTO class_attendance_logs (class_id, teacher_id, student_id, teacher_started_at, verification_status)
+       VALUES (?, ?, ?, NOW(), 'in_progress')
+       ON DUPLICATE KEY UPDATE
+         teacher_started_at = COALESCE(teacher_started_at, NOW()),
+         verification_status = CASE
+           WHEN teacher_ended_at IS NOT NULL THEN verification_status
+           WHEN student_joined_at IS NOT NULL THEN 'student_confirmed'
+           ELSE 'in_progress'
+         END`,
+      [classInfo.class_id, classInfo.teacher_id, classInfo.student_id]
+    );
+
+    const verification = await getClassVerification(pool, class_id);
+    res.json({ message: "Class session started", verification });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error starting class session" });
+  }
+});
+
+app.post("/api/calendar/classes/:class_id/join", async (req, res) => {
+  try {
+    const { class_id } = req.params;
+    const { student_id } = req.body;
+
+    if (!class_id || !student_id) {
+      return res.status(400).json({ message: "Missing class_id or student_id" });
+    }
+
+    const [classRows] = await pool.query(
+      `SELECT class_id, teacher_id, student_id, status
+       FROM classes
+       WHERE class_id = ?
+       LIMIT 1`,
+      [class_id]
+    );
+
+    if (!classRows.length) {
+      return res.status(404).json({ message: "Class not found" });
+    }
+
+    const classInfo = classRows[0];
+    if (String(classInfo.student_id) !== String(student_id)) {
+      return res.status(403).json({ message: "Only the assigned student can confirm attendance" });
+    }
+
+    if (classInfo.status !== "scheduled") {
+      return res.status(400).json({ message: "Only scheduled classes can be confirmed" });
+    }
+
+    const [logRows] = await pool.query(
+      `SELECT log_id, teacher_started_at
+       FROM class_attendance_logs
+       WHERE class_id = ?
+       LIMIT 1`,
+      [class_id]
+    );
+
+    if (!logRows.length || !logRows[0].teacher_started_at) {
+      return res.status(400).json({ message: "The teacher must start the class before attendance can be confirmed" });
+    }
+
+    await pool.query(
+      `UPDATE class_attendance_logs
+       SET student_joined_at = COALESCE(student_joined_at, NOW()),
+           verification_status = CASE
+             WHEN teacher_ended_at IS NULL THEN 'student_confirmed'
+             ELSE verification_status
+           END
+       WHERE class_id = ?`,
+      [class_id]
+    );
+
+    const verification = await getClassVerification(pool, class_id);
+    res.json({ message: "Attendance confirmed", verification });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error confirming attendance" });
+  }
+});
+
+app.post("/api/calendar/classes/:class_id/end", classProofUpload.single("proof_image"), async (req, res) => {
+  try {
+    const { class_id } = req.params;
+    const { teacher_id, summary } = req.body;
+
+    if (!class_id || !teacher_id) {
+      return res.status(400).json({ message: "Missing class_id or teacher_id" });
+    }
+
+    const [classRows] = await pool.query(
+      `SELECT class_id, teacher_id, student_id, duration, status
+       FROM classes
+       WHERE class_id = ?
+       LIMIT 1`,
+      [class_id]
+    );
+
+    if (!classRows.length) {
+      return res.status(404).json({ message: "Class not found" });
+    }
+
+    const classInfo = classRows[0];
+    if (String(classInfo.teacher_id) !== String(teacher_id)) {
+      return res.status(403).json({ message: "Only the assigned teacher can end this class" });
+    }
+
+    if (classInfo.status !== "scheduled") {
+      return res.status(400).json({ message: "Only scheduled classes can be ended" });
+    }
+
+    const [logRows] = await pool.query(
+      `SELECT teacher_started_at, student_joined_at, proof_url
+       FROM class_attendance_logs
+       WHERE class_id = ?
+       LIMIT 1`,
+      [class_id]
+    );
+
+    if (!logRows.length || !logRows[0].teacher_started_at) {
+      return res.status(400).json({ message: "Start the class before ending it" });
+    }
+
+    if (!logRows[0].student_joined_at) {
+      return res.status(400).json({ message: "The student must join and confirm attendance before the class can be ended and verified" });
+    }
+
+    const trimmedSummary = String(summary || "").trim();
+    if (!hasCompleteSentence(trimmedSummary)) {
+      return res.status(400).json({ message: "Please enter at least one complete sentence in the class summary" });
+    }
+
+    const uploadedProofUrl = req.file ? `/uploads/class-proofs/${req.file.filename}` : String(logRows[0].proof_url || "");
+    if (!uploadedProofUrl) {
+      return res.status(400).json({ message: "Please upload or paste a screenshot of the class" });
+    }
+
+    const requiredMinutes = getRequiredClassMinutes(classInfo.duration);
+
+    await pool.query(
+      `UPDATE class_attendance_logs
+       SET teacher_ended_at = COALESCE(teacher_ended_at, NOW()),
+           duration_minutes = GREATEST(duration_minutes, TIMESTAMPDIFF(MINUTE, teacher_started_at, COALESCE(teacher_ended_at, NOW()))),
+           proof_url = NULLIF(?, ''),
+           summary = ?,
+           verification_status = CASE
+             WHEN student_joined_at IS NOT NULL
+              AND TIMESTAMPDIFF(MINUTE, teacher_started_at, COALESCE(teacher_ended_at, NOW())) >= ?
+              AND (NULLIF(?, '') IS NOT NULL OR NULLIF(?, '') IS NOT NULL)
+             THEN 'verified'
+             ELSE 'needs_review'
+           END
+       WHERE class_id = ?`,
+      [
+        uploadedProofUrl,
+        encryptNullableText(trimmedSummary || null),
+        requiredMinutes,
+        uploadedProofUrl,
+        trimmedSummary,
+        class_id,
+      ]
+    );
+
+    const verification = await getClassVerification(pool, class_id);
+    res.json({ message: "Class session ended", required_minutes: requiredMinutes, verification });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error ending class session" });
+  }
+});
+
+app.get("/api/admin/class-verifications", async (req, res) => {
+  try {
+    const { status = "all", from, to, limit = 200 } = req.query;
+    const params = [];
+    const filters = [
+      "(cal.log_id IS NOT NULL OR TIMESTAMP(c.scheduled_date, COALESCE(c.start_time, '00:00:00')) <= NOW())",
+    ];
+
+    if (from) {
+      filters.push("c.scheduled_date >= ?");
+      params.push(from);
+    }
+    if (to) {
+      filters.push("c.scheduled_date <= ?");
+      params.push(to);
+    }
+    if (status && status !== "all") {
+      if (status === "missing") {
+        filters.push("cal.log_id IS NULL");
+      } else {
+        filters.push("cal.verification_status = ?");
+        params.push(status);
+      }
+    }
+
+    const whereClause = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    const parsedLimit = Math.min(500, Math.max(1, parseInt(limit, 10) || 200));
+
+    const [rows] = await pool.query(
+      `SELECT c.class_id,
+              c.class_name,
+              c.status AS class_status,
+              DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
+              TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time,
+              TIME_FORMAT(c.end_time, '%H:%i:%s') AS end_time,
+              c.duration,
+              cal.teacher_started_at,
+              cal.student_joined_at,
+              cal.teacher_ended_at,
+              cal.duration_minutes,
+              cal.proof_url,
+              cal.summary,
+              COALESCE(cal.verification_status, 'pending') AS verification_status,
+              stu.user_id AS student_id,
+              stu.first_name AS student_first_name,
+              stu.last_name AS student_last_name,
+              stu.email AS student_email,
+              tea.user_id AS teacher_id,
+              tea.first_name AS teacher_first_name,
+              tea.last_name AS teacher_last_name,
+              tea.email AS teacher_email
+       FROM classes c
+       LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
+       JOIN users stu ON c.student_id = stu.user_id
+       JOIN users tea ON c.teacher_id = tea.user_id
+       ${whereClause}
+       ORDER BY c.scheduled_date DESC, c.start_time DESC, c.class_id DESC
+       LIMIT ?`,
+      [...params, parsedLimit]
+    );
+
+    res.json({ verifications: decryptRows(rows, ["summary"]) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching class verifications" });
+  }
+});
+
+app.delete("/api/admin/class-verifications/:class_id", async (req, res) => {
+  try {
+    const { class_id } = req.params;
+    const [rows] = await pool.query(
+      "SELECT proof_url FROM class_attendance_logs WHERE class_id = ?",
+      [class_id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Verification record not found" });
+    }
+
+    await pool.query("DELETE FROM class_attendance_logs WHERE class_id = ?", [class_id]);
+    await Promise.all(rows.map((row) => deleteLocalClassProofImage(row.proof_url)));
+
+    res.json({ message: "Verification record removed" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error removing verification record" });
+  }
+});
+
+app.delete("/api/admin/class-verifications", async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      "SELECT proof_url FROM class_attendance_logs WHERE proof_url IS NOT NULL AND proof_url <> ''"
+    );
+
+    await pool.query("DELETE FROM class_attendance_logs");
+    await Promise.all(rows.map((row) => deleteLocalClassProofImage(row.proof_url)));
+
+    res.json({ message: "All verification records cleared" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error clearing verification records" });
+  }
+});
+
+app.get("/api/student/:student_id/class-history", async (req, res) => {
+  try {
+    const { student_id } = req.params;
+    const parsedLimit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 100));
+
+    const [rows] = await pool.query(
+      `SELECT c.class_id,
+              c.class_name,
+              c.status AS class_status,
+              DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
+              TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time,
+              TIME_FORMAT(c.end_time, '%H:%i:%s') AS end_time,
+              c.duration,
+              cal.teacher_started_at,
+              cal.student_joined_at,
+              cal.teacher_ended_at,
+              cal.duration_minutes,
+              cal.proof_url,
+              cal.summary,
+              COALESCE(cal.verification_status, 'pending') AS verification_status,
+              tea.user_id AS teacher_id,
+              tea.first_name AS teacher_first_name,
+              tea.last_name AS teacher_last_name,
+              tea.email AS teacher_email
+       FROM classes c
+       LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
+       JOIN users tea ON c.teacher_id = tea.user_id
+       WHERE c.student_id = ?
+         AND (
+           cal.log_id IS NOT NULL
+           OR c.status IN ('completed', 'no-show')
+           OR TIMESTAMP(c.scheduled_date, COALESCE(c.start_time, '00:00:00')) <= NOW()
+         )
+       ORDER BY c.scheduled_date DESC, c.start_time DESC, c.class_id DESC
+       LIMIT ?`,
+      [student_id, parsedLimit]
+    );
+
+    res.json({ history: decryptRows(rows, ["summary"]) });
+  } catch (err) {
+    console.error("GET /api/student/:student_id/class-history error:", err);
+    res.status(500).json({ message: "Error fetching class history" });
+  }
+});
+
+app.get("/api/teacher/:teacher_id/class-history", async (req, res) => {
+  try {
+    const { teacher_id } = req.params;
+    const parsedLimit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 100));
+
+    const [rows] = await pool.query(
+      `SELECT c.class_id,
+              c.class_name,
+              c.status AS class_status,
+              DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
+              TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time,
+              TIME_FORMAT(c.end_time, '%H:%i:%s') AS end_time,
+              c.duration,
+              cal.teacher_started_at,
+              cal.student_joined_at,
+              cal.teacher_ended_at,
+              cal.duration_minutes,
+              cal.proof_url,
+              cal.summary,
+              COALESCE(cal.verification_status, 'pending') AS verification_status,
+              stu.user_id AS student_id,
+              stu.first_name AS student_first_name,
+              stu.last_name AS student_last_name,
+              stu.email AS student_email
+       FROM classes c
+       LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
+       JOIN users stu ON c.student_id = stu.user_id
+       WHERE c.teacher_id = ?
+         AND (
+           cal.log_id IS NOT NULL
+           OR c.status IN ('completed', 'no-show')
+           OR TIMESTAMP(c.scheduled_date, COALESCE(c.start_time, '00:00:00')) <= NOW()
+         )
+       ORDER BY c.scheduled_date DESC, c.start_time DESC, c.class_id DESC
+       LIMIT ?`,
+      [teacher_id, parsedLimit]
+    );
+
+    res.json({ history: decryptRows(rows, ["summary"]) });
+  } catch (err) {
+    console.error("GET /api/teacher/:teacher_id/class-history error:", err);
+    res.status(500).json({ message: "Error fetching class history" });
   }
 });
 
@@ -3300,9 +3832,12 @@ app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
     await connection.beginTransaction();
 
     const [classRows] = await connection.query(
-      `SELECT class_id, teacher_id, student_id, class_name, status
-       FROM classes
-       WHERE class_id = ?
+      `SELECT c.class_id, c.teacher_id, c.student_id, c.class_name, c.status, c.duration,
+              cal.teacher_started_at, cal.student_joined_at, cal.teacher_ended_at,
+              cal.duration_minutes, cal.proof_url, cal.summary, cal.verification_status
+       FROM classes c
+       LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
+       WHERE c.class_id = ?
        FOR UPDATE`,
       [class_id]
     );
@@ -3326,6 +3861,22 @@ app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
     if (classInfo.status === "cancelled") {
       await connection.rollback();
       return res.status(400).json({ message: "Cancelled classes cannot be marked as done" });
+    }
+
+    const requiredMinutes = getRequiredClassMinutes(classInfo.duration);
+    const hasEvidence = classInfo.proof_url || classInfo.summary;
+    if (
+      classInfo.verification_status !== "verified" ||
+      !classInfo.teacher_started_at ||
+      !classInfo.student_joined_at ||
+      !classInfo.teacher_ended_at ||
+      Number(classInfo.duration_minutes || 0) < requiredMinutes ||
+      !hasEvidence
+    ) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: `Class must be verified before it can be marked as done. Required: teacher start, student attendance, teacher end, at least ${requiredMinutes} minute(s), and proof or summary.`,
+      });
     }
 
     const [packageRows] = await connection.query(
@@ -4702,9 +5253,26 @@ app.get("/api/teacher/:teacher_id/students", async (req, res) => {
     const [rows] = await pool.query(
       `SELECT u.user_id, u.first_name, u.last_name, u.email, u.contact_number AS contact,
               u.profile_image_url,
-              sp.proficiency_level, sp.assigned_teacher_id, sp.course_id, sp.trial_notes
+              sp.proficiency_level, sp.assigned_teacher_id, sp.course_id, sp.trial_notes,
+              c.course_name,
+              scp.package_id,
+              scp.total_classes,
+              scp.classes_used,
+              scp.classes_left,
+              scp.class_duration,
+              scp.status AS package_status
        FROM users u
        JOIN student_profiles sp ON u.user_id = sp.user_id
+       LEFT JOIN courses c ON c.course_id = sp.course_id
+       LEFT JOIN student_class_packages scp
+         ON scp.student_id = u.user_id
+        AND scp.package_id = (
+          SELECT latest.package_id
+          FROM student_class_packages latest
+          WHERE latest.student_id = u.user_id
+          ORDER BY latest.status = 'active' DESC, latest.created_at DESC, latest.package_id DESC
+          LIMIT 1
+        )
        WHERE sp.assigned_teacher_id = ?`,
       [teacher_id]
     );
@@ -4720,6 +5288,13 @@ app.get("/api/teacher/:teacher_id/students", async (req, res) => {
       proficiency_level: student.proficiency_level,
       assigned_teacher_id: student.assigned_teacher_id,
       course_id: student.course_id,
+      course_name: student.course_name,
+      package_id: student.package_id,
+      total_classes: student.total_classes,
+      classes_used: student.classes_used,
+      classes_left: student.classes_left,
+      class_duration: student.class_duration,
+      package_status: student.package_status,
       trial_notes: decryptNullableText(student.trial_notes),
     }));
 
