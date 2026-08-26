@@ -204,6 +204,7 @@ const VERIFICATION_STATUS_LABELS = {
   student_confirmed: "Student Confirmed",
   in_progress: "In Progress",
   pending: "Pending",
+  incomplete: "Incomplete",
   missing: "No Log",
 };
 
@@ -214,6 +215,7 @@ const verificationStatusStyle = (status) => {
     student_confirmed: { background: "#dbeafe", color: "#1e40af" },
     in_progress: { background: "#e0f2fe", color: "#075985" },
     pending: { background: "#f3f4f6", color: "#374151" },
+    incomplete: { background: "#fee2e2", color: "#991b1b" },
     missing: { background: "#fee2e2", color: "#991b1b" },
   };
   return palette[status] || palette.pending;
@@ -234,6 +236,27 @@ const getVerificationMissingItems = (row) => {
   if (!row.summary) missing.push("summary");
   if (!row.proof_url) missing.push("screenshot");
   return missing;
+};
+
+const getRequiredClassMinutes = (duration) => {
+  const parsedDuration = parseInt(duration, 10);
+  const safeDuration = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 50;
+  return Math.max(1, Math.min(30, Math.ceil(safeDuration * 0.6)));
+};
+
+const getVerificationReviewReasons = (row) => {
+  const reasons = [];
+  const durationMinutes = Number(row.duration_minutes || 0);
+  const requiredMinutes = getRequiredClassMinutes(row.duration);
+
+  if (!row.teacher_started_at) reasons.push("Missing teacher start");
+  if (!row.student_joined_at) reasons.push("Missing student attendance");
+  if (!row.teacher_ended_at) reasons.push("Missing teacher end");
+  if (durationMinutes < requiredMinutes) reasons.push(`Duration too short: ${durationMinutes} / ${requiredMinutes} min`);
+  if (!row.summary) reasons.push("Missing class summary");
+  if (!row.proof_url) reasons.push("Missing screenshot proof");
+
+  return reasons;
 };
 
 export default function AdminDashboard() {
@@ -511,6 +534,10 @@ export default function AdminDashboard() {
         await saveContract(adminConfirm.payload.row);
       } else if (adminConfirm.action === "contract_request") {
         await updateContractRequest(adminConfirm.payload.requestId, adminConfirm.payload.status);
+      } else if (adminConfirm.action === "approve_verification") {
+        await approveVerificationRecord(adminConfirm.payload.classId);
+      } else if (adminConfirm.action === "mark_verification_incomplete") {
+        await markVerificationIncomplete(adminConfirm.payload.classId);
       } else if (adminConfirm.action === "remove_verification") {
         await removeVerificationRecord(adminConfirm.payload.classId);
       } else if (adminConfirm.action === "clear_verifications") {
@@ -904,6 +931,28 @@ export default function AdminDashboard() {
     }
   }
 
+  async function approveVerificationRecord(classId) {
+    try {
+      await axios.put(`${API}/api/admin/class-verifications/${classId}/approve`);
+      notify("Class verification approved", "success");
+      await loadClassVerifications();
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || "Failed to approve verification", "error");
+    }
+  }
+
+  async function markVerificationIncomplete(classId) {
+    try {
+      await axios.put(`${API}/api/admin/class-verifications/${classId}/incomplete`);
+      notify("Class verification marked incomplete", "success");
+      await loadClassVerifications();
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || "Failed to mark verification incomplete", "error");
+    }
+  }
+
   const updateVerificationFilter = (status) => {
     setVerificationFilter(status);
     setVerificationPage(1);
@@ -1017,6 +1066,7 @@ export default function AdminDashboard() {
     student_confirmed: verifications.filter((row) => row.verification_status === "student_confirmed").length,
     in_progress: verifications.filter((row) => row.verification_status === "in_progress").length,
     pending: verifications.filter((row) => row.verification_status === "pending").length,
+    incomplete: verifications.filter((row) => row.verification_status === "incomplete").length,
     missing: verifications.filter((row) => !row.teacher_started_at && row.verification_status === "pending").length,
   };
 
@@ -1175,6 +1225,46 @@ export default function AdminDashboard() {
     });
   }
 
+  function requestApproveVerification(row) {
+    const teacherName = `${row.teacher_first_name || ""} ${row.teacher_last_name || ""}`.trim() || "Teacher";
+    const studentName = `${row.student_first_name || ""} ${row.student_last_name || ""}`.trim() || "Student";
+    openAdminConfirm({
+      action: "approve_verification",
+      title: "Approve this class as verified?",
+      message: "This overrides the review status and marks the class evidence as verified.",
+      confirmLabel: "Approve Verified",
+      tone: "success",
+      payload: {
+        classId: row.class_id,
+        className: row.class_name || "Untitled Class",
+        teacherName,
+        studentName,
+        schedule: `${formatDate(row.scheduled_date)} ${formatTime(row.start_time)}`,
+        reasons: getVerificationReviewReasons(row),
+      },
+    });
+  }
+
+  function requestMarkVerificationIncomplete(row) {
+    const teacherName = `${row.teacher_first_name || ""} ${row.teacher_last_name || ""}`.trim() || "Teacher";
+    const studentName = `${row.student_first_name || ""} ${row.student_last_name || ""}`.trim() || "Student";
+    openAdminConfirm({
+      action: "mark_verification_incomplete",
+      title: "Mark verification incomplete?",
+      message: "This keeps the record for audit history and marks the class evidence as incomplete.",
+      confirmLabel: "Mark Incomplete",
+      tone: "danger",
+      payload: {
+        classId: row.class_id,
+        className: row.class_name || "Untitled Class",
+        teacherName,
+        studentName,
+        schedule: `${formatDate(row.scheduled_date)} ${formatTime(row.start_time)}`,
+        reasons: getVerificationReviewReasons(row),
+      },
+    });
+  }
+
   function requestClearVerifications() {
     if (!verifications.length) {
       notify("There are no verification records to clear.", "info");
@@ -1241,12 +1331,13 @@ export default function AdminDashboard() {
         `Action: ${payload.status === "approved" ? "Approve" : "Decline"}`,
       ];
     }
-    if (adminConfirm.action === "remove_verification") {
+    if (adminConfirm.action === "approve_verification" || adminConfirm.action === "mark_verification_incomplete" || adminConfirm.action === "remove_verification") {
       return [
         `Class: ${payload.className || "-"}`,
         `Teacher: ${payload.teacherName || "-"}`,
         `Student: ${payload.studentName || "-"}`,
         `Schedule: ${payload.schedule || "-"}`,
+        ...(payload.reasons?.length ? [`Review: ${payload.reasons.join("; ")}`] : []),
       ];
     }
     if (adminConfirm.action === "clear_verifications") {
@@ -1285,7 +1376,7 @@ export default function AdminDashboard() {
             </div>
 
             <div className={styles.filterTabs} style={{ marginBottom: 14 }}>
-              {["all", "verified", "needs_review", "student_confirmed", "in_progress", "pending", "missing"].map((status) => {
+              {["all", "verified", "needs_review", "incomplete", "student_confirmed", "in_progress", "pending", "missing"].map((status) => {
                 const activeFilter = verificationFilter === status;
                 const colors = verificationStatusStyle(status === "all" ? "pending" : status);
                 return (
@@ -1320,7 +1411,7 @@ export default function AdminDashboard() {
               />
             </div>
 
-            <div className={styles.tableWrap}>
+            <div className={styles.verificationList}>
               {verificationsLoading ? (
                 <div className={styles.empty}>Loading class verifications...</div>
               ) : verifications.length === 0 ? (
@@ -1328,117 +1419,128 @@ export default function AdminDashboard() {
               ) : filteredVerifications.length === 0 ? (
                 <div className={styles.empty}>No class verifications match your search</div>
               ) : (
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Class</th>
-                      <th>Teacher</th>
-                      <th>Student</th>
-                      <th>Schedule</th>
-                      <th>Evidence</th>
-                      <th>Status</th>
-                      <th>Proof</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pagedVerifications.map((row) => {
-                      const displayStatus = row.teacher_started_at || row.student_joined_at || row.teacher_ended_at
-                        ? row.verification_status
-                        : "missing";
-                      const statusColor = verificationStatusStyle(displayStatus);
-                      const teacherName = `${row.teacher_first_name || ""} ${row.teacher_last_name || ""}`.trim() || "Teacher";
-                      const studentName = `${row.student_first_name || ""} ${row.student_last_name || ""}`.trim() || "Student";
-                      const missingItems = getVerificationMissingItems(row);
-                      const hasRequiredEvidence = missingItems.length === 0;
+                pagedVerifications.map((row) => {
+                  const displayStatus = row.teacher_started_at || row.student_joined_at || row.teacher_ended_at
+                    ? row.verification_status
+                    : "missing";
+                  const statusColor = verificationStatusStyle(displayStatus);
+                  const teacherName = `${row.teacher_first_name || ""} ${row.teacher_last_name || ""}`.trim() || "Teacher";
+                  const studentName = `${row.student_first_name || ""} ${row.student_last_name || ""}`.trim() || "Student";
+                  const missingItems = getVerificationMissingItems(row);
+                  const reviewReasons = getVerificationReviewReasons(row);
+                  const hasRequiredEvidence = missingItems.length === 0;
+                  const needsAdminReview = displayStatus === "needs_review";
 
-                      return (
-                        <tr key={row.class_id}>
-                          <td data-label="Class">
-                            <div style={{ fontWeight: 800 }}>{row.class_name || "Untitled Class"}</div>
-                            <div style={{ fontSize: "0.8em", color: "#667085", marginTop: 3 }}>
-                              Class status: {row.class_status || "scheduled"}
-                            </div>
-                          </td>
-                          <td data-label="Teacher">
-                            <div style={{ fontWeight: 700 }}>{teacherName}</div>
-                            <div style={{ fontSize: "0.8em", color: "#667085", wordBreak: "break-all" }}>{row.teacher_email || ""}</div>
-                          </td>
-                          <td data-label="Student">
-                            <div style={{ fontWeight: 700 }}>{studentName}</div>
-                            <div style={{ fontSize: "0.8em", color: "#667085", wordBreak: "break-all" }}>{row.student_email || ""}</div>
-                          </td>
-                          <td data-label="Schedule">
-                            <div style={{ fontWeight: 700 }}>{formatDate(row.scheduled_date)}</div>
-                            <div style={{ fontSize: "0.82em", color: "#667085" }}>
-                              {formatTime(row.start_time)} - {formatTime(row.end_time)}
-                            </div>
-                            <div style={{ fontSize: "0.78em", color: "#667085" }}>{row.duration || 0} min class</div>
-                          </td>
-                          <td data-label="Evidence">
-                            <div style={{ display: "grid", gap: 3, fontSize: "0.82em" }}>
-                              <span>Start: {formatDateTime(row.teacher_started_at)}</span>
-                              <span>Student: {formatDateTime(row.student_joined_at)}</span>
-                              <span>End: {formatDateTime(row.teacher_ended_at)}</span>
-                              <span>Duration: {Number(row.duration_minutes || 0)} min</span>
-                            </div>
-                            {row.summary && (
-                              <div style={{ marginTop: 8, maxWidth: 260, color: "#475467", fontSize: "0.82em", lineHeight: 1.35 }}>
-                                {row.summary}
-                              </div>
-                            )}
-                          </td>
-                          <td data-label="Status">
-                            <span
-                              style={{
-                                display: "inline-flex",
-                                padding: "5px 9px",
-                                borderRadius: 999,
-                                background: statusColor.background,
-                                color: statusColor.color,
-                                fontWeight: 800,
-                                fontSize: "0.78em",
-                              }}
-                            >
-                              {VERIFICATION_STATUS_LABELS[displayStatus] || displayStatus}
-                            </span>
-                            <div style={{ marginTop: 6, fontSize: "0.78em", color: hasRequiredEvidence ? "#166534" : "#92400e" }}>
-                              {hasRequiredEvidence ? "Evidence complete" : `Missing: ${missingItems.join(", ")}`}
-                            </div>
-                          </td>
-                          <td data-label="Proof">
-                            {row.proof_url ? (
-                              <button
-                                type="button"
-                                className={`${styles.linkBtn} ${styles.tableActionBtn}`}
-                                onClick={() => setSelectedProof({
-                                  url: resolveUploadUrl(row.proof_url),
-                                  className: row.class_name || "Class",
-                                  teacherName,
-                                  studentName,
-                                  schedule: `${formatDate(row.scheduled_date)} ${formatTime(row.start_time)}`,
-                                })}
-                              >
-                                Open Screenshot
-                              </button>
-                            ) : (
-                              <span style={{ color: "#98a2b3", fontSize: "0.85em" }}>No screenshot</span>
-                            )}
-                          </td>
-                          <td data-label="Action">
+                  return (
+                    <article key={row.class_id} className={styles.verificationItem}>
+                      <div className={styles.verificationMain}>
+                        <div className={styles.verificationTitleRow}>
+                          <div>
+                            <h3>{row.class_name || "Untitled Class"}</h3>
+                            <p>{formatDate(row.scheduled_date)} · {formatTime(row.start_time)} - {formatTime(row.end_time)} · {row.duration || 0} min</p>
+                          </div>
+                          <span
+                            className={styles.statusPill}
+                            style={{ background: statusColor.background, color: statusColor.color }}
+                          >
+                            {VERIFICATION_STATUS_LABELS[displayStatus] || displayStatus}
+                          </span>
+                        </div>
+
+                        <div className={styles.verificationMetaGrid}>
+                          <div>
+                            <span>Teacher</span>
+                            <strong>{teacherName}</strong>
+                            <small>{row.teacher_email || "-"}</small>
+                          </div>
+                          <div>
+                            <span>Student</span>
+                            <strong>{studentName}</strong>
+                            <small>{row.student_email || "-"}</small>
+                          </div>
+                          <div>
+                            <span>Class Status</span>
+                            <strong>{row.class_status || "scheduled"}</strong>
+                            <small>Calendar lifecycle</small>
+                          </div>
+                        </div>
+
+                        <div className={styles.evidenceGrid}>
+                          <div><span>Start</span><strong>{formatDateTime(row.teacher_started_at)}</strong></div>
+                          <div><span>Student</span><strong>{formatDateTime(row.student_joined_at)}</strong></div>
+                          <div><span>End</span><strong>{formatDateTime(row.teacher_ended_at)}</strong></div>
+                          <div><span>Duration</span><strong>{Number(row.duration_minutes || 0)} min</strong></div>
+                        </div>
+
+                        {needsAdminReview ? (
+                          <div className={styles.reviewReasonBox}>
+                            <strong>Review reason</strong>
+                            {reviewReasons.length
+                              ? reviewReasons.map((reason) => (
+                                  <span key={reason}>{reason}</span>
+                                ))
+                              : <span>Manual admin review required</span>}
+                          </div>
+                        ) : (
+                          <div className={hasRequiredEvidence ? styles.goodEvidenceNote : styles.missingEvidenceNote}>
+                            {hasRequiredEvidence ? "Evidence complete" : `Missing: ${missingItems.join(", ")}`}
+                          </div>
+                        )}
+
+                        {row.summary && (
+                          <p className={styles.verificationSummary}>{row.summary}</p>
+                        )}
+                      </div>
+
+                      <div className={styles.verificationActions}>
+                        {row.proof_url ? (
+                          <button
+                            type="button"
+                            className={`${styles.linkBtn} ${styles.tableActionBtn}`}
+                            onClick={() => setSelectedProof({
+                              url: resolveUploadUrl(row.proof_url),
+                              className: row.class_name || "Class",
+                              teacherName,
+                              studentName,
+                              schedule: `${formatDate(row.scheduled_date)} ${formatTime(row.start_time)}`,
+                            })}
+                          >
+                            Open Screenshot
+                          </button>
+                        ) : (
+                          <span className={styles.noProofText}>No screenshot</span>
+                        )}
+
+                        {needsAdminReview && (
+                          <>
                             <button
                               type="button"
-                              className={`${styles.dangerBtn} ${styles.tableActionBtn}`}
-                              onClick={() => requestRemoveVerification(row)}
+                              className={`${styles.approve} ${styles.tableActionBtn}`}
+                              onClick={() => requestApproveVerification(row)}
                             >
-                              Remove
+                              Approve Verified
                             </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                            <button
+                              type="button"
+                              className={`${styles.warn} ${styles.tableActionBtn}`}
+                              onClick={() => requestMarkVerificationIncomplete(row)}
+                            >
+                              Mark Incomplete
+                            </button>
+                          </>
+                        )}
+
+                        <button
+                          type="button"
+                          className={`${styles.dangerBtn} ${styles.tableActionBtn}`}
+                          onClick={() => requestRemoveVerification(row)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })
               )}
             </div>
             {filteredVerifications.length > VERIFICATIONS_PER_PAGE && (

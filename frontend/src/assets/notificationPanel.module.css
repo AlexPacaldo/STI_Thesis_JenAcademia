@@ -254,7 +254,22 @@
   font-size: 0.85rem;
   color: var(--muted, #5e7268);
   line-height: 1.4;
+  white-space: pre-line;
   word-break: break-word;
+}
+
+.notifMessage span {
+  display: block;
+}
+
+.reasonLine {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-left: 3px solid #d66a55;
+  border-radius: 6px;
+  background: rgba(214, 106, 85, 0.12);
+  color: #8a3e2e;
+  font-weight: 700;
 }
 
 .notifTime {

@@ -136,6 +136,12 @@ function decryptRows(rows, fields) {
   return Array.isArray(rows) ? rows.map((row) => decryptFields(row, fields)) : [];
 }
 
+function formatNotificationReason(reason, maxLength = 240) {
+  const text = String(reason || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  return text.length > maxLength ? `${text.slice(0, maxLength - 3).trim()}...` : text;
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -3269,6 +3275,10 @@ app.post("/api/calendar/classes/:class_id/start", async (req, res) => {
     );
 
     const verification = await getClassVerification(pool, class_id);
+    broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-verification-changed", {
+      class_id: classInfo.class_id,
+      verification_status: verification?.verification_status || "in_progress",
+    });
     res.json({ message: "Class session started", verification });
   } catch (err) {
     console.error(err);
@@ -3330,6 +3340,10 @@ app.post("/api/calendar/classes/:class_id/join", async (req, res) => {
     );
 
     const verification = await getClassVerification(pool, class_id);
+    broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-verification-changed", {
+      class_id: classInfo.class_id,
+      verification_status: verification?.verification_status || "student_confirmed",
+    });
     res.json({ message: "Attendance confirmed", verification });
   } catch (err) {
     console.error(err);
@@ -3420,6 +3434,10 @@ app.post("/api/calendar/classes/:class_id/end", classProofUpload.single("proof_i
     );
 
     const verification = await getClassVerification(pool, class_id);
+    broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-verification-changed", {
+      class_id: classInfo.class_id,
+      verification_status: verification?.verification_status || "needs_review",
+    });
     res.json({ message: "Class session ended", required_minutes: requiredMinutes, verification });
   } catch (err) {
     console.error(err);
@@ -3514,6 +3532,88 @@ app.delete("/api/admin/class-verifications/:class_id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error removing verification record" });
+  }
+});
+
+app.put("/api/admin/class-verifications/:class_id/approve", async (req, res) => {
+  try {
+    const { class_id } = req.params;
+
+    const [classRows] = await pool.query(
+      `SELECT c.class_id, c.teacher_id, c.student_id
+       FROM classes c
+       WHERE c.class_id = ?
+       LIMIT 1`,
+      [class_id]
+    );
+
+    if (!classRows.length) {
+      return res.status(404).json({ message: "Class not found" });
+    }
+
+    const classInfo = classRows[0];
+    const [result] = await pool.query(
+      `UPDATE class_attendance_logs
+       SET verification_status = 'verified'
+       WHERE class_id = ?`,
+      [class_id]
+    );
+
+    if (!result.affectedRows) {
+      return res.status(404).json({ message: "Verification record not found" });
+    }
+
+    const verification = await getClassVerification(pool, class_id);
+    broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-verification-changed", {
+      class_id: classInfo.class_id,
+      verification_status: "verified",
+    });
+
+    res.json({ message: "Class verification approved", verification });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error approving class verification" });
+  }
+});
+
+app.put("/api/admin/class-verifications/:class_id/incomplete", async (req, res) => {
+  try {
+    const { class_id } = req.params;
+
+    const [classRows] = await pool.query(
+      `SELECT c.class_id, c.teacher_id, c.student_id
+       FROM classes c
+       WHERE c.class_id = ?
+       LIMIT 1`,
+      [class_id]
+    );
+
+    if (!classRows.length) {
+      return res.status(404).json({ message: "Class not found" });
+    }
+
+    const classInfo = classRows[0];
+    const [result] = await pool.query(
+      `UPDATE class_attendance_logs
+       SET verification_status = 'incomplete'
+       WHERE class_id = ?`,
+      [class_id]
+    );
+
+    if (!result.affectedRows) {
+      return res.status(404).json({ message: "Verification record not found" });
+    }
+
+    const verification = await getClassVerification(pool, class_id);
+    broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-verification-changed", {
+      class_id: classInfo.class_id,
+      verification_status: "incomplete",
+    });
+
+    res.json({ message: "Class verification marked incomplete", verification });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error marking class verification incomplete" });
   }
 });
 
@@ -3967,6 +4067,11 @@ app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
 
     await connection.commit();
 
+    broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-completed", {
+      class_id: classInfo.class_id,
+      status: "completed",
+    });
+
     res.json({
       message: "Class marked as done",
       class: {
@@ -4041,6 +4146,11 @@ app.put("/api/calendar/classes/:class_id/no-show", async (req, res) => {
     const { package: updatedPackage } = await getStudentPackageAvailability(connection, classInfo.student_id);
 
     await connection.commit();
+
+    broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-no-show", {
+      class_id: classInfo.class_id,
+      status: "no-show",
+    });
 
     res.json({
       message: "Class marked as no-show",
@@ -4160,7 +4270,11 @@ app.post("/api/calendar/reschedule-request", async (req, res) => {
     );
 
     // Create notification for the counterparty
-    const notificationMessage = `Reschedule request from ${requesterName} for "${classData.class_name}" to ${requestedDateKey} at ${requestedTimeKey}`;
+    const reasonText = formatNotificationReason(reason);
+    const notificationMessage = [
+      `Reschedule request from ${requesterName} for "${classData.class_name}" to ${requestedDateKey} at ${requestedTimeKey}`,
+      reasonText ? `Reason: ${reasonText}` : "",
+    ].filter(Boolean).join("\n");
     await pool.query(
       `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
        VALUES (?, ?, ?, ?, ?, ?)`,
