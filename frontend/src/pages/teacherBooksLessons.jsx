@@ -6,6 +6,7 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { compressFileIfImage } from "../utils/imageCompression.js";
 
 const API_BASE = API_BASE_URL;
 
@@ -93,7 +94,8 @@ export default function TeacherBooksLessons() {
       formData.append("course_id", selectedCourseId);
       formData.append("teacher_id", teacherId);
       if (newBook.coverFile) {
-        formData.append("cover", newBook.coverFile);
+        const compressedCover = await compressFileIfImage(newBook.coverFile);
+        formData.append("cover", compressedCover, compressedCover.name);
       }
 
       const response = await fetch(`${API_BASE_URL}/api/books`, {
@@ -305,7 +307,8 @@ export default function TeacherBooksLessons() {
                   }
                   try {
                     const fd = new FormData();
-                    fd.append('cover', coverFile);
+                    const compressedCover = await compressFileIfImage(coverFile);
+                    fd.append('cover', compressedCover, compressedCover.name);
                     fd.append('teacher_id', teacherId);
                     const res = await fetch(`${API_BASE}/api/books/${editingBookId}`, {
                       method: 'PUT',

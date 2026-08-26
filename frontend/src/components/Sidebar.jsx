@@ -136,10 +136,13 @@ function Sidebar({ isMobileOpen = false, onClose }) {
   const isAssignmentsDropbox = path === "/assignmentsDropbox";
   const isAssignmentsPage = path === "/assignments";
   const isRemarksPage = path === "/remarks";
+  const isClassHistoryPage = path === "/classHistory";
   const isBooksLessonsPage = path === "/booksLessons";
   const isBooksContentPage = path === "/booksContent" || path.startsWith("/booksContent/");
 
   const isTeacherDashboardPage = path === "/TeacherDashboard";
+  const isTeacherClassHistoryPage = path === "/teacherClassHistory";
+  const isTeacherStudentsPage = path === "/teacherStudents";
   const isPassRemarksPage = path === "/PassRemarks";
   const isTeacherAssignmentPage = path === "/teacherAssignment";
   const isTeacherBooksLessonsPage = path === "/teacherBooksLessons";
@@ -160,6 +163,7 @@ function Sidebar({ isMobileOpen = false, onClose }) {
     isAssignmentsDropbox ||
     isAssignmentsPage ||
     isRemarksPage ||
+    isClassHistoryPage ||
     isBooksLessonsPage ||
     isCalendarPage ||
     isBooksContentPage;
@@ -167,6 +171,8 @@ function Sidebar({ isMobileOpen = false, onClose }) {
   const isTeacherArea =
     isReschedulePage ||
     isTeacherDashboardPage ||
+    isTeacherClassHistoryPage ||
+    isTeacherStudentsPage ||
     isAllClassesPage ||
     isAccountPage ||
     isCalendarPage ||
@@ -187,17 +193,21 @@ function Sidebar({ isMobileOpen = false, onClose }) {
       { to: "/Calendar", label: "Calendar", icon: "bi-calendar3" },
       { to: "/assignments", label: "Assignments", icon: "bi-journal-text" },
       { to: "/remarks", label: "Remarks", icon: "bi-chat-left-text" },
+      { to: "/classHistory", label: "Class History", icon: "bi-clock-history" },
       { to: "/booksLessons", label: "Books / Lessons", icon: "bi-book" },
     ],
     teacher: [
       { to: "/TeacherDashboard", label: "Dashboard", icon: "bi-house-door-fill" },
       { to: "/Calendar", label: "Calendar", icon: "bi-calendar3" },
+      { to: "/teacherStudents", label: "Students", icon: "bi-people" },
+      { to: "/teacherClassHistory", label: "Class History", icon: "bi-clock-history" },
       { to: "/PassRemarks", label: "Remarks", icon: "bi-chat-left-text" },
       { to: "/teacherAssignment", label: "Assignments", icon: "bi-journal-text" },
       { to: "/teacherBooksLessons", label: "Books / Lessons", icon: "bi-book" },
     ],
     admin: [
       { to: "/AdminDashboard?tab=calendar", label: "Calendar", icon: "bi-calendar3" },
+      { to: "/AdminDashboard?tab=verifications", label: "Verifications", icon: "bi-shield-check" },
       { to: "/AdminDashboard?tab=requests", label: "Requests", icon: "bi-list-check" },
       { to: "/AdminDashboard?tab=contracts", label: "Contracts", icon: "bi-folder-check" },
       { to: "/AdminDashboard?tab=teacherCourses", label: "Teacher Courses", icon: "bi-people" },

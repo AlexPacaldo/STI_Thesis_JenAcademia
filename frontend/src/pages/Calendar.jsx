@@ -7,6 +7,7 @@ import { PROFICIENCY_LEVEL_OPTIONS, formatProficiencyLevel } from "../utils/prof
 import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/studentSchedule.module.css";
 import { API_BASE_URL } from "../utils/api.js";
+import { compressImageFile } from "../utils/imageCompression.js";
 import {
   DEFAULT_TIMEZONE,
   convertDateTime,
@@ -197,6 +198,19 @@ const formatRemarkDate = (value) => {
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleDateString();
 };
 
+const formatVerificationTimestamp = (value) => {
+  if (!value) return "";
+  const parsed = new Date(String(value).replace(" ", "T"));
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+};
+
+const hasCompleteSentence = (value) => {
+  const text = String(value || "").trim();
+  const words = text.match(/[A-Za-z0-9]+/g) || [];
+  return words.length >= 4 && /[.!?]$/.test(text);
+};
+
 const remarkSectionStyle = {
   marginTop: 12,
   borderTop: "1px solid #d7e5d9",
@@ -236,6 +250,28 @@ const remarkBodyStyle = {
   color: "#294238",
   lineHeight: 1.45,
   whiteSpace: "pre-wrap",
+};
+
+const verificationStatusLabels = {
+  pending: "Pending",
+  in_progress: "In Progress",
+  student_confirmed: "Student Confirmed",
+  verified: "Verified",
+  needs_review: "Needs Review",
+  incomplete: "Incomplete",
+};
+
+const verificationPanelStyle = {
+  marginTop: 12,
+  padding: 12,
+  border: "1px solid #dbe4ea",
+  borderRadius: 10,
+  background: "#f8fbfd",
+};
+
+const verificationLabelStyle = {
+  fontSize: "0.78rem",
+  color: "#52616b",
 };
 
 // Helper: check if a class is joinable (30 mins before start until class end)
@@ -555,9 +591,33 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const selectedClass = selectedClassId
     ? selectedClasses.find(cls => cls.id === selectedClassId)
     : null;
+  const [classVerification, setClassVerification] = useState(null);
+  const [isUpdatingVerification, setIsUpdatingVerification] = useState(false);
+  const [verificationSummary, setVerificationSummary] = useState("");
+  const [verificationProofUrl, setVerificationProofUrl] = useState("");
+  const [verificationProofFile, setVerificationProofFile] = useState(null);
+  const [verificationProofPreview, setVerificationProofPreview] = useState("");
   const selectedClassDuration = Number(selectedClass?.duration) > 0
     ? Number(selectedClass.duration)
     : studentClassDuration;
+  const selectedClassVerification = classVerification || (
+    selectedClass?.verification_status
+      ? {
+          teacher_started_at: selectedClass.teacher_started_at,
+          student_joined_at: selectedClass.student_joined_at,
+          teacher_ended_at: selectedClass.teacher_ended_at,
+          duration_minutes: selectedClass.verified_duration_minutes,
+          proof_url: selectedClass.class_proof_url,
+          summary: selectedClass.class_summary,
+          verification_status: selectedClass.verification_status,
+        }
+      : null
+  );
+  const selectedVerificationStatus = selectedClassVerification?.verification_status || "pending";
+  const selectedClassStarted = Boolean(selectedClassVerification?.teacher_started_at);
+  const selectedClassStudentConfirmed = Boolean(selectedClassVerification?.student_joined_at);
+  const selectedClassEnded = Boolean(selectedClassVerification?.teacher_ended_at);
+  const selectedClassVerified = selectedVerificationStatus === "verified";
   const latestRemark = selectedClass?.id
     ? (studentRemarks.find((remark) => String(remark.class_id) === String(selectedClass.id)) || studentRemarks[0] || null)
     : (studentRemarks[0] || null);
@@ -596,6 +656,33 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     setTeacherAvailabilityRecordForDate(null);
     setCalendarRefreshToken(token => token + 1);
   }, []);
+
+  const applyVerificationToSelectedClass = useCallback((verification) => {
+    if (!selectedClass?.id || !selectedDate || !verification) return;
+    const applyToList = (list = []) => list.map((cls) => {
+      const classId = cls.id || cls.class_id;
+      if (String(classId) !== String(selectedClass.id)) return cls;
+      return {
+        ...cls,
+        teacher_started_at: verification.teacher_started_at,
+        student_joined_at: verification.student_joined_at,
+        teacher_ended_at: verification.teacher_ended_at,
+        verified_duration_minutes: verification.duration_minutes,
+        class_proof_url: verification.proof_url,
+        class_summary: verification.summary,
+        verification_status: verification.verification_status,
+      };
+    });
+
+    setClassesCache((prev) => ({
+      ...prev,
+      [selectedDate]: applyToList(prev[selectedDate]),
+    }));
+    setTeacherClassesCache((prev) => ({
+      ...prev,
+      [selectedDate]: applyToList(prev[selectedDate]),
+    }));
+  }, [selectedClass?.id, selectedDate]);
 
   // Read user info from localStorage
   useEffect(() => {
@@ -812,6 +899,46 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       active = false;
     };
   }, [selectedClass?.student_id]);
+
+  useEffect(() => {
+    if (!selectedClass?.id) {
+      setClassVerification(null);
+      setVerificationSummary("");
+      setVerificationProofUrl("");
+      setVerificationProofFile(null);
+      setVerificationProofPreview("");
+      return;
+    }
+
+    let active = true;
+    axios
+      .get(`${API}/api/calendar/classes/${selectedClass.id}/verification`)
+      .then((response) => {
+        if (!active) return;
+        const verification = response.data?.verification || null;
+        setClassVerification(verification);
+        setVerificationSummary(verification?.summary || "");
+        setVerificationProofUrl(verification?.proof_url || "");
+        setVerificationProofFile(null);
+        setVerificationProofPreview("");
+        if (verification) applyVerificationToSelectedClass(verification);
+      })
+      .catch(() => {
+        if (active) setClassVerification(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedClass?.id, applyVerificationToSelectedClass]);
+
+  useEffect(() => {
+    return () => {
+      if (verificationProofPreview) {
+        URL.revokeObjectURL(verificationProofPreview);
+      }
+    };
+  }, [verificationProofPreview]);
 
   useEffect(() => {
     if (localRole !== "student") return;
@@ -2077,6 +2204,223 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const isSelectedClassCompleted = selectedClass?.status === "completed";
   const isSelectedClassConfirmable = isClassJoinable(selectedClass, selectedDate);
   const isSelectedClassNoShowable = selectedClass?.status === "scheduled" && isClassPast(selectedClass, selectedDate);
+  const hasVerificationSummarySentence = hasCompleteSentence(verificationSummary);
+  const hasVerificationScreenshot = Boolean(verificationProofFile || verificationProofUrl);
+  const canEndVerifyAndComplete =
+    selectedClassStarted &&
+    selectedClassStudentConfirmed &&
+    hasVerificationSummarySentence &&
+    hasVerificationScreenshot &&
+    !isUpdatingVerification;
+  const endVerifyDisabledReason = (() => {
+    if (!selectedClassStudentConfirmed) return "Student must join and confirm attendance first.";
+    if (!hasVerificationSummarySentence) return "Enter at least one complete sentence in the class summary.";
+    if (!hasVerificationScreenshot) return "Upload or paste a class screenshot.";
+    return "";
+  })();
+  const isClassEntryDisabled =
+    isSelectedClassCompleted ||
+    !isSelectedClassConfirmable ||
+    isUpdatingVerification ||
+    (localRole === "student" && !selectedClassStarted);
+  const selectedClassEntryLabel = (() => {
+    if (isUpdatingVerification) return "Saving...";
+    if (isSelectedClassCompleted) return "Class Done";
+    if (localRole === "teacher" && !selectedClassStarted) return "Start & Join Class";
+    if (localRole === "student" && !selectedClassStarted) return "Waiting for Teacher";
+    if (localRole === "student" && !selectedClassStudentConfirmed) return "Join & Confirm Attendance";
+    return "Join Class";
+  })();
+  const selectedClassEntryTitle = (() => {
+    if (isSelectedClassCompleted) return "This class is already done";
+    if (!isSelectedClassConfirmable) return "Available 30 mins before class starts";
+    if (localRole === "student" && !selectedClassStarted) return "The teacher must start the class first";
+    return "";
+  })();
+
+  const refreshSelectedVerification = (verification) => {
+    setClassVerification(verification || null);
+    if (verification) {
+      setVerificationSummary(verification.summary || "");
+      setVerificationProofUrl(verification.proof_url || "");
+      applyVerificationToSelectedClass(verification);
+    }
+  };
+
+  const startSelectedClassSession = async () => {
+    if (!selectedClass?.id) {
+      notify?.("Please select a class first.", "error");
+      return;
+    }
+    if (!isSelectedClassConfirmable) {
+      notify?.("You can start the class 30 minutes before it starts until it ends.", "error");
+      return;
+    }
+
+    setIsUpdatingVerification(true);
+    try {
+      const response = await axios.post(`${API}/api/calendar/classes/${selectedClass.id}/start`, {
+        teacher_id: localUserId,
+      });
+      refreshSelectedVerification(response.data?.verification);
+      notify?.("Class session started.", "success");
+      return response.data?.verification || null;
+    } catch (error) {
+      notify?.(error.response?.data?.message || "Unable to start class session.", "error");
+      return null;
+    } finally {
+      setIsUpdatingVerification(false);
+    }
+  };
+
+  const confirmSelectedClassAttendance = async () => {
+    if (!selectedClass?.id) {
+      notify?.("Please select a class first.", "error");
+      return;
+    }
+    if (!isSelectedClassConfirmable) {
+      notify?.("You can confirm attendance 30 minutes before class starts until it ends.", "error");
+      return;
+    }
+
+    setIsUpdatingVerification(true);
+    try {
+      const response = await axios.post(`${API}/api/calendar/classes/${selectedClass.id}/join`, {
+        student_id: localUserId,
+      });
+      refreshSelectedVerification(response.data?.verification);
+      notify?.("Attendance confirmed.", "success");
+      return response.data?.verification || null;
+    } catch (error) {
+      notify?.(error.response?.data?.message || "Unable to confirm attendance.", "error");
+      return null;
+    } finally {
+      setIsUpdatingVerification(false);
+    }
+  };
+
+  const prepareVerificationProofFile = async (file) => {
+    if (!file) {
+      setVerificationProofFile(null);
+      setVerificationProofPreview("");
+      return;
+    }
+
+    try {
+      const compressedFile = await compressImageFile(file);
+      setVerificationProofFile(compressedFile);
+      setVerificationProofPreview(URL.createObjectURL(compressedFile));
+      const originalKb = Math.round(file.size / 1024);
+      const compressedKb = Math.round(compressedFile.size / 1024);
+      notify?.(`Screenshot ready (${originalKb} KB to ${compressedKb} KB).`, "success");
+    } catch (error) {
+      setVerificationProofFile(null);
+      setVerificationProofPreview("");
+      notify?.(error.message || "Unable to prepare screenshot.", "error");
+    }
+  };
+
+  const handleVerificationProofFileChange = async (event) => {
+    await prepareVerificationProofFile(event.target.files?.[0] || null);
+  };
+
+  const handleVerificationProofPaste = async (event) => {
+    const items = Array.from(event.clipboardData?.items || []);
+    const imageItem = items.find((item) => item.type.startsWith("image/"));
+    if (!imageItem) return;
+
+    event.preventDefault();
+    await prepareVerificationProofFile(imageItem.getAsFile());
+  };
+
+  const clearVerificationProofImage = () => {
+    if (verificationProofPreview) {
+      URL.revokeObjectURL(verificationProofPreview);
+    }
+    setVerificationProofFile(null);
+    setVerificationProofPreview("");
+    setVerificationProofUrl("");
+  };
+
+  const openSelectedClassMeeting = () => {
+    if (selectedClass?.classLink) {
+      window.open(selectedClass.classLink, "_blank");
+    }
+  };
+
+  const enterSelectedClass = async () => {
+    if (!selectedClass?.id) {
+      notify?.("Please select a class first.", "error");
+      return;
+    }
+    if (isSelectedClassCompleted || !isSelectedClassConfirmable) return;
+
+    if (localRole === "teacher" && !selectedClassStarted) {
+      const verification = await startSelectedClassSession();
+      if (!verification) return;
+    } else if (localRole === "student" && selectedClassStarted && !selectedClassStudentConfirmed) {
+      const verification = await confirmSelectedClassAttendance();
+      if (!verification) return;
+    }
+
+    openSelectedClassMeeting();
+  };
+
+  const endSelectedClassSession = async ({ completeAfterVerify = false } = {}) => {
+    if (!selectedClass?.id) {
+      notify?.("Please select a class first.", "error");
+      return;
+    }
+    if (!verificationSummary.trim() && !verificationProofFile && !verificationProofUrl) {
+      notify?.("Add a class summary or screenshot before ending the class.", "error");
+      return;
+    }
+    if (!selectedClassStudentConfirmed) {
+      notify?.("The student must join and confirm attendance before you can end and complete the class.", "error");
+      return;
+    }
+    if (!hasVerificationSummarySentence) {
+      notify?.("Please enter at least one complete sentence in the class summary.", "error");
+      return;
+    }
+    if (!hasVerificationScreenshot) {
+      notify?.("Please upload or paste a screenshot of the class.", "error");
+      return;
+    }
+
+    setIsUpdatingVerification(true);
+    try {
+      const formData = new FormData();
+      formData.append("teacher_id", localUserId);
+      formData.append("summary", verificationSummary);
+      if (verificationProofFile) {
+        formData.append("proof_image", verificationProofFile);
+      }
+
+      const response = await axios.post(`${API}/api/calendar/classes/${selectedClass.id}/end`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const verification = response.data?.verification;
+      refreshSelectedVerification(verification);
+      if (verification?.verification_status === "verified" && completeAfterVerify) {
+        await handleConfirmClassDone({ verifiedOverride: true });
+        return verification;
+      }
+
+      notify?.(
+        verification?.verification_status === "verified"
+          ? "Class evidence verified."
+          : "Class ended but still needs review. Check attendance, duration, and proof.",
+        verification?.verification_status === "verified" ? "success" : "warning"
+      );
+      return verification || null;
+    } catch (error) {
+      notify?.(error.response?.data?.message || "Unable to end class session.", "error");
+      return null;
+    } finally {
+      setIsUpdatingVerification(false);
+    }
+  };
 
   const openClassDoneConfirmation = () => {
     if (!selectedClass?.id || !selectedClass?.student_id) {
@@ -2084,15 +2428,15 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       return;
     }
 
-    if (!isSelectedClassConfirmable) {
-      notify?.("You can confirm the class 30 minutes before it starts until it ends.", "error");
+    if (!selectedClassVerified) {
+      notify?.("Verify the class first: start, student attendance, end, and proof or summary.", "error");
       return;
     }
 
     setClassDoneConfirmOpen(true);
   };
 
-  const handleConfirmClassDone = async () => {
+  const handleConfirmClassDone = async ({ verifiedOverride = false } = {}) => {
     if (!selectedClass?.id || !selectedClass?.student_id) {
       notify?.("Please select a class first.", "error");
       return;
@@ -2118,10 +2462,15 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       setIsMarkingClassDone(false);
     }
 
-    await markSelectedClassDone();
+    await markSelectedClassDone({ verifiedOverride });
   };
 
-  const markSelectedClassDone = async ({ proficiencyLevel = "", assessmentNotes = "" } = {}) => {
+  const markSelectedClassDone = async ({ proficiencyLevel = "", assessmentNotes = "", verifiedOverride = false } = {}) => {
+    if (!selectedClassVerified && !verifiedOverride) {
+      notify?.("Verify the class first before marking it done.", "error");
+      return;
+    }
+
     setIsMarkingClassDone(true);
     try {
       const response = await axios.put(`${API}/api/calendar/classes/${selectedClass.id}/complete`, {
@@ -2488,6 +2837,135 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     await submitStudentBooking();
   };
 
+  const renderVerificationPanel = () => {
+    if (!selectedClass || isSelectedClassCompleted) return null;
+    const statusLabel = verificationStatusLabels[selectedVerificationStatus] || "Pending";
+    const statusColor = selectedClassVerified
+      ? "#2e7d32"
+      : selectedVerificationStatus === "needs_review"
+        ? "#b45309"
+        : "#1864ab";
+
+    return (
+      <div style={verificationPanelStyle}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10 }}>
+          <div style={{ fontWeight: 800, color: "#22313a", fontSize: "0.92rem" }}>Class Verification</div>
+          <span style={{ padding: "4px 8px", borderRadius: 999, background: `${statusColor}18`, color: statusColor, fontWeight: 800, fontSize: "0.72rem" }}>
+            {statusLabel}
+          </span>
+        </div>
+        <div style={{ display: "grid", gap: 6, fontSize: "0.82rem", color: "#25323a" }}>
+          <div><span style={verificationLabelStyle}>Teacher start:</span> {selectedClassStarted ? formatVerificationTimestamp(selectedClassVerification.teacher_started_at) : "Not started"}</div>
+          <div><span style={verificationLabelStyle}>Student attendance:</span> {selectedClassStudentConfirmed ? formatVerificationTimestamp(selectedClassVerification.student_joined_at) : "Not confirmed"}</div>
+          <div><span style={verificationLabelStyle}>Teacher end:</span> {selectedClassEnded ? formatVerificationTimestamp(selectedClassVerification.teacher_ended_at) : "Not ended"}</div>
+          <div><span style={verificationLabelStyle}>Verified duration:</span> {Number(selectedClassVerification?.duration_minutes || 0)} min</div>
+        </div>
+
+        {localRole === "teacher" && !isAdmin && (
+          <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+            {selectedClassStarted && !selectedClassEnded && (
+              <>
+                <textarea
+                  value={verificationSummary}
+                  onChange={(event) => setVerificationSummary(event.target.value)}
+                  rows={3}
+                  placeholder="Write at least one complete sentence about what happened in class."
+                  style={{ width: "100%", boxSizing: "border-box", padding: 10, border: "1px solid #cfd8dc", borderRadius: 8, fontFamily: "inherit", resize: "vertical" }}
+                />
+                <span style={{ fontSize: "0.74rem", fontWeight: 600, color: hasVerificationSummarySentence ? "#166534" : "#92400e" }}>
+                  Summary must be at least one complete sentence.
+                </span>
+                <div
+                  tabIndex={0}
+                  onPaste={handleVerificationProofPaste}
+                  onClick={(event) => {
+                    if (event.target === event.currentTarget) {
+                      event.currentTarget.focus();
+                    }
+                  }}
+                  style={{ display: "grid", gap: 6, fontSize: "0.82rem", fontWeight: 700, color: "#344054", outline: "none" }}
+                >
+                  <span>Class screenshot</span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={handleVerificationProofFileChange}
+                    style={{ width: "100%", boxSizing: "border-box", padding: 9, border: "1px solid #cfd8dc", borderRadius: 8, fontFamily: "inherit", background: "#fff" }}
+                  />
+                  <span style={{ fontSize: "0.74rem", fontWeight: 600, color: "#667085" }}>
+                    Click this area and press Ctrl+V to paste, or use Choose File.
+                  </span>
+                </div>
+                {(verificationProofPreview || verificationProofUrl) && (
+                  <div style={{ position: "relative", border: "1px solid #dbe4ea", borderRadius: 8, overflow: "hidden", background: "#fff" }}>
+                    <button
+                      type="button"
+                      onClick={clearVerificationProofImage}
+                      aria-label="Remove screenshot"
+                      title="Remove screenshot"
+                      style={{
+                        position: "absolute",
+                        top: 8,
+                        right: 8,
+                        width: 28,
+                        height: 28,
+                        border: "none",
+                        borderRadius: "50%",
+                        background: "rgba(15, 23, 42, 0.82)",
+                        color: "#fff",
+                        cursor: "pointer",
+                        fontSize: 18,
+                        lineHeight: "28px",
+                        fontWeight: 800,
+                        zIndex: 1,
+                      }}
+                    >
+                      x
+                    </button>
+                    <img
+                      src={verificationProofPreview || `${API}${verificationProofUrl}`}
+                      alt="Class proof screenshot preview"
+                      style={{ display: "block", width: "100%", maxHeight: 180, objectFit: "contain", background: "#f8fafc" }}
+                    />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className={`${styles.bookBtn} ${styles.doneBtn}`}
+                  disabled={!canEndVerifyAndComplete}
+                  onClick={() => endSelectedClassSession({ completeAfterVerify: true })}
+                  title={endVerifyDisabledReason}
+                  style={{
+                    opacity: canEndVerifyAndComplete ? 1 : 0.6,
+                    cursor: canEndVerifyAndComplete ? "pointer" : "not-allowed",
+                  }}
+                >
+                  {isUpdatingVerification ? "Saving..." : "End, Verify & Complete"}
+                </button>
+                {endVerifyDisabledReason && (
+                  <span style={{ fontSize: "0.74rem", fontWeight: 600, color: "#92400e" }}>
+                    {endVerifyDisabledReason}
+                  </span>
+                )}
+              </>
+            )}
+            {selectedClassEnded && selectedClassVerified && (
+              <button
+                type="button"
+                className={`${styles.bookBtn} ${styles.doneBtn}`}
+                disabled={isMarkingClassDone}
+                onClick={() => handleConfirmClassDone()}
+                style={{ opacity: isMarkingClassDone ? 0.6 : 1 }}
+              >
+                {isMarkingClassDone ? "Saving..." : "Complete Verified Class"}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (isInitialCalendarLoading) {
     return (
       <main className={styles.page}>
@@ -2682,6 +3160,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                       <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration)}</div>
                     </div>
                   </div>
+                  {renderVerificationPanel()}
                   {isTeacherOrAdmin && (
                     <div style={remarkSectionStyle}>
                       <div style={remarkHeadingStyle}>Latest Remark</div>
@@ -2708,24 +3187,20 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                   )}
                   <button
                     type="button"
-                    disabled={isSelectedClassCompleted || !isClassJoinable(selectedClass, selectedDate)}
-                    onClick={() => {
-                      if (!isSelectedClassCompleted && isClassJoinable(selectedClass, selectedDate)) {
-                        window.open(selectedClass.classLink, "_blank");
-                      }
-                    }}
+                    disabled={isClassEntryDisabled}
+                    onClick={enterSelectedClass}
                     className={`${styles.bookBtn} ${styles.joinBtn}`}
                     style={{
                       textAlign: "center",
                       display: "block",
                       width: "100%",
-                      cursor: !isSelectedClassCompleted && isClassJoinable(selectedClass, selectedDate) ? "pointer" : "not-allowed",
-                      opacity: !isSelectedClassCompleted && isClassJoinable(selectedClass, selectedDate) ? 1 : 0.5,
-                      filter: !isSelectedClassCompleted && isClassJoinable(selectedClass, selectedDate) ? "none" : "grayscale(100%)",
+                      cursor: isClassEntryDisabled ? "not-allowed" : "pointer",
+                      opacity: isClassEntryDisabled ? 0.5 : 1,
+                      filter: isClassEntryDisabled ? "grayscale(100%)" : "none",
                     }}
-                    title={isSelectedClassCompleted ? "This class is already done" : isClassJoinable(selectedClass, selectedDate) ? "" : "Available 30 mins before class starts"}
+                    title={selectedClassEntryTitle}
                   >
-                    Join Class
+                    {selectedClassEntryLabel}
                   </button>
                   { isTeacherOrAdmin && isSelectedClassNoShowable && !requestMode && (
                     <button
@@ -2792,22 +3267,6 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                       style={{ marginTop: "8px" }}
                     >
                       Request for Reschedule
-                    </button>
-                  ) }
-                  { localRole === "teacher" && !isAdmin && !requestMode && (
-                    <button
-                      type="button"
-                      className={`${styles.bookBtn} ${styles.doneBtn}`}
-                      disabled={isSelectedClassCompleted || isMarkingClassDone || !isSelectedClassConfirmable}
-                      onClick={openClassDoneConfirmation}
-                      style={{
-                        marginTop: "8px",
-                        opacity: isSelectedClassCompleted || isMarkingClassDone || !isSelectedClassConfirmable ? 0.6 : 1,
-                        cursor: isSelectedClassCompleted || isMarkingClassDone || !isSelectedClassConfirmable ? "not-allowed" : "pointer",
-                      }}
-                      title={isSelectedClassConfirmable ? "" : "Available 30 mins before class starts until class ends"}
-                    >
-                      {isSelectedClassCompleted ? "Class Done" : isMarkingClassDone ? "Saving..." : "Confirm Class Done"}
                     </button>
                   ) }
                   { requestMode && (
@@ -3731,25 +4190,22 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                       </div>
                       )}
                     </div>
+                    {renderVerificationPanel()}
                     <button
-                      disabled={isSelectedClassCompleted || !isClassJoinable(selectedClass, selectedDate)}
-                      onClick={() => {
-                        if (!isSelectedClassCompleted && isClassJoinable(selectedClass, selectedDate)) {
-                          window.open(selectedClass.classLink, "_blank");
-                        }
-                      }}
+                      disabled={isClassEntryDisabled}
+                      onClick={enterSelectedClass}
                       className={`${styles.bookBtn} ${styles.joinBtn}`}
                       style={{
                         textAlign: "center",
                         display: "block",
                         width: "100%",
-                        cursor: !isSelectedClassCompleted && isClassJoinable(selectedClass, selectedDate) ? "pointer" : "not-allowed",
-                        opacity: !isSelectedClassCompleted && isClassJoinable(selectedClass, selectedDate) ? 1 : 0.5,
-                        filter: !isSelectedClassCompleted && isClassJoinable(selectedClass, selectedDate) ? "none" : "grayscale(100%)",
+                        cursor: isClassEntryDisabled ? "not-allowed" : "pointer",
+                        opacity: isClassEntryDisabled ? 0.5 : 1,
+                        filter: isClassEntryDisabled ? "grayscale(100%)" : "none",
                       }}
-                      title={isSelectedClassCompleted ? "This class is already done" : isClassJoinable(selectedClass, selectedDate) ? "" : "Available 30 mins before class starts"}
+                      title={selectedClassEntryTitle}
                     >
-                      Join Class
+                      {selectedClassEntryLabel}
                     </button>
                     {isTeacherOrAdmin && isSelectedClassNoShowable && !requestMode && (
                       <button
@@ -4757,7 +5213,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
             Confirm class completion
           </h3>
           <p style={{ margin: "0 0 16px", color: "#4b5563", lineHeight: 1.5, fontSize: "0.92rem" }}>
-            This will mark the class as done and count one used class from the student's package.
+            This verified class will be marked as done and count one used class from the student's package.
           </p>
           <div
             style={{

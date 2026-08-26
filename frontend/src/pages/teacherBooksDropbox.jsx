@@ -5,6 +5,7 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { compressFileIfImage } from "../utils/imageCompression.js";
 
 export default function TeacherBooksDropbox() {
   const { notify } = useNotification() || {};
@@ -88,7 +89,8 @@ export default function TeacherBooksDropbox() {
       formData.append("lesson_number", lessonData.lesson_number);
       formData.append("title", lessonData.title);
       formData.append("content", lessonData.content || "");
-      formData.append("file", lessonData.file);
+      const uploadFile = await compressFileIfImage(lessonData.file);
+      formData.append("file", uploadFile, uploadFile.name);
       formData.append("teacher_id", teacherId);
 
       const response = await fetch(`${API_BASE_URL}/api/lessons`, {

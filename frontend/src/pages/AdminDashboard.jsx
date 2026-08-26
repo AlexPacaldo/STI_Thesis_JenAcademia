@@ -9,9 +9,11 @@ import Calendar from "./Calendar.jsx"; // admin calendar view
 import { API_BASE_URL } from "../utils/api.js";
 
 const API = API_BASE_URL;
+const VERIFICATIONS_PER_PAGE = 10;
 
 const ADMIN_TABS = [
   "calendar",
+  "verifications",
   "requests",
   "contracts",
   "teacherCourses",
@@ -171,6 +173,69 @@ const formatDate = (dateString) => {
   }
 };
 
+const formatTime = (value) => {
+  if (!value) return "-";
+  const match = String(value).match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return String(value);
+  let hour = parseInt(match[1], 10);
+  const minute = match[2];
+  const period = hour >= 12 ? "PM" : "AM";
+  if (hour > 12) hour -= 12;
+  if (hour === 0) hour = 12;
+  return `${hour}:${minute} ${period}`;
+};
+
+const formatDateTime = (value) => {
+  if (!value) return "-";
+  const parsed = new Date(String(value).replace(" ", "T"));
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+const VERIFICATION_STATUS_LABELS = {
+  all: "All",
+  verified: "Verified",
+  needs_review: "Needs Review",
+  student_confirmed: "Student Confirmed",
+  in_progress: "In Progress",
+  pending: "Pending",
+  missing: "No Log",
+};
+
+const verificationStatusStyle = (status) => {
+  const palette = {
+    verified: { background: "#dcfce7", color: "#166534" },
+    needs_review: { background: "#fef3c7", color: "#92400e" },
+    student_confirmed: { background: "#dbeafe", color: "#1e40af" },
+    in_progress: { background: "#e0f2fe", color: "#075985" },
+    pending: { background: "#f3f4f6", color: "#374151" },
+    missing: { background: "#fee2e2", color: "#991b1b" },
+  };
+  return palette[status] || palette.pending;
+};
+
+const resolveUploadUrl = (url) => {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API}${url}`;
+};
+
+const getVerificationMissingItems = (row) => {
+  const missing = [];
+  if (!row.teacher_started_at) missing.push("teacher start");
+  if (!row.student_joined_at) missing.push("student attendance");
+  if (!row.teacher_ended_at) missing.push("teacher end");
+  if (Number(row.duration_minutes || 0) <= 0) missing.push("duration");
+  if (!row.summary) missing.push("summary");
+  if (!row.proof_url) missing.push("screenshot");
+  return missing;
+};
+
 export default function AdminDashboard() {
   const { notify } = useNotification() || {};
   const location = useLocation();
@@ -247,6 +312,12 @@ export default function AdminDashboard() {
   const [contractRequestsLoading, setContractRequestsLoading] = useState(false);
   const [updatingContractRequestId, setUpdatingContractRequestId] = useState(null);
   const [contractSubTab, setContractSubTab] = useState("packages");
+  const [verifications, setVerifications] = useState([]);
+  const [verificationsLoading, setVerificationsLoading] = useState(false);
+  const [verificationSearch, setVerificationSearch] = useState("");
+  const [verificationFilter, setVerificationFilter] = useState("all");
+  const [verificationPage, setVerificationPage] = useState(1);
+  const [selectedProof, setSelectedProof] = useState(null);
   const [adminConfirm, setAdminConfirm] = useState(null);
   const selectedTeacherCourseNames = courses
     .filter((course) => tForm.courseIds.includes(String(course.course_id)))
@@ -304,6 +375,7 @@ export default function AdminDashboard() {
     loadUsers();
     loadCourses();
     if (active === "requests") loadRequests();
+    if (active === "verifications") loadClassVerifications();
   }, [me]);
 
   // Fetch available courses
@@ -326,7 +398,14 @@ export default function AdminDashboard() {
       loadContracts();
       loadContractRequests();
     }
+    if (active === "verifications") {
+      loadClassVerifications();
+    }
   }, [active]);
+
+  useEffect(() => {
+    setVerificationPage(1);
+  }, [verificationSearch]);
 
   useEffect(() => {
     const nextDrafts = {};
@@ -432,6 +511,10 @@ export default function AdminDashboard() {
         await saveContract(adminConfirm.payload.row);
       } else if (adminConfirm.action === "contract_request") {
         await updateContractRequest(adminConfirm.payload.requestId, adminConfirm.payload.status);
+      } else if (adminConfirm.action === "remove_verification") {
+        await removeVerificationRecord(adminConfirm.payload.classId);
+      } else if (adminConfirm.action === "clear_verifications") {
+        await clearVerificationRecords();
       }
     } finally {
       setAdminConfirm(null);
@@ -782,6 +865,50 @@ export default function AdminDashboard() {
     }
   }
 
+  async function loadClassVerifications() {
+    setVerificationsLoading(true);
+    try {
+      const response = await axios.get(`${API}/api/admin/class-verifications`, {
+        params: { status: "all", limit: 300 },
+      });
+      setVerifications(response.data?.verifications || []);
+    } catch (e) {
+      console.error(e);
+      setVerifications([]);
+      notify("Failed to load class verifications", "error");
+    } finally {
+      setVerificationsLoading(false);
+    }
+  }
+
+  async function removeVerificationRecord(classId) {
+    try {
+      await axios.delete(`${API}/api/admin/class-verifications/${classId}`);
+      notify("Verification record removed", "success");
+      await loadClassVerifications();
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || "Failed to remove verification record", "error");
+    }
+  }
+
+  async function clearVerificationRecords() {
+    try {
+      await axios.delete(`${API}/api/admin/class-verifications`);
+      notify("All verification records cleared", "success");
+      setVerificationPage(1);
+      await loadClassVerifications();
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || "Failed to clear verification records", "error");
+    }
+  }
+
+  const updateVerificationFilter = (status) => {
+    setVerificationFilter(status);
+    setVerificationPage(1);
+  };
+
   // ---- UI helpers ----
   const teacherCourseMap = teacherCourses.reduce((acc, item) => {
     const teacherId = String(item.teacher_id);
@@ -852,6 +979,46 @@ export default function AdminDashboard() {
   };
   const filteredArchiveStudents = students.filter(matchesArchiveSearch);
   const filteredArchiveTeachers = teachers.filter(matchesArchiveSearch);
+  const verificationSearchTerm = verificationSearch.trim().toLowerCase();
+  const filteredVerifications = verifications.filter((row) => {
+    const displayStatus = row.teacher_started_at || row.student_joined_at || row.teacher_ended_at
+      ? row.verification_status
+      : "missing";
+    if (verificationFilter !== "all" && displayStatus !== verificationFilter) return false;
+    if (!verificationSearchTerm) return true;
+    return [
+      row.class_name,
+      row.class_status,
+      row.verification_status,
+      row.teacher_first_name,
+      row.teacher_last_name,
+      row.teacher_email,
+      row.student_first_name,
+      row.student_last_name,
+      row.student_email,
+      row.scheduled_date,
+      row.summary,
+    ]
+      .filter((value) => value !== null && value !== undefined)
+      .join(" ")
+      .toLowerCase()
+      .includes(verificationSearchTerm);
+  });
+  const verificationTotalPages = Math.max(1, Math.ceil(filteredVerifications.length / VERIFICATIONS_PER_PAGE));
+  const safeVerificationPage = Math.min(verificationPage, verificationTotalPages);
+  const pagedVerifications = filteredVerifications.slice(
+    (safeVerificationPage - 1) * VERIFICATIONS_PER_PAGE,
+    safeVerificationPage * VERIFICATIONS_PER_PAGE
+  );
+  const verificationCounts = {
+    all: verifications.length,
+    verified: verifications.filter((row) => row.verification_status === "verified").length,
+    needs_review: verifications.filter((row) => row.verification_status === "needs_review").length,
+    student_confirmed: verifications.filter((row) => row.verification_status === "student_confirmed").length,
+    in_progress: verifications.filter((row) => row.verification_status === "in_progress").length,
+    pending: verifications.filter((row) => row.verification_status === "pending").length,
+    missing: verifications.filter((row) => !row.teacher_started_at && row.verification_status === "pending").length,
+  };
 
   const updateStudentCourse = (courseId) => {
     const currentTeacherCanTeach = !sForm.teacherId || !courseId || teacherCourseMap[String(sForm.teacherId)]?.has(String(courseId));
@@ -989,6 +1156,42 @@ export default function AdminDashboard() {
     });
   }
 
+  function requestRemoveVerification(row) {
+    const teacherName = `${row.teacher_first_name || ""} ${row.teacher_last_name || ""}`.trim() || "Teacher";
+    const studentName = `${row.student_first_name || ""} ${row.student_last_name || ""}`.trim() || "Student";
+    openAdminConfirm({
+      action: "remove_verification",
+      title: "Remove verification record?",
+      message: "Are you sure? This removes the verification log and its uploaded screenshot. The scheduled class will stay in the calendar.",
+      confirmLabel: "Remove",
+      tone: "danger",
+      payload: {
+        classId: row.class_id,
+        className: row.class_name || "Untitled Class",
+        teacherName,
+        studentName,
+        schedule: `${formatDate(row.scheduled_date)} ${formatTime(row.start_time)}`,
+      },
+    });
+  }
+
+  function requestClearVerifications() {
+    if (!verifications.length) {
+      notify("There are no verification records to clear.", "info");
+      return;
+    }
+    openAdminConfirm({
+      action: "clear_verifications",
+      title: "Clear all verification records?",
+      message: "Are you sure? This removes every verification log and uploaded class screenshot. Scheduled classes will stay in the calendar.",
+      confirmLabel: "Clear All",
+      tone: "danger",
+      payload: {
+        count: verifications.length,
+      },
+    });
+  }
+
   const adminConfirmLines = adminConfirm ? (() => {
     const payload = adminConfirm.payload || {};
     if (adminConfirm.action === "create_teacher") {
@@ -1038,6 +1241,17 @@ export default function AdminDashboard() {
         `Action: ${payload.status === "approved" ? "Approve" : "Decline"}`,
       ];
     }
+    if (adminConfirm.action === "remove_verification") {
+      return [
+        `Class: ${payload.className || "-"}`,
+        `Teacher: ${payload.teacherName || "-"}`,
+        `Student: ${payload.studentName || "-"}`,
+        `Schedule: ${payload.schedule || "-"}`,
+      ];
+    }
+    if (adminConfirm.action === "clear_verifications") {
+      return [`Records: ${payload.count || 0}`];
+    }
     return [];
   })() : [];
 
@@ -1046,6 +1260,213 @@ export default function AdminDashboard() {
     <div className={styles.page}>
 
       <main className={styles.main}>
+        {active === "verifications" && (
+          <section className={styles.card}>
+            <div className={styles.cardHead}>
+              <div>
+                <h2>Class Verifications</h2>
+                <p style={{ margin: "4px 0 0 0", fontSize: "0.9em", color: "#666" }}>
+                  Track whether scheduled classes have teacher start, student attendance, end time, duration, and proof.
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <button className={styles.linkBtn} type="button" onClick={() => loadClassVerifications()}>
+                  Refresh
+                </button>
+                <button
+                  className={styles.dangerBtn}
+                  type="button"
+                  onClick={requestClearVerifications}
+                  disabled={!verifications.length || verificationsLoading}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <div className={styles.filterTabs} style={{ marginBottom: 14 }}>
+              {["all", "verified", "needs_review", "student_confirmed", "in_progress", "pending", "missing"].map((status) => {
+                const activeFilter = verificationFilter === status;
+                const colors = verificationStatusStyle(status === "all" ? "pending" : status);
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => updateVerificationFilter(status)}
+                    style={{
+                      padding: "8px 12px",
+                      border: activeFilter ? "1px solid #2f4d3e" : "1px solid #e5e7eb",
+                      background: activeFilter ? "#2f4d3e" : colors.background,
+                      color: activeFilter ? "#fff" : colors.color,
+                      borderRadius: "999px",
+                      cursor: "pointer",
+                      fontWeight: 800,
+                      fontSize: "0.82em",
+                    }}
+                  >
+                    {VERIFICATION_STATUS_LABELS[status]} ({verificationCounts[status] || 0})
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className={styles.searchBar}>
+              <input
+                type="search"
+                value={verificationSearch}
+                onChange={(e) => setVerificationSearch(e.target.value)}
+                placeholder="Search by class, teacher, student, status, date, or summary"
+                aria-label="Search class verifications"
+              />
+            </div>
+
+            <div className={styles.tableWrap}>
+              {verificationsLoading ? (
+                <div className={styles.empty}>Loading class verifications...</div>
+              ) : verifications.length === 0 ? (
+                <div className={styles.empty}>No class verification records found</div>
+              ) : filteredVerifications.length === 0 ? (
+                <div className={styles.empty}>No class verifications match your search</div>
+              ) : (
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Class</th>
+                      <th>Teacher</th>
+                      <th>Student</th>
+                      <th>Schedule</th>
+                      <th>Evidence</th>
+                      <th>Status</th>
+                      <th>Proof</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedVerifications.map((row) => {
+                      const displayStatus = row.teacher_started_at || row.student_joined_at || row.teacher_ended_at
+                        ? row.verification_status
+                        : "missing";
+                      const statusColor = verificationStatusStyle(displayStatus);
+                      const teacherName = `${row.teacher_first_name || ""} ${row.teacher_last_name || ""}`.trim() || "Teacher";
+                      const studentName = `${row.student_first_name || ""} ${row.student_last_name || ""}`.trim() || "Student";
+                      const missingItems = getVerificationMissingItems(row);
+                      const hasRequiredEvidence = missingItems.length === 0;
+
+                      return (
+                        <tr key={row.class_id}>
+                          <td data-label="Class">
+                            <div style={{ fontWeight: 800 }}>{row.class_name || "Untitled Class"}</div>
+                            <div style={{ fontSize: "0.8em", color: "#667085", marginTop: 3 }}>
+                              Class status: {row.class_status || "scheduled"}
+                            </div>
+                          </td>
+                          <td data-label="Teacher">
+                            <div style={{ fontWeight: 700 }}>{teacherName}</div>
+                            <div style={{ fontSize: "0.8em", color: "#667085", wordBreak: "break-all" }}>{row.teacher_email || ""}</div>
+                          </td>
+                          <td data-label="Student">
+                            <div style={{ fontWeight: 700 }}>{studentName}</div>
+                            <div style={{ fontSize: "0.8em", color: "#667085", wordBreak: "break-all" }}>{row.student_email || ""}</div>
+                          </td>
+                          <td data-label="Schedule">
+                            <div style={{ fontWeight: 700 }}>{formatDate(row.scheduled_date)}</div>
+                            <div style={{ fontSize: "0.82em", color: "#667085" }}>
+                              {formatTime(row.start_time)} - {formatTime(row.end_time)}
+                            </div>
+                            <div style={{ fontSize: "0.78em", color: "#667085" }}>{row.duration || 0} min class</div>
+                          </td>
+                          <td data-label="Evidence">
+                            <div style={{ display: "grid", gap: 3, fontSize: "0.82em" }}>
+                              <span>Start: {formatDateTime(row.teacher_started_at)}</span>
+                              <span>Student: {formatDateTime(row.student_joined_at)}</span>
+                              <span>End: {formatDateTime(row.teacher_ended_at)}</span>
+                              <span>Duration: {Number(row.duration_minutes || 0)} min</span>
+                            </div>
+                            {row.summary && (
+                              <div style={{ marginTop: 8, maxWidth: 260, color: "#475467", fontSize: "0.82em", lineHeight: 1.35 }}>
+                                {row.summary}
+                              </div>
+                            )}
+                          </td>
+                          <td data-label="Status">
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                padding: "5px 9px",
+                                borderRadius: 999,
+                                background: statusColor.background,
+                                color: statusColor.color,
+                                fontWeight: 800,
+                                fontSize: "0.78em",
+                              }}
+                            >
+                              {VERIFICATION_STATUS_LABELS[displayStatus] || displayStatus}
+                            </span>
+                            <div style={{ marginTop: 6, fontSize: "0.78em", color: hasRequiredEvidence ? "#166534" : "#92400e" }}>
+                              {hasRequiredEvidence ? "Evidence complete" : `Missing: ${missingItems.join(", ")}`}
+                            </div>
+                          </td>
+                          <td data-label="Proof">
+                            {row.proof_url ? (
+                              <button
+                                type="button"
+                                className={`${styles.linkBtn} ${styles.tableActionBtn}`}
+                                onClick={() => setSelectedProof({
+                                  url: resolveUploadUrl(row.proof_url),
+                                  className: row.class_name || "Class",
+                                  teacherName,
+                                  studentName,
+                                  schedule: `${formatDate(row.scheduled_date)} ${formatTime(row.start_time)}`,
+                                })}
+                              >
+                                Open Screenshot
+                              </button>
+                            ) : (
+                              <span style={{ color: "#98a2b3", fontSize: "0.85em" }}>No screenshot</span>
+                            )}
+                          </td>
+                          <td data-label="Action">
+                            <button
+                              type="button"
+                              className={`${styles.dangerBtn} ${styles.tableActionBtn}`}
+                              onClick={() => requestRemoveVerification(row)}
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            {filteredVerifications.length > VERIFICATIONS_PER_PAGE && (
+              <div className={styles.pagination}>
+                <button
+                  type="button"
+                  className={styles.pageBtn}
+                  onClick={() => setVerificationPage((page) => Math.max(1, page - 1))}
+                  disabled={safeVerificationPage === 1}
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {safeVerificationPage} of {verificationTotalPages}
+                </span>
+                <button
+                  type="button"
+                  className={styles.pageBtn}
+                  onClick={() => setVerificationPage((page) => Math.min(verificationTotalPages, page + 1))}
+                  disabled={safeVerificationPage === verificationTotalPages}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </section>
+        )}
+
         {active === "teacherCourses" && (
           <section className={styles.card}>
             <div className={styles.cardHead}>
@@ -2187,6 +2608,71 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+        {selectedProof && (
+          <div
+            role="presentation"
+            onClick={() => setSelectedProof(null)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(15, 23, 42, 0.68)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 24,
+              zIndex: 1200,
+            }}
+          >
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-label="Class screenshot"
+              onClick={(event) => event.stopPropagation()}
+              style={{
+                width: "min(960px, 100%)",
+                maxHeight: "90vh",
+                overflow: "auto",
+                background: "#fff",
+                borderRadius: 12,
+                boxShadow: "0 24px 70px rgba(15, 23, 42, 0.28)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, padding: "16px 18px", borderBottom: "1px solid #e5e7eb" }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "1rem", color: "#10231d" }}>{selectedProof.className}</h3>
+                  <p style={{ margin: "4px 0 0", color: "#667085", fontSize: "0.86rem" }}>
+                    {selectedProof.teacherName} / {selectedProof.studentName} / {selectedProof.schedule}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedProof(null)}
+                  aria-label="Close screenshot preview"
+                  style={{
+                    border: "1px solid #d0d5dd",
+                    background: "#fff",
+                    borderRadius: "50%",
+                    width: 34,
+                    height: 34,
+                    cursor: "pointer",
+                    fontSize: 20,
+                    fontWeight: 800,
+                    lineHeight: "30px",
+                  }}
+                >
+                  x
+                </button>
+              </div>
+              <div style={{ padding: 18, background: "#f8fafc" }}>
+                <img
+                  src={selectedProof.url}
+                  alt="Class proof screenshot"
+                  style={{ display: "block", width: "100%", maxHeight: "72vh", objectFit: "contain", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8 }}
+                />
+              </div>
+            </section>
           </div>
         )}
         {deleteConfirm && (

@@ -7,6 +7,7 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { getStoredUserTimezone } from "../utils/timezone.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { compressFileIfImage } from "../utils/imageCompression.js";
 
 const API = API_BASE_URL;
 
@@ -248,7 +249,8 @@ export default function AssignmentsDropbox() {
         formData.append("submissionText", comment.trim());
       }
       if (selectedFile) {
-        formData.append("file", selectedFile);
+        const uploadFile = await compressFileIfImage(selectedFile);
+        formData.append("file", uploadFile, uploadFile.name);
       }
 
       const res = await fetch(`${API}/api/assignments/${selectedAssignment.id}/submissions`, {
