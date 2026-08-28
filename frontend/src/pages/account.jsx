@@ -203,8 +203,7 @@ export default function Account() {
   const completionItems = useMemo(() => ([
     { label: "Profile picture", complete: Boolean(user?.profileImageUrl) },
     { label: "Contact number", complete: Boolean(String(form.contact || "").trim()) },
-    { label: "Password changed", complete: Boolean(user?.passwordChanged) },
-  ]), [form.contact, user?.passwordChanged, user?.profileImageUrl]);
+  ]), [form.contact, user?.profileImageUrl]);
   const cropPreviewStyle = useMemo(() => {
     if (!cropImageSize.width || !cropImageSize.height) return {};
     const baseScale = Math.max(CROP_SIZE / cropImageSize.width, CROP_SIZE / cropImageSize.height);
@@ -258,7 +257,7 @@ export default function Account() {
     setIsProfileIncomplete(!refreshed.profileCompleted);
     if (!refreshed.profileCompleted) {
       setProfileEditing(true);
-      setPasswordEditing(!refreshed.passwordChanged);
+      setPasswordEditing(false);
     }
     writeStoredUser(toStoredUser(refreshed));
     window.dispatchEvent(new CustomEvent("userProfileUpdated", { detail: refreshed }));
@@ -277,7 +276,7 @@ export default function Account() {
     setIsProfileIncomplete(!mapped.profileCompleted);
     if (!mapped.profileCompleted) {
       setProfileEditing(true);
-      setPasswordEditing(!mapped.passwordChanged);
+      setPasswordEditing(false);
     }
 
     loadUser(mapped.id).catch(() => {
@@ -739,7 +738,7 @@ export default function Account() {
           <section className={styles.notice}>
             <div>
               <strong>Complete your profile</strong>
-              <span>Upload a profile picture, add your contact number, and change your password to access your dashboard.</span>
+              <span>Upload a profile picture and add your contact number to access your dashboard.</span>
             </div>
             <ul className={styles.requirementList}>
               {completionItems.map((item) => (

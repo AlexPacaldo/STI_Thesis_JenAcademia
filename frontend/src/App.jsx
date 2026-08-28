@@ -12,11 +12,16 @@ import { API_BASE_URL } from "./utils/api.js";
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 60 * 1000; // 5 hours
 const ACCOUNT_STATUS_CHECK_MS = 60 * 1000;
-const PUBLIC_PATHS = ["/", "/login", "/register"];
+const PUBLIC_PATHS = ["/", "/login", "/register", "/setup-account"];
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
 
 function isProfileComplete(user) {
   return Boolean(user?.profileCompleted);
+}
+
+function isSetupAccountPath(path) {
+  const normalizedPath = path.toLowerCase();
+  return normalizedPath === "/setup-account" || normalizedPath.startsWith("/setup-account/");
 }
 
 function App() {
@@ -106,6 +111,14 @@ function App() {
     });
   }
 
+  function isPublicPath(path) {
+    const normalizedPath = path.toLowerCase();
+    return PUBLIC_PATHS.some((publicPath) => {
+      if (publicPath === "/") return normalizedPath === "/";
+      return normalizedPath === publicPath || normalizedPath.startsWith(`${publicPath}/`);
+    });
+  }
+
   function clearSession() {
     clearStoredUser();
     localStorage.removeItem(STORAGE_KEYS.lastActivityAt);
@@ -137,7 +150,7 @@ function App() {
     const role = getRole(user);
     const defaultPath = getDefaultDashboardPath(role);
 
-    if (!authenticated && !PUBLIC_PATHS.includes(path)) {
+    if (!authenticated && !isPublicPath(path)) {
       navigate("/login", { replace: true });
       return;
     }
@@ -146,12 +159,16 @@ function App() {
       const profileComplete = isProfileComplete(user);
       const currentUserId = getUserId(user);
 
+      if (isSetupAccountPath(path)) {
+        return undefined;
+      }
+
       if (!profileComplete && path !== "/account") {
         navigate("/account", { replace: true });
         return;
       }
 
-      if ((path === "/" || path === "/login" || path === "/register") && profileComplete) {
+      if (isPublicPath(path) && profileComplete) {
         navigate(defaultPath, { replace: true });
         return;
       }
@@ -229,13 +246,16 @@ function App() {
     setIsSidebarOpen(false);
   }, [location.pathname, location.search]);
 
-  const hideHeaderPaths = ["/", "/login", "/register"];
-  const shouldShowHeader = !hideHeaderPaths.includes(location.pathname);
+  const hideHeaderPaths = ["/", "/login", "/register", "/setup-account"];
+  const shouldShowHeader = !hideHeaderPaths.some((publicPath) => {
+    const normalizedPath = location.pathname.toLowerCase();
+    return publicPath === "/" ? normalizedPath === "/" : normalizedPath === publicPath || normalizedPath.startsWith(`${publicPath}/`);
+  });
   const isAccountPage = location.pathname === "/account";
   const isAccountPageNewUser = isAccountPage && !isProfileComplete(readStoredUser());
   const shouldShowSidebar = shouldShowHeader && !isAccountPageNewUser;
   const showFooter = location.pathname === "/" && !isAuthenticated(readStoredUser());
-  const isFullBleedPath = location.pathname === "/" || location.pathname === "/login";
+  const isFullBleedPath = location.pathname === "/" || location.pathname === "/login" || location.pathname.toLowerCase().startsWith("/setup-account/");
 
   return (
     <>

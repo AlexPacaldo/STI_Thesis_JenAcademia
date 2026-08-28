@@ -8,6 +8,7 @@ import "./index.css";
 const Homepage = lazy(() => import("./pages/homepage.jsx"));
 const Register = lazy(() => import("./pages/register.jsx"));
 const Login = lazy(() => import("./pages/login.jsx"));
+const SetupAccount = lazy(() => import("./pages/SetupAccount.jsx"));
 const Account = lazy(() => import("./pages/account.jsx"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard.jsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
@@ -35,6 +36,7 @@ const router = createBrowserRouter([
       { index: true, element: <Page><Homepage /></Page> },  // renders at "/"
       { path: "register", element: <Page><Register /></Page> },
       { path: "login", element: <Page><Login /></Page> },
+      { path: "setup-account/:token", element: <Page><SetupAccount /></Page> },
       // { path: "loginChoice", element: <LoginChoice /> },
       
       // in your router
