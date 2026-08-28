@@ -213,7 +213,7 @@ function Sidebar({ isMobileOpen = false, onClose }) {
       { to: "/AdminDashboard?tab=teacherCourses", label: "Teacher Courses", icon: "bi-people" },
       { to: "/AdminDashboard?tab=createTeacher", label: "Create Teacher", icon: "bi-person-plus" },
       { to: "/AdminDashboard?tab=createStudent", label: "Create Student", icon: "bi-person-plus" },
-      { to: "/AdminDashboard?tab=archive", label: "Archive", icon: "bi-archive" },
+      { to: "/AdminDashboard?tab=archive", label: "Account Management", icon: "bi-person-gear" },
     ],
   };
 

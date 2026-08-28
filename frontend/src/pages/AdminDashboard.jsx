@@ -197,6 +197,23 @@ const formatDateTime = (value) => {
   });
 };
 
+const SETUP_INVITE_LABELS = {
+  completed: "Setup Complete",
+  sent: "Invite Sent",
+  expired: "Invite Expired",
+  not_sent: "Invite Not Sent",
+};
+
+const setupInviteStatusStyle = (status) => {
+  const palette = {
+    completed: { background: "#dcfce7", color: "#166534" },
+    sent: { background: "#dbeafe", color: "#1e40af" },
+    expired: { background: "#fee2e2", color: "#991b1b" },
+    not_sent: { background: "#f3f4f6", color: "#374151" },
+  };
+  return palette[status] || palette.not_sent;
+};
+
 const VERIFICATION_STATUS_LABELS = {
   all: "All",
   verified: "Verified",
@@ -342,6 +359,10 @@ export default function AdminDashboard() {
   const [verificationPage, setVerificationPage] = useState(1);
   const [selectedProof, setSelectedProof] = useState(null);
   const [adminConfirm, setAdminConfirm] = useState(null);
+  const [studentAccountModal, setStudentAccountModal] = useState(null);
+  const [studentAccountLoading, setStudentAccountLoading] = useState(false);
+  const [studentEmailDraft, setStudentEmailDraft] = useState("");
+  const [studentAccountActionLoading, setStudentAccountActionLoading] = useState("");
   const selectedTeacherCourseNames = courses
     .filter((course) => tForm.courseIds.includes(String(course.course_id)))
     .map((course) => course.course_name);
@@ -446,8 +467,12 @@ export default function AdminDashboard() {
     setLoading(true);
     try {
       const payload = { ...payloadSource, role: "teacher", password: "teacher" };
-      await axios.post(`${API}/api/admin/users`, payload); // creates teacher
-      notify("Teacher created successfully!", "success");
+      const response = await axios.post(`${API}/api/admin/users`, payload); // creates teacher
+      if (response.data?.inviteEmailSent) {
+        notify("Teacher created and setup invite sent to their email.", "success");
+      } else {
+        notify("Teacher created. Setup invite was prepared, but email was not sent. Check SMTP settings.", "warning");
+      }
       setTForm({
         firstName: "",
         lastName: "",
@@ -476,8 +501,12 @@ export default function AdminDashboard() {
     setLoading(true);
     try {
       const payload = { ...payloadSource, role: "student", password: "student" };
-      await axios.post(`${API}/api/admin/users`, payload); // creates student
-      notify("Student created successfully!", "success");
+      const response = await axios.post(`${API}/api/admin/users`, payload); // creates student
+      if (response.data?.inviteEmailSent) {
+        notify("Student created and setup invite sent to their email.", "success");
+      } else {
+        notify("Student created. Setup invite was prepared, but email was not sent. Check SMTP settings.", "warning");
+      }
       setSForm({
         firstName: "",
         lastName: "",
@@ -716,6 +745,96 @@ export default function AdminDashboard() {
       notify("User unarchived successfully", "success");
     } catch {
       notify("Failed to unarchive user", "error");
+    }
+  }
+
+  async function openStudentAccount(studentId) {
+    setStudentAccountLoading(true);
+    try {
+      const response = await axios.get(`${API}/api/admin/users/${studentId}/account`);
+      const user = response.data?.user;
+      setStudentAccountModal(user);
+      setStudentEmailDraft(user?.email || "");
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || "Failed to load student account", "error");
+    } finally {
+      setStudentAccountLoading(false);
+    }
+  }
+
+  async function refreshStudentAccount(studentId) {
+    try {
+      const response = await axios.get(`${API}/api/admin/users/${studentId}/account`);
+      const user = response.data?.user;
+      setStudentAccountModal(user);
+      setStudentEmailDraft(user?.email || "");
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function saveStudentEmail() {
+    if (!studentAccountModal?.user_id) return;
+    const nextEmail = studentEmailDraft.trim();
+    if (!nextEmail) {
+      notify("Please enter the student's email.", "error");
+      return;
+    }
+
+    setStudentAccountActionLoading("email");
+    try {
+      const response = await axios.put(`${API}/api/admin/users/${studentAccountModal.user_id}/email`, {
+        email: nextEmail,
+      });
+      notify(
+        response.data?.inviteEmailSent
+          ? "Email updated and new setup invite sent."
+          : "Email updated. Invite was prepared, but email was not sent. Check SMTP settings.",
+        response.data?.inviteEmailSent ? "success" : "warning"
+      );
+      await loadUsers();
+      await refreshStudentAccount(studentAccountModal.user_id);
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || "Failed to update student email", "error");
+    } finally {
+      setStudentAccountActionLoading("");
+    }
+  }
+
+  async function resendStudentInvite({ copyOnly = false } = {}) {
+    if (!studentAccountModal?.user_id) return;
+    setStudentAccountActionLoading(copyOnly ? "copy" : "resend");
+    try {
+      const response = await axios.post(`${API}/api/admin/users/${studentAccountModal.user_id}/setup-invite`, {
+        sendEmail: !copyOnly,
+      });
+      const inviteUrl = response.data?.setupInviteUrl;
+
+      if (copyOnly && inviteUrl) {
+        if (!navigator.clipboard?.writeText) {
+          window.prompt("Copy this setup invite link:", inviteUrl);
+        } else {
+          await navigator.clipboard.writeText(inviteUrl);
+        }
+        notify("Fresh setup invite link copied.", "success");
+      } else {
+        notify(
+          response.data?.inviteEmailSent
+            ? "Setup invite resent to the student's email."
+            : "Invite was prepared, but email was not sent. Check SMTP settings.",
+          response.data?.inviteEmailSent ? "success" : "warning"
+        );
+      }
+
+      await loadUsers();
+      await refreshStudentAccount(studentAccountModal.user_id);
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || "Failed to prepare setup invite", "error");
+    } finally {
+      setStudentAccountActionLoading("");
     }
   }
 
@@ -1028,6 +1147,7 @@ export default function AdminDashboard() {
   };
   const filteredArchiveStudents = students.filter(matchesArchiveSearch);
   const filteredArchiveTeachers = teachers.filter(matchesArchiveSearch);
+  const accountModalRoleLabel = studentAccountModal?.role === "teacher" ? "Teacher" : "Student";
   const verificationSearchTerm = verificationSearch.trim().toLowerCase();
   const filteredVerifications = verifications.filter((row) => {
     const displayStatus = row.teacher_started_at || row.student_joined_at || row.teacher_ended_at
@@ -2443,25 +2563,50 @@ export default function AdminDashboard() {
 
         {active === "archive" && (
           <section className={styles.card}>
-            <div className={styles.cardHead}><h2>Archive Accounts</h2></div>
+            <div className={styles.cardHead}><h2>Account Management</h2></div>
             <div className={styles.searchBar}>
               <input
                 type="search"
                 value={archiveSearch}
                 onChange={(e) => setArchiveSearch(e.target.value)}
                 placeholder="Search by name, email, or role"
-                aria-label="Search archive accounts"
+                aria-label="Search accounts"
               />
             </div>
             <div className={styles.split}>
               <div>
-                <h3>Students</h3>
+                <h3>Active Students</h3>
                 <ul className={styles.list}>
                   {filteredArchiveStudents.length === 0 && <li className={styles.empty}>No active students found</li>}
                   {filteredArchiveStudents.map(s => (
                     <li key={s.user_id} className={styles.listRow}>
-                      <span>{s.first_name} {s.last_name} - {s.email}</span>
-                      <div>
+                      <span>
+                        {s.first_name} {s.last_name} - {s.email}
+                        <small style={{ display: "block", marginTop: 4 }}>
+                          <span style={{
+                            ...setupInviteStatusStyle(s.setup_invite_status),
+                            display: "inline-flex",
+                            padding: "3px 8px",
+                            borderRadius: 999,
+                            fontSize: "0.78rem",
+                            fontWeight: 700,
+                          }}>
+                            {SETUP_INVITE_LABELS[s.setup_invite_status] || "Invite Not Sent"}
+                          </span>
+                          {s.setup_invite_expires_at && s.setup_invite_status !== "completed"
+                            ? ` Expires ${formatDateTime(s.setup_invite_expires_at)}`
+                            : ""}
+                        </small>
+                      </span>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                        <button
+                          className={styles.approve}
+                          type="button"
+                          onClick={() => openStudentAccount(s.user_id)}
+                          disabled={studentAccountLoading}
+                        >
+                          View
+                        </button>
                         <button className={styles.warn} onClick={() => requestArchiveUser(s.user_id)}>Archive</button>
                       </div>
                     </li>
@@ -2469,13 +2614,38 @@ export default function AdminDashboard() {
                 </ul>
               </div>
               <div>
-                <h3>Teachers</h3>
+                <h3>Active Teachers</h3>
                 <ul className={styles.list}>
                   {filteredArchiveTeachers.length === 0 && <li className={styles.empty}>No active teachers found</li>}
                   {filteredArchiveTeachers.map(t => (
                     <li key={t.user_id} className={styles.listRow}>
-                      <span>{t.first_name} {t.last_name} - {t.email}</span>
-                      <div>
+                      <span>
+                        {t.first_name} {t.last_name} - {t.email}
+                        <small style={{ display: "block", marginTop: 4 }}>
+                          <span style={{
+                            ...setupInviteStatusStyle(t.setup_invite_status),
+                            display: "inline-flex",
+                            padding: "3px 8px",
+                            borderRadius: 999,
+                            fontSize: "0.78rem",
+                            fontWeight: 700,
+                          }}>
+                            {SETUP_INVITE_LABELS[t.setup_invite_status] || "Invite Not Sent"}
+                          </span>
+                          {t.setup_invite_expires_at && t.setup_invite_status !== "completed"
+                            ? ` Expires ${formatDateTime(t.setup_invite_expires_at)}`
+                            : ""}
+                        </small>
+                      </span>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                        <button
+                          className={styles.approve}
+                          type="button"
+                          onClick={() => openStudentAccount(t.user_id)}
+                          disabled={studentAccountLoading}
+                        >
+                          View
+                        </button>
                         <button className={styles.warn} onClick={() => requestArchiveUser(t.user_id)}>Archive</button>
                       </div>
                     </li>
@@ -2842,6 +3012,141 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+        {studentAccountModal && (
+          <div
+            role="presentation"
+            onClick={() => setStudentAccountModal(null)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(15, 23, 42, 0.55)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 24,
+              zIndex: 1080,
+            }}
+          >
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-label={`${accountModalRoleLabel} account details`}
+              onClick={(event) => event.stopPropagation()}
+              style={{
+                width: "min(720px, 100%)",
+                maxHeight: "90vh",
+                overflow: "auto",
+                background: "#fff",
+                borderRadius: 8,
+                boxShadow: "0 24px 70px rgba(15, 23, 42, 0.24)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "18px 20px", borderBottom: "1px solid #e5e7eb" }}>
+                <div>
+                  <h3 style={{ margin: 0, color: "#10231d" }}>
+                    {studentAccountModal.first_name} {studentAccountModal.last_name}
+                  </h3>
+                  <p style={{ margin: "4px 0 0", color: "#667085", fontSize: "0.9rem" }}>
+                    {accountModalRoleLabel} account management
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Close student account details"
+                  onClick={() => setStudentAccountModal(null)}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: "50%",
+                    border: "1px solid #d0d5dd",
+                    background: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 800,
+                  }}
+                >
+                  x
+                </button>
+              </div>
+
+              <div style={{ padding: 20, display: "grid", gap: 18 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+                  {[
+                    ["Account Status", studentAccountModal.status || "-"],
+                    ["Profile", studentAccountModal.profile_completed ? "Complete" : "Incomplete"],
+                    ["Password", studentAccountModal.password_changed ? "Set" : "Pending setup"],
+                    ["Invite", SETUP_INVITE_LABELS[studentAccountModal.setup_invite_status] || "Invite Not Sent"],
+                    ...(studentAccountModal.role === "student" ? [
+                      ["Course", studentAccountModal.course_name || "-"],
+                      ["Teacher", studentAccountModal.teacher_name || "-"],
+                      ["Package", studentAccountModal.package_id ? `${studentAccountModal.total_classes || 0} classes` : "No package"],
+                      ["Classes Left", studentAccountModal.classes_left ?? "-"],
+                    ] : []),
+                  ].map(([label, value]) => (
+                    <div key={label} style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 12, background: "#f9fafb" }}>
+                      <div style={{ color: "#667085", fontSize: "0.78rem", fontWeight: 700, marginBottom: 4 }}>{label}</div>
+                      <div style={{ color: "#10231d", fontWeight: 700, wordBreak: "break-word" }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {studentAccountModal.setup_invite_expires_at && studentAccountModal.setup_invite_status !== "completed" && (
+                  <p style={{ margin: 0, color: "#667085", fontSize: "0.9rem" }}>
+                    Current invite expires {formatDateTime(studentAccountModal.setup_invite_expires_at)}.
+                  </p>
+                )}
+
+                <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 14 }}>
+                  <label htmlFor="studentEmailDraft">{accountModalRoleLabel} Email</label>
+                  <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                    <input
+                      id="studentEmailDraft"
+                      type="email"
+                      value={studentEmailDraft}
+                      onChange={(e) => setStudentEmailDraft(e.target.value)}
+                      style={{
+                        flex: "1 1 260px",
+                        padding: "10px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #d0d5dd",
+                        fontSize: "0.95rem",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={styles.approve}
+                      onClick={saveStudentEmail}
+                      disabled={studentAccountActionLoading === "email"}
+                    >
+                      {studentAccountActionLoading === "email" ? "Saving..." : "Save & Resend"}
+                    </button>
+                  </div>
+                  <p style={{ margin: "8px 0 0", color: "#667085", fontSize: "0.82rem", lineHeight: 1.5 }}>
+                    Saving a new email invalidates old unused invites and sends a fresh setup link.
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    className={styles.approve}
+                    onClick={() => resendStudentInvite()}
+                    disabled={Boolean(studentAccountActionLoading)}
+                  >
+                    {studentAccountActionLoading === "resend" ? "Sending..." : "Resend Invite"}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.approve}
+                    onClick={() => resendStudentInvite({ copyOnly: true })}
+                    disabled={Boolean(studentAccountActionLoading)}
+                  >
+                    {studentAccountActionLoading === "copy" ? "Copying..." : "Copy Fresh Link"}
+                  </button>
+                </div>
+              </div>
+            </section>
           </div>
         )}
         {adminConfirm && (

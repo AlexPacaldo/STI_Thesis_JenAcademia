@@ -47,12 +47,18 @@ export default function Login() {
         lastName: data.user.lastName,
         role: data.user.role,
         profileCompleted: data.user.profileCompleted,
+        passwordChanged: data.user.passwordChanged,
         profileImageUrl: data.user.profileImageUrl,
         assignedTeacherId: data.user.assignedTeacherId || null,
         timezone: data.user.timezone,
         stayLoggedIn: stayLoggedIn,
       };
       writeStoredUser(userToStore);
+      writeNamespacedStorageValue(
+        STORAGE_KEYS.lastActivityAt,
+        Date.now(),
+        LEGACY_STORAGE_KEYS.lastActivityAt
+      );
 
       if (data.user.role === "teacher") {
         writeNamespacedStorageValue(STORAGE_KEYS.teacherId, data.user.id, LEGACY_STORAGE_KEYS.teacherId);

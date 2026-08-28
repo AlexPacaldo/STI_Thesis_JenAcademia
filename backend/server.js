@@ -7,11 +7,14 @@ import express from "express";
 import fs from "fs";
 import multer from "multer";
 import mysql from "mysql2/promise";
+import net from "net";
 import path from "path";
+import tls from "tls";
 
 dotenv.config();
 
 const PORT = process.env.PORT || 3001;
+const INVITE_EXPIRY_HOURS = Number(process.env.ACCOUNT_INVITE_EXPIRY_HOURS || 24);
 const mysqlUrl = process.env.MYSQL_URL || process.env.DATABASE_URL || "";
 
 function parseMysqlUrl(url) {
@@ -134,6 +137,194 @@ function decryptFields(row, fields) {
 
 function decryptRows(rows, fields) {
   return Array.isArray(rows) ? rows.map((row) => decryptFields(row, fields)) : [];
+}
+
+function getFrontendBaseUrl() {
+  const explicit = process.env.FRONTEND_BASE_URL || process.env.PUBLIC_APP_URL || "";
+  if (explicit) return explicit.replace(/\/+$/, "");
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`.replace(/\/+$/, "");
+  return "http://localhost:5173";
+}
+
+function makeSetupInviteUrl(token) {
+  return `${getFrontendBaseUrl()}/setup-account/${encodeURIComponent(token)}`;
+}
+
+function hashInviteToken(token) {
+  return crypto.createHash("sha256").update(String(token)).digest("hex");
+}
+
+function createInviteToken() {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+function escapeEmailHeader(value) {
+  return String(value || "").replace(/[\r\n]+/g, " ").trim();
+}
+
+function encodeEmailBody(value) {
+  return String(value || "").replace(/\r?\n/g, "\r\n");
+}
+
+function smtpConfigured() {
+  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+}
+
+function createSmtpClient({ host, port, secure }) {
+  return new Promise((resolve, reject) => {
+    const socket = secure
+      ? tls.connect(port, host, { servername: host }, () => resolve(socket))
+      : net.connect(port, host, () => resolve(socket));
+
+    socket.setEncoding("utf8");
+    socket.once("error", reject);
+  });
+}
+
+function readSmtpResponse(socket) {
+  return new Promise((resolve, reject) => {
+    let buffer = "";
+
+    function cleanup() {
+      socket.off("data", onData);
+      socket.off("error", onError);
+    }
+
+    function onError(err) {
+      cleanup();
+      reject(err);
+    }
+
+    function onData(chunk) {
+      buffer += chunk;
+      const lines = buffer.split(/\r?\n/).filter(Boolean);
+      const last = lines[lines.length - 1] || "";
+      if (/^\d{3} /.test(last)) {
+        cleanup();
+        resolve(buffer);
+      }
+    }
+
+    socket.on("data", onData);
+    socket.once("error", onError);
+  });
+}
+
+async function smtpCommand(socket, command, expectedCodes) {
+  if (command) socket.write(`${command}\r\n`);
+  const response = await readSmtpResponse(socket);
+  const code = response.slice(0, 3);
+  if (!expectedCodes.includes(code)) {
+    throw new Error(`SMTP command failed (${code}): ${response.trim()}`);
+  }
+  return response;
+}
+
+async function upgradeSmtpToTls(socket, host) {
+  return new Promise((resolve, reject) => {
+    const secureSocket = tls.connect({ socket, servername: host }, () => resolve(secureSocket));
+    secureSocket.setEncoding("utf8");
+    secureSocket.once("error", reject);
+  });
+}
+
+async function sendSmtpMail({ to, subject, text }) {
+  if (!smtpConfigured()) {
+    console.warn("SMTP is not configured; account invite email was not sent.");
+    return { sent: false, skipped: true };
+  }
+
+  const host = process.env.SMTP_HOST;
+  const port = Number(process.env.SMTP_PORT || 587);
+  const secure = String(process.env.SMTP_SECURE || "").toLowerCase() === "true" || port === 465;
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  let socket = await createSmtpClient({ host, port, secure });
+
+  try {
+    await smtpCommand(socket, null, ["220"]);
+    await smtpCommand(socket, `EHLO ${process.env.SMTP_EHLO_DOMAIN || "jenacademia.local"}`, ["250"]);
+
+    if (!secure) {
+      await smtpCommand(socket, "STARTTLS", ["220"]);
+      socket = await upgradeSmtpToTls(socket, host);
+      await smtpCommand(socket, `EHLO ${process.env.SMTP_EHLO_DOMAIN || "jenacademia.local"}`, ["250"]);
+    }
+
+    await smtpCommand(socket, "AUTH LOGIN", ["334"]);
+    await smtpCommand(socket, Buffer.from(process.env.SMTP_USER).toString("base64"), ["334"]);
+    await smtpCommand(socket, Buffer.from(process.env.SMTP_PASS).toString("base64"), ["235"]);
+    await smtpCommand(socket, `MAIL FROM:<${from}>`, ["250"]);
+    await smtpCommand(socket, `RCPT TO:<${to}>`, ["250", "251"]);
+    await smtpCommand(socket, "DATA", ["354"]);
+
+    const body = [
+      `From: ${escapeEmailHeader(process.env.SMTP_FROM_NAME || "JEN Academia")} <${from}>`,
+      `To: <${to}>`,
+      `Subject: ${escapeEmailHeader(subject)}`,
+      "MIME-Version: 1.0",
+      "Content-Type: text/plain; charset=UTF-8",
+      "",
+      encodeEmailBody(text),
+    ].join("\r\n");
+
+    socket.write(`${body}\r\n.\r\n`);
+    await smtpCommand(socket, null, ["250"]);
+    await smtpCommand(socket, "QUIT", ["221"]);
+    return { sent: true };
+  } finally {
+    socket.end();
+  }
+}
+
+async function sendAccountSetupInviteEmail({ email, firstName, role, inviteUrl, expiresAt }) {
+  const expiryText = new Date(expiresAt).toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  const roleLabel = role === "teacher" ? "teacher" : "student";
+
+  return sendSmtpMail({
+    to: email,
+    subject: `Set up your JEN Academia ${roleLabel} account`,
+    text: [
+      `Hi ${firstName || "there"},`,
+      "",
+      `Your JEN Academia ${roleLabel} account has been created.`,
+      "Please use this secure link to set your password and complete your account setup:",
+      "",
+      inviteUrl,
+      "",
+      `This invite expires on ${expiryText}.`,
+      "",
+      "If you did not expect this message, please contact JEN Academia.",
+    ].join("\n"),
+  });
+}
+
+async function createAccountSetupInvite(connection, userId) {
+  const token = createInviteToken();
+  const tokenHash = hashInviteToken(token);
+  const expiresAt = new Date(Date.now() + INVITE_EXPIRY_HOURS * 60 * 60 * 1000);
+  const expiresAtSql = expiresAt.toISOString().slice(0, 19).replace("T", " ");
+
+  await connection.query(
+    "UPDATE account_setup_invites SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL",
+    [userId]
+  );
+  await connection.query(
+    "INSERT INTO account_setup_invites (user_id, token_hash, expires_at) VALUES (?, ?, ?)",
+    [userId, tokenHash, expiresAtSql]
+  );
+
+  return {
+    token,
+    inviteUrl: makeSetupInviteUrl(token),
+    expiresAt,
+  };
 }
 
 function formatNotificationReason(reason, maxLength = 240) {
@@ -947,6 +1138,24 @@ async function ensureUserPasswordChangedColumn() {
   }
 }
 
+async function ensureAccountSetupInvitesTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS account_setup_invites (
+      invite_id INT NOT NULL AUTO_INCREMENT,
+      user_id INT NOT NULL,
+      token_hash CHAR(64) NOT NULL,
+      expires_at DATETIME NOT NULL,
+      used_at DATETIME DEFAULT NULL,
+      created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (invite_id),
+      UNIQUE KEY unique_account_setup_token_hash (token_hash),
+      KEY idx_account_setup_user (user_id),
+      KEY idx_account_setup_expires (expires_at),
+      CONSTRAINT account_setup_invites_user_fk FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
+    )
+  `);
+}
+
 async function ensureUserDemographicsColumns() {
   if (!(await columnExists("users", "country"))) {
     await pool.query("ALTER TABLE users ADD COLUMN country VARCHAR(100) DEFAULT NULL AFTER contact_number");
@@ -970,7 +1179,6 @@ async function refreshProfileCompletion(userId) {
        AND contact_number IS NOT NULL AND TRIM(contact_number) <> ''
        AND timezone IS NOT NULL AND TRIM(timezone) <> ''
        AND profile_image_url IS NOT NULL AND TRIM(profile_image_url) <> ''
-       AND password_changed = TRUE
      )
      WHERE user_id = ?`,
     [userId]
@@ -986,7 +1194,6 @@ async function refreshAllProfileCompletion() {
        AND contact_number IS NOT NULL AND TRIM(contact_number) <> ''
        AND timezone IS NOT NULL AND TRIM(timezone) <> ''
        AND profile_image_url IS NOT NULL AND TRIM(profile_image_url) <> ''
-       AND password_changed = TRUE
      )`
   );
 }
@@ -1226,6 +1433,7 @@ async function prepareDatabase() {
   await ensureStudentCourseProgressTable();
   await ensureUserProfileImageColumn();
   await ensureUserPasswordChangedColumn();
+  await ensureAccountSetupInvitesTable();
   await ensureUserDemographicsColumns();
   await refreshAllProfileCompletion();
   await ensureStudentContractRequestsTable();
@@ -1473,8 +1681,8 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
      LEFT JOIN teacher_profiles tp ON tp.user_id = u.user_id
      LEFT JOIN teacher_courses selected_tc ON selected_tc.teacher_id = u.user_id AND selected_tc.course_id = ?
      LEFT JOIN student_profiles sp ON sp.assigned_teacher_id = u.user_id
-     LEFT JOIN users student ON student.user_id = sp.user_id AND student.status = 'active'
-     WHERE u.role = 'teacher' AND u.status = 'active'
+     LEFT JOIN users student ON student.user_id = sp.user_id AND student.status = 'active' AND student.profile_completed = TRUE
+     WHERE u.role = 'teacher' AND u.status = 'active' AND u.profile_completed = TRUE
        AND (? IS NULL OR selected_tc.course_id IS NOT NULL)
      GROUP BY u.user_id, u.first_name, u.last_name, u.email, tp.bio, tp.specialization, tp.experience_years
      ORDER BY u.first_name ASC, u.last_name ASC`,
@@ -1596,7 +1804,9 @@ const assignmentSelect = `
          s.feedback
   FROM assignments a
   JOIN users student ON student.user_id = a.student_id
+    AND student.status = 'active' AND student.profile_completed = TRUE
   JOIN users teacher ON teacher.user_id = a.teacher_id
+    AND teacher.status = 'active' AND teacher.profile_completed = TRUE
   LEFT JOIN courses c ON c.course_id = a.course_id
   LEFT JOIN assignment_submissions s ON s.assignment_id = a.assignment_id
 `;
@@ -1625,7 +1835,9 @@ const submissionSelect = `
   FROM assignment_submissions s
   JOIN assignments a ON a.assignment_id = s.assignment_id
   JOIN users student ON student.user_id = s.student_id
+    AND student.status = 'active' AND student.profile_completed = TRUE
   JOIN users teacher ON teacher.user_id = a.teacher_id
+    AND teacher.status = 'active' AND teacher.profile_completed = TRUE
 `;
 
 // ---------- courses ----------
@@ -1687,8 +1899,10 @@ app.get("/api/dashboard/:role/:user_id", async (req, res) => {
        FROM classes c
        LEFT JOIN video_sessions vs ON vs.class_id = c.class_id
        JOIN users stu ON c.student_id = stu.user_id
+        AND stu.status = 'active' AND stu.profile_completed = TRUE
        LEFT JOIN student_profiles sp ON sp.user_id = stu.user_id
        JOIN users tea ON c.teacher_id = tea.user_id
+        AND tea.status = 'active' AND tea.profile_completed = TRUE
        WHERE c.scheduled_date BETWEEN ? AND ?
          AND c.status = 'scheduled'
          AND c.scheduled_date >= CURDATE()
@@ -1710,7 +1924,9 @@ app.get("/api/dashboard/:role/:user_id", async (req, res) => {
                     sp.proficiency_level, sp.assigned_teacher_id, sp.course_id, sp.trial_notes
              FROM users u
              JOIN student_profiles sp ON u.user_id = sp.user_id
-             WHERE sp.assigned_teacher_id = ?`,
+             WHERE sp.assigned_teacher_id = ?
+               AND u.status = 'active'
+               AND u.profile_completed = TRUE`,
             [user_id]
           ),
           pool.query(
@@ -1781,7 +1997,7 @@ app.get("/api/dashboard/:role/:user_id", async (req, res) => {
       ? pool.query(
           `SELECT user_id, first_name, last_name, email, profile_image_url
            FROM users
-           WHERE user_id = ? AND role = 'teacher' AND status = 'active'
+           WHERE user_id = ? AND role = 'teacher' AND status = 'active' AND profile_completed = TRUE
            LIMIT 1`,
           [profile.assigned_teacher_id]
         )
@@ -2044,6 +2260,124 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+app.get("/api/account-setup/:token", async (req, res) => {
+  try {
+    const tokenHash = hashInviteToken(req.params.token || "");
+    const [rows] = await pool.query(
+      `SELECT asi.invite_id, asi.expires_at, asi.used_at,
+              u.user_id, u.first_name, u.last_name, u.email, u.role, u.status
+       FROM account_setup_invites asi
+       JOIN users u ON u.user_id = asi.user_id
+       WHERE asi.token_hash = ?
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Invite link was not found" });
+    }
+
+    const invite = rows[0];
+    if (invite.used_at) {
+      return res.status(410).json({ message: "Invite link has already been used" });
+    }
+
+    if (new Date(invite.expires_at).getTime() <= Date.now()) {
+      return res.status(410).json({ message: "Invite link has expired. Please ask the admin to resend it." });
+    }
+
+    if (!["student", "teacher"].includes(invite.role) || invite.status === "archived") {
+      return res.status(400).json({ message: "Invite link is no longer valid" });
+    }
+
+    res.json({
+      invite: {
+        userId: invite.user_id,
+        email: invite.email,
+        firstName: invite.first_name,
+        lastName: invite.last_name,
+        expiresAt: invite.expires_at,
+      },
+    });
+  } catch (err) {
+    console.error("GET /api/account-setup/:token error:", err);
+    res.status(500).json({ message: "Error validating invite link" });
+  }
+});
+
+app.post("/api/account-setup/:token", async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const { password, confirmPassword } = req.body || {};
+    const nextPassword = String(password || "");
+
+    if (!nextPassword || nextPassword.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters" });
+    }
+
+    if (confirmPassword !== undefined && nextPassword !== String(confirmPassword || "")) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    await connection.beginTransaction();
+
+    const tokenHash = hashInviteToken(req.params.token || "");
+    const [rows] = await connection.query(
+      `SELECT asi.invite_id, asi.expires_at, asi.used_at,
+              u.user_id, u.role, u.status
+       FROM account_setup_invites asi
+       JOIN users u ON u.user_id = asi.user_id
+       WHERE asi.token_hash = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [tokenHash]
+    );
+
+    if (!rows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: "Invite link was not found" });
+    }
+
+    const invite = rows[0];
+    if (invite.used_at) {
+      await connection.rollback();
+      return res.status(410).json({ message: "Invite link has already been used" });
+    }
+
+    if (new Date(invite.expires_at).getTime() <= Date.now()) {
+      await connection.rollback();
+      return res.status(410).json({ message: "Invite link has expired. Please ask the admin to resend it." });
+    }
+
+    if (!["student", "teacher"].includes(invite.role) || invite.status === "archived") {
+      await connection.rollback();
+      return res.status(400).json({ message: "Invite link is no longer valid" });
+    }
+
+    const hash = await bcrypt.hash(nextPassword, 10);
+    await connection.query(
+      "UPDATE users SET password_hash = ?, password_changed = TRUE WHERE user_id = ?",
+      [hash, invite.user_id]
+    );
+    await connection.query(
+      "UPDATE account_setup_invites SET used_at = CURRENT_TIMESTAMP WHERE invite_id = ?",
+      [invite.invite_id]
+    );
+
+    await connection.commit();
+    await refreshProfileCompletion(invite.user_id);
+
+    res.json({ message: "Password set successfully. Please log in to complete your profile." });
+  } catch (err) {
+    await connection.rollback();
+    console.error("POST /api/account-setup/:token error:", err);
+    res.status(500).json({ message: "Error completing account setup" });
+  } finally {
+    connection.release();
+  }
+});
+
 
 
 //ACCOUNT
@@ -2088,7 +2422,7 @@ app.get("/api/users/:id", async (req, res) => {
          FROM users u
          LEFT JOIN teacher_profiles tp ON tp.user_id = u.user_id
          LEFT JOIN student_profiles sp ON sp.assigned_teacher_id = u.user_id
-         LEFT JOIN users student ON student.user_id = sp.user_id AND student.status = 'active'
+         LEFT JOIN users student ON student.user_id = sp.user_id AND student.status = 'active' AND student.profile_completed = TRUE
          LEFT JOIN teacher_courses tc ON tc.teacher_id = u.user_id
          LEFT JOIN courses c ON c.course_id = tc.course_id
          WHERE u.user_id = ?
@@ -2339,7 +2673,10 @@ app.post("/api/admin/users", async (req, res) => {
     }
 
     const defaultPassword = role === "teacher" ? "teacher" : "student";
-    const hash = await bcrypt.hash(password || defaultPassword, 10);
+    const initialPassword = ["student", "teacher"].includes(role)
+      ? crypto.randomBytes(32).toString("hex")
+      : password || defaultPassword;
+    const hash = await bcrypt.hash(initialPassword, 10);
     
     // Always mark newly created users as incomplete so they must complete their profile
     // This ensures they select their timezone and other settings
@@ -2397,6 +2734,9 @@ app.post("/api/admin/users", async (req, res) => {
       );
     }
     
+    let setupInvite = null;
+    let inviteEmailResult = null;
+
     // Create student profile if role is student
     if (role === "student") {
       const recommendation = await recommendTeacher({
@@ -2427,9 +2767,35 @@ app.post("/api/admin/users", async (req, res) => {
           VALUES (?, ?, 0, 'active', ?)
         `, [userId, parseInt(classesAvailed, 10), classDurationValue]);
       }
+
     }
 
-    res.json({ message: `${role.charAt(0).toUpperCase() + role.slice(1)} account created`, userId });
+    if (["student", "teacher"].includes(role)) {
+      setupInvite = await createAccountSetupInvite(pool, userId);
+      try {
+        inviteEmailResult = await sendAccountSetupInviteEmail({
+          email,
+          firstName,
+          role,
+          inviteUrl: setupInvite.inviteUrl,
+          expiresAt: setupInvite.expiresAt,
+        });
+      } catch (mailErr) {
+        console.error(`${role} account created, but invite email failed:`, mailErr);
+        inviteEmailResult = { sent: false, error: mailErr.message };
+      }
+    }
+
+    res.json({
+      message: ["student", "teacher"].includes(role)
+        ? `${role.charAt(0).toUpperCase() + role.slice(1)} account created and setup invite prepared`
+        : `${role.charAt(0).toUpperCase() + role.slice(1)} account created`,
+      userId,
+      inviteEmailSent: Boolean(inviteEmailResult?.sent),
+      inviteEmailSkipped: Boolean(inviteEmailResult?.skipped),
+      setupInviteExpiresAt: setupInvite?.expiresAt || null,
+      setupInviteUrl: process.env.NODE_ENV === "production" ? undefined : setupInvite?.inviteUrl,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error creating user" });
@@ -2444,25 +2810,392 @@ app.post("/api/admin/users", async (req, res) => {
 app.get("/api/admin/users", async (req, res) => {
   try {
     const { role, status } = req.query;
-    let query = "SELECT user_id, first_name, last_name, email, role, status FROM users WHERE 1=1";
+    let query = `
+      SELECT u.user_id, u.first_name, u.last_name, u.email, u.role, u.status,
+             u.profile_completed, u.password_changed,
+             asi.expires_at AS setup_invite_expires_at,
+             asi.used_at AS setup_invite_used_at,
+             CASE
+               WHEN u.role IN ('student', 'teacher') AND u.password_changed = TRUE THEN 'completed'
+               WHEN u.role IN ('student', 'teacher') AND asi.invite_id IS NULL THEN 'not_sent'
+               WHEN u.role IN ('student', 'teacher') AND asi.used_at IS NOT NULL THEN 'completed'
+               WHEN u.role IN ('student', 'teacher') AND asi.expires_at <= NOW() THEN 'expired'
+               WHEN u.role IN ('student', 'teacher') THEN 'sent'
+               ELSE NULL
+             END AS setup_invite_status
+      FROM users u
+      LEFT JOIN account_setup_invites asi
+        ON asi.invite_id = (
+          SELECT latest.invite_id
+          FROM account_setup_invites latest
+          WHERE latest.user_id = u.user_id
+          ORDER BY latest.created_at DESC, latest.invite_id DESC
+          LIMIT 1
+        )
+      WHERE 1=1`;
     const params = [];
 
     if (role) {
-      query += " AND role = ?";
+      query += " AND u.role = ?";
       params.push(role);
     }
 
     if (status) {
-      query += " AND status = ?";
+      query += " AND u.status = ?";
       params.push(status);
     }
 
-    query += " ORDER BY first_name ASC";
+    query += " ORDER BY u.first_name ASC";
     const [users] = await pool.query(query, params);
     res.json(users);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching users" });
+  }
+});
+
+app.get("/api/admin/users/:userId/account", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    await refreshProfileCompletion(userId);
+
+    const [rows] = await pool.query(
+      `SELECT u.user_id, u.first_name, u.last_name, u.email,
+              u.contact_number AS contact, u.country, u.birth_date, u.timezone,
+              u.role, u.status, u.profile_completed, u.password_changed, u.created_at,
+              sp.proficiency_level, sp.course_id, sp.assigned_teacher_id, sp.trial_notes,
+              c.course_name,
+              CONCAT(t.first_name, ' ', t.last_name) AS teacher_name,
+              scp.package_id, scp.total_classes, scp.classes_used, scp.classes_left,
+              scp.class_duration, scp.status AS package_status,
+              asi.expires_at AS setup_invite_expires_at,
+              asi.used_at AS setup_invite_used_at,
+              CASE
+                WHEN u.role IN ('student', 'teacher') AND u.password_changed = TRUE THEN 'completed'
+                WHEN u.role IN ('student', 'teacher') AND asi.invite_id IS NULL THEN 'not_sent'
+                WHEN u.role IN ('student', 'teacher') AND asi.used_at IS NOT NULL THEN 'completed'
+                WHEN u.role IN ('student', 'teacher') AND asi.expires_at <= NOW() THEN 'expired'
+                WHEN u.role IN ('student', 'teacher') THEN 'sent'
+                ELSE NULL
+              END AS setup_invite_status
+       FROM users u
+       LEFT JOIN student_profiles sp ON sp.user_id = u.user_id
+       LEFT JOIN courses c ON c.course_id = sp.course_id
+       LEFT JOIN users t ON t.user_id = sp.assigned_teacher_id
+       LEFT JOIN student_class_packages scp
+         ON scp.package_id = (
+           SELECT latest_package.package_id
+           FROM student_class_packages latest_package
+           WHERE latest_package.student_id = u.user_id
+           ORDER BY FIELD(latest_package.status, 'active', 'expired', 'cancelled'), latest_package.created_at DESC
+           LIMIT 1
+         )
+       LEFT JOIN account_setup_invites asi
+         ON asi.invite_id = (
+           SELECT latest_invite.invite_id
+           FROM account_setup_invites latest_invite
+           WHERE latest_invite.user_id = u.user_id
+           ORDER BY latest_invite.created_at DESC, latest_invite.invite_id DESC
+           LIMIT 1
+         )
+       WHERE u.user_id = ?
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const user = decryptFields(rows[0], ["contact", "birth_date", "trial_notes"]);
+    res.json({ user });
+  } catch (err) {
+    console.error("GET /api/admin/users/:userId/account error:", err);
+    res.status(500).json({ message: "Error fetching account details" });
+  }
+});
+
+app.post("/api/admin/students/:studentId/setup-invite", async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const { studentId } = req.params;
+    const shouldSendEmail = req.body?.sendEmail !== false;
+    await connection.beginTransaction();
+
+    const [rows] = await connection.query(
+      `SELECT user_id, first_name, email, role, status
+       FROM users
+       WHERE user_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [studentId]
+    );
+
+    if (!rows.length || rows[0].role !== "student") {
+      await connection.rollback();
+      return res.status(404).json({ message: "Student account not found" });
+    }
+
+    if (rows[0].status === "archived") {
+      await connection.rollback();
+      return res.status(400).json({ message: "Archived students cannot receive setup invites" });
+    }
+
+    const setupInvite = await createAccountSetupInvite(connection, rows[0].user_id);
+    await connection.commit();
+
+    let inviteEmailResult = null;
+    if (shouldSendEmail) {
+      try {
+        inviteEmailResult = await sendAccountSetupInviteEmail({
+          email: rows[0].email,
+          firstName: rows[0].first_name,
+          role: rows[0].role,
+          inviteUrl: setupInvite.inviteUrl,
+          expiresAt: setupInvite.expiresAt,
+        });
+      } catch (mailErr) {
+        console.error("Setup invite email failed:", mailErr);
+        inviteEmailResult = { sent: false, error: mailErr.message };
+      }
+    }
+
+    res.json({
+      message: shouldSendEmail
+        ? inviteEmailResult?.sent ? "Setup invite sent" : "Setup invite prepared, but email was not sent"
+        : "Setup invite link prepared",
+      inviteEmailSent: Boolean(inviteEmailResult?.sent),
+      inviteEmailSkipped: Boolean(inviteEmailResult?.skipped),
+      setupInviteExpiresAt: setupInvite.expiresAt,
+      setupInviteUrl: setupInvite.inviteUrl,
+    });
+  } catch (err) {
+    await connection.rollback();
+    console.error("POST /api/admin/students/:studentId/setup-invite error:", err);
+    res.status(500).json({ message: "Error sending setup invite" });
+  } finally {
+    connection.release();
+  }
+});
+
+app.post("/api/admin/users/:userId/setup-invite", async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const { userId } = req.params;
+    const shouldSendEmail = req.body?.sendEmail !== false;
+    await connection.beginTransaction();
+
+    const [rows] = await connection.query(
+      `SELECT user_id, first_name, email, role, status
+       FROM users
+       WHERE user_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [userId]
+    );
+
+    if (!rows.length || !["student", "teacher"].includes(rows[0].role)) {
+      await connection.rollback();
+      return res.status(404).json({ message: "Account not found" });
+    }
+
+    if (rows[0].status === "archived") {
+      await connection.rollback();
+      return res.status(400).json({ message: "Archived accounts cannot receive setup invites" });
+    }
+
+    const setupInvite = await createAccountSetupInvite(connection, rows[0].user_id);
+    await connection.commit();
+
+    let inviteEmailResult = null;
+    if (shouldSendEmail) {
+      try {
+        inviteEmailResult = await sendAccountSetupInviteEmail({
+          email: rows[0].email,
+          firstName: rows[0].first_name,
+          role: rows[0].role,
+          inviteUrl: setupInvite.inviteUrl,
+          expiresAt: setupInvite.expiresAt,
+        });
+      } catch (mailErr) {
+        console.error("Setup invite email failed:", mailErr);
+        inviteEmailResult = { sent: false, error: mailErr.message };
+      }
+    }
+
+    res.json({
+      message: shouldSendEmail
+        ? inviteEmailResult?.sent ? "Setup invite sent" : "Setup invite prepared, but email was not sent"
+        : "Setup invite link prepared",
+      inviteEmailSent: Boolean(inviteEmailResult?.sent),
+      inviteEmailSkipped: Boolean(inviteEmailResult?.skipped),
+      setupInviteExpiresAt: setupInvite.expiresAt,
+      setupInviteUrl: setupInvite.inviteUrl,
+    });
+  } catch (err) {
+    await connection.rollback();
+    console.error("POST /api/admin/users/:userId/setup-invite error:", err);
+    res.status(500).json({ message: "Error sending setup invite" });
+  } finally {
+    connection.release();
+  }
+});
+
+app.put("/api/admin/students/:studentId/email", async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const { studentId } = req.params;
+    const email = String(req.body?.email || "").trim();
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ message: "Please enter a valid email address" });
+    }
+
+    await connection.beginTransaction();
+
+    const [studentRows] = await connection.query(
+      `SELECT user_id, first_name, email, role, status
+       FROM users
+       WHERE user_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [studentId]
+    );
+
+    if (!studentRows.length || studentRows[0].role !== "student") {
+      await connection.rollback();
+      return res.status(404).json({ message: "Student account not found" });
+    }
+
+    if (studentRows[0].status === "archived") {
+      await connection.rollback();
+      return res.status(400).json({ message: "Restore the student before changing the email" });
+    }
+
+    const [existingRows] = await connection.query(
+      "SELECT user_id FROM users WHERE email = ? AND user_id <> ? LIMIT 1",
+      [email, studentId]
+    );
+
+    if (existingRows.length) {
+      await connection.rollback();
+      return res.status(409).json({ message: "Email already exists" });
+    }
+
+    await connection.query("UPDATE users SET email = ? WHERE user_id = ?", [email, studentId]);
+    const setupInvite = await createAccountSetupInvite(connection, studentId);
+    await connection.commit();
+
+    let inviteEmailResult = null;
+    try {
+      inviteEmailResult = await sendAccountSetupInviteEmail({
+        email,
+        firstName: studentRows[0].first_name,
+        role: studentRows[0].role,
+        inviteUrl: setupInvite.inviteUrl,
+        expiresAt: setupInvite.expiresAt,
+      });
+    } catch (mailErr) {
+      console.error("Email updated, but setup invite email failed:", mailErr);
+      inviteEmailResult = { sent: false, error: mailErr.message };
+    }
+
+    res.json({
+      message: inviteEmailResult?.sent
+        ? "Student email updated and setup invite sent"
+        : "Student email updated and setup invite prepared, but email was not sent",
+      inviteEmailSent: Boolean(inviteEmailResult?.sent),
+      inviteEmailSkipped: Boolean(inviteEmailResult?.skipped),
+      setupInviteExpiresAt: setupInvite.expiresAt,
+      setupInviteUrl: setupInvite.inviteUrl,
+    });
+  } catch (err) {
+    await connection.rollback();
+    console.error("PUT /api/admin/students/:studentId/email error:", err);
+    res.status(500).json({ message: "Error updating student email" });
+  } finally {
+    connection.release();
+  }
+});
+
+app.put("/api/admin/users/:userId/email", async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const { userId } = req.params;
+    const email = String(req.body?.email || "").trim();
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ message: "Please enter a valid email address" });
+    }
+
+    await connection.beginTransaction();
+
+    const [userRows] = await connection.query(
+      `SELECT user_id, first_name, email, role, status
+       FROM users
+       WHERE user_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [userId]
+    );
+
+    if (!userRows.length || !["student", "teacher"].includes(userRows[0].role)) {
+      await connection.rollback();
+      return res.status(404).json({ message: "Account not found" });
+    }
+
+    if (userRows[0].status === "archived") {
+      await connection.rollback();
+      return res.status(400).json({ message: "Restore the account before changing the email" });
+    }
+
+    const [existingRows] = await connection.query(
+      "SELECT user_id FROM users WHERE email = ? AND user_id <> ? LIMIT 1",
+      [email, userId]
+    );
+
+    if (existingRows.length) {
+      await connection.rollback();
+      return res.status(409).json({ message: "Email already exists" });
+    }
+
+    await connection.query("UPDATE users SET email = ? WHERE user_id = ?", [email, userId]);
+    const setupInvite = await createAccountSetupInvite(connection, userId);
+    await connection.commit();
+
+    let inviteEmailResult = null;
+    try {
+      inviteEmailResult = await sendAccountSetupInviteEmail({
+        email,
+        firstName: userRows[0].first_name,
+        role: userRows[0].role,
+        inviteUrl: setupInvite.inviteUrl,
+        expiresAt: setupInvite.expiresAt,
+      });
+    } catch (mailErr) {
+      console.error("Email updated, but setup invite email failed:", mailErr);
+      inviteEmailResult = { sent: false, error: mailErr.message };
+    }
+
+    res.json({
+      message: inviteEmailResult?.sent
+        ? "Email updated and setup invite sent"
+        : "Email updated and setup invite prepared, but email was not sent",
+      inviteEmailSent: Boolean(inviteEmailResult?.sent),
+      inviteEmailSkipped: Boolean(inviteEmailResult?.skipped),
+      setupInviteExpiresAt: setupInvite.expiresAt,
+      setupInviteUrl: setupInvite.inviteUrl,
+    });
+  } catch (err) {
+    await connection.rollback();
+    console.error("PUT /api/admin/users/:userId/email error:", err);
+    res.status(500).json({ message: "Error updating account email" });
+  } finally {
+    connection.release();
   }
 });
 
@@ -2941,7 +3674,10 @@ app.get("/api/calendar/teacher-availability", async (req, res) => {
               u.timezone AS teacher_timezone
        FROM teacher_availability ta
        JOIN users u ON u.user_id = ta.teacher_id
-       WHERE ta.teacher_id = ? AND ta.available_date BETWEEN ? AND ?
+       WHERE ta.teacher_id = ?
+         AND u.status = 'active'
+         AND u.profile_completed = TRUE
+         AND ta.available_date BETWEEN ? AND ?
        ORDER BY ta.available_date`,
       [teacher_id, sourceStartDate, sourceEndDate]
     );
@@ -2967,6 +3703,21 @@ app.post("/api/calendar/teacher-availability", async (req, res) => {
     
     if (!teacher_id || !available_date || !status) {
       return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const [teacherRows] = await pool.query(
+      `SELECT user_id
+       FROM users
+       WHERE user_id = ?
+         AND role = 'teacher'
+         AND status = 'active'
+         AND profile_completed = TRUE
+       LIMIT 1`,
+      [teacher_id]
+    );
+
+    if (!teacherRows.length) {
+      return res.status(400).json({ message: "Teacher account must be active and complete before setting availability." });
     }
 
     await pool.query(
@@ -3014,8 +3765,10 @@ app.get("/api/calendar/classes-by-date", async (req, res) => {
                  LEFT JOIN video_sessions vs ON vs.class_id = c.class_id
                  LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
                  JOIN users stu ON c.student_id = stu.user_id
+                  AND stu.status = 'active' AND stu.profile_completed = TRUE
                  LEFT JOIN student_profiles sp ON sp.user_id = stu.user_id
                  JOIN users tea ON c.teacher_id = tea.user_id
+                  AND tea.status = 'active' AND tea.profile_completed = TRUE
                  WHERE c.scheduled_date = ?
                  AND c.status = 'scheduled'
                  AND c.scheduled_date >= CURDATE()`;
@@ -3092,8 +3845,10 @@ app.get("/api/calendar/classes-by-month", async (req, res) => {
                  LEFT JOIN video_sessions vs ON vs.class_id = c.class_id
                  LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
                  JOIN users stu ON c.student_id = stu.user_id
+                  AND stu.status = 'active' AND stu.profile_completed = TRUE
                  LEFT JOIN student_profiles sp ON sp.user_id = stu.user_id
                  JOIN users tea ON c.teacher_id = tea.user_id
+                  AND tea.status = 'active' AND tea.profile_completed = TRUE
                  WHERE c.scheduled_date BETWEEN ? AND ?
                  AND c.status = 'scheduled'
                  AND c.scheduled_date >= CURDATE()`;
@@ -3155,8 +3910,10 @@ app.get("/api/calendar/upcoming-classes", async (req, res) => {
                  FROM classes c \
                  LEFT JOIN video_sessions vs ON vs.class_id = c.class_id \
                  JOIN users stu ON c.student_id = stu.user_id \
+                  AND stu.status = 'active' AND stu.profile_completed = TRUE \
                  LEFT JOIN student_profiles sp ON sp.user_id = stu.user_id \
                  JOIN users tea ON c.teacher_id = tea.user_id \
+                  AND tea.status = 'active' AND tea.profile_completed = TRUE \
                  WHERE c.status = 'scheduled' \
                  AND c.scheduled_date >= CURDATE()`;
     const params = [];
@@ -3241,9 +3998,13 @@ app.post("/api/calendar/classes/:class_id/start", async (req, res) => {
     }
 
     const [classRows] = await pool.query(
-      `SELECT class_id, teacher_id, student_id, status
-       FROM classes
-       WHERE class_id = ?
+      `SELECT c.class_id, c.teacher_id, c.student_id, c.status
+       FROM classes c
+       JOIN users stu ON c.student_id = stu.user_id
+        AND stu.status = 'active' AND stu.profile_completed = TRUE
+       JOIN users tea ON c.teacher_id = tea.user_id
+        AND tea.status = 'active' AND tea.profile_completed = TRUE
+       WHERE c.class_id = ?
        LIMIT 1`,
       [class_id]
     );
@@ -3296,9 +4057,13 @@ app.post("/api/calendar/classes/:class_id/join", async (req, res) => {
     }
 
     const [classRows] = await pool.query(
-      `SELECT class_id, teacher_id, student_id, status
-       FROM classes
-       WHERE class_id = ?
+      `SELECT c.class_id, c.teacher_id, c.student_id, c.status
+       FROM classes c
+       JOIN users stu ON c.student_id = stu.user_id
+        AND stu.status = 'active' AND stu.profile_completed = TRUE
+       JOIN users tea ON c.teacher_id = tea.user_id
+        AND tea.status = 'active' AND tea.profile_completed = TRUE
+       WHERE c.class_id = ?
        LIMIT 1`,
       [class_id]
     );
@@ -3361,9 +4126,13 @@ app.post("/api/calendar/classes/:class_id/end", classProofUpload.single("proof_i
     }
 
     const [classRows] = await pool.query(
-      `SELECT class_id, teacher_id, student_id, duration, status
-       FROM classes
-       WHERE class_id = ?
+      `SELECT c.class_id, c.teacher_id, c.student_id, c.duration, c.status
+       FROM classes c
+       JOIN users stu ON c.student_id = stu.user_id
+        AND stu.status = 'active' AND stu.profile_completed = TRUE
+       JOIN users tea ON c.teacher_id = tea.user_id
+        AND tea.status = 'active' AND tea.profile_completed = TRUE
+       WHERE c.class_id = ?
        LIMIT 1`,
       [class_id]
     );
@@ -3499,6 +4268,7 @@ app.get("/api/admin/class-verifications", async (req, res) => {
        FROM classes c
        LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
        JOIN users stu ON c.student_id = stu.user_id
+        AND stu.status = 'active' AND stu.profile_completed = TRUE
        JOIN users tea ON c.teacher_id = tea.user_id
        ${whereClause}
        ORDER BY c.scheduled_date DESC, c.start_time DESC, c.class_id DESC
@@ -3660,6 +4430,7 @@ app.get("/api/student/:student_id/class-history", async (req, res) => {
        FROM classes c
        LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
        JOIN users tea ON c.teacher_id = tea.user_id
+        AND tea.status = 'active' AND tea.profile_completed = TRUE
        WHERE c.student_id = ?
          AND (
            cal.log_id IS NOT NULL
@@ -3705,6 +4476,7 @@ app.get("/api/teacher/:teacher_id/class-history", async (req, res) => {
        FROM classes c
        LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
        JOIN users stu ON c.student_id = stu.user_id
+        AND stu.status = 'active' AND stu.profile_completed = TRUE
        WHERE c.teacher_id = ?
          AND (
            cal.log_id IS NOT NULL
@@ -3737,6 +4509,30 @@ app.post("/api/calendar/class", async (req, res) => {
 
     await autoMarkPastClassesAsNoShow(pool);
     await connection.beginTransaction();
+
+    const [participantRows] = await connection.query(
+      `SELECT user_id, role, status, profile_completed
+       FROM users
+       WHERE user_id IN (?, ?)`,
+      [teacher_id, student_id]
+    );
+    const teacherReady = participantRows.some((user) =>
+      Number(user.user_id) === Number(teacher_id) &&
+      user.role === "teacher" &&
+      user.status === "active" &&
+      Boolean(user.profile_completed)
+    );
+    const studentReady = participantRows.some((user) =>
+      Number(user.user_id) === Number(student_id) &&
+      user.role === "student" &&
+      user.status === "active" &&
+      Boolean(user.profile_completed)
+    );
+
+    if (!teacherReady || !studentReady) {
+      await connection.rollback();
+      return res.status(400).json({ message: "Teacher and student accounts must be active and complete before booking a class." });
+    }
 
     const [packageRows] = await connection.query(
       `SELECT package_id, total_classes, classes_used, classes_left, class_duration, created_at
@@ -3937,6 +4733,10 @@ app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
               cal.duration_minutes, cal.proof_url, cal.summary, cal.verification_status
        FROM classes c
        LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
+       JOIN users stu ON c.student_id = stu.user_id
+        AND stu.status = 'active' AND stu.profile_completed = TRUE
+       JOIN users tea ON c.teacher_id = tea.user_id
+        AND tea.status = 'active' AND tea.profile_completed = TRUE
        WHERE c.class_id = ?
        FOR UPDATE`,
       [class_id]
@@ -4105,9 +4905,13 @@ app.put("/api/calendar/classes/:class_id/no-show", async (req, res) => {
     await connection.beginTransaction();
 
     const [classRows] = await connection.query(
-      `SELECT class_id, teacher_id, student_id, class_name, status
-       FROM classes
-       WHERE class_id = ?
+      `SELECT c.class_id, c.teacher_id, c.student_id, c.class_name, c.status
+       FROM classes c
+       JOIN users stu ON c.student_id = stu.user_id
+        AND stu.status = 'active' AND stu.profile_completed = TRUE
+       JOIN users tea ON c.teacher_id = tea.user_id
+        AND tea.status = 'active' AND tea.profile_completed = TRUE
+       WHERE c.class_id = ?
        FOR UPDATE`,
       [class_id]
     );
@@ -4190,8 +4994,11 @@ app.post("/api/calendar/reschedule-request", async (req, res) => {
               ru.last_name AS requester_last
        FROM classes c
        JOIN users tea ON c.teacher_id = tea.user_id
+        AND tea.status = 'active' AND tea.profile_completed = TRUE
        JOIN users stu ON c.student_id = stu.user_id
+        AND stu.status = 'active' AND stu.profile_completed = TRUE
        JOIN users ru ON ru.user_id = ?
+        AND ru.status = 'active' AND (ru.role = 'admin' OR ru.profile_completed = TRUE)
        WHERE c.class_id = ? AND (c.teacher_id = ? OR c.student_id = ?)`,
       [requested_by_id, class_id, requested_by_id, requested_by_id]
     );
@@ -4304,7 +5111,9 @@ app.get("/api/calendar/booked-dates/:user_id", async (req, res) => {
               stu.timezone AS student_timezone
        FROM classes c
        JOIN users tea ON c.teacher_id = tea.user_id
+        AND tea.status = 'active' AND tea.profile_completed = TRUE
        JOIN users stu ON c.student_id = stu.user_id
+        AND stu.status = 'active' AND stu.profile_completed = TRUE
        WHERE (teacher_id = ? OR student_id = ?)
        AND c.status = 'scheduled'
        AND c.scheduled_date >= CURDATE()
@@ -4337,8 +5146,11 @@ app.get("/api/calendar/my-reschedule-requests/:user_id", async (req, res) => {
        FROM reschedule_requests rr
        JOIN classes c ON rr.class_id = c.class_id
        JOIN users req ON rr.requested_by_id = req.user_id
-       LEFT JOIN users stu ON c.student_id = stu.user_id
-       LEFT JOIN users tea ON c.teacher_id = tea.user_id
+        AND req.status = 'active' AND (req.role = 'admin' OR req.profile_completed = TRUE)
+       JOIN users stu ON c.student_id = stu.user_id
+        AND stu.status = 'active' AND stu.profile_completed = TRUE
+       JOIN users tea ON c.teacher_id = tea.user_id
+        AND tea.status = 'active' AND tea.profile_completed = TRUE
        WHERE (c.teacher_id = ? OR c.student_id = ?)
        AND rr.requested_by_id != ?
        AND rr.status = 'pending'
@@ -4363,6 +5175,10 @@ app.post("/api/calendar/reschedule-requests/:id/approve", async (req, res) => {
     const [authCheck] = await pool.query(
       `SELECT rr.* FROM reschedule_requests rr
        JOIN classes c ON rr.class_id = c.class_id
+       JOIN users stu ON c.student_id = stu.user_id
+        AND stu.status = 'active' AND stu.profile_completed = TRUE
+       JOIN users tea ON c.teacher_id = tea.user_id
+        AND tea.status = 'active' AND tea.profile_completed = TRUE
        WHERE rr.request_id = ? AND (c.teacher_id = ? OR c.student_id = ?)`,
       [id, user_id, user_id]
     );
@@ -4391,8 +5207,12 @@ app.post("/api/calendar/reschedule-requests/:id/approve", async (req, res) => {
               start_time,
               end_time,
               duration
-       FROM classes
-       WHERE class_id = ?`,
+       FROM classes c
+       JOIN users stu ON c.student_id = stu.user_id
+        AND stu.status = 'active' AND stu.profile_completed = TRUE
+       JOIN users tea ON c.teacher_id = tea.user_id
+        AND tea.status = 'active' AND tea.profile_completed = TRUE
+       WHERE c.class_id = ?`,
       [class_id]
     );
 
@@ -4536,6 +5356,10 @@ app.post("/api/calendar/reschedule-requests/:id/reject", async (req, res) => {
     const [authCheck] = await pool.query(
       `SELECT rr.* FROM reschedule_requests rr
        JOIN classes c ON rr.class_id = c.class_id
+       JOIN users stu ON c.student_id = stu.user_id
+        AND stu.status = 'active' AND stu.profile_completed = TRUE
+       JOIN users tea ON c.teacher_id = tea.user_id
+        AND tea.status = 'active' AND tea.profile_completed = TRUE
        WHERE rr.request_id = ? AND (c.teacher_id = ? OR c.student_id = ?)`,
       [id, user_id, user_id]
     );
@@ -4648,6 +5472,24 @@ app.post("/api/calendar/remarks", async (req, res) => {
 
     if (!class_id || !teacher_id || !student_id || !remarks) {
       return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const [visibleClassRows] = await pool.query(
+      `SELECT c.class_id
+       FROM classes c
+       JOIN users stu ON c.student_id = stu.user_id
+        AND stu.status = 'active' AND stu.profile_completed = TRUE
+       JOIN users tea ON c.teacher_id = tea.user_id
+        AND tea.status = 'active' AND tea.profile_completed = TRUE
+       WHERE c.class_id = ?
+         AND c.teacher_id = ?
+         AND c.student_id = ?
+       LIMIT 1`,
+      [class_id, teacher_id, student_id]
+    );
+
+    if (!visibleClassRows.length) {
+      return res.status(400).json({ message: "Teacher and student accounts must be active and complete before saving remarks" });
     }
 
     await pool.query(
@@ -4985,7 +5827,11 @@ app.post("/api/chats/messages", async (req, res) => {
     }
 
     const [users] = await pool.query(
-      `SELECT user_id FROM users WHERE user_id IN (?, ?) AND status = 'active'`,
+      `SELECT user_id
+       FROM users
+       WHERE user_id IN (?, ?)
+         AND status = 'active'
+         AND (role = 'admin' OR profile_completed = TRUE)`,
       [sender_id, recipient_id]
     );
 
@@ -5275,6 +6121,7 @@ app.get("/api/student/profile/:student_id", async (req, res) => {
        FROM student_profiles sp
        JOIN users u ON sp.user_id = u.user_id
        LEFT JOIN users ta ON sp.assigned_teacher_id = ta.user_id
+        AND ta.status = 'active' AND ta.profile_completed = TRUE
        LEFT JOIN courses c ON sp.course_id = c.course_id
        WHERE sp.user_id = ?`,
       [student_id]
@@ -5344,7 +6191,13 @@ app.get("/api/student/assigned-teacher/:student_id", async (req, res) => {
   try {
     const { student_id } = req.params;
     const [rows] = await pool.query(
-      `SELECT assigned_teacher_id FROM student_profiles WHERE user_id = ? LIMIT 1`,
+      `SELECT sp.assigned_teacher_id
+       FROM student_profiles sp
+       JOIN users t ON t.user_id = sp.assigned_teacher_id
+       WHERE sp.user_id = ?
+         AND t.status = 'active'
+         AND t.profile_completed = TRUE
+       LIMIT 1`,
       [student_id]
     );
 
@@ -5387,7 +6240,10 @@ app.get("/api/teacher/:teacher_id/students", async (req, res) => {
           ORDER BY latest.status = 'active' DESC, latest.created_at DESC, latest.package_id DESC
           LIMIT 1
         )
-       WHERE sp.assigned_teacher_id = ?`,
+       WHERE sp.assigned_teacher_id = ?
+         AND u.role = 'student'
+         AND u.status = 'active'
+         AND u.profile_completed = TRUE`,
       [teacher_id]
     );
 
@@ -5857,7 +6713,10 @@ app.get("/api/calendar/teacher-availability-records", async (req, res) => {
               u.timezone AS teacher_timezone
        FROM teacher_availability ta
        JOIN users u ON u.user_id = ta.teacher_id
-       WHERE ta.teacher_id = ? AND ta.available_date BETWEEN ? AND ?
+       WHERE ta.teacher_id = ?
+         AND u.status = 'active'
+         AND u.profile_completed = TRUE
+         AND ta.available_date BETWEEN ? AND ?
        ORDER BY ta.available_date ASC`,
       [teacher_id, sourceStartDate, sourceEndDate]
     );
@@ -5892,7 +6751,10 @@ app.get("/api/calendar/teacher-availability-record", async (req, res) => {
               u.timezone AS teacher_timezone
        FROM teacher_availability ta
        JOIN users u ON u.user_id = ta.teacher_id
-       WHERE ta.teacher_id = ? AND DATE(ta.available_date) = ?
+       WHERE ta.teacher_id = ?
+         AND u.status = 'active'
+         AND u.profile_completed = TRUE
+         AND DATE(ta.available_date) = ?
        LIMIT 1`,
       [teacher_id, available_date]
     );
@@ -5911,6 +6773,21 @@ app.post("/api/calendar/set-availability", async (req, res) => {
 
     if (!teacher_id || !available_date || !status) {
       return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const [teacherRows] = await pool.query(
+      `SELECT user_id
+       FROM users
+       WHERE user_id = ?
+         AND role = 'teacher'
+         AND status = 'active'
+         AND profile_completed = TRUE
+       LIMIT 1`,
+      [teacher_id]
+    );
+
+    if (!teacherRows.length) {
+      return res.status(400).json({ message: "Teacher account must be active and complete before setting availability." });
     }
 
     // Validate date is not in the past
@@ -6028,7 +6905,7 @@ app.post("/api/calendar/set-availability", async (req, res) => {
 
     const availabilityId = availabilityRows[0]?.availability_id || result.insertId || null;
 
-    const [teacherRows] = await pool.query(
+    const [notificationTeacherRows] = await pool.query(
       `SELECT first_name, last_name
        FROM users
        WHERE user_id = ?
@@ -6036,8 +6913,8 @@ app.post("/api/calendar/set-availability", async (req, res) => {
       [teacher_id]
     );
 
-    const teacherName = teacherRows.length
-      ? `${teacherRows[0].first_name || ""} ${teacherRows[0].last_name || ""}`.trim() || "Your teacher"
+    const teacherName = notificationTeacherRows.length
+      ? `${notificationTeacherRows[0].first_name || ""} ${notificationTeacherRows[0].last_name || ""}`.trim() || "Your teacher"
       : "Your teacher";
 
     const [studentRows] = await pool.query(
@@ -6046,7 +6923,8 @@ app.post("/api/calendar/set-availability", async (req, res) => {
        JOIN users u ON u.user_id = sp.user_id
        WHERE sp.assigned_teacher_id = ?
          AND u.role = 'student'
-         AND u.status = 'active'`,
+         AND u.status = 'active'
+         AND u.profile_completed = TRUE`,
       [teacher_id]
     );
 
@@ -6117,7 +6995,8 @@ app.delete("/api/calendar/availability/:availability_id", async (req, res) => {
          JOIN users u ON u.user_id = sp.user_id
          WHERE sp.assigned_teacher_id = ?
            AND u.role = 'student'
-           AND u.status = 'active'`,
+           AND u.status = 'active'
+           AND u.profile_completed = TRUE`,
         [teacher_id]
       );
 
@@ -6213,6 +7092,10 @@ async function canStudentAccessBook(studentId, bookId) {
   let query = `SELECT b.book_id
      FROM books b
      JOIN student_profiles sp ON sp.user_id = ?
+     JOIN users student ON student.user_id = sp.user_id
+      AND student.status = 'active' AND student.profile_completed = TRUE
+     JOIN users teacher ON teacher.user_id = b.teacher_id
+      AND teacher.status = 'active' AND teacher.profile_completed = TRUE
      WHERE b.book_id = ?
        AND b.teacher_id = ?`;
 
@@ -6236,6 +7119,10 @@ async function canStudentAccessLesson(studentId, lessonId) {
      FROM lessons l
      JOIN books b ON l.book_id = b.book_id
      JOIN student_profiles sp ON sp.user_id = ?
+     JOIN users student ON student.user_id = sp.user_id
+      AND student.status = 'active' AND student.profile_completed = TRUE
+     JOIN users teacher ON teacher.user_id = b.teacher_id
+      AND teacher.status = 'active' AND teacher.profile_completed = TRUE
      WHERE l.lesson_id = ?
        AND b.teacher_id = ?`;
 
@@ -6258,6 +7145,7 @@ async function getAssignedStudentIds(teacherId, courseId) {
      JOIN student_profiles sp ON sp.user_id = u.user_id
      WHERE u.role = 'student'
        AND u.status = 'active'
+       AND u.profile_completed = TRUE
        AND sp.assigned_teacher_id = ?`;
   const params = [teacherId];
 
@@ -6336,7 +7224,7 @@ async function getDefaultChatContacts(userId, role) {
       `SELECT u.user_id, u.first_name, u.last_name, u.email, u.profile_image_url, u.role, u.status
        FROM student_profiles sp
        JOIN users u ON u.user_id = sp.assigned_teacher_id
-       WHERE sp.user_id = ? AND u.status = 'active'
+       WHERE sp.user_id = ? AND u.status = 'active' AND u.profile_completed = TRUE
        LIMIT 1`,
       [userId]
     );
@@ -6352,6 +7240,7 @@ async function getDefaultChatContacts(userId, role) {
        WHERE sp.assigned_teacher_id = ?
          AND u.role = 'student'
          AND u.status = 'active'
+         AND u.profile_completed = TRUE
        ORDER BY u.first_name ASC, u.last_name ASC`,
       [userId]
     );
@@ -6363,7 +7252,7 @@ async function getDefaultChatContacts(userId, role) {
     const [rows] = await pool.query(
       `SELECT user_id, first_name, last_name, email, profile_image_url, role, status
        FROM users
-       WHERE status = 'active' AND role IN ('teacher', 'student')
+       WHERE status = 'active' AND profile_completed = TRUE AND role IN ('teacher', 'student')
        ORDER BY role ASC, first_name ASC, last_name ASC
        LIMIT 50`
     );
@@ -6412,6 +7301,7 @@ async function getChatConversationSummaries(userId) {
      ) conv ON conv.other_id = u.user_id
      JOIN messages lm ON lm.message_id = conv.latest_message_id
      WHERE u.status = 'active'
+       AND (u.role = 'admin' OR u.profile_completed = TRUE)
      ORDER BY lm.sent_at DESC, lm.message_id DESC`,
     [userId, userId, userId]
   );
@@ -6430,13 +7320,18 @@ async function getChatConversationSummaries(userId) {
 
 async function getChatConversationsForUser(userId) {
   const currentUser = await pool.query(
-    `SELECT user_id, role, status FROM users WHERE user_id = ? LIMIT 1`,
+    `SELECT user_id, role, status, profile_completed FROM users WHERE user_id = ? LIMIT 1`,
     [userId]
   );
   const [userRows] = currentUser;
   if (!userRows.length) return [];
 
-  const role = userRows[0].role;
+  const current = userRows[0];
+  const role = current.role;
+  if (current.status !== "active" || (role !== "admin" && !current.profile_completed)) {
+    return [];
+  }
+
   const [summaryRows, defaultContacts] = await Promise.all([
     getChatConversationSummaries(userId),
     getDefaultChatContacts(userId, role),
@@ -6486,7 +7381,9 @@ async function getChatThread(userId, otherUserId) {
         r.last_name AS recipient_last_name
      FROM messages m
      JOIN users s ON s.user_id = m.sender_id
+      AND s.status = 'active' AND (s.role = 'admin' OR s.profile_completed = TRUE)
      JOIN users r ON r.user_id = m.recipient_id
+      AND r.status = 'active' AND (r.role = 'admin' OR r.profile_completed = TRUE)
      WHERE (m.sender_id = ? AND m.recipient_id = ?)
         OR (m.sender_id = ? AND m.recipient_id = ?)
      ORDER BY m.sent_at ASC, m.message_id ASC`,
@@ -6734,6 +7631,7 @@ app.get("/api/teacher/book/:bookId/progress", async (req, res) => {
        JOIN student_profiles sp ON sp.user_id = u.user_id
        WHERE u.role = 'student'
          AND u.status = 'active'
+         AND u.profile_completed = TRUE
          AND sp.course_id = ?
          AND sp.assigned_teacher_id = ?
        ORDER BY u.last_name ASC, u.first_name ASC`,
