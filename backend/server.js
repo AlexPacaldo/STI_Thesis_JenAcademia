@@ -10,6 +10,7 @@ import mysql from "mysql2/promise";
 import net from "net";
 import path from "path";
 import tls from "tls";
+import { assessClassEvidence } from "./classEvidence.js";
 
 dotenv.config();
 
@@ -53,6 +54,11 @@ const UPLOAD_ROOT = path.resolve(
     process.env.RAILWAY_VOLUME_MOUNT_PATH ||
     path.join(process.cwd(), "uploads")
 );
+const PRIVATE_UPLOAD_ROOT = path.resolve(
+  process.env.PRIVATE_UPLOAD_ROOT ||
+    path.join(process.cwd(), "private-uploads")
+);
+const RECORDING_RETENTION_DAYS = Number(process.env.CLASS_RECORDING_RETENTION_DAYS || 7);
 
 const app = express();
 app.use(cors({
@@ -347,6 +353,8 @@ const profileUploadDir = path.join(UPLOAD_ROOT, "profiles");
 fs.mkdirSync(profileUploadDir, { recursive: true });
 const classProofUploadDir = path.join(UPLOAD_ROOT, "class-proofs");
 fs.mkdirSync(classProofUploadDir, { recursive: true });
+const classRecordingUploadDir = path.join(PRIVATE_UPLOAD_ROOT, "class-recordings");
+fs.mkdirSync(classRecordingUploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: uploadDir,
@@ -391,6 +399,24 @@ const classProofUpload = multer({
       return;
     }
     cb(new Error("Only JPG, PNG, and WEBP class proof screenshots are allowed"));
+  },
+});
+const classRecordingStorage = multer.diskStorage({
+  destination: classRecordingUploadDir,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase() || ".webm";
+    cb(null, `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`);
+  },
+});
+const classRecordingUpload = multer({
+  storage: classRecordingStorage,
+  limits: { fileSize: 500 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (["video/webm", "video/mp4", "video/x-matroska"].includes(file.mimetype)) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error("Only WEBM or MP4 class recordings are allowed"));
   },
 });
 app.use("/uploads", express.static(UPLOAD_ROOT));
@@ -663,6 +689,8 @@ function timeToMinutes(value) {
 
 const ALLOWED_CLASS_DURATIONS = new Set([25, 50]);
 const DEFAULT_CLASS_DURATION = 50;
+const CLASS_BREAK_BUFFER_MINUTES = 10;
+const SCHEDULE_WINDOW_MONTHS = 3;
 
 function normalizeClassDuration(value) {
   const parsed = parseInt(value, 10);
@@ -691,6 +719,17 @@ function rangesOverlap(aStart, aEnd, bStart, bEnd) {
   return aStart < bEnd && aEnd > bStart;
 }
 
+function rangesOverlapWithClassBuffer(aStart, aEnd, bStart, bEnd) {
+  return rangesOverlap(aStart, aEnd, bStart - CLASS_BREAK_BUFFER_MINUTES, bEnd + CLASS_BREAK_BUFFER_MINUTES);
+}
+
+function addMonthsClamped(date, months) {
+  const base = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const targetMonth = base.getMonth() + months;
+  const lastDay = new Date(base.getFullYear(), targetMonth + 1, 0).getDate();
+  return new Date(base.getFullYear(), targetMonth, Math.min(base.getDate(), lastDay));
+}
+
 function getClassInterval(startTime, durationMinutes, endTime = null) {
   const start = timeToMinutes(startTime);
   if (start == null) return null;
@@ -714,7 +753,7 @@ function hasClassConflict(rows, start, end, excludeClassId = null) {
 
     const interval = getClassInterval(row.start_time, row.duration, row.end_time);
     if (!interval) return false;
-    return rangesOverlap(interval.start, interval.end, start, end);
+    return rangesOverlapWithClassBuffer(start, end, interval.start, interval.end);
   });
 }
 
@@ -740,7 +779,13 @@ async function getStudentPackageAvailability(connection, studentId) {
     `SELECT COUNT(*) AS booked_count
      FROM classes
      WHERE student_id = ?
-       AND status IN ('scheduled', 'completed')
+       AND status = 'scheduled'
+       AND scheduled_date >= CURDATE()
+       AND NOT EXISTS (
+         SELECT 1 FROM class_attendance_logs cal
+         WHERE cal.class_id = classes.class_id
+           AND cal.verification_status = 'incomplete'
+       )
        AND created_at >= ?`,
     [studentId, packageInfo.created_at]
   );
@@ -748,12 +793,11 @@ async function getStudentPackageAvailability(connection, studentId) {
   const bookedClasses = Number(scheduledRows[0]?.booked_count || 0);
   const totalClasses = Number(packageInfo.total_classes || 0);
   const classesLeft = Number(packageInfo.classes_left ?? Math.max(0, totalClasses - Number(packageInfo.classes_used || 0)));
-  const scheduleSlotsLeft = Math.max(0, totalClasses - bookedClasses);
 
   return {
     package: packageInfo,
     bookedClasses,
-    bookableClasses: Math.max(0, Math.min(classesLeft, scheduleSlotsLeft)),
+    bookableClasses: Math.max(0, classesLeft - bookedClasses),
   };
 }
 
@@ -793,11 +837,66 @@ async function deleteLocalClassProofImage(imageUrl) {
   }
 }
 
+async function deleteLocalClassRecording(recordingUrl) {
+  if (!recordingUrl || !String(recordingUrl).startsWith("/private-uploads/class-recordings/")) return;
+  const fileName = path.basename(recordingUrl);
+  const filePath = path.resolve(classRecordingUploadDir, fileName);
+  const recordingDir = path.resolve(classRecordingUploadDir);
+
+  if (!filePath.startsWith(recordingDir + path.sep)) return;
+
+  try {
+    if (fs.existsSync(filePath)) {
+      await fs.promises.unlink(filePath);
+    }
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      console.warn("Could not delete class recording:", err.message);
+    }
+  }
+}
+
+async function cleanupExpiredClassRecordings(db = pool) {
+  const [rows] = await db.query(
+    `SELECT class_id, recording_url
+     FROM class_attendance_logs
+     WHERE recording_url IS NOT NULL
+       AND recording_url <> ''
+       AND recording_expires_at IS NOT NULL
+       AND recording_expires_at <= NOW()`
+  );
+
+  if (!rows.length) return;
+
+  await Promise.all(rows.map((row) => deleteLocalClassRecording(row.recording_url)));
+  await db.query(
+    `UPDATE class_attendance_logs
+     SET recording_url = NULL,
+         recording_mime_type = NULL,
+         recording_size_bytes = NULL,
+         recording_uploaded_at = NULL,
+         recording_expires_at = NULL
+     WHERE recording_expires_at IS NOT NULL
+       AND recording_expires_at <= NOW()`
+  );
+}
+
 const MS_TENANT_ID = process.env.MS_TENANT_ID || "";
 const MS_CLIENT_ID = process.env.MS_CLIENT_ID || "";
 const MS_CLIENT_SECRET = process.env.MS_CLIENT_SECRET || "";
 const MS_TEAMS_ORGANIZER_UPN = process.env.MS_TEAMS_ORGANIZER_UPN || "";
 const JITSI_BASE_URL = process.env.JITSI_BASE_URL || "https://meet.jit.si";
+const JITSI_JWT_APP_ID = process.env.JITSI_JWT_APP_ID || "";
+const JITSI_JWT_APP_SECRET = process.env.JITSI_JWT_APP_SECRET || "";
+const JITSI_JWT_AUDIENCE = process.env.JITSI_JWT_AUDIENCE || JITSI_JWT_APP_ID;
+function getHostnameFromUrl(value, fallback = "meet.jit.si") {
+  try {
+    return new URL(value).hostname || fallback;
+  } catch {
+    return fallback;
+  }
+}
+const JITSI_JWT_SUBJECT = process.env.JITSI_JWT_SUBJECT || getHostnameFromUrl(JITSI_BASE_URL);
 
 async function getMicrosoftGraphAccessToken() {
   if (!MS_TENANT_ID || !MS_CLIENT_ID || !MS_CLIENT_SECRET) {
@@ -919,6 +1018,59 @@ function generateJitsiMeetingLink({ className, scheduledDate, startTime, teacher
 
   const baseUrl = JITSI_BASE_URL.replace(/\/+$/, "");
   return `${baseUrl}/${roomParts.join("-")}`;
+}
+
+function base64UrlEncodeJson(value) {
+  return Buffer.from(JSON.stringify(value))
+    .toString("base64url");
+}
+
+function signJitsiJwt(payload) {
+  if (!JITSI_JWT_APP_ID || !JITSI_JWT_APP_SECRET) return "";
+
+  const header = { alg: "HS256", typ: "JWT" };
+  const encodedHeader = base64UrlEncodeJson(header);
+  const encodedPayload = base64UrlEncodeJson(payload);
+  const signature = crypto
+    .createHmac("sha256", JITSI_JWT_APP_SECRET)
+    .update(`${encodedHeader}.${encodedPayload}`)
+    .digest("base64url");
+
+  return `${encodedHeader}.${encodedPayload}.${signature}`;
+}
+
+function getJitsiRoomName(classLink) {
+  try {
+    const parsed = new URL(classLink || "");
+    return decodeURIComponent(parsed.pathname.replace(/^\/+/, "").replace(/\/+$/, ""));
+  } catch {
+    return "";
+  }
+}
+
+function createJitsiJwtForClass({ classInfo, user, isModerator }) {
+  const room = getJitsiRoomName(classInfo?.class_link);
+  if (!room) return "";
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const displayName = [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim() || user?.email || "Jen Academia User";
+
+  return signJitsiJwt({
+    aud: JITSI_JWT_AUDIENCE,
+    iss: JITSI_JWT_APP_ID,
+    sub: JITSI_JWT_SUBJECT,
+    room,
+    exp: nowSeconds + 2 * 60 * 60,
+    nbf: nowSeconds - 30,
+    context: {
+      user: {
+        id: String(user?.user_id || ""),
+        name: displayName,
+        email: user?.email || "",
+        moderator: Boolean(isModerator),
+      },
+    },
+  });
 }
 
 async function columnExists(tableName, columnName) {
@@ -1084,6 +1236,13 @@ async function ensureClassAttendanceLogsTable() {
       teacher_ended_at TIMESTAMP NULL DEFAULT NULL,
       duration_minutes INT NOT NULL DEFAULT 0,
       proof_url VARCHAR(1000) DEFAULT NULL,
+      recording_url VARCHAR(1000) DEFAULT NULL,
+      recording_mime_type VARCHAR(120) DEFAULT NULL,
+      recording_size_bytes BIGINT DEFAULT NULL,
+      recording_uploaded_at TIMESTAMP NULL DEFAULT NULL,
+      recording_expires_at TIMESTAMP NULL DEFAULT NULL,
+      teacher_recording_consent_at TIMESTAMP NULL DEFAULT NULL,
+      student_recording_consent_at TIMESTAMP NULL DEFAULT NULL,
       summary TEXT DEFAULT NULL,
       verification_status ENUM('pending','in_progress','student_confirmed','verified','needs_review','incomplete') NOT NULL DEFAULT 'pending',
       created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1098,6 +1257,29 @@ async function ensureClassAttendanceLogsTable() {
       CONSTRAINT class_attendance_student_fk FOREIGN KEY (student_id) REFERENCES users (user_id)
     )
   `);
+
+  const columns = [
+    ["evidence_mode", "ALTER TABLE class_attendance_logs ADD COLUMN evidence_mode VARCHAR(20) DEFAULT NULL"],
+    ["start_proof_url", "ALTER TABLE class_attendance_logs ADD COLUMN start_proof_url VARCHAR(1000) DEFAULT NULL"],
+    ["start_proof_uploaded_at", "ALTER TABLE class_attendance_logs ADD COLUMN start_proof_uploaded_at TIMESTAMP NULL"],
+    ["end_proof_uploaded_at", "ALTER TABLE class_attendance_logs ADD COLUMN end_proof_uploaded_at TIMESTAMP NULL"],
+    ["recording_started_at", "ALTER TABLE class_attendance_logs ADD COLUMN recording_started_at TIMESTAMP NULL"],
+    ["recording_duration_seconds", "ALTER TABLE class_attendance_logs ADD COLUMN recording_duration_seconds INT DEFAULT 0"],
+    ["review_reason", "ALTER TABLE class_attendance_logs ADD COLUMN review_reason TEXT DEFAULT NULL"],
+    ["recording_url", "ALTER TABLE class_attendance_logs ADD COLUMN recording_url VARCHAR(1000) DEFAULT NULL AFTER proof_url"],
+    ["recording_mime_type", "ALTER TABLE class_attendance_logs ADD COLUMN recording_mime_type VARCHAR(120) DEFAULT NULL AFTER recording_url"],
+    ["recording_size_bytes", "ALTER TABLE class_attendance_logs ADD COLUMN recording_size_bytes BIGINT DEFAULT NULL AFTER recording_mime_type"],
+    ["recording_uploaded_at", "ALTER TABLE class_attendance_logs ADD COLUMN recording_uploaded_at TIMESTAMP NULL DEFAULT NULL AFTER recording_size_bytes"],
+    ["recording_expires_at", "ALTER TABLE class_attendance_logs ADD COLUMN recording_expires_at TIMESTAMP NULL DEFAULT NULL AFTER recording_uploaded_at"],
+    ["teacher_recording_consent_at", "ALTER TABLE class_attendance_logs ADD COLUMN teacher_recording_consent_at TIMESTAMP NULL DEFAULT NULL AFTER recording_expires_at"],
+    ["student_recording_consent_at", "ALTER TABLE class_attendance_logs ADD COLUMN student_recording_consent_at TIMESTAMP NULL DEFAULT NULL AFTER teacher_recording_consent_at"],
+  ];
+
+  for (const [columnName, alterSql] of columns) {
+    if (!(await columnExists("class_attendance_logs", columnName))) {
+      await pool.query(alterSql);
+    }
+  }
 }
 
 async function ensureStudentCourseProgressTable() {
@@ -1734,6 +1916,7 @@ async function expireDepletedPackages(db = pool) {
 }
 
 const AUTO_MARK_PAST_CLASSES_INTERVAL_MS = 60 * 1000;
+const CLASS_ATTENDANCE_GRACE_MINUTES = 15;
 let lastAutoMarkPastClassesAt = 0;
 let autoMarkPastClassesPromise = null;
 
@@ -1744,17 +1927,34 @@ async function autoMarkPastClassesAsNoShow(db = pool) {
 
   autoMarkPastClassesPromise = db
     .query(
-      `UPDATE classes
-       SET status = 'no-show'
-       WHERE status = 'scheduled'
+      `SELECT c.class_id, c.teacher_id, c.student_id
+       FROM classes c
+       LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
+       WHERE c.status = 'scheduled'
+         AND TIMESTAMP(c.scheduled_date, COALESCE(c.start_time, '00:00:00')) <= DATE_SUB(NOW(), INTERVAL ? MINUTE)
          AND (
-           scheduled_date < CURDATE()
-           OR (
-             scheduled_date = CURDATE()
-             AND TIMESTAMP(scheduled_date, end_time) <= NOW()
-           )
-         )`
+           cal.log_id IS NULL
+           OR cal.teacher_started_at IS NULL
+           OR cal.student_joined_at IS NULL
+         )`,
+      [CLASS_ATTENDANCE_GRACE_MINUTES]
     )
+    .then(async ([rows]) => {
+      if (!rows.length) return;
+      const classIds = rows.map((row) => row.class_id);
+      await db.query(
+        `UPDATE classes
+         SET status = 'no-show'
+         WHERE class_id IN (?) AND status = 'scheduled'`,
+        [classIds]
+      );
+      rows.forEach((row) => {
+        broadcastCalendarChange([row.teacher_id, row.student_id], "class-no-show", {
+          class_id: row.class_id,
+          status: "no-show",
+        });
+      });
+    })
     .then(() => {
       lastAutoMarkPastClassesAt = Date.now();
     })
@@ -1763,6 +1963,24 @@ async function autoMarkPastClassesAsNoShow(db = pool) {
     });
 
   await autoMarkPastClassesPromise;
+}
+
+async function markClassNoShowIfAttendanceGraceExpired(db, classId) {
+  const [result] = await db.query(
+    `UPDATE classes c
+     LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
+     SET c.status = 'no-show'
+     WHERE c.class_id = ?
+       AND c.status = 'scheduled'
+       AND TIMESTAMP(c.scheduled_date, COALESCE(c.start_time, '00:00:00')) <= DATE_SUB(NOW(), INTERVAL ? MINUTE)
+       AND (
+         cal.log_id IS NULL
+         OR cal.teacher_started_at IS NULL
+         OR cal.student_joined_at IS NULL
+       )`,
+    [classId, CLASS_ATTENDANCE_GRACE_MINUTES]
+  );
+  return Number(result.affectedRows || 0) > 0;
 }
 
 const assignmentSelect = `
@@ -3758,6 +3976,9 @@ app.get("/api/calendar/classes-by-date", async (req, res) => {
                        cal.teacher_ended_at,
                        cal.duration_minutes AS verified_duration_minutes,
                        cal.proof_url AS class_proof_url,
+                       cal.recording_url AS class_recording_url,
+                       cal.recording_uploaded_at AS class_recording_uploaded_at,
+                       cal.recording_expires_at AS class_recording_expires_at,
                        cal.summary AS class_summary,
                        cal.verification_status,
                        COALESCE(c.class_link, vs.teams_meeting_link) as class_link
@@ -3771,6 +3992,7 @@ app.get("/api/calendar/classes-by-date", async (req, res) => {
                   AND tea.status = 'active' AND tea.profile_completed = TRUE
                  WHERE c.scheduled_date = ?
                  AND c.status = 'scheduled'
+                 ${req.query.include_reserved === 'true' ? '' : "AND COALESCE(cal.verification_status, 'pending') <> 'incomplete'"}
                  AND c.scheduled_date >= CURDATE()`;
     const params = [scheduled_date];
 
@@ -3838,6 +4060,9 @@ app.get("/api/calendar/classes-by-month", async (req, res) => {
                        cal.teacher_ended_at,
                        cal.duration_minutes AS verified_duration_minutes,
                        cal.proof_url AS class_proof_url,
+                       cal.recording_url AS class_recording_url,
+                       cal.recording_uploaded_at AS class_recording_uploaded_at,
+                       cal.recording_expires_at AS class_recording_expires_at,
                        cal.summary AS class_summary,
                        cal.verification_status,
                        COALESCE(c.class_link, vs.teams_meeting_link) as class_link
@@ -3851,6 +4076,7 @@ app.get("/api/calendar/classes-by-month", async (req, res) => {
                   AND tea.status = 'active' AND tea.profile_completed = TRUE
                  WHERE c.scheduled_date BETWEEN ? AND ?
                  AND c.status = 'scheduled'
+                 ${req.query.include_reserved === 'true' ? '' : "AND COALESCE(cal.verification_status, 'pending') <> 'incomplete'"}
                  AND c.scheduled_date >= CURDATE()`;
     const params = [startDate, endDate];
 
@@ -3915,6 +4141,7 @@ app.get("/api/calendar/upcoming-classes", async (req, res) => {
                  JOIN users tea ON c.teacher_id = tea.user_id \
                   AND tea.status = 'active' AND tea.profile_completed = TRUE \
                  WHERE c.status = 'scheduled' \
+                 AND NOT EXISTS (SELECT 1 FROM class_attendance_logs cal WHERE cal.class_id = c.class_id AND cal.verification_status = 'incomplete') \
                  AND c.scheduled_date >= CURDATE()`;
     const params = [];
 
@@ -3959,6 +4186,19 @@ const classVerificationSelect = `
   cal.teacher_ended_at,
   cal.duration_minutes,
   cal.proof_url,
+  cal.evidence_mode,
+  cal.start_proof_url,
+  cal.start_proof_uploaded_at,
+  cal.end_proof_uploaded_at,
+  cal.recording_duration_seconds,
+  cal.review_reason,
+  cal.recording_url,
+  cal.recording_mime_type,
+  cal.recording_size_bytes,
+  cal.recording_uploaded_at,
+  cal.recording_expires_at,
+  cal.teacher_recording_consent_at,
+  cal.student_recording_consent_at,
   cal.summary,
   cal.verification_status,
   cal.created_at,
@@ -3988,10 +4228,87 @@ app.get("/api/calendar/classes/:class_id/verification", async (req, res) => {
   }
 });
 
+app.get("/api/calendar/classes/:class_id/classroom", async (req, res) => {
+  try {
+    const { class_id } = req.params;
+    const { user_id } = req.query;
+
+    if (!class_id || !user_id) {
+      return res.status(400).json({ message: "Missing class_id or user_id" });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT c.class_id,
+              c.class_name,
+              c.teacher_id,
+              c.student_id,
+              c.status,
+              DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
+              TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time,
+              TIME_FORMAT(c.end_time, '%H:%i:%s') AS end_time,
+              c.duration,
+              COALESCE(c.class_link, vs.teams_meeting_link) AS class_link,
+              tea.first_name AS teacher_first_name,
+              tea.last_name AS teacher_last_name,
+              tea.email AS teacher_email,
+              stu.first_name AS student_first_name,
+              stu.last_name AS student_last_name,
+              stu.email AS student_email
+       FROM classes c
+       LEFT JOIN video_sessions vs ON vs.class_id = c.class_id
+       JOIN users tea ON tea.user_id = c.teacher_id
+       JOIN users stu ON stu.user_id = c.student_id
+       WHERE c.class_id = ?
+       LIMIT 1`,
+      [class_id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Class not found" });
+    }
+
+    const classInfo = decryptFields(rows[0], ["class_link"]);
+    const [userRows] = await pool.query(
+      "SELECT user_id, first_name, last_name, email, role, status, profile_completed FROM users WHERE user_id = ? LIMIT 1",
+      [user_id]
+    );
+    const user = userRows[0];
+    const isParticipant =
+      String(classInfo.teacher_id) === String(user_id) ||
+      String(classInfo.student_id) === String(user_id);
+    const isAdmin = user?.role === "admin";
+
+    if (!user || user.status !== "active" || (!isAdmin && !user.profile_completed) || (!isParticipant && !isAdmin)) {
+      return res.status(403).json({ message: "You do not have access to this classroom" });
+    }
+
+    const verification = await getClassVerification(pool, class_id);
+    const jitsiJwt = createJitsiJwtForClass({
+      classInfo,
+      user,
+      isModerator: isAdmin || String(classInfo.teacher_id) === String(user_id),
+    });
+
+    res.json({
+      class: classInfo,
+      verification,
+      jitsi_jwt: jitsiJwt,
+      jitsi_auth_configured: Boolean(JITSI_JWT_APP_ID && JITSI_JWT_APP_SECRET),
+      public_meet_jitsi: /^https:\/\/meet\.jit\.si\/?/i.test(classInfo.class_link || JITSI_BASE_URL),
+    });
+  } catch (err) {
+    console.error("GET /api/calendar/classes/:class_id/classroom error:", err);
+    res.status(500).json({ message: "Error loading classroom" });
+  }
+});
+
 app.post("/api/calendar/classes/:class_id/start", async (req, res) => {
   try {
     const { class_id } = req.params;
-    const { teacher_id } = req.body;
+    const { teacher_id, recording_consent, evidence_mode } = req.body;
+    if (!["recording", "screenshots"].includes(evidence_mode)) {
+      return res.status(400).json({ message: "Choose recording or start-and-end screenshots before starting." });
+    }
 
     if (!class_id || !teacher_id) {
       return res.status(400).json({ message: "Missing class_id or teacher_id" });
@@ -4022,17 +4339,31 @@ app.post("/api/calendar/classes/:class_id/start", async (req, res) => {
       return res.status(400).json({ message: "Only scheduled classes can be started" });
     }
 
+    if (await markClassNoShowIfAttendanceGraceExpired(pool, classInfo.class_id)) {
+      broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-no-show", {
+        class_id: classInfo.class_id,
+        status: "no-show",
+      });
+      return res.status(409).json({ message: `This class was missed because attendance was not completed within ${CLASS_ATTENDANCE_GRACE_MINUTES} minutes after the scheduled start time.` });
+    }
+
+    if (recording_consent !== true && recording_consent !== "true") {
+      return res.status(400).json({ message: "Recording consent is required before joining this class" });
+    }
+
     await pool.query(
-      `INSERT INTO class_attendance_logs (class_id, teacher_id, student_id, teacher_started_at, verification_status)
-       VALUES (?, ?, ?, NOW(), 'in_progress')
+      `INSERT INTO class_attendance_logs (class_id, teacher_id, student_id, evidence_mode, teacher_started_at, teacher_recording_consent_at, verification_status)
+       VALUES (?, ?, ?, ?, NOW(), NOW(), 'in_progress')
        ON DUPLICATE KEY UPDATE
+         evidence_mode = COALESCE(evidence_mode, VALUES(evidence_mode)),
          teacher_started_at = COALESCE(teacher_started_at, NOW()),
+         teacher_recording_consent_at = COALESCE(teacher_recording_consent_at, NOW()),
          verification_status = CASE
            WHEN teacher_ended_at IS NOT NULL THEN verification_status
            WHEN student_joined_at IS NOT NULL THEN 'student_confirmed'
            ELSE 'in_progress'
          END`,
-      [classInfo.class_id, classInfo.teacher_id, classInfo.student_id]
+      [classInfo.class_id, classInfo.teacher_id, classInfo.student_id, evidence_mode]
     );
 
     const verification = await getClassVerification(pool, class_id);
@@ -4050,7 +4381,7 @@ app.post("/api/calendar/classes/:class_id/start", async (req, res) => {
 app.post("/api/calendar/classes/:class_id/join", async (req, res) => {
   try {
     const { class_id } = req.params;
-    const { student_id } = req.body;
+    const { student_id, recording_consent } = req.body;
 
     if (!class_id || !student_id) {
       return res.status(400).json({ message: "Missing class_id or student_id" });
@@ -4081,6 +4412,18 @@ app.post("/api/calendar/classes/:class_id/join", async (req, res) => {
       return res.status(400).json({ message: "Only scheduled classes can be confirmed" });
     }
 
+    if (await markClassNoShowIfAttendanceGraceExpired(pool, classInfo.class_id)) {
+      broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-no-show", {
+        class_id: classInfo.class_id,
+        status: "no-show",
+      });
+      return res.status(409).json({ message: `This class was missed because attendance was not completed within ${CLASS_ATTENDANCE_GRACE_MINUTES} minutes after the scheduled start time.` });
+    }
+
+    if (recording_consent !== true && recording_consent !== "true") {
+      return res.status(400).json({ message: "Recording consent is required before joining this class" });
+    }
+
     const [logRows] = await pool.query(
       `SELECT log_id, teacher_started_at
        FROM class_attendance_logs
@@ -4096,6 +4439,7 @@ app.post("/api/calendar/classes/:class_id/join", async (req, res) => {
     await pool.query(
       `UPDATE class_attendance_logs
        SET student_joined_at = COALESCE(student_joined_at, NOW()),
+           student_recording_consent_at = COALESCE(student_recording_consent_at, NOW()),
            verification_status = CASE
              WHEN teacher_ended_at IS NULL THEN 'student_confirmed'
              ELSE verification_status
@@ -4116,10 +4460,232 @@ app.post("/api/calendar/classes/:class_id/join", async (req, res) => {
   }
 });
 
+app.post("/api/calendar/classes/:class_id/recording", (req, res, next) => {
+  classRecordingUpload.single("recording")(req, res, (error) => {
+    if (!error) return next();
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ message: "The recording exceeds the 500 MB upload limit." });
+    }
+    if (error instanceof multer.MulterError || error.message === "Only WEBM or MP4 class recordings are allowed") {
+      return res.status(400).json({ message: error.message });
+    }
+    console.error("Class recording upload middleware error:", error);
+    return res.status(500).json({ message: "The server could not save the recording. Please retry the upload." });
+  });
+}, async (req, res) => {
+  try {
+    const { class_id } = req.params;
+    const { teacher_id } = req.body || {};
+
+    if (!class_id || !teacher_id) {
+      return res.status(400).json({ message: "Missing class_id or teacher_id" });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: "No recording file uploaded" });
+    }
+
+    const [classRows] = await pool.query(
+      `SELECT c.class_id, c.teacher_id, c.student_id, c.status
+       FROM classes c
+       WHERE c.class_id = ?
+       LIMIT 1`,
+      [class_id]
+    );
+
+    if (!classRows.length) {
+      await deleteLocalClassRecording(`/private-uploads/class-recordings/${req.file.filename}`);
+      return res.status(404).json({ message: "Class not found" });
+    }
+
+    const classInfo = classRows[0];
+    if (String(classInfo.teacher_id) !== String(teacher_id)) {
+      await deleteLocalClassRecording(`/private-uploads/class-recordings/${req.file.filename}`);
+      return res.status(403).json({ message: "Only the assigned teacher can upload this class recording" });
+    }
+
+    const recordingUrl = `/private-uploads/class-recordings/${req.file.filename}`;
+    const [existingRows] = await pool.query(
+      "SELECT recording_url, evidence_mode, teacher_ended_at, recording_started_at, TIMESTAMPDIFF(SECOND, recording_started_at, NOW()) AS elapsed_seconds FROM class_attendance_logs WHERE class_id = ? LIMIT 1",
+      [class_id]
+    );
+
+    const reportedSeconds = Number(req.body.duration_seconds);
+    const recordingLog = existingRows[0];
+    if (!recordingLog?.recording_started_at || recordingLog.evidence_mode !== 'recording' || recordingLog.teacher_ended_at || !Number.isFinite(reportedSeconds) || reportedSeconds <= 0) {
+      await deleteLocalClassRecording(`/private-uploads/class-recordings/${req.file.filename}`);
+      return res.status(400).json({ message: "Start a recording from Calendar before uploading it." });
+    }
+    const recordingSeconds = Math.max(0, Math.floor(Math.min(reportedSeconds, Number(recordingLog.elapsed_seconds))));
+    await pool.query(
+      `INSERT INTO class_attendance_logs (
+         class_id, teacher_id, student_id, recording_url, recording_mime_type,
+         recording_size_bytes, recording_uploaded_at, recording_expires_at, recording_duration_seconds, verification_status
+       )
+       VALUES (?, ?, ?, ?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL ? DAY), ?, 'needs_review')
+       ON DUPLICATE KEY UPDATE
+         recording_url = VALUES(recording_url),
+         recording_mime_type = VALUES(recording_mime_type),
+         recording_size_bytes = VALUES(recording_size_bytes),
+         recording_uploaded_at = NOW(),
+         recording_expires_at = DATE_ADD(NOW(), INTERVAL ? DAY),
+         recording_duration_seconds = ?`,
+      [
+        classInfo.class_id,
+        classInfo.teacher_id,
+        classInfo.student_id,
+        recordingUrl,
+        req.file.mimetype,
+        req.file.size,
+        RECORDING_RETENTION_DAYS,
+        recordingSeconds,
+        RECORDING_RETENTION_DAYS,
+        recordingSeconds,
+      ]
+    );
+
+    if (existingRows[0]?.recording_url && existingRows[0].recording_url !== recordingUrl) {
+      await deleteLocalClassRecording(existingRows[0].recording_url);
+    }
+
+    const verification = await getClassVerification(pool, class_id);
+    broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-verification-changed", {
+      class_id: classInfo.class_id,
+      verification_status: verification?.verification_status || "needs_review",
+    });
+
+    res.json({
+      message: "Class recording uploaded",
+      recording_url: recordingUrl,
+      recording_expires_at: verification?.recording_expires_at,
+      verification,
+    });
+  } catch (err) {
+    if (req.file) {
+      await deleteLocalClassRecording(`/private-uploads/class-recordings/${req.file.filename}`);
+    }
+    console.error("POST /api/calendar/classes/:class_id/recording error:", err);
+    res.status(500).json({ message: "Error uploading class recording" });
+  }
+});
+
+app.get("/api/calendar/classes/:class_id/recording", async (req, res) => {
+  try {
+    await cleanupExpiredClassRecordings(pool);
+
+    const { class_id } = req.params;
+    const { user_id } = req.query;
+
+    if (!class_id || !user_id) {
+      return res.status(400).json({ message: "Missing class_id or user_id" });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT c.teacher_id,
+              c.student_id,
+              cal.recording_url,
+              cal.recording_mime_type,
+              cal.recording_expires_at,
+              u.role,
+              u.status,
+              u.profile_completed
+       FROM classes c
+       LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
+       JOIN users u ON u.user_id = ?
+       WHERE c.class_id = ?
+       LIMIT 1`,
+      [user_id, class_id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Recording not found" });
+    }
+
+    const row = rows[0];
+    const isParticipant =
+      String(row.teacher_id) === String(user_id) ||
+      String(row.student_id) === String(user_id);
+    const isAdmin = row.role === "admin";
+
+    if (row.status !== "active" || (!isAdmin && !row.profile_completed) || (!isAdmin && !isParticipant)) {
+      return res.status(403).json({ message: "You do not have access to this recording" });
+    }
+
+    if (!row.recording_url) {
+      return res.status(404).json({ message: "No recording is available for this class" });
+    }
+
+    if (row.recording_expires_at && new Date(row.recording_expires_at).getTime() <= Date.now()) {
+      await cleanupExpiredClassRecordings(pool);
+      return res.status(404).json({ message: "This recording has expired" });
+    }
+
+    const fileName = path.basename(row.recording_url);
+    const filePath = path.resolve(classRecordingUploadDir, fileName);
+    const recordingDir = path.resolve(classRecordingUploadDir);
+    if (!filePath.startsWith(recordingDir + path.sep) || !fs.existsSync(filePath)) {
+      return res.status(404).json({ message: "Recording file not found" });
+    }
+
+    res.setHeader("Content-Type", row.recording_mime_type || "video/webm");
+    res.setHeader("Content-Disposition", `inline; filename="${fileName}"`);
+    res.sendFile(filePath);
+  } catch (err) {
+    console.error("GET /api/calendar/classes/:class_id/recording error:", err);
+    res.status(500).json({ message: "Error loading class recording" });
+  }
+});
+
+app.post("/api/calendar/classes/:class_id/recording-start", async (req, res) => {
+  try {
+    const [result] = await pool.query(`UPDATE class_attendance_logs cal JOIN classes c ON c.class_id = cal.class_id
+      SET cal.recording_started_at = NOW(), cal.evidence_mode = COALESCE(cal.evidence_mode, 'recording')
+      WHERE cal.class_id = ? AND c.teacher_id = ? AND c.status = 'scheduled'
+      AND cal.teacher_started_at IS NOT NULL AND cal.teacher_ended_at IS NULL
+      AND (cal.evidence_mode IS NULL OR cal.evidence_mode = 'recording')`, [req.params.class_id, req.body.teacher_id]);
+    if (!result.affectedRows) return res.status(400).json({ message: "Recording is unavailable for this class." });
+    res.json({ ok: true });
+  } catch (error) { res.status(500).json({ message: "Unable to start recording." }); }
+});
+
+app.post("/api/calendar/classes/:class_id/start-proof", classProofUpload.single("proof_image"), async (req, res) => {
+  try {
+    const log = await getClassVerification(pool, req.params.class_id);
+    if (!req.file || !log || String(log.teacher_id) !== String(req.body.teacher_id) || !log.student_joined_at || log.teacher_ended_at || log.evidence_mode !== 'screenshots' || log.start_proof_url) {
+      if (req.file) await deleteLocalClassProofImage(`/uploads/class-proofs/${req.file.filename}`);
+      return res.status(400).json({ message: "Start screenshot requires screenshot mode, confirmed student attendance, and no previous start screenshot." });
+    }
+    await pool.query("UPDATE class_attendance_logs SET start_proof_url = ?, start_proof_uploaded_at = NOW() WHERE class_id = ?", [`/uploads/class-proofs/${req.file.filename}`, req.params.class_id]);
+    res.json({ verification: await getClassVerification(pool, req.params.class_id) });
+  } catch (error) { res.status(500).json({ message: "Unable to upload start screenshot." }); }
+});
+
+app.delete("/api/calendar/classes/:class_id/start-proof", async (req, res) => {
+  try {
+    const log = await getClassVerification(pool, req.params.class_id);
+    if (!log || String(log.teacher_id) !== String(req.body.teacher_id) || log.teacher_ended_at || log.evidence_mode !== 'screenshots' || !log.start_proof_url) {
+      return res.status(400).json({ message: "Start screenshot cannot be removed for this class." });
+    }
+
+    const oldProofUrl = log.start_proof_url;
+    await pool.query(
+      "UPDATE class_attendance_logs SET start_proof_url = NULL, start_proof_uploaded_at = NULL WHERE class_id = ?",
+      [req.params.class_id]
+    );
+    await deleteLocalClassProofImage(oldProofUrl);
+
+    const verification = await getClassVerification(pool, req.params.class_id);
+    res.json({ verification });
+  } catch (error) {
+    res.status(500).json({ message: "Unable to remove start screenshot." });
+  }
+});
+
 app.post("/api/calendar/classes/:class_id/end", classProofUpload.single("proof_image"), async (req, res) => {
   try {
     const { class_id } = req.params;
-    const { teacher_id, summary } = req.body;
+    const { teacher_id, summary, review_reason } = req.body;
+    const requestedReview = String(review_reason || "").trim();
 
     if (!class_id || !teacher_id) {
       return res.status(400).json({ message: "Missing class_id or teacher_id" });
@@ -4151,7 +4717,7 @@ app.post("/api/calendar/classes/:class_id/end", classProofUpload.single("proof_i
     }
 
     const [logRows] = await pool.query(
-      `SELECT teacher_started_at, student_joined_at, proof_url
+      `SELECT *
        FROM class_attendance_logs
        WHERE class_id = ?
        LIMIT 1`,
@@ -4162,7 +4728,7 @@ app.post("/api/calendar/classes/:class_id/end", classProofUpload.single("proof_i
       return res.status(400).json({ message: "Start the class before ending it" });
     }
 
-    if (!logRows[0].student_joined_at) {
+    if (!logRows[0].student_joined_at && !requestedReview) {
       return res.status(400).json({ message: "The student must join and confirm attendance before the class can be ended and verified" });
     }
 
@@ -4172,32 +4738,41 @@ app.post("/api/calendar/classes/:class_id/end", classProofUpload.single("proof_i
     }
 
     const uploadedProofUrl = req.file ? `/uploads/class-proofs/${req.file.filename}` : String(logRows[0].proof_url || "");
-    if (!uploadedProofUrl) {
-      return res.status(400).json({ message: "Please upload or paste a screenshot of the class" });
-    }
-
     const requiredMinutes = getRequiredClassMinutes(classInfo.duration);
+    let validEvidence = assessClassEvidence({ ...logRows[0], proof_url: uploadedProofUrl }, requiredMinutes);
+    if (validEvidence && logRows[0].evidence_mode === 'screenshots' && req.file) {
+      const startImage = await fs.promises.readFile(path.join(classProofUploadDir, path.basename(logRows[0].start_proof_url)));
+      const endImage = await fs.promises.readFile(req.file.path);
+      if (startImage.equals(endImage)) validEvidence = false;
+    }
+    if (!validEvidence && !requestedReview) {
+      return res.status(400).json({ message: `Upload timely start and end screenshots, or a recording of at least ${requiredMinutes} minutes. Otherwise submit for review with a reason.` });
+    }
 
     await pool.query(
       `UPDATE class_attendance_logs
        SET teacher_ended_at = COALESCE(teacher_ended_at, NOW()),
            duration_minutes = GREATEST(duration_minutes, TIMESTAMPDIFF(MINUTE, teacher_started_at, COALESCE(teacher_ended_at, NOW()))),
            proof_url = NULLIF(?, ''),
+           end_proof_uploaded_at = IF(? <> '', NOW(), end_proof_uploaded_at),
+           review_reason = NULLIF(?, ''),
            summary = ?,
            verification_status = CASE
              WHEN student_joined_at IS NOT NULL
               AND TIMESTAMPDIFF(MINUTE, teacher_started_at, COALESCE(teacher_ended_at, NOW())) >= ?
-              AND (NULLIF(?, '') IS NOT NULL OR NULLIF(?, '') IS NOT NULL)
+              AND ? = 1 AND ? = ''
              THEN 'verified'
              ELSE 'needs_review'
            END
        WHERE class_id = ?`,
       [
         uploadedProofUrl,
+        uploadedProofUrl,
+        requestedReview,
         encryptNullableText(trimmedSummary || null),
         requiredMinutes,
-        uploadedProofUrl,
-        trimmedSummary,
+        validEvidence ? 1 : 0,
+        requestedReview,
         class_id,
       ]
     );
@@ -4255,6 +4830,11 @@ app.get("/api/admin/class-verifications", async (req, res) => {
               cal.teacher_ended_at,
               cal.duration_minutes,
               cal.proof_url,
+              cal.start_proof_url, cal.start_proof_uploaded_at, cal.end_proof_uploaded_at,
+              cal.evidence_mode, cal.recording_duration_seconds, cal.review_reason,
+              cal.recording_url,
+              cal.recording_uploaded_at,
+              cal.recording_expires_at,
               cal.summary,
               COALESCE(cal.verification_status, 'pending') AS verification_status,
               stu.user_id AS student_id,
@@ -4287,7 +4867,7 @@ app.delete("/api/admin/class-verifications/:class_id", async (req, res) => {
   try {
     const { class_id } = req.params;
     const [rows] = await pool.query(
-      "SELECT proof_url FROM class_attendance_logs WHERE class_id = ?",
+      "SELECT proof_url, start_proof_url, recording_url, verification_status FROM class_attendance_logs WHERE class_id = ?",
       [class_id]
     );
 
@@ -4295,8 +4875,13 @@ app.delete("/api/admin/class-verifications/:class_id", async (req, res) => {
       return res.status(404).json({ message: "Verification record not found" });
     }
 
+    if (!["verified", "incomplete"].includes(rows[0].verification_status)) {
+      return res.status(400).json({ message: "Only verified or incomplete verification records can be removed." });
+    }
+
     await pool.query("DELETE FROM class_attendance_logs WHERE class_id = ?", [class_id]);
-    await Promise.all(rows.map((row) => deleteLocalClassProofImage(row.proof_url)));
+    await Promise.all(rows.flatMap((row) => [deleteLocalClassProofImage(row.proof_url), deleteLocalClassProofImage(row.start_proof_url)]));
+    await Promise.all(rows.map((row) => deleteLocalClassRecording(row.recording_url)));
 
     res.json({ message: "Verification record removed" });
   } catch (err) {
@@ -4306,23 +4891,28 @@ app.delete("/api/admin/class-verifications/:class_id", async (req, res) => {
 });
 
 app.put("/api/admin/class-verifications/:class_id/approve", async (req, res) => {
+  const connection = await pool.getConnection();
   try {
     const { class_id } = req.params;
 
-    const [classRows] = await pool.query(
-      `SELECT c.class_id, c.teacher_id, c.student_id
+    await connection.beginTransaction();
+
+    const [classRows] = await connection.query(
+      `SELECT c.class_id, c.teacher_id, c.student_id, c.status, c.created_at
        FROM classes c
        WHERE c.class_id = ?
-       LIMIT 1`,
+       LIMIT 1
+       FOR UPDATE`,
       [class_id]
     );
 
     if (!classRows.length) {
+      await connection.rollback();
       return res.status(404).json({ message: "Class not found" });
     }
 
     const classInfo = classRows[0];
-    const [result] = await pool.query(
+    const [result] = await connection.query(
       `UPDATE class_attendance_logs
        SET verification_status = 'verified'
        WHERE class_id = ?`,
@@ -4330,40 +4920,107 @@ app.put("/api/admin/class-verifications/:class_id/approve", async (req, res) => 
     );
 
     if (!result.affectedRows) {
+      await connection.rollback();
       return res.status(404).json({ message: "Verification record not found" });
     }
 
-    const verification = await getClassVerification(pool, class_id);
+    let updatedPackage = null;
+    if (classInfo.status !== "completed") {
+      const [packageRows] = await connection.query(
+        `SELECT package_id, student_id, total_classes, classes_used, classes_left, status
+         FROM student_class_packages
+         WHERE student_id = ?
+           AND status = 'active'
+           AND classes_left > 0
+         ORDER BY created_at DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [classInfo.student_id]
+      );
+
+      if (!packageRows.length) {
+        await connection.rollback();
+        return res.status(400).json({ message: "This student has no classes left to consume." });
+      }
+
+      await connection.query(
+        `UPDATE classes SET status = 'completed' WHERE class_id = ?`,
+        [class_id]
+      );
+
+      await connection.query(
+        `UPDATE student_class_packages
+         SET classes_used = classes_used + 1,
+             status = CASE
+               WHEN total_classes - (classes_used + 1) <= 0 THEN 'expired'
+               ELSE status
+             END
+         WHERE package_id = ?`,
+        [packageRows[0].package_id]
+      );
+
+      const [updatedPackageRows] = await connection.query(
+        `SELECT package_id, student_id, total_classes, classes_used, classes_left, status
+         FROM student_class_packages
+         WHERE package_id = ?`,
+        [packageRows[0].package_id]
+      );
+      updatedPackage = updatedPackageRows[0] || null;
+    }
+
+    const { package: refreshedPackage, bookedClasses: refreshedBookedClasses, bookableClasses: refreshedBookableClasses } =
+      await getStudentPackageAvailability(connection, classInfo.student_id);
+    const verification = await getClassVerification(connection, class_id);
+    await connection.commit();
+
     broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-verification-changed", {
       class_id: classInfo.class_id,
       verification_status: "verified",
     });
+    if (classInfo.status !== "completed") {
+      broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-completed", {
+        class_id: classInfo.class_id,
+        status: "completed",
+      });
+    }
 
-    res.json({ message: "Class verification approved", verification });
+    res.json({ message: "Class verification approved", verification, package: updatedPackage });
   } catch (err) {
+    try {
+      await connection.rollback();
+    } catch {}
     console.error(err);
     res.status(500).json({ message: "Error approving class verification" });
+  } finally {
+    connection.release();
   }
 });
 
 app.put("/api/admin/class-verifications/:class_id/incomplete", async (req, res) => {
+  const connection = await pool.getConnection();
   try {
     const { class_id } = req.params;
 
-    const [classRows] = await pool.query(
-      `SELECT c.class_id, c.teacher_id, c.student_id
+    await connection.beginTransaction();
+
+    const [classRows] = await connection.query(
+      `SELECT c.class_id, c.teacher_id, c.student_id, c.status, c.created_at,
+              COALESCE(cal.verification_status, 'pending') AS current_verification_status
        FROM classes c
+       LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
        WHERE c.class_id = ?
-       LIMIT 1`,
+       LIMIT 1
+       FOR UPDATE`,
       [class_id]
     );
 
     if (!classRows.length) {
+      await connection.rollback();
       return res.status(404).json({ message: "Class not found" });
     }
 
     const classInfo = classRows[0];
-    const [result] = await pool.query(
+    const [result] = await connection.query(
       `UPDATE class_attendance_logs
        SET verification_status = 'incomplete'
        WHERE class_id = ?`,
@@ -4371,32 +5028,88 @@ app.put("/api/admin/class-verifications/:class_id/incomplete", async (req, res) 
     );
 
     if (!result.affectedRows) {
+      await connection.rollback();
       return res.status(404).json({ message: "Verification record not found" });
     }
 
-    const verification = await getClassVerification(pool, class_id);
+    if (classInfo.status === "completed" && classInfo.current_verification_status !== "incomplete") {
+      const [packageRows] = await connection.query(
+        `SELECT package_id
+         FROM student_class_packages
+         WHERE student_id = ?
+           AND created_at <= ?
+         ORDER BY created_at DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [classInfo.student_id, classInfo.created_at]
+      );
+
+      if (packageRows.length) {
+        await connection.query(
+          `UPDATE student_class_packages
+           SET classes_used = GREATEST(classes_used - 1, 0),
+               status = 'active'
+           WHERE package_id = ?`,
+          [packageRows[0].package_id]
+        );
+      }
+
+      await connection.query(
+        `UPDATE classes SET status = 'no-show' WHERE class_id = ?`,
+        [class_id]
+      );
+    }
+
+    const verification = await getClassVerification(connection, class_id);
+    await connection.commit();
+
     broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-verification-changed", {
       class_id: classInfo.class_id,
       verification_status: "incomplete",
     });
 
-    res.json({ message: "Class verification marked incomplete", verification });
+    res.json({
+      message: "Class verification marked incomplete",
+      verification,
+      package: refreshedPackage
+        ? {
+            ...refreshedPackage,
+            booked_classes: refreshedBookedClasses,
+            bookable_classes: refreshedBookableClasses,
+          }
+        : null,
+    });
   } catch (err) {
+    try {
+      await connection.rollback();
+    } catch {}
     console.error(err);
     res.status(500).json({ message: "Error marking class verification incomplete" });
+  } finally {
+    connection.release();
   }
 });
 
 app.delete("/api/admin/class-verifications", async (req, res) => {
   try {
     const [rows] = await pool.query(
-      "SELECT proof_url FROM class_attendance_logs WHERE proof_url IS NOT NULL AND proof_url <> ''"
+      `SELECT proof_url, start_proof_url, recording_url
+       FROM class_attendance_logs
+       WHERE verification_status IN ('verified', 'incomplete')
+         AND (
+           (start_proof_url IS NOT NULL AND start_proof_url <> '')
+           OR (proof_url IS NOT NULL AND proof_url <> '')
+           OR (recording_url IS NOT NULL AND recording_url <> '')
+         )`
     );
 
-    await pool.query("DELETE FROM class_attendance_logs");
-    await Promise.all(rows.map((row) => deleteLocalClassProofImage(row.proof_url)));
+    const [result] = await pool.query(
+      "DELETE FROM class_attendance_logs WHERE verification_status IN ('verified', 'incomplete')"
+    );
+    await Promise.all(rows.flatMap((row) => [deleteLocalClassProofImage(row.proof_url), deleteLocalClassProofImage(row.start_proof_url)]));
+    await Promise.all(rows.map((row) => deleteLocalClassRecording(row.recording_url)));
 
-    res.json({ message: "All verification records cleared" });
+    res.json({ message: "Final verification records cleared", removed: result.affectedRows || 0 });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error clearing verification records" });
@@ -4421,6 +5134,11 @@ app.get("/api/student/:student_id/class-history", async (req, res) => {
               cal.teacher_ended_at,
               cal.duration_minutes,
               cal.proof_url,
+              cal.start_proof_url, cal.start_proof_uploaded_at, cal.end_proof_uploaded_at,
+              cal.evidence_mode, cal.recording_duration_seconds, cal.review_reason,
+              cal.recording_url,
+              cal.recording_uploaded_at,
+              cal.recording_expires_at,
               cal.summary,
               COALESCE(cal.verification_status, 'pending') AS verification_status,
               tea.user_id AS teacher_id,
@@ -4467,6 +5185,11 @@ app.get("/api/teacher/:teacher_id/class-history", async (req, res) => {
               cal.teacher_ended_at,
               cal.duration_minutes,
               cal.proof_url,
+              cal.start_proof_url, cal.start_proof_uploaded_at, cal.end_proof_uploaded_at,
+              cal.evidence_mode, cal.recording_duration_seconds, cal.review_reason,
+              cal.recording_url,
+              cal.recording_uploaded_at,
+              cal.recording_expires_at,
               cal.summary,
               COALESCE(cal.verification_status, 'pending') AS verification_status,
               stu.user_id AS student_id,
@@ -4553,7 +5276,13 @@ app.post("/api/calendar/class", async (req, res) => {
       `SELECT COUNT(*) AS booked_count
        FROM classes
        WHERE student_id = ?
-         AND status IN ('scheduled', 'completed')
+         AND status = 'scheduled'
+         AND scheduled_date >= CURDATE()
+         AND NOT EXISTS (
+           SELECT 1 FROM class_attendance_logs cal
+           WHERE cal.class_id = classes.class_id
+             AND cal.verification_status = 'incomplete'
+         )
          AND created_at >= ?`,
       [student_id, packageRows[0].created_at]
     );
@@ -4561,7 +5290,7 @@ app.post("/api/calendar/class", async (req, res) => {
     const bookedClasses = Number(scheduledRows[0]?.booked_count || 0);
     const totalClasses = Number(packageRows[0].total_classes || 0);
     const classesLeft = Number(packageRows[0].classes_left ?? Math.max(0, totalClasses - Number(packageRows[0].classes_used || 0)));
-    const remainingBookableClasses = Math.max(0, Math.min(classesLeft, totalClasses - bookedClasses));
+    const remainingBookableClasses = Math.max(0, classesLeft - bookedClasses);
     if (remainingBookableClasses <= 0) {
       await connection.rollback();
       return res.status(400).json({ message: "This student has reached the maximum number of classes in the active contract. Please contact the admin for a new contract." });
@@ -4628,7 +5357,7 @@ app.post("/api/calendar/class", async (req, res) => {
 
     if (hasClassConflict(conflictRows, classRange.start, classRange.end)) {
       await connection.rollback();
-      return res.status(409).json({ message: "That time overlaps with an existing class." });
+      return res.status(409).json({ message: `That time overlaps with an existing class or its ${CLASS_BREAK_BUFFER_MINUTES}-minute teacher break.` });
     }
 
     let classLinkToSave = class_link?.trim();
@@ -4654,6 +5383,9 @@ app.post("/api/calendar/class", async (req, res) => {
       [result.insertId, teacher_id, student_id, encryptNullableText(classLinkToSave)]
     );
 
+    const { package: updatedPackage, bookedClasses: updatedBookedClasses, bookableClasses: updatedBookableClasses } =
+      await getStudentPackageAvailability(connection, student_id);
+
     const [studentRows] = await connection.query(
       `SELECT first_name, last_name FROM users WHERE user_id = ?`,
       [student_id]
@@ -4677,7 +5409,18 @@ app.post("/api/calendar/class", async (req, res) => {
       start_time,
       end_time: computedEndTime,
     });
-    res.status(201).json({ class_id: result.insertId, class_link: classLinkToSave, message: "Class created successfully" });
+    res.status(201).json({
+      class_id: result.insertId,
+      class_link: classLinkToSave,
+      message: "Class created successfully",
+      package: updatedPackage
+        ? {
+            ...updatedPackage,
+            booked_classes: updatedBookedClasses,
+            bookable_classes: updatedBookableClasses,
+          }
+        : null,
+    });
   } catch (err) {
     try {
       await connection.rollback();
@@ -4730,7 +5473,7 @@ app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
     const [classRows] = await connection.query(
       `SELECT c.class_id, c.teacher_id, c.student_id, c.class_name, c.status, c.duration,
               cal.teacher_started_at, cal.student_joined_at, cal.teacher_ended_at,
-              cal.duration_minutes, cal.proof_url, cal.summary, cal.verification_status
+              cal.duration_minutes, cal.proof_url, cal.recording_url, cal.summary, cal.verification_status
        FROM classes c
        LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
        JOIN users stu ON c.student_id = stu.user_id
@@ -4764,7 +5507,7 @@ app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
     }
 
     const requiredMinutes = getRequiredClassMinutes(classInfo.duration);
-    const hasEvidence = classInfo.proof_url || classInfo.summary;
+    const hasEvidence = classInfo.proof_url || classInfo.recording_url || classInfo.summary;
     if (
       classInfo.verification_status !== "verified" ||
       !classInfo.teacher_started_at ||
@@ -4775,7 +5518,7 @@ app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
     ) {
       await connection.rollback();
       return res.status(400).json({
-        message: `Class must be verified before it can be marked as done. Required: teacher start, student attendance, teacher end, at least ${requiredMinutes} minute(s), and proof or summary.`,
+        message: `Class must be verified before it can be marked as done. Required: teacher start, student attendance, teacher end, at least ${requiredMinutes} minute(s), and recording, screenshot, or summary evidence.`,
       });
     }
 
@@ -4947,7 +5690,8 @@ app.put("/api/calendar/classes/:class_id/no-show", async (req, res) => {
       [class_id]
     );
 
-    const { package: updatedPackage } = await getStudentPackageAvailability(connection, classInfo.student_id);
+    const { package: updatedPackage, bookedClasses: updatedBookedClasses, bookableClasses: updatedBookableClasses } =
+      await getStudentPackageAvailability(connection, classInfo.student_id);
 
     await connection.commit();
 
@@ -4962,7 +5706,13 @@ app.put("/api/calendar/classes/:class_id/no-show", async (req, res) => {
         class_id: classInfo.class_id,
         status: "no-show",
       },
-      package: updatedPackage,
+      package: updatedPackage
+        ? {
+            ...updatedPackage,
+            booked_classes: updatedBookedClasses,
+            bookable_classes: updatedBookableClasses,
+          }
+        : null,
     });
   } catch (err) {
     await connection.rollback();
@@ -5058,7 +5808,7 @@ app.post("/api/calendar/reschedule-request", async (req, res) => {
     );
 
     if (hasClassConflict(teacherConflictRows, requestedRange.start, requestedRange.end, class_id)) {
-      return res.status(409).json({ message: "This time slot overlaps with another booked class" });
+      return res.status(409).json({ message: `This time slot overlaps with another booked class or its ${CLASS_BREAK_BUFFER_MINUTES}-minute teacher break.` });
     }
 
     // Determine recipient: if student requested, notify teacher; if teacher requested, notify student
@@ -5105,6 +5855,8 @@ app.get("/api/calendar/booked-dates/:user_id", async (req, res) => {
               TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time,
               TIME_FORMAT(c.end_time, '%H:%i:%s') AS end_time,
               c.duration,
+              (SELECT cal.verification_status FROM class_attendance_logs cal
+               WHERE cal.class_id = c.class_id LIMIT 1) AS verification_status,
               c.teacher_id,
               c.student_id,
               tea.timezone AS teacher_timezone,
@@ -5273,7 +6025,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", async (req, res) => {
     );
 
     if (hasClassConflict(conflictRows, requestedRange.start, requestedRange.end, class_id)) {
-      return res.status(409).json({ message: "That time overlaps with another booked class" });
+      return res.status(409).json({ message: `That time overlaps with another booked class or its ${CLASS_BREAK_BUFFER_MINUTES}-minute teacher break.` });
     }
 
     const newEndTime = minutesToTimeKey(requestedRange.end);
@@ -6145,14 +6897,20 @@ app.get("/api/student/profile/:student_id", async (req, res) => {
         `SELECT COUNT(*) AS booked_count
          FROM classes
          WHERE student_id = ?
-           AND status IN ('scheduled', 'completed')
+           AND status = 'scheduled'
+           AND scheduled_date >= CURDATE()
+           AND NOT EXISTS (
+             SELECT 1 FROM class_attendance_logs cal
+             WHERE cal.class_id = classes.class_id
+               AND cal.verification_status = 'incomplete'
+           )
            AND created_at >= ?`,
         [student_id, packageInfo.created_at]
       );
       bookedClasses = Number(scheduledRows[0]?.booked_count || 0);
       const totalClasses = Number(packageInfo.total_classes || 0);
       const classesLeft = Number(packageInfo.classes_left ?? Math.max(0, totalClasses - Number(packageInfo.classes_used || 0)));
-      bookableClasses = Math.max(0, Math.min(classesLeft, totalClasses - bookedClasses));
+      bookableClasses = Math.max(0, classesLeft - bookedClasses);
     }
 
     res.json({
@@ -6801,12 +7559,9 @@ app.post("/api/calendar/set-availability", async (req, res) => {
       return res.status(400).json({ message: "Cannot set availability for past dates" });
     }
 
-    // Validate date is in current month
-    if (
-      selectedDate.getFullYear() !== today.getFullYear() ||
-      selectedDate.getMonth() !== today.getMonth()
-    ) {
-      return res.status(400).json({ message: "Can only set availability for current month" });
+    const maxScheduleDate = addMonthsClamped(todayMidnight, SCHEDULE_WINDOW_MONTHS);
+    if (selectedDate > maxScheduleDate) {
+      return res.status(400).json({ message: `Can only set availability up to ${SCHEDULE_WINDOW_MONTHS} months ahead` });
     }
 
     // If setting availability for today, validate that times are after current time
@@ -6963,6 +7718,198 @@ app.post("/api/calendar/set-availability", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error setting availability" });
+  }
+});
+
+// Set teacher availability for selected weekdays in a visible month.
+app.post("/api/calendar/set-availability-bulk", async (req, res) => {
+  try {
+    const { teacher_id, year, month, weekdays, status, start_time, end_time, break_start, break_end } = req.body;
+
+    if (!teacher_id || !year || !month || !status || !Array.isArray(weekdays)) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const selectedYear = Number(year);
+    const selectedMonth = Number(month);
+    const selectedWeekdays = [...new Set(weekdays.map(Number))]
+      .filter((weekday) => Number.isInteger(weekday) && weekday >= 0 && weekday <= 6);
+
+    if (!Number.isInteger(selectedYear) || !Number.isInteger(selectedMonth) || selectedMonth < 1 || selectedMonth > 12) {
+      return res.status(400).json({ message: "Invalid month or year" });
+    }
+
+    if (!selectedWeekdays.length) {
+      return res.status(400).json({ message: "Please select at least one weekday" });
+    }
+
+    if (!["available", "unavailable"].includes(status)) {
+      return res.status(400).json({ message: "Invalid availability status" });
+    }
+
+    const [teacherRows] = await pool.query(
+      `SELECT user_id, first_name, last_name
+       FROM users
+       WHERE user_id = ?
+         AND role = 'teacher'
+         AND status = 'active'
+         AND profile_completed = TRUE
+       LIMIT 1`,
+      [teacher_id]
+    );
+
+    if (!teacherRows.length) {
+      return res.status(400).json({ message: "Teacher account must be active and complete before setting availability." });
+    }
+
+    const today = new Date();
+    const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+    const maxScheduleDate = addMonthsClamped(todayMidnight, SCHEDULE_WINDOW_MONTHS);
+
+    let startMinutes = null;
+    let endMinutes = null;
+    let breakStartMinutes = null;
+    let breakEndMinutes = null;
+
+    if (status === "available") {
+      startMinutes = timeToMinutes(start_time);
+      endMinutes = timeToMinutes(end_time);
+
+      if (startMinutes == null || endMinutes == null) {
+        return res.status(400).json({ message: "Start time and end time are required when setting available" });
+      }
+
+      if (endMinutes <= startMinutes) {
+        return res.status(400).json({ message: "End time must be after start time" });
+      }
+
+      if (break_start || break_end) {
+        breakStartMinutes = timeToMinutes(break_start);
+        breakEndMinutes = timeToMinutes(break_end);
+
+        if (breakStartMinutes == null || breakEndMinutes == null) {
+          return res.status(400).json({ message: "Both break start and break end times are required" });
+        }
+
+        if (breakEndMinutes <= breakStartMinutes) {
+          return res.status(400).json({ message: "Break end time must be after break start time" });
+        }
+
+        if (breakStartMinutes < startMinutes || breakEndMinutes > endMinutes) {
+          return res.status(400).json({ message: "Break time must be within your availability window" });
+        }
+      }
+    }
+
+    const savedDates = [];
+    const skippedDates = [];
+    const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const selectedDate = new Date(selectedYear, selectedMonth - 1, day, 0, 0, 0, 0);
+      const availableDate = `${selectedYear}-${pad(selectedMonth)}-${pad(day)}`;
+
+      if (!selectedWeekdays.includes(selectedDate.getDay())) continue;
+
+      if (selectedDate < todayMidnight) {
+        skippedDates.push({ date: availableDate, reason: "past_date" });
+        continue;
+      }
+
+      if (selectedDate > maxScheduleDate) {
+        skippedDates.push({ date: availableDate, reason: "outside_schedule_window" });
+        continue;
+      }
+
+      if (status === "available" && selectedDate.getTime() === todayMidnight.getTime()) {
+        const currentMinutes = today.getHours() * 60 + today.getMinutes();
+        if (startMinutes <= currentMinutes || endMinutes <= currentMinutes) {
+          skippedDates.push({ date: availableDate, reason: "time_has_passed" });
+          continue;
+        }
+      }
+
+      const [existingClasses] = await pool.query(
+        `SELECT class_id FROM classes
+         WHERE teacher_id = ?
+           AND scheduled_date = ?
+           AND status IN ('scheduled', 'completed')
+         LIMIT 1`,
+        [teacher_id, availableDate]
+      );
+
+      if (existingClasses.length > 0) {
+        skippedDates.push({ date: availableDate, reason: "has_booked_class" });
+        continue;
+      }
+
+      await pool.query(
+        `INSERT INTO teacher_availability (teacher_id, available_date, status, start_time, end_time, break_start, break_end)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE status = ?, start_time = ?, end_time = ?, break_start = ?, break_end = ?, updated_at = CURRENT_TIMESTAMP`,
+        [
+          teacher_id,
+          availableDate,
+          status,
+          status === "available" ? normalizeTimeKey(start_time) : null,
+          status === "available" ? normalizeTimeKey(end_time) : null,
+          status === "available" ? normalizeTimeKey(break_start) : null,
+          status === "available" ? normalizeTimeKey(break_end) : null,
+          status,
+          status === "available" ? normalizeTimeKey(start_time) : null,
+          status === "available" ? normalizeTimeKey(end_time) : null,
+          status === "available" ? normalizeTimeKey(break_start) : null,
+          status === "available" ? normalizeTimeKey(break_end) : null,
+        ]
+      );
+      savedDates.push(availableDate);
+    }
+
+    const [studentRows] = await pool.query(
+      `SELECT u.user_id
+       FROM student_profiles sp
+       JOIN users u ON u.user_id = sp.user_id
+       WHERE sp.assigned_teacher_id = ?
+         AND u.role = 'student'
+         AND u.status = 'active'
+         AND u.profile_completed = TRUE`,
+      [teacher_id]
+    );
+
+    if (savedDates.length && studentRows.length) {
+      const teacherName = `${teacherRows[0].first_name || ""} ${teacherRows[0].last_name || ""}`.trim() || "Your teacher";
+      const monthName = new Date(selectedYear, selectedMonth - 1, 1).toLocaleString("default", { month: "long" });
+      const notificationTitle = "Teacher Availability Updated";
+      const notificationMessage = status === "available"
+        ? `${teacherName} updated availability for ${savedDates.length} date${savedDates.length === 1 ? "" : "s"} in ${monthName} ${selectedYear} from ${humanTime(start_time)} to ${humanTime(end_time)}.`
+        : `${teacherName} marked ${savedDates.length} date${savedDates.length === 1 ? "" : "s"} unavailable in ${monthName} ${selectedYear}.`;
+
+      await pool.query(
+        `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+         VALUES ${studentRows.map(() => "(?, 'announcement', ?, ?, NULL, 'teacher_availability', '/Calendar')").join(", ")}`,
+        studentRows.flatMap((student) => [
+          student.user_id,
+          encryptNullableText(notificationTitle),
+          encryptNullableText(notificationMessage),
+        ])
+      );
+    }
+
+    broadcastCalendarChange([teacher_id, ...studentRows.map((student) => student.user_id)], "availability-changed", {
+      teacher_id,
+      status,
+      saved_dates: savedDates,
+      skipped_dates: skippedDates,
+    });
+
+    res.json({
+      message: "Bulk availability updated successfully",
+      saved_dates: savedDates,
+      skipped_dates: skippedDates,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error setting bulk availability" });
   }
 });
 
@@ -8382,6 +9329,7 @@ const runClassStatusSweep = async () => {
     await Promise.all([
       expireDepletedPackages(pool),
       autoMarkPastClassesAsNoShow(pool),
+      cleanupExpiredClassRecordings(pool),
     ]);
   } catch (err) {
     console.error("Class status sweep error:", err);

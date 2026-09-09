@@ -1,6 +1,6 @@
 import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
-import { createBrowserRouter, RouterProvider} from "react-router-dom";
+import { createBrowserRouter, Navigate, RouterProvider} from "react-router-dom";
 import App from "./App.jsx";
 import { NotificationProvider } from "./components/NotificationContainer.jsx";
 import "./index.css";
@@ -59,6 +59,7 @@ const router = createBrowserRouter([
       { path: "TeacherDashboard", element: <Page><Dashboard mode="teacher" /></Page> },
       {
         path: "Calendar",element: <Page><Calendar/></Page>},
+      { path: "classroom/:classId", element: <Navigate to="/Calendar" replace /> },
       { path: "teacherClassHistory", element: <Page><StudentClassHistory mode="teacher" /></Page> },
       { path: "PassRemarks", element: <Page><PassRemarks /></Page> },
       { path: "teacherStudents", element: <Page><TeacherStudents /></Page> },
