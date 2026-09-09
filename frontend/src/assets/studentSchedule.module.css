@@ -315,6 +315,495 @@
   box-shadow: none;
 }
 
+.verificationHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.verificationTitle {
+  color: #22313a;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.verificationMeta {
+  margin-top: 2px;
+  color: #667085;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.verificationStatusPill {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.verificationChecklist {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.verificationCheckRow {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 7px;
+  color: #25323a;
+  font-size: 0.78rem;
+}
+
+.verificationCheckIcon {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #d0d5dd;
+  border-radius: 50%;
+  background: #fff;
+  color: #fff;
+  display: inline-grid;
+  place-items: center;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.verificationCheckDone {
+  background: #2f9e44;
+  border-color: #2f9e44;
+}
+
+.verificationCheckLabel {
+  color: #344054;
+  font-weight: 700;
+}
+
+.verificationCheckValue {
+  color: #667085;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.verificationFootnote,
+.verificationHelpText,
+.evidenceHintText {
+  color: #667085;
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.verificationBody,
+.evidenceGrid {
+  display: grid;
+  gap: 8px;
+}
+
+.verificationSectionTitle {
+  color: #22313a;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.verificationField {
+  display: grid;
+  gap: 6px;
+  color: #344054;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.verificationSelect,
+.verificationTextarea,
+.evidenceFileInput {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cfd8dc;
+  border-radius: 8px;
+  background: #fff;
+  color: #22313a;
+  font: inherit;
+}
+
+.verificationSelect,
+.evidenceFileInput {
+  padding: 9px;
+}
+
+.verificationTextarea {
+  padding: 10px;
+  resize: vertical;
+}
+
+.verificationAlert {
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.35;
+  padding: 9px 10px;
+}
+
+.evidenceUploadCard {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid #dbe4ea;
+  border-radius: 8px;
+  background: #fff;
+  color: #344054;
+  outline: none;
+}
+
+.evidenceUploadCard:focus-visible {
+  border-color: #91a79a;
+  box-shadow: 0 0 0 3px rgba(145, 167, 154, 0.22);
+}
+
+.evidenceCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.evidenceStatus {
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #9a3412;
+  padding: 3px 7px;
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.evidenceStatusReady {
+  background: #ecfdf3;
+  color: #166534;
+}
+
+.evidenceCardText {
+  color: #667085;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.evidenceReadyText {
+  color: #166534;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.evidenceWarningText,
+.verificationMissingText {
+  color: #92400e;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.evidencePreview {
+  position: relative;
+  border: 1px solid #dbe4ea;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.evidencePreviewActions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 1;
+}
+
+.evidenceViewBtn,
+.evidenceRemoveBtn {
+  border: none;
+  background: rgba(15, 23, 42, 0.82);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.evidenceViewBtn {
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.72rem;
+  text-decoration: none;
+}
+
+.evidenceRemoveBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 18px;
+  line-height: 28px;
+}
+
+.evidenceRemoveBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.evidencePreviewImage {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  background: #f8fafc;
+}
+
+.confirmOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.45);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.classEntryDialog {
+  width: min(440px, 100%);
+  box-sizing: border-box;
+  border: 1px solid #dbe4ea;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+  padding: 22px;
+  animation: slideIn 0.22s ease-out;
+}
+
+.classEntryBadge {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 14px;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.classEntryBadgeScreenshots {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.classEntryBadgeRecording {
+  background: #e7f5ff;
+  color: #1864ab;
+}
+
+.classEntryDialog h3 {
+  margin: 0 0 8px;
+  color: #10231d;
+  font-size: 1.15rem;
+  font-weight: 900;
+}
+
+.classEntryDialog p {
+  margin: 0 0 16px;
+  color: #4b5563;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.classEntryDetails {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.classEntryDetails div {
+  min-width: 0;
+  border: 1px solid #edf3ef;
+  border-radius: 9px;
+  background: #f8fbf9;
+  padding: 10px;
+}
+
+.classEntryDetails span {
+  display: block;
+  margin-bottom: 4px;
+  color: #66756e;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.classEntryDetails strong {
+  display: block;
+  color: #10231d;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.classEntryChecklist {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+}
+
+.classEntryChecklist li {
+  position: relative;
+  padding-left: 24px;
+  color: #344054;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.classEntryChecklist li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ecfdf3;
+  border: 1px solid #bbf7d0;
+}
+
+.classEntryChecklist li::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 6px;
+  width: 5px;
+  height: 8px;
+  border: solid #166534;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.classEntryTerms {
+  margin: -4px 0 18px;
+  border: 1px solid #d7e4dd;
+  border-radius: 8px;
+  background: #f8fbf9;
+  color: #35594a;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 9px 10px;
+}
+
+.classEntryActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.confirmSecondaryBtn,
+.confirmPrimaryBtn {
+  min-height: 40px;
+  border-radius: 9px;
+  padding: 10px 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.confirmSecondaryBtn {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #344054;
+}
+
+.confirmPrimaryBtn {
+  border: 1px solid #2f9e44;
+  background: #2f9e44;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(47, 158, 68, 0.22);
+}
+
+.reviewActionBox {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fff7ed;
+}
+
+.reviewActionText {
+  color: #9a3412;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.reviewReasonField {
+  display: grid;
+  gap: 6px;
+  color: #7c2d12;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.reviewReasonTextarea {
+  width: 100%;
+  min-height: 78px;
+  box-sizing: border-box;
+  border: 1px solid #fdba74;
+  border-radius: 8px;
+  background: #fff;
+  color: #22313a;
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.35;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.reviewReasonTextarea:focus {
+  border-color: #d97706;
+  outline: 3px solid rgba(245, 159, 0, 0.18);
+}
+
+.reviewReasonHint {
+  color: #9a3412;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.reviewBtn {
+  justify-content: center;
+  text-align: center;
+  background: #fff;
+  color: #92400e;
+  border-color: #f59f00;
+  box-shadow: none;
+}
+
+.reviewBtn:hover:not(:disabled),
+.reviewBtn:focus-visible:not(:disabled) {
+  background: #fff7ed;
+  border-color: #d97706;
+  color: #7c2d12;
+}
+
 .legendBlock {
   margin-top: 10px;
   padding-top: 10px;
@@ -418,6 +907,16 @@
 }
 
 @media (max-width: 520px) {
+  .classEntryDetails {
+    grid-template-columns: 1fr;
+  }
+
+  .classEntryActions,
+  .confirmSecondaryBtn,
+  .confirmPrimaryBtn {
+    width: 100%;
+  }
+
   .center {
     width: 100%;
     margin: 12px auto;

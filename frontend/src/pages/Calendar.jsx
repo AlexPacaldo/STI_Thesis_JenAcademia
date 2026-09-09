@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
@@ -8,6 +8,7 @@ import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/studentSchedule.module.css";
 import { API_BASE_URL } from "../utils/api.js";
 import { compressImageFile } from "../utils/imageCompression.js";
+import useClassRecording from "../components/useClassRecording.js";
 import {
   DEFAULT_TIMEZONE,
   convertDateTime,
@@ -142,6 +143,17 @@ const parse24HourTime = (timeStr) => normalizeTime(timeStr);
 const CLASS_DURATION_OPTIONS = [25, 50];
 const DEFAULT_CLASS_DURATION = 50;
 const SLOT_STEP_MINUTES = 25;
+const CLASS_BREAK_BUFFER_MINUTES = 10;
+const SCHEDULE_WINDOW_MONTHS = 3;
+const WEEKDAY_OPTIONS = [
+  [0, "Sun"],
+  [1, "Mon"],
+  [2, "Tue"],
+  [3, "Wed"],
+  [4, "Thu"],
+  [5, "Fri"],
+  [6, "Sat"],
+];
 
 const normalizeClassDuration = (value) => {
   const parsed = parseInt(value, 10);
@@ -163,7 +175,66 @@ const minutesToTime = (minutes) => {
   return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
 };
 
+const describeTimeDistance = (requestedTime, suggestedTime) => {
+  const requestedMinutes = timeToMinutes(requestedTime);
+  const suggestedMinutes = timeToMinutes(suggestedTime);
+  if (requestedMinutes == null || suggestedMinutes == null) return "";
+  const diff = suggestedMinutes - requestedMinutes;
+  if (diff === 0) return "Exact match";
+  const absDiff = Math.abs(diff);
+  return `${absDiff} min ${diff > 0 ? "later" : "earlier"}`;
+};
+
+const formatLongDate = (dateKey) => {
+  if (!dateKey) return "";
+  const date = new Date(`${dateKey}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return dateKey;
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    weekday: "long",
+  });
+};
+
+const formatScheduleDate = (dateKey) => {
+  if (!dateKey) return "";
+  const date = new Date(`${dateKey}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return dateKey;
+  return date.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+};
+
+const formatRecordingDuration = (secondsValue) => {
+  const seconds = Math.max(0, Math.round(Number(secondsValue || 0)));
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes <= 0) return `${remainingSeconds} sec`;
+  return `${minutes} min ${String(remainingSeconds).padStart(2, "0")} sec`;
+};
+
 const rangesOverlap = (startA, endA, startB, endB) => startA < endB && endA > startB;
+const rangesOverlapWithClassBuffer = (startA, endA, startB, endB) =>
+  rangesOverlap(startA, endA, startB - CLASS_BREAK_BUFFER_MINUTES, endB + CLASS_BREAK_BUFFER_MINUTES);
+const getCandidateSlotMinutes = (start, end, duration, occupiedRanges = []) => {
+  const candidates = new Set();
+  for (let minute = start; minute + duration <= end; minute += SLOT_STEP_MINUTES) {
+    candidates.add(minute);
+  }
+  occupiedRanges.forEach((range) => {
+    const afterClass = range.end + CLASS_BREAK_BUFFER_MINUTES;
+    const beforeClass = range.start - CLASS_BREAK_BUFFER_MINUTES - duration;
+    if (afterClass + duration <= end) candidates.add(afterClass);
+    if (beforeClass >= start) candidates.add(beforeClass);
+  });
+  return Array.from(candidates)
+    .filter((minute) => minute >= start && minute + duration <= end)
+    .sort((a, b) => a - b);
+};
 
 const getClassRange = (classObj) => {
   const start = timeToMinutes(classObj?.start_time || classObj?.startTime || classObj?.time);
@@ -198,10 +269,16 @@ const formatRemarkDate = (value) => {
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleDateString();
 };
 
-const formatVerificationTimestamp = (value) => {
+const formatVerificationTimestamp = (value, includeDate = false) => {
   if (!value) return "";
   const parsed = new Date(String(value).replace(" ", "T"));
   if (Number.isNaN(parsed.getTime())) return String(value);
+  if (includeDate) {
+    return parsed.toLocaleString([], {
+      month: "short", day: "numeric", year: "numeric",
+      hour: "numeric", minute: "2-digit", timeZoneName: "short",
+    });
+  }
   return parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 };
 
@@ -269,17 +346,12 @@ const verificationPanelStyle = {
   background: "#f8fbfd",
 };
 
-const verificationLabelStyle = {
-  fontSize: "0.78rem",
-  color: "#52616b",
-};
-
 // Helper: check if a class is joinable (30 mins before start until class end)
-const isClassJoinable = (classObj, selectedDate) => {
+const isClassJoinable = (classObj, selectedDate, nowValue = Date.now()) => {
   if (!classObj || !selectedDate) return false;
 
   try {
-    const now = new Date();
+    const now = new Date(nowValue);
 
     const parseTimeString = (timeStr) => {
       if (!timeStr) return null;
@@ -375,11 +447,11 @@ const isClassJoinable = (classObj, selectedDate) => {
   }
 };
 
-const isClassPast = (classObj, selectedDate) => {
+const isClassPast = (classObj, selectedDate, nowValue = Date.now()) => {
   if (!classObj || !selectedDate) return false;
 
   try {
-    const now = new Date();
+    const now = new Date(nowValue);
     const parseTimeString = (timeStr) => {
       if (!timeStr) return null;
       const ampmMatch = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
@@ -485,6 +557,13 @@ const dateKeyToLocalDate = (dateKey) => {
   return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
 };
 
+const addMonthsClamped = (date, months) => {
+  const base = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const targetMonth = base.getMonth() + months;
+  const lastDay = new Date(base.getFullYear(), targetMonth + 1, 0).getDate();
+  return new Date(base.getFullYear(), targetMonth, Math.min(base.getDate(), lastDay));
+};
+
 /**
  * Calendar view for teachers and students. Data is loaded from the backend using
  * the SQL schema tables (teacher_availability, classes, student_class_packages).
@@ -512,6 +591,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [isInitialCalendarLoading, setIsInitialCalendarLoading] = useState(true);
 
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const initialDateApplied = useRef(false);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -524,6 +604,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
   const [requestConfirmOpen, setRequestConfirmOpen] = useState(false);
   const [isMarkingClassDone, setIsMarkingClassDone] = useState(false);
+  const [classEntryConfirmOpen, setClassEntryConfirmOpen] = useState(false);
   const [classDoneConfirmOpen, setClassDoneConfirmOpen] = useState(false);
   const [classDoneAssessmentOpen, setClassDoneAssessmentOpen] = useState(false);
   const [classDoneAssessmentLevel, setClassDoneAssessmentLevel] = useState("");
@@ -544,6 +625,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [studentBookingMode, setStudentBookingMode] = useState(false);
   const [studentBookingDate, setStudentBookingDate] = useState(fmtDate(today));
   const [studentBookingTime, setStudentBookingTime] = useState("");
+  const [studentBookingSelections, setStudentBookingSelections] = useState([]);
+  const [studentBookingSuggestions, setStudentBookingSuggestions] = useState([]);
+  const [studentBookingApplyMode, setStudentBookingApplyMode] = useState("manual");
+  const [studentBookingWeeklyWeekdays, setStudentBookingWeeklyWeekdays] = useState([1, 3, 5]);
+  const [studentBookingWeeklyTime, setStudentBookingWeeklyTime] = useState("");
   const [studentBookingSubject, setStudentBookingSubject] = useState("");
   const [studentBookingError, setStudentBookingError] = useState("");
   const [isSubmittingStudentBooking, setIsSubmittingStudentBooking] = useState(false);
@@ -564,12 +650,29 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [contractRequestError, setContractRequestError] = useState("");
   const [contractRequests, setContractRequests] = useState([]);
   const [isSubmittingContractRequest, setIsSubmittingContractRequest] = useState(false);
+  const [currentTimeTick, setCurrentTimeTick] = useState(() => Date.now());
   const isAdmin = localRole === "admin"; // helper for rendering
   const viewerTimezone = useMemo(() => getUserTimezone(me), [me]);
-  const viewerTodayKey = useMemo(() => formatDateInTimezone(new Date(), viewerTimezone), [viewerTimezone]);
+  const viewerTodayKey = useMemo(() => formatDateInTimezone(new Date(currentTimeTick), viewerTimezone), [viewerTimezone, currentTimeTick]);
   const viewerToday = useMemo(() => dateKeyToLocalDate(viewerTodayKey) || new Date(), [viewerTodayKey]);
+  const scheduleWindowEndKey = useMemo(() => fmtDate(addMonthsClamped(viewerToday, SCHEDULE_WINDOW_MONTHS)), [viewerToday]);
   const initialBrowserToday = useRef(today);
   const initialBrowserTodayKey = useRef(fmtDate(today));
+
+  useEffect(() => {
+    const refreshCurrentTime = () => setCurrentTimeTick(Date.now());
+    const intervalId = window.setInterval(refreshCurrentTime, 30 * 1000);
+    const handleVisibilityChange = () => {
+      if (!document.hidden) refreshCurrentTime();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   // booking form state
   const [bookingFormOpen, setBookingFormOpen] = useState(false);
@@ -587,17 +690,29 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       .map((course) => course.course_name),
     [courses, contractCourseId]
   );
-  const selectedClasses = selectedDate ? (classesCache[selectedDate] || []) : [];
+  // Keep reserved classes in the cache for overlap checks, but hide incomplete
+  // sessions from the active class list.
+  const selectedClasses = selectedDate
+    ? (classesCache[selectedDate] || []).filter(cls => cls.verification_status !== "incomplete")
+    : [];
   const selectedClass = selectedClassId
     ? selectedClasses.find(cls => cls.id === selectedClassId)
     : null;
   const [classVerification, setClassVerification] = useState(null);
+  const [evidenceChoice, setEvidenceChoice] = useState("screenshots");
+  const [isUploadingStartProof, setIsUploadingStartProof] = useState(false);
+  const evidenceReminders = useRef(new Set());
   const [classVerificationRefreshToken, setClassVerificationRefreshToken] = useState(0);
   const [isUpdatingVerification, setIsUpdatingVerification] = useState(false);
   const [verificationSummary, setVerificationSummary] = useState("");
+  const [reviewReason, setReviewReason] = useState("");
   const [verificationProofUrl, setVerificationProofUrl] = useState("");
   const [verificationProofFile, setVerificationProofFile] = useState(null);
   const [verificationProofPreview, setVerificationProofPreview] = useState("");
+  const verificationProofFileRef = useRef(null);
+  const verificationProofPreviewRef = useRef("");
+  const [verificationRecordingUrl, setVerificationRecordingUrl] = useState("");
+  const [verificationRecordingExpiresAt, setVerificationRecordingExpiresAt] = useState("");
   const selectedClassDuration = Number(selectedClass?.duration) > 0
     ? Number(selectedClass.duration)
     : studentClassDuration;
@@ -609,6 +724,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
           teacher_ended_at: selectedClass.teacher_ended_at,
           duration_minutes: selectedClass.verified_duration_minutes,
           proof_url: selectedClass.class_proof_url,
+          recording_url: selectedClass.class_recording_url,
+          recording_uploaded_at: selectedClass.class_recording_uploaded_at,
+          recording_expires_at: selectedClass.class_recording_expires_at,
           summary: selectedClass.class_summary,
           verification_status: selectedClass.verification_status,
         }
@@ -619,6 +737,85 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const selectedClassStudentConfirmed = Boolean(selectedClassVerification?.student_joined_at);
   const selectedClassEnded = Boolean(selectedClassVerification?.teacher_ended_at);
   const selectedClassVerified = selectedVerificationStatus === "verified";
+  const shouldRemindStartScreenshot =
+    localRole === "teacher" &&
+    !isAdmin &&
+    selectedClassStarted &&
+    selectedClassStudentConfirmed &&
+    !selectedClassEnded &&
+    selectedClassVerification?.evidence_mode === "screenshots" &&
+    !selectedClassVerification?.start_proof_url;
+  const shouldRemindEndScreenshot =
+    localRole === "teacher" &&
+    !isAdmin &&
+    selectedClassStarted &&
+    selectedClassStudentConfirmed &&
+    !selectedClassEnded &&
+    selectedClassVerification?.evidence_mode === "screenshots" &&
+    Boolean(selectedClassVerification?.start_proof_url) &&
+    !verificationProofFile &&
+    !verificationProofUrl;
+
+  useEffect(() => {
+    if (localRole !== "teacher" || isAdmin || !selectedClass?.id) return;
+    if (selectedClassVerification?.evidence_mode !== "screenshots" || selectedClassEnded) return;
+
+    const classId = selectedClass.id;
+    const remind = () => {
+      if (shouldRemindStartScreenshot && !evidenceReminders.current.has(`${classId}-start`)) {
+        evidenceReminders.current.add(`${classId}-start`);
+        notify?.(
+          "The student has joined. Capture and upload your start screenshot now, showing participants and system time.",
+          "warning",
+          8000
+        );
+      }
+
+      if (!shouldRemindEndScreenshot || evidenceReminders.current.has(`${classId}-end`)) return;
+
+      const dateKey = String(selectedClass.scheduled_date || selectedDate || "").slice(0, 10);
+      const endTime = selectedClass.end_time || (
+        timeToMinutes(selectedClass.start_time || selectedClass.time) != null
+          ? minutesToTime(timeToMinutes(selectedClass.start_time || selectedClass.time) + selectedClassDuration)
+          : ""
+      );
+      const normalizedEndTime = normalizeTime(endTime);
+      if (!dateKey || !normalizedEndTime) return;
+
+      const classEndAt = new Date(`${dateKey}T${normalizedEndTime}:00`).getTime();
+      if (!Number.isFinite(classEndAt)) return;
+
+      const remainingMs = classEndAt - Date.now();
+      if (remainingMs <= 5 * 60_000) {
+        evidenceReminders.current.add(`${classId}-end`);
+        notify?.(
+          "Before leaving the meeting, capture your end screenshot with participants and system time.",
+          "warning",
+          8000
+        );
+      }
+    };
+
+    remind();
+    const timer = window.setInterval(remind, 30_000);
+    return () => window.clearInterval(timer);
+  }, [
+    isAdmin,
+    localRole,
+    notify,
+    selectedClass?.id,
+    selectedClass?.scheduled_date,
+    selectedClass?.start_time,
+    selectedClass?.time,
+    selectedClass?.end_time,
+    selectedClassDuration,
+    selectedClassEnded,
+    selectedClassVerification?.evidence_mode,
+    selectedDate,
+    shouldRemindEndScreenshot,
+    shouldRemindStartScreenshot,
+  ]);
+
   const latestRemark = selectedClass?.id
     ? (studentRemarks.find((remark) => String(remark.class_id) === String(selectedClass.id)) || studentRemarks[0] || null)
     : (studentRemarks[0] || null);
@@ -648,8 +845,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [availabilityError, setAvailabilityError] = useState("");
   const [isSubmittingAvailability, setIsSubmittingAvailability] = useState(false);
   const [availabilityConfirmOpen, setAvailabilityConfirmOpen] = useState(false);
+  const [availabilityApplyMode, setAvailabilityApplyMode] = useState("single");
+  const [bulkAvailabilityWeekdays, setBulkAvailabilityWeekdays] = useState([1, 2, 3, 4, 5]);
   const [teacherSelectedDate, setTeacherSelectedDate] = useState(null);
-  const [teacherAvailabilityList, setTeacherAvailabilityList] = useState([]); // list of availability records for current month
+  const [teacherAvailabilityList, setTeacherAvailabilityList] = useState([]); // list of availability records for the visible month
   const [teacherAvailabilityRecordForDate, setTeacherAvailabilityRecordForDate] = useState(null); // individual selected date record
   const triggerCalendarRefresh = useCallback(() => {
     setClassesCache({});
@@ -670,6 +869,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         teacher_ended_at: verification.teacher_ended_at,
         verified_duration_minutes: verification.duration_minutes,
         class_proof_url: verification.proof_url,
+        class_recording_url: verification.recording_url,
+        class_recording_uploaded_at: verification.recording_uploaded_at,
+        class_recording_expires_at: verification.recording_expires_at,
         class_summary: verification.summary,
         verification_status: verification.verification_status,
       };
@@ -911,9 +1113,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     if (!selectedClass?.id) {
       setClassVerification(null);
       setVerificationSummary("");
+      setReviewReason("");
       setVerificationProofUrl("");
       setVerificationProofFile(null);
       setVerificationProofPreview("");
+      setVerificationRecordingUrl("");
+      setVerificationRecordingExpiresAt("");
       return;
     }
 
@@ -925,9 +1130,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         const verification = response.data?.verification || null;
         setClassVerification(verification);
         setVerificationSummary(verification?.summary || "");
-        setVerificationProofUrl(verification?.proof_url || "");
-        setVerificationProofFile(null);
-        setVerificationProofPreview("");
+        setReviewReason("");
+        setVerificationProofUrl(currentUrl => {
+          if (verification?.proof_url) return verification.proof_url;
+          return verificationProofFileRef.current || verificationProofPreviewRef.current ? currentUrl : "";
+        });
+        setVerificationRecordingUrl(verification?.recording_url || "");
+        setVerificationRecordingExpiresAt(verification?.recording_expires_at || "");
+        if (verification?.proof_url) {
+          setVerificationProofFile(null);
+          setVerificationProofPreview("");
+        }
         if (verification) applyVerificationToSelectedClass(verification);
       })
       .catch(() => {
@@ -945,6 +1158,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         URL.revokeObjectURL(verificationProofPreview);
       }
     };
+  }, [verificationProofPreview]);
+
+  useEffect(() => {
+    verificationProofFileRef.current = verificationProofFile;
+  }, [verificationProofFile]);
+
+  useEffect(() => {
+    verificationProofPreviewRef.current = verificationProofPreview;
   }, [verificationProofPreview]);
 
   useEffect(() => {
@@ -1049,6 +1270,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     teacherEmail: c.teacherEmail || c.teacher_email,
     teacherProfileImageUrl: c.teacherProfileImageUrl || c.teacher_profile_image_url || "",
     classLink: c.classLink || c.class_link,
+    class_recording_url: c.class_recording_url || c.recording_url || "",
+    class_recording_uploaded_at: c.class_recording_uploaded_at || c.recording_uploaded_at || "",
+    class_recording_expires_at: c.class_recording_expires_at || c.recording_expires_at || "",
     source_scheduled_date: normalizeDate(c.scheduled_date),
     source_start_time: c.start_time,
     source_end_time: c.end_time,
@@ -1089,7 +1313,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     Promise.all(
       nearbyDateKeys(dateStr).map(sourceDate =>
         axios
-          .get(`${API}/api/calendar/classes-by-date`, { params: buildClassQueryParams(sourceDate) })
+          .get(`${API}/api/calendar/classes-by-date`, { params: { ...buildClassQueryParams(sourceDate), include_reserved: true } })
           .then(r => r.data?.classes || [])
           .catch(() => [])
       )
@@ -1116,7 +1340,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       nearbyDateKeys(dateKey).map(sourceDate =>
         axios
           .get(`${API}/api/calendar/classes-by-date`, {
-            params: { scheduled_date: sourceDate, teacher_id: tId }
+            params: { scheduled_date: sourceDate, teacher_id: tId, include_reserved: true }
           })
           .then(r => r.data?.classes || [])
           .catch(() => [])
@@ -1134,6 +1358,47 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       .catch(() => {
         setTeacherClassesCache(prev => ({ ...prev, [dateKey]: [] }));
       });
+  };
+
+  const loadTeacherClassesForDates = async (dateKeys, tId) => {
+    const uniqueDateKeys = [...new Set(dateKeys.map(normalizeDate).filter(Boolean))];
+    if (!uniqueDateKeys.length || !tId) return new Map();
+
+    const entries = await Promise.all(uniqueDateKeys.map(async (dateKey) => {
+      if (teacherClassesCache[dateKey] !== undefined) {
+        return [dateKey, teacherClassesCache[dateKey]];
+      }
+
+      const results = await Promise.all(
+        nearbyDateKeys(dateKey).map(sourceDate =>
+          axios
+            .get(`${API}/api/calendar/classes-by-date`, {
+              params: { scheduled_date: sourceDate, teacher_id: tId, include_reserved: true }
+            })
+            .then(r => r.data?.classes || [])
+            .catch(() => [])
+        )
+      );
+
+      const byId = new Map();
+      results
+        .flat()
+        .map(formatClassForViewer)
+        .filter(cls => normalizeDate(cls.scheduled_date) === dateKey)
+        .forEach(cls => byId.set(String(cls.id || cls.class_id), cls));
+
+      return [dateKey, Array.from(byId.values())];
+    }));
+
+    const loadedClasses = new Map(entries);
+    setTeacherClassesCache(prev => {
+      const next = { ...prev };
+      entries.forEach(([dateKey, classes]) => {
+        next[dateKey] = classes;
+      });
+      return next;
+    });
+    return loadedClasses;
   };
 
   const loadTeacherAvailabilityRecordForDate = (dateStr, tId) => {
@@ -1217,13 +1482,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
     const finalSlotsInTeacherTimezone = [];
     availabilityRanges.forEach(({ start, end }) => {
-      for (let minute = start; minute + duration <= end; minute += SLOT_STEP_MINUTES) {
+      getCandidateSlotMinutes(start, end, duration, occupiedRanges).forEach((minute) => {
         const slotEnd = minute + duration;
-        const conflictsWithClass = occupiedRanges.some(range => rangesOverlap(minute, slotEnd, range.start, range.end));
+        const conflictsWithClass = occupiedRanges.some(range => rangesOverlapWithClassBuffer(minute, slotEnd, range.start, range.end));
         if (!conflictsWithClass) {
           finalSlotsInTeacherTimezone.push(minutesToTime(minute));
         }
-      }
+      });
     });
 
     const teacherTimezone = teacherAvailabilityRecord?.source_timezone || teacherAvailabilityRecord?.teacher_timezone || DEFAULT_TIMEZONE;
@@ -1303,7 +1568,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
   }, [studentBookingMode, studentBookingDate, assignedTeacherId, calendarRefreshToken]);
 
-  // Load teacher availability records for the current month when student enters booking mode
+  // Load teacher availability records for the selected booking month
   useEffect(() => {
     if (studentBookingMode && assignedTeacherId && localRole === "student" && studentBookingDate) {
       const bookingDate = new Date(studentBookingDate + "T00:00:00");
@@ -1429,7 +1694,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
     let active = true;
     axios
-      .get(`${API}/api/calendar/classes-by-month`, { params })
+      .get(`${API}/api/calendar/classes-by-month`, { params: { ...params, include_reserved: true } })
       .then(r => {
         if (!active) return;
         const monthlyClasses = r.data?.classesByDate || {};
@@ -1465,12 +1730,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     };
   }, [year, month, localRole, localUserId, teacherId, studentId, calendarRefreshToken, isUserReady]);
 
-  // Load teacher availability records for current month when teacher enters availability mode
+  // Load teacher availability records for the visible month when teacher enters availability mode
   useEffect(() => {
     if (setAvailabilityMode && localRole === "teacher" && localUserId) {
       loadTeacherAvailabilityForMonth();
     }
-  }, [setAvailabilityMode, localRole, localUserId, calendarRefreshToken]);
+  }, [setAvailabilityMode, localRole, localUserId, year, month, calendarRefreshToken]);
 
   const viewDate = new Date(year, month, 1);
   const monthName = viewDate.toLocaleString("default", { month: "long" });
@@ -1499,6 +1764,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     if (setAvailabilityMode && localRole === "teacher") {
       if (d.getFullYear() !== year || d.getMonth() !== month) return;
       const chosen = fmtDate(d);
+      if (isOutsideScheduleWindow(chosen)) {
+        setAvailabilityDate(chosen);
+        setAvailabilityError(validateAvailabilityInputs({ availabilityDate: chosen }));
+        return;
+      }
       setAvailabilityDate(chosen);
       setAvailabilityError(validateAvailabilityInputs({ availabilityDate: chosen }));
       setTeacherSelectedDate(chosen);
@@ -1528,6 +1798,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       // only allow selecting dates within the currently visible month
       if (d.getFullYear() !== year || d.getMonth() !== month) return;
       const chosen = fmtDate(d);
+      if (isOutsideScheduleWindow(chosen)) {
+        setStudentBookingDate(chosen);
+        setStudentBookingTime("");
+        setStudentBookingError(`Please pick a date from today up to ${SCHEDULE_WINDOW_MONTHS} months ahead.`);
+        return;
+      }
       setStudentBookingDate(chosen);
       setStudentBookingTime("");
       setSelectedDate(null);
@@ -1544,7 +1820,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     if (!d) return false;
     const formatted = fmtDate(d);
     const classes = classesCache[formatted];
-    return classes && classes.length > 0;
+    return classes && classes.some(cls => cls.verification_status !== "incomplete");
   };
 
   // Helper: Get booked times for a specific date
@@ -1570,7 +1846,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
     return classes.some(cls => {
       const range = getClassRange(cls);
-      return range && rangesOverlap(requestedStart, requestedEnd, range.start, range.end);
+      return range && rangesOverlapWithClassBuffer(requestedStart, requestedEnd, range.start, range.end);
     });
   };
 
@@ -1604,7 +1880,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     return classesOnDate.some(cls => {
       if (cls.id === selectedClass.id || cls.teacher_id !== selectedClass.teacher_id) return false;
       const range = getClassRange(cls);
-      return range && rangesOverlap(requestedStart, requestedEnd, range.start, range.end);
+      return range && rangesOverlapWithClassBuffer(requestedStart, requestedEnd, range.start, range.end);
     });
   };
 
@@ -1617,7 +1893,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     return counterpartyBookedDates.some(bd => {
       if (normalizeDate(bd.scheduled_date) !== normalizedDate) return false;
       const range = getClassRange(bd);
-      return range && rangesOverlap(requestedStart, requestedEnd, range.start, range.end);
+      return range && rangesOverlapWithClassBuffer(requestedStart, requestedEnd, range.start, range.end);
     });
   };
 
@@ -1807,22 +2083,51 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     return Boolean(normalized) && normalized < viewerTodayKey;
   };
 
-  // Fetch teacher availability records for current month
+  const isOutsideScheduleWindow = (dateStr) => {
+    const normalized = normalizeDate(dateStr);
+    return Boolean(normalized) && (normalized < viewerTodayKey || normalized > scheduleWindowEndKey);
+  };
+
+  const bulkAvailabilityDates = useMemo(() => {
+    if (localRole !== "teacher") return [];
+    const selectedWeekdays = new Set(bulkAvailabilityWeekdays.map(Number));
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const dateKeys = [];
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = new Date(year, month, day);
+      const dateKey = fmtDate(date);
+      if (selectedWeekdays.has(date.getDay()) && !isOutsideScheduleWindow(dateKey)) {
+        dateKeys.push(dateKey);
+      }
+    }
+    return dateKeys;
+  }, [bulkAvailabilityWeekdays, localRole, month, scheduleWindowEndKey, viewerTodayKey, year]);
+
+  const toggleBulkAvailabilityWeekday = (weekday) => {
+    setBulkAvailabilityWeekdays((current) => {
+      const exists = current.includes(weekday);
+      const next = exists ? current.filter((value) => value !== weekday) : [...current, weekday];
+      return next.sort((a, b) => a - b);
+    });
+    setAvailabilityError("");
+  };
+
+  // Fetch teacher availability records for the visible month
   const loadTeacherAvailabilityForMonth = () => {
     if (localRole !== "teacher" || !localUserId) return;
 
-    const currentYear = viewerToday.getFullYear();
-    const currentMonth = viewerToday.getMonth() + 1;
+    const visibleYear = year;
+    const visibleMonth = month + 1;
 
     axios
       .get(`${API}/api/calendar/teacher-availability-records`, {
-        params: { teacher_id: localUserId, year: currentYear, month: currentMonth }
+        params: { teacher_id: localUserId, year: visibleYear, month: visibleMonth }
       })
       .then(r => {
         if (r.data && r.data.records) {
           const normalized = r.data.records
             .map(formatAvailabilityRecordForViewer)
-            .filter(record => !isPastDateString(record.available_date));
+            .filter(record => !isPastDateString(record.available_date) && !isOutsideScheduleWindow(record.available_date));
           setTeacherAvailabilityList(normalized);
         }
       })
@@ -1891,16 +2196,16 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       return "Please select a date";
     }
 
-    const currentYear = viewerToday.getFullYear();
-    const currentMonth = viewerToday.getMonth();
     const [selYear, selMonth, selDay] = date.split('-').map(Number);
     const selectedDateObj = new Date(selYear, selMonth - 1, selDay, 0, 0, 0, 0);
+    const selectedDateKey = fmtDate(selectedDateObj);
 
-    if (
-      selectedDateObj.getFullYear() !== currentYear ||
-      selectedDateObj.getMonth() !== currentMonth
-    ) {
-      return "You can only set availability for the current month";
+    if (selectedDateKey < viewerTodayKey) {
+      return "Cannot set availability for past dates";
+    }
+
+    if (selectedDateKey > scheduleWindowEndKey) {
+      return `You can only set availability up to ${SCHEDULE_WINDOW_MONTHS} months ahead`;
     }
 
     if (status === "available") {
@@ -1975,7 +2280,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     const fieldErrors = {
       availabilityDate: [
         "Please select a date",
-        "You can only set availability for the current month",
+        "Cannot set availability for past dates",
+        `You can only set availability up to ${SCHEDULE_WINDOW_MONTHS} months ahead`,
       ],
       availabilityStartTime: [
         "Please select a start time",
@@ -2000,9 +2306,20 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     return fieldErrors[field]?.includes(error) ? error : "";
   };
 
+  const validateBulkAvailabilityInputs = () => {
+    if (!bulkAvailabilityWeekdays.length) {
+      return "Please select at least one weekday";
+    }
+    if (!bulkAvailabilityDates.length) {
+      return `No valid dates in ${monthName} within the 3-month scheduling window`;
+    }
+    return validateAvailabilityInputs({ availabilityDate: bulkAvailabilityDates[0] });
+  };
+
   // Submit teacher availability
   const submitTeacherAvailability = async () => {
-    const error = validateAvailabilityInputs();
+    const isBulkMode = availabilityApplyMode === "bulk";
+    const error = isBulkMode ? validateBulkAvailabilityInputs() : validateAvailabilityInputs();
     if (error) {
       setAvailabilityError(error);
       return;
@@ -2010,17 +2327,40 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
     setIsSubmittingAvailability(true);
     try {
-      await axios.post(`${API}/api/calendar/set-availability`, {
-        teacher_id: localUserId,
-        available_date: availabilityDate,
-        status: availabilityStatus,
-        start_time: availabilityStartTime || null,
-        end_time: availabilityEndTime || null,
-        break_start: availabilityBreakStart || null,
-        break_end: availabilityBreakEnd || null,
-      });
+      let bulkResult = null;
+      if (isBulkMode) {
+        const response = await axios.post(`${API}/api/calendar/set-availability-bulk`, {
+          teacher_id: localUserId,
+          year,
+          month: month + 1,
+          weekdays: bulkAvailabilityWeekdays,
+          status: availabilityStatus,
+          start_time: availabilityStartTime || null,
+          end_time: availabilityEndTime || null,
+          break_start: availabilityBreakStart || null,
+          break_end: availabilityBreakEnd || null,
+        });
+        bulkResult = response.data;
+      } else {
+        await axios.post(`${API}/api/calendar/set-availability`, {
+          teacher_id: localUserId,
+          available_date: availabilityDate,
+          status: availabilityStatus,
+          start_time: availabilityStartTime || null,
+          end_time: availabilityEndTime || null,
+          break_start: availabilityBreakStart || null,
+          break_end: availabilityBreakEnd || null,
+        });
+      }
 
-      notify("Availability updated successfully", "success");
+      const savedCount = Number(bulkResult?.saved_dates?.length || 0);
+      const skippedCount = Number(bulkResult?.skipped_dates?.length || 0);
+      notify(
+        isBulkMode
+          ? `Availability applied to ${savedCount} date${savedCount === 1 ? "" : "s"}${skippedCount ? `; ${skippedCount} skipped` : ""}.`
+          : "Availability updated successfully",
+        "success"
+      );
       setAvailabilityConfirmOpen(false);
       setAvailabilityError("");
       setAvailabilityStartTime("");
@@ -2053,7 +2393,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   };
 
   const openAvailabilityConfirmation = () => {
-    const error = validateAvailabilityInputs();
+    const error = availabilityApplyMode === "bulk" ? validateBulkAvailabilityInputs() : validateAvailabilityInputs();
     if (error) {
       setAvailabilityError(error);
       return;
@@ -2217,22 +2557,60 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     console.log("Selected class updated:", selectedClass);
   }
   
+  const recording = useClassRecording({
+    teacherId: localUserId,
+    notify,
+    onUploaded: (classId, verification) => {
+      if (String(selectedClass?.id) === String(classId)) {
+        setClassVerification(verification);
+        setVerificationRecordingUrl(verification?.recording_url || "");
+        setVerificationRecordingExpiresAt(verification?.recording_expires_at || "");
+        applyVerificationToSelectedClass(verification);
+      }
+    },
+  });
   const isTeacherOrAdmin = localRole === "teacher" || isAdmin;
   const isSelectedClassCompleted = selectedClass?.status === "completed";
-  const isSelectedClassConfirmable = isClassJoinable(selectedClass, selectedDate);
-  const isSelectedClassNoShowable = selectedClass?.status === "scheduled" && isClassPast(selectedClass, selectedDate);
+  const isSelectedClassConfirmable = isClassJoinable(selectedClass, selectedDate, currentTimeTick);
+  const isSelectedClassNoShowable = selectedClass?.status === "scheduled" && isClassPast(selectedClass, selectedDate, currentTimeTick);
   const hasVerificationSummarySentence = hasCompleteSentence(verificationSummary);
   const hasVerificationScreenshot = Boolean(verificationProofFile || verificationProofUrl);
+  const hasStartScreenshot = Boolean(selectedClassVerification?.start_proof_url);
+  const hasEndScreenshot = hasVerificationScreenshot;
+  const hasVerificationRecording = Boolean(verificationRecordingUrl || selectedClassVerification?.recording_url);
+  const evidenceMode = selectedClassVerification?.evidence_mode || (selectedClassStarted ? "recording" : evidenceChoice);
+  const requiredRecordingMinutes = Math.max(1, Math.min(30, Math.ceil(Number(selectedClass?.duration || 50) * 0.6)));
+  const hasVerificationProof = evidenceMode === "recording" ? hasVerificationRecording && Number(selectedClassVerification?.recording_duration_seconds || 0) >= requiredRecordingMinutes * 60
+    : Boolean(hasStartScreenshot && hasEndScreenshot);
   const canEndVerifyAndComplete =
     selectedClassStarted &&
     selectedClassStudentConfirmed &&
     hasVerificationSummarySentence &&
-    hasVerificationScreenshot &&
+    hasVerificationProof &&
+    !recording.session &&
     !isUpdatingVerification;
+  const canSubmitClassForReview =
+    selectedClassStarted &&
+    !selectedClassEnded &&
+    hasVerificationSummarySentence &&
+    !isUpdatingVerification &&
+    (
+      recording.session?.status === "failed" ||
+      !selectedClassStudentConfirmed ||
+      !hasVerificationProof
+    );
+  const missingVerificationItems = [
+    !selectedClassStudentConfirmed ? "student attendance" : "",
+    evidenceMode === "screenshots" && !hasStartScreenshot ? "start screenshot" : "",
+    evidenceMode === "screenshots" && !hasEndScreenshot ? "end screenshot" : "",
+    evidenceMode === "recording" && !hasVerificationRecording ? "recording" : "",
+    !hasVerificationSummarySentence ? "class summary" : "",
+  ].filter(Boolean);
   const endVerifyDisabledReason = (() => {
+    if (recording.session) return "Stop recording and finish uploading before completing the class.";
     if (!selectedClassStudentConfirmed) return "Student must join and confirm attendance first.";
     if (!hasVerificationSummarySentence) return "Enter at least one complete sentence in the class summary.";
-    if (!hasVerificationScreenshot) return "Upload or paste a class screenshot.";
+    if (!hasVerificationProof) return evidenceMode === "recording" ? `Upload a recording covering at least ${requiredRecordingMinutes} minutes, or submit for review.` : "Upload both the start and end screenshots.";
     return "";
   })();
   const isClassEntryDisabled =
@@ -2254,12 +2632,41 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     if (localRole === "student" && !selectedClassStarted) return "The teacher must start the class first";
     return "";
   })();
+  const classEntryConfirmMode =
+    localRole === "teacher" && !selectedClassStarted && evidenceChoice === "screenshots"
+      ? "screenshots"
+      : "recording";
+  const classEntryConfirmContent = classEntryConfirmMode === "screenshots"
+    ? {
+        badge: "SS",
+        title: "Start class with screenshots?",
+        message: "After the student confirms attendance, capture the start screenshot right away. It must show the meeting, participants, and visible system time.",
+        details: [
+          "Upload the start screenshot within 5 minutes of student confirmation.",
+          "Capture the end screenshot before leaving the meeting.",
+          "Keep this Calendar page open so you can upload both screenshots.",
+        ],
+        confirmLabel: "Start & Join Class",
+      }
+    : {
+        badge: "REC",
+        title: "Recording consent",
+        message: "This class may be recorded for attendance verification and can be viewed by the admin, teacher, and student.",
+        details: [
+          "The recording is used only for class verification.",
+          "The recording will be deleted after 7 days.",
+          "By continuing, you consent to join with recording verification.",
+        ],
+        confirmLabel: localRole === "teacher" && !selectedClassStarted ? "Consent & Start Class" : "Consent & Join Class",
+      };
 
   const refreshSelectedVerification = (verification) => {
     setClassVerification(verification || null);
     if (verification) {
       setVerificationSummary(verification.summary || "");
       setVerificationProofUrl(verification.proof_url || "");
+      setVerificationRecordingUrl(verification.recording_url || "");
+      setVerificationRecordingExpiresAt(verification.recording_expires_at || "");
       applyVerificationToSelectedClass(verification);
     }
   };
@@ -2278,6 +2685,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     try {
       const response = await axios.post(`${API}/api/calendar/classes/${selectedClass.id}/start`, {
         teacher_id: localUserId,
+        recording_consent: true,
+        evidence_mode: evidenceChoice,
       });
       refreshSelectedVerification(response.data?.verification);
       notify?.("Class session started.", "success");
@@ -2304,6 +2713,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     try {
       const response = await axios.post(`${API}/api/calendar/classes/${selectedClass.id}/join`, {
         student_id: localUserId,
+        recording_consent: true,
       });
       refreshSelectedVerification(response.data?.verification);
       notify?.("Attendance confirmed.", "success");
@@ -2359,9 +2769,72 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     setVerificationProofUrl("");
   };
 
-  const openSelectedClassMeeting = () => {
-    if (selectedClass?.classLink) {
-      window.open(selectedClass.classLink, "_blank");
+  const handleStartProofPaste = async (event) => {
+    const items = Array.from(event.clipboardData?.items || []);
+    const imageItem = items.find((item) => item.type.startsWith("image/"));
+    if (!imageItem || !selectedClassStudentConfirmed || isUploadingStartProof || selectedClassVerification?.start_proof_url) return;
+
+    event.preventDefault();
+    await uploadStartProof(imageItem.getAsFile());
+  };
+
+  const handleStartProofFileChange = async (event) => {
+    await uploadStartProof(event.target.files?.[0]);
+    event.target.value = "";
+  };
+
+  const removeStartProof = async () => {
+    if (!selectedClass?.id || !selectedClassVerification?.start_proof_url || isUploadingStartProof) return;
+    const preservedEndProofFile = verificationProofFile;
+    const preservedEndProofPreview = verificationProofPreview;
+    const preservedEndProofUrl = verificationProofUrl;
+    setIsUploadingStartProof(true);
+    try {
+      const response = await axios.delete(`${API}/api/calendar/classes/${selectedClass.id}/start-proof`, {
+        data: { teacher_id: localUserId },
+      });
+      const verification = response.data?.verification || null;
+      const nextVerification = verification
+        ? {
+            ...verification,
+            proof_url: verification.proof_url || preservedEndProofUrl || selectedClassVerification?.proof_url || "",
+          }
+        : null;
+
+      setClassVerification(nextVerification);
+      if (nextVerification) applyVerificationToSelectedClass(nextVerification);
+      setVerificationProofFile(preservedEndProofFile);
+      setVerificationProofPreview(preservedEndProofPreview);
+      setVerificationProofUrl(nextVerification?.proof_url || preservedEndProofUrl);
+      notify?.("Start screenshot removed.", "success");
+    } catch (error) {
+      notify?.(error.response?.data?.message || "Unable to remove start screenshot.", "error");
+    } finally {
+      setIsUploadingStartProof(false);
+    }
+  };
+
+  const openScreenshotPreview = (url) => {
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const openSelectedClassMeeting = async (meetingTab) => {
+    try {
+      const response = await axios.get(`${API}/api/calendar/classes/${selectedClass.id}/classroom`, {
+        params: { user_id: localUserId },
+      });
+      const url = new URL(response.data?.class?.class_link);
+      if (!["https:", "http:"].includes(url.protocol)) throw new Error("Invalid meeting link");
+      url.searchParams.delete("embed");
+      if (response.data?.jitsi_jwt) url.searchParams.set("jwt", response.data.jitsi_jwt);
+      url.hash = "";
+      meetingTab.location.replace(url.toString());
+      return true;
+    } catch (error) {
+      meetingTab.close();
+      notify?.(error.response?.data?.message || "Unable to open the meeting link.", "error");
+      return false;
     }
   };
 
@@ -2372,27 +2845,54 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     }
     if (isSelectedClassCompleted || !isSelectedClassConfirmable) return;
 
-    if (localRole === "teacher" && !selectedClassStarted) {
-      const verification = await startSelectedClassSession();
-      if (!verification) return;
-    } else if (localRole === "student" && selectedClassStarted && !selectedClassStudentConfirmed) {
-      const verification = await confirmSelectedClassAttendance();
-      if (!verification) return;
-    }
-
-    openSelectedClassMeeting();
+    setClassEntryConfirmOpen(true);
   };
 
-  const endSelectedClassSession = async ({ completeAfterVerify = false } = {}) => {
+  const continueSelectedClassEntry = async () => {
+    if (!selectedClass?.id || isSelectedClassCompleted || !isSelectedClassConfirmable) {
+      setClassEntryConfirmOpen(false);
+      return;
+    }
+
+    setClassEntryConfirmOpen(false);
+    const meetingTab = window.open("about:blank", "_blank");
+    if (!meetingTab) {
+      notify?.("Allow pop-ups for this site, then click Join Class again.", "warning");
+      return;
+    }
+    meetingTab.opener = null;
+    if (localRole === "teacher" && !selectedClassStarted) {
+      const verification = await startSelectedClassSession();
+      if (!verification) { meetingTab.close(); return; }
+    } else if (localRole === "student" && selectedClassStarted && !selectedClassStudentConfirmed) {
+      const verification = await confirmSelectedClassAttendance();
+      if (!verification) { meetingTab.close(); return; }
+    }
+
+    const meetingOpened = await openSelectedClassMeeting(meetingTab);
+    if (
+      meetingOpened &&
+      localRole === "teacher" &&
+      !selectedClassStarted &&
+      evidenceChoice === "recording"
+    ) {
+      window.setTimeout(() => {
+        recording.start(selectedClass.id);
+      }, 900);
+    }
+  };
+
+  const endSelectedClassSession = async ({ completeAfterVerify = false, reviewReason = "" } = {}) => {
+    if (recording.session && !(reviewReason && recording.session.status === "failed")) return;
     if (!selectedClass?.id) {
       notify?.("Please select a class first.", "error");
       return;
     }
-    if (!verificationSummary.trim() && !verificationProofFile && !verificationProofUrl) {
-      notify?.("Add a class summary or screenshot before ending the class.", "error");
+    if (!verificationSummary.trim() && !verificationProofFile && !verificationProofUrl && !hasVerificationRecording) {
+      notify?.("Add a class summary and recording or screenshot before ending the class.", "error");
       return;
     }
-    if (!selectedClassStudentConfirmed) {
+    if (!selectedClassStudentConfirmed && !reviewReason) {
       notify?.("The student must join and confirm attendance before you can end and complete the class.", "error");
       return;
     }
@@ -2400,8 +2900,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       notify?.("Please enter at least one complete sentence in the class summary.", "error");
       return;
     }
-    if (!hasVerificationScreenshot) {
-      notify?.("Please upload or paste a screenshot of the class.", "error");
+    if (!hasVerificationProof && !reviewReason) {
+      notify?.("Please record the class or upload screenshot proof.", "error");
       return;
     }
 
@@ -2410,6 +2910,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       const formData = new FormData();
       formData.append("teacher_id", localUserId);
       formData.append("summary", verificationSummary);
+      if (reviewReason) formData.append("review_reason", reviewReason);
       if (verificationProofFile) {
         formData.append("proof_image", verificationProofFile);
       }
@@ -2419,6 +2920,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       });
       const verification = response.data?.verification;
       refreshSelectedVerification(verification);
+      if (reviewReason) recording.discardFailed();
       if (verification?.verification_status === "verified" && completeAfterVerify) {
         await handleConfirmClassDone({ verifiedOverride: true });
         return verification;
@@ -2614,25 +3116,310 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     if (localRole === "student") return 0;
     return Math.max(0, effectiveClassesLimit - effectiveClassesUsed);
   })();
+  // Reserved incomplete sessions still block time, but are not active bookings.
+  const activeBookedClasses = bookedDates.filter(cls => cls.verification_status !== "incomplete").length;
   const effectiveBookableClasses = (() => {
-    if (studentPackage) {
-      if (studentPackage.bookable_classes != null) return studentPackage.bookable_classes;
-      return Math.max(0, effectiveClassesLimit - effectiveClassesUsed);
-    }
+    if (studentPackage?.bookable_classes != null) return Math.max(0, Number(studentPackage.bookable_classes || 0));
+    if (studentPackage) return Math.max(0, Number(effectiveClassesLeft || 0) - activeBookedClasses);
     if (localRole === "student") return 0;
-    return Math.max(0, effectiveClassesLeft);
+    return Math.max(0, Number(effectiveClassesLeft || 0) - activeBookedClasses);
   })();
-  const effectivePercent = effectiveClassesLimit > 0 ? Math.min(100, Math.round((effectiveClassesUsed / effectiveClassesLimit) * 100)) : 0;
-  const hasNoClassesLeft = localRole === "student" && Number(effectiveBookableClasses) <= 0;
-  const studentBookingEndTime = studentBookingTime && timeToMinutes(studentBookingTime) != null
-    ? minutesToTime(timeToMinutes(studentBookingTime) + studentClassDuration)
-    : "";
+  const effectivePercent = effectiveClassesLimit > 0 ? Math.min(100, Math.round((effectiveClassesLeft / effectiveClassesLimit) * 100)) : 0;
+  const hasNoActiveStudentPackage = localRole === "student" && !studentPackage;
+  const hasNoBookableClasses = localRole === "student" && Number(effectiveBookableClasses) <= 0;
+  const contractExhausted = localRole === "student" && !!studentPackage && Number(effectiveClassesLeft) <= 0;
+  const allRemainingClassesReserved =
+    localRole === "student" &&
+    !!studentPackage &&
+    Number(effectiveClassesLeft) > 0 &&
+    Number(effectiveBookableClasses) <= 0;
+  const canRequestNewContract = hasNoActiveStudentPackage || contractExhausted;
+  const hasNoClassesLeft = hasNoBookableClasses;
+  const studentBookingLimit = Math.max(0, Number(effectiveBookableClasses || 0));
+  const studentBookingSelectionFull = studentBookingLimit > 0 && studentBookingSelections.length >= studentBookingLimit;
+  const studentBookingSelectionKey = (date, time) => `${normalizeDate(date)}|${normalizeTime(time)}`;
+  const isStudentBookingSelected = (date, time) => {
+    const key = studentBookingSelectionKey(date, time);
+    return studentBookingSelections.some((slot) => studentBookingSelectionKey(slot.date, slot.time) === key);
+  };
+  const studentSlotOverlapsSelections = (slots, date, time) => {
+    const normalizedDate = normalizeDate(date);
+    const normalizedTime = normalizeTime(time);
+    const nextStart = timeToMinutes(normalizedTime);
+    const nextEnd = nextStart == null ? null : nextStart + studentClassDuration;
+    return slots.some((slot) => {
+      if (normalizeDate(slot.date) !== normalizedDate) return false;
+      const slotStart = timeToMinutes(slot.time);
+      const slotEnd = slotStart == null ? null : slotStart + studentClassDuration;
+      return nextStart != null && nextEnd != null && slotStart != null && slotEnd != null
+        && rangesOverlapWithClassBuffer(nextStart, nextEnd, slotStart, slotEnd);
+    });
+  };
+  const studentSlotOverlapsClassList = (classes, time) => {
+    const requestedStart = timeToMinutes(time);
+    const requestedEnd = requestedStart == null ? null : requestedStart + studentClassDuration;
+    if (requestedStart == null || requestedEnd == null) return false;
+
+    return (classes || []).some((cls) => {
+      const range = getClassRange(cls);
+      return range && rangesOverlapWithClassBuffer(requestedStart, requestedEnd, range.start, range.end);
+    });
+  };
+  const getAvailabilitySlotsForRecord = (record, duration = studentClassDuration, occupiedClasses = []) => {
+    if (!record || record.status !== "available") return [];
+    const dateKey = normalizeDate(record.available_date);
+    const availabilityStart = timeToMinutes(record.source_start_time || record.start_time);
+    const availabilityEnd = timeToMinutes(record.source_end_time || record.end_time);
+    if (!dateKey || availabilityStart == null || availabilityEnd == null || availabilityEnd <= availabilityStart) return [];
+
+    const breakStart = record.source_break_start || record.break_start
+      ? timeToMinutes(record.source_break_start || record.break_start)
+      : null;
+    const breakEnd = record.source_break_end || record.break_end
+      ? timeToMinutes(record.source_break_end || record.break_end)
+      : null;
+    const ranges = [];
+    if (breakStart != null && breakEnd != null && breakStart < breakEnd && breakStart > availabilityStart && breakEnd < availabilityEnd) {
+      ranges.push({ start: availabilityStart, end: breakStart });
+      ranges.push({ start: breakEnd, end: availabilityEnd });
+    } else {
+      ranges.push({ start: availabilityStart, end: availabilityEnd });
+    }
+
+    const teacherTimezone = record.source_timezone || record.teacher_timezone || DEFAULT_TIMEZONE;
+    const sourceDate = record.source_available_date || dateKey;
+    const occupiedRanges = (occupiedClasses || [])
+      .map(getClassRange)
+      .filter(Boolean);
+    const currentViewerDate = formatDateInTimezone(new Date(), viewerTimezone);
+    const currentViewerTime = formatTimeInTimezone(new Date(), viewerTimezone);
+    const currentViewerMinutes = timeToMinutes(currentViewerTime);
+    const slots = [];
+
+    ranges.forEach(({ start, end }) => {
+      getCandidateSlotMinutes(start, end, duration, occupiedRanges).forEach((minute) => {
+        const slotEnd = minute + duration;
+        if (occupiedRanges.some(range => rangesOverlapWithClassBuffer(minute, slotEnd, range.start, range.end))) return;
+        const converted = convertDateTime(sourceDate, minutesToTime(minute), teacherTimezone, viewerTimezone);
+        const convertedDate = normalizeDate(converted.date);
+        const convertedTime = normalizeTime(converted.time);
+        if (!convertedDate || !convertedTime) return;
+        if (convertedDate < currentViewerDate || convertedDate > scheduleWindowEndKey) return;
+        if (convertedDate === currentViewerDate && currentViewerMinutes != null) {
+          const slotMinutes = timeToMinutes(convertedTime);
+          if (slotMinutes == null || slotMinutes <= currentViewerMinutes) return;
+        }
+        slots.push({
+          date: convertedDate,
+          time: convertedTime,
+          teacher_timezone: teacherTimezone,
+        });
+      });
+    });
+
+    return slots;
+  };
+  const toggleStudentBookingSelection = (date, time) => {
+    const normalizedDate = normalizeDate(date);
+    const normalizedTime = normalizeTime(time);
+    if (!normalizedDate || !normalizedTime) return;
+
+    setStudentBookingSelections((current) => {
+      const key = studentBookingSelectionKey(normalizedDate, normalizedTime);
+      const exists = current.some((slot) => studentBookingSelectionKey(slot.date, slot.time) === key);
+      if (exists) {
+        return current.filter((slot) => studentBookingSelectionKey(slot.date, slot.time) !== key);
+      }
+      if (current.length >= studentBookingLimit) {
+        setStudentBookingError(`You can only select ${studentBookingLimit} class${studentBookingLimit === 1 ? "" : "es"} based on your remaining package.`);
+        return current;
+      }
+      const nextStart = timeToMinutes(normalizedTime);
+      const nextEnd = nextStart == null ? null : nextStart + studentClassDuration;
+      const overlapsSelected = current.some((slot) => {
+        if (normalizeDate(slot.date) !== normalizedDate) return false;
+        const slotStart = timeToMinutes(slot.time);
+        const slotEnd = slotStart == null ? null : slotStart + studentClassDuration;
+        return nextStart != null && nextEnd != null && slotStart != null && slotEnd != null
+          && rangesOverlapWithClassBuffer(nextStart, nextEnd, slotStart, slotEnd);
+      });
+      if (overlapsSelected) {
+        setStudentBookingError(`This class overlaps with another selected slot or its ${CLASS_BREAK_BUFFER_MINUTES}-minute teacher break.`);
+        return current;
+      }
+      setStudentBookingError("");
+      const selectedAvailabilityRecord = teacherAvailabilityList.find(
+        record => normalizeDate(record.available_date) === normalizedDate
+      ) || (
+        normalizeDate(teacherAvailabilityRecordForDate?.available_date) === normalizedDate
+          ? teacherAvailabilityRecordForDate
+          : null
+      );
+      return [...current, {
+        date: normalizedDate,
+        time: normalizedTime,
+        teacher_timezone: selectedAvailabilityRecord?.teacher_timezone || DEFAULT_TIMEZONE,
+      }]
+        .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+    });
+  };
+  const toggleStudentBookingWeekday = (weekday) => {
+    setStudentBookingWeeklyWeekdays((current) => {
+      const exists = current.includes(weekday);
+      const next = exists ? current.filter((value) => value !== weekday) : [...current, weekday];
+      return next.sort((a, b) => a - b);
+    });
+    setStudentBookingError("");
+    setStudentBookingSuggestions([]);
+  };
+  const loadTeacherAvailabilityRecordsForScheduleWindow = async () => {
+    if (!assignedTeacherId) return [];
+    const monthKeys = [];
+    const cursor = new Date(viewerToday.getFullYear(), viewerToday.getMonth(), 1);
+    const end = dateKeyToLocalDate(scheduleWindowEndKey);
+    while (end && cursor <= end) {
+      monthKeys.push({ year: cursor.getFullYear(), month: cursor.getMonth() + 1 });
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    const responses = await Promise.all(monthKeys.map(({ year: targetYear, month: targetMonth }) => (
+      axios.get(`${API}/api/calendar/teacher-availability-records`, {
+        params: { teacher_id: assignedTeacherId, year: targetYear, month: targetMonth }
+      })
+    )));
+
+    return responses
+      .flatMap((response) => response.data?.records || [])
+      .map(formatAvailabilityRecordForViewer)
+      .filter((record) => {
+        const dateKey = normalizeDate(record.available_date);
+        return dateKey >= scheduleWindowStart && dateKey <= scheduleWindowEnd;
+      });
+  };
+  const applyStudentWeeklyPattern = async () => {
+    setStudentBookingError("");
+    setStudentBookingSuggestions([]);
+    const preferredTime = normalizeTime(studentBookingWeeklyTime);
+    if (!studentBookingWeeklyWeekdays.length) {
+      setStudentBookingError("Please select at least one weekday.");
+      return;
+    }
+    if (!preferredTime) {
+      setStudentBookingError("Please select a preferred time.");
+      return;
+    }
+    if (!studentBookingLimit) {
+      setStudentBookingError("You have no classes left to book. Contact the admin for a new contract.");
+      return;
+    }
+    if (studentBookingSelections.length >= studentBookingLimit) {
+      setStudentBookingError(`You already selected ${studentBookingLimit} class${studentBookingLimit === 1 ? "" : "es"}, which matches your remaining package.`);
+      return;
+    }
+
+    try {
+      const records = await loadTeacherAvailabilityRecordsForScheduleWindow();
+      const recordDates = records
+        .map((record) => normalizeDate(record.available_date))
+        .filter(Boolean);
+      const classesByDate = await loadTeacherClassesForDates(recordDates, assignedTeacherId);
+      const selectedWeekdays = new Set(studentBookingWeeklyWeekdays);
+      const existingKeys = new Set(studentBookingSelections.map((slot) => studentBookingSelectionKey(slot.date, slot.time)));
+      const preferredMinutes = timeToMinutes(preferredTime);
+      const candidateSlots = records
+        .flatMap((record) => {
+          const recordDate = normalizeDate(record.available_date);
+          return getAvailabilitySlotsForRecord(record, studentClassDuration, classesByDate.get(recordDate) || []);
+        })
+        .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
+        .filter((slot) => {
+          const slotDate = dateKeyToLocalDate(slot.date);
+          if (!slotDate || !selectedWeekdays.has(slotDate.getDay())) return false;
+          const key = studentBookingSelectionKey(slot.date, slot.time);
+          if (existingKeys.has(key)) return false;
+          if (studentSlotOverlapsSelections(studentBookingSelections, slot.date, slot.time)) return false;
+          return true;
+        });
+      const slotsByDate = new Map();
+
+      candidateSlots.forEach((slot) => {
+          const classesForDate = classesByDate.get(slot.date) || [];
+          if (studentSlotOverlapsClassList(classesForDate, slot.time)) return;
+          const slotMinutes = timeToMinutes(slot.time);
+          if (preferredMinutes == null || slotMinutes == null) return;
+          const distance = Math.abs(slotMinutes - preferredMinutes);
+          const existing = slotsByDate.get(slot.date);
+          if (!existing || distance < existing.distance || (distance === existing.distance && slotMinutes > preferredMinutes)) {
+            slotsByDate.set(slot.date, {
+              ...slot,
+              requested_time: preferredTime,
+              distance,
+            });
+          }
+        });
+
+      const suggestions = Array.from(slotsByDate.values())
+        .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+
+      if (!suggestions.length) {
+        setStudentBookingError("No available weekly suggestions found for the selected days and preferred time.");
+        return;
+      }
+
+      setStudentBookingSuggestions(suggestions);
+      setStudentBookingTime(preferredTime);
+      notify?.(`${suggestions.length} weekly suggestion${suggestions.length === 1 ? "" : "s"} found. You can add up to ${studentBookingLimit - studentBookingSelections.length}.`, "success");
+    } catch (err) {
+      console.error(err);
+      setStudentBookingError("Unable to load weekly availability. Please try again.");
+    }
+  };
+  const addStudentBookingSuggestions = () => {
+    if (!studentBookingSuggestions.length) return;
+    setStudentBookingSelections((current) => {
+      const accepted = [];
+      const keys = new Set(current.map((slot) => studentBookingSelectionKey(slot.date, slot.time)));
+      studentBookingSuggestions.forEach((slot) => {
+        if (current.length + accepted.length >= studentBookingLimit) return;
+        const key = studentBookingSelectionKey(slot.date, slot.time);
+        if (keys.has(key)) return;
+        if (studentSlotOverlapsSelections([...current, ...accepted], slot.date, slot.time)) return;
+        keys.add(key);
+        accepted.push(slot);
+      });
+      if (!accepted.length) return current;
+      return [...current, ...accepted]
+        .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+    });
+    setStudentBookingSuggestions([]);
+    setStudentBookingError("");
+  };
+  const addStudentBookingSuggestion = (suggestion) => {
+    if (!suggestion) return;
+    setStudentBookingSelections((current) => {
+      const key = studentBookingSelectionKey(suggestion.date, suggestion.time);
+      if (current.some((slot) => studentBookingSelectionKey(slot.date, slot.time) === key)) {
+        return current;
+      }
+      if (current.length >= studentBookingLimit) {
+        setStudentBookingError(`You can only select ${studentBookingLimit} class${studentBookingLimit === 1 ? "" : "es"} based on your remaining package.`);
+        return current;
+      }
+      if (studentSlotOverlapsSelections(current, suggestion.date, suggestion.time)) {
+        setStudentBookingError(`This class overlaps with another selected slot or its ${CLASS_BREAK_BUFFER_MINUTES}-minute teacher break.`);
+        return current;
+      }
+      setStudentBookingError("");
+      return [...current, suggestion]
+        .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+    });
+  };
   const requestEndTime = requestTime && timeToMinutes(requestTime) != null
     ? minutesToTime(timeToMinutes(requestTime) + selectedClassDuration)
     : "";
 
-  const studentMonthMin = fmtDate(new Date(viewerToday.getFullYear(), viewerToday.getMonth(), 1));
-  const studentMonthMax = fmtDate(new Date(viewerToday.getFullYear(), viewerToday.getMonth() + 1, 0));
+  const scheduleWindowStart = viewerTodayKey;
+  const scheduleWindowEnd = scheduleWindowEndKey;
 
   const openMonthlyBooking = () => {
     if (hasNoClassesLeft) {
@@ -2646,6 +3433,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     // Clear date so user selects a day from the calendar cells
     setStudentBookingDate("");
     setStudentBookingTime("");
+    setStudentBookingSelections([]);
+    setStudentBookingSuggestions([]);
     setStudentBookingSubject("");
     setStudentBookingError("");
     setSelectedDate(null);
@@ -2732,12 +3521,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
   const submitStudentBooking = async () => {
     setStudentBookingError("");
-    if (!studentBookingDate) {
-      setStudentBookingError("Please select a date within the current month.");
-      return;
-    }
-    if (!studentBookingTime) {
-      setStudentBookingError("Please select a time slot.");
+    const slotsToBook = studentBookingSelections.length
+      ? studentBookingSelections
+      : studentBookingDate && studentBookingTime
+        ? [{ date: studentBookingDate, time: studentBookingTime }]
+        : [];
+
+    if (!slotsToBook.length) {
+      setStudentBookingError("Please select at least one time slot.");
       return;
     }
     if (!assignedTeacherId) {
@@ -2748,102 +3539,151 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       setStudentBookingError("You have no classes left to book. Contact the admin for a new contract.");
       return;
     }
-    if (studentBookingDate < studentMonthMin || studentBookingDate > studentMonthMax) {
-      setStudentBookingError("Please pick a date in the current month only.");
+    if (slotsToBook.length > studentBookingLimit) {
+      setStudentBookingError(`You can only book ${studentBookingLimit} class${studentBookingLimit === 1 ? "" : "es"} based on your remaining package.`);
       return;
     }
-    if (isTeacherDateTimeBooked(studentBookingDate, studentBookingTime)) {
+
+    const invalidSlot = slotsToBook.find((slot) => slot.date < scheduleWindowStart || slot.date > scheduleWindowEnd);
+    if (invalidSlot) {
+      setStudentBookingError(`Please pick a date from today up to ${SCHEDULE_WINDOW_MONTHS} months ahead.`);
+      return;
+    }
+
+    const bookedSlot = slotsToBook.find((slot) => isTeacherDateTimeBooked(slot.date, slot.time));
+    if (bookedSlot) {
       setStudentBookingError("The teacher is already booked at this time. Please choose another slot.");
       return;
     }
 
-    const selectedAvailabilityRecord = teacherAvailabilityList.find(
-      record => normalizeDate(record.available_date) === studentBookingDate
-    ) || teacherAvailabilityRecordForDate;
-    const teacherTimezone = selectedAvailabilityRecord?.teacher_timezone || DEFAULT_TIMEZONE;
-    const teacherStart = convertDateTime(studentBookingDate, studentBookingTime, viewerTimezone, teacherTimezone);
-    const teacherBookingDate = teacherStart.date || studentBookingDate;
-    const teacherBookingTime = teacherStart.time || studentBookingTime;
-
-    const teacherStartMinutes = timeToMinutes(teacherBookingTime);
-    const duration = studentClassDuration;
-    if (teacherStartMinutes == null || duration <= 0) {
-      setStudentBookingError("Invalid class time or duration.");
-      return;
-    }
-    const endTime = minutesToTime(teacherStartMinutes + duration);
-
     setIsSubmittingStudentBooking(true);
     try {
-      const response = await axios.post(`${API}/api/calendar/class`, {
-        class_name: studentProfile?.course_name || "General English",
-        teacher_id: assignedTeacherId,
-        student_id: localUserId,
-        scheduled_date: teacherBookingDate,
-        start_time: teacherBookingTime,
-        end_time: endTime,
-        duration,
-        class_link: ""
-      });
-      const bookedClass = formatClassForViewer({
-        class_id: response.data?.class_id,
-        class_name: studentProfile?.course_name || "General English",
-        teacher_id: assignedTeacherId,
-        student_id: localUserId,
-        scheduled_date: teacherBookingDate,
-        start_time: teacherBookingTime,
-        end_time: endTime,
-        duration,
-        status: "scheduled",
-        teacher_timezone: teacherTimezone,
-      });
-      const bookedViewerDate = normalizeDate(bookedClass.scheduled_date || studentBookingDate);
-      const requestedStart = timeToMinutes(studentBookingTime);
-      const requestedEnd = requestedStart == null ? null : requestedStart + duration;
+      const bookedClasses = [];
+      const failedBookings = [];
+      for (const slot of slotsToBook) {
+        try {
+          const selectedAvailabilityRecord = teacherAvailabilityList.find(
+            record => normalizeDate(record.available_date) === slot.date
+          ) || (
+            normalizeDate(teacherAvailabilityRecordForDate?.available_date) === slot.date
+              ? teacherAvailabilityRecordForDate
+              : null
+          );
+          const teacherTimezone = slot.teacher_timezone || selectedAvailabilityRecord?.teacher_timezone || DEFAULT_TIMEZONE;
+          const teacherStart = convertDateTime(slot.date, slot.time, viewerTimezone, teacherTimezone);
+          const teacherBookingDate = teacherStart.date || slot.date;
+          const teacherBookingTime = teacherStart.time || slot.time;
 
-      notify?.("Class booked for the current month.", "success");
-      setStudentBookingMode(false);
+          const teacherStartMinutes = timeToMinutes(teacherBookingTime);
+          const duration = studentClassDuration;
+          if (teacherStartMinutes == null || duration <= 0) {
+            throw new Error("Invalid class time or duration.");
+          }
+          const endTime = minutesToTime(teacherStartMinutes + duration);
+
+          const response = await axios.post(`${API}/api/calendar/class`, {
+            class_name: studentProfile?.course_name || "General English",
+            teacher_id: assignedTeacherId,
+            student_id: localUserId,
+            scheduled_date: teacherBookingDate,
+            start_time: teacherBookingTime,
+            end_time: endTime,
+            duration,
+            class_link: ""
+          });
+
+          const bookedClass = formatClassForViewer({
+            class_id: response.data?.class_id,
+            class_name: studentProfile?.course_name || "General English",
+            teacher_id: assignedTeacherId,
+            student_id: localUserId,
+            scheduled_date: teacherBookingDate,
+            start_time: teacherBookingTime,
+            end_time: endTime,
+            duration,
+            status: "scheduled",
+            teacher_timezone: teacherTimezone,
+          });
+
+          bookedClasses.push({
+            classInfo: bookedClass,
+            viewerDate: normalizeDate(bookedClass.scheduled_date || slot.date),
+            viewerTime: bookedClass.start_time || slot.time,
+            requestedStart: timeToMinutes(slot.time),
+            requestedEnd: timeToMinutes(slot.time) == null ? null : timeToMinutes(slot.time) + duration,
+          });
+
+          if (response.data?.package && localRole === "student") {
+            setStudentPackage(response.data.package);
+          }
+        } catch (slotError) {
+          failedBookings.push({
+            slot,
+            message: slotError?.response?.data?.message || slotError?.message || "Unable to book this slot.",
+          });
+        }
+      }
+
+      if (!bookedClasses.length) {
+        setStudentBookingError(failedBookings[0]?.message || "Unable to book the selected classes. Please try again.");
+        return;
+      }
+
+      const successMessage = bookedClasses.length === 1 ? "Class booked successfully." : `${bookedClasses.length} classes booked successfully.`;
+      notify?.(failedBookings.length ? `${successMessage} ${failedBookings.length} skipped.` : successMessage, failedBookings.length ? "info" : "success");
+      setStudentBookingMode(failedBookings.length > 0);
       setStudentBookingTime("");
+      setStudentBookingSelections(failedBookings.map(({ slot }) => slot));
+      setStudentBookingSuggestions([]);
       setStudentBookingSubject("");
-      setSelectedDate(studentBookingDate);
+      setSelectedDate(bookedClasses[0]?.viewerDate || studentBookingDate);
       setBookedDates(prev => [
         ...prev,
-        {
-          scheduled_date: bookedViewerDate,
-          start_time: bookedClass.start_time || studentBookingTime,
-          end_time: bookedClass.end_time,
-          duration,
+        ...bookedClasses.map(({ classInfo, viewerDate, viewerTime }) => ({
+          scheduled_date: viewerDate,
+          start_time: viewerTime,
+          end_time: classInfo.end_time,
+          duration: classInfo.duration,
           teacher_id: assignedTeacherId,
           student_id: localUserId,
-        }
+        })),
       ]);
       setAvailableTimeSlots(prev => prev.filter((slot) => {
         const slotStart = timeToMinutes(slot);
-        const slotEnd = slotStart == null ? null : slotStart + duration;
-        return requestedStart == null || requestedEnd == null || slotStart == null || slotEnd == null
-          ? true
-          : !rangesOverlap(slotStart, slotEnd, requestedStart, requestedEnd);
+        const slotEnd = slotStart == null ? null : slotStart + studentClassDuration;
+        return !bookedClasses.some(({ requestedStart, requestedEnd }) => (
+          requestedStart != null && requestedEnd != null && slotStart != null && slotEnd != null
+          && rangesOverlapWithClassBuffer(slotStart, slotEnd, requestedStart, requestedEnd)
+        ));
       }));
-      setClassesCache(prev => ({
-        ...prev,
-        [bookedViewerDate]: [
-          ...(prev[bookedViewerDate] || []).filter(cls => String(cls.id || cls.class_id) !== String(bookedClass.id)),
-          bookedClass,
-        ],
-      }));
-      setTeacherClassesCache(prev => ({
-        ...prev,
-        [bookedViewerDate]: [
-          ...(prev[bookedViewerDate] || []).filter(cls => String(cls.id || cls.class_id) !== String(bookedClass.id)),
-          bookedClass,
-        ],
-      }));
-      loadClassesForDate(bookedViewerDate, true);
-      loadTeacherClassesForDate(bookedViewerDate, assignedTeacherId, true);
+      setClassesCache(prev => {
+        const next = { ...prev };
+        bookedClasses.forEach(({ classInfo, viewerDate }) => {
+          next[viewerDate] = [
+            ...(next[viewerDate] || []).filter(cls => String(cls.id || cls.class_id) !== String(classInfo.id || classInfo.class_id)),
+            classInfo,
+          ];
+        });
+        return next;
+      });
+      setTeacherClassesCache(prev => {
+        const next = { ...prev };
+        bookedClasses.forEach(({ classInfo, viewerDate }) => {
+          next[viewerDate] = [
+            ...(next[viewerDate] || []).filter(cls => String(cls.id || cls.class_id) !== String(classInfo.id || classInfo.class_id)),
+            classInfo,
+          ];
+        });
+        return next;
+      });
+      [...new Set(bookedClasses.map(({ viewerDate }) => viewerDate))].forEach((bookedViewerDate) => {
+        loadClassesForDate(bookedViewerDate, true);
+        loadTeacherClassesForDate(bookedViewerDate, assignedTeacherId, true);
+      });
       triggerCalendarRefresh();
     } catch (err) {
       console.error(err);
-      setStudentBookingError(err?.response?.data?.message || "Unable to book class. Please try again.");
+      setStudentBookingError(err?.response?.data?.message || err?.message || "Unable to book class. Please try again.");
     } finally {
       setIsSubmittingStudentBooking(false);
     }
@@ -2851,12 +3691,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
   const openStudentBookingConfirmation = () => {
     setStudentBookingError("");
-    if (!studentBookingDate) {
-      setStudentBookingError("Please select a date within the current month.");
-      return;
-    }
-    if (!studentBookingTime) {
-      setStudentBookingError("Please select a time slot.");
+    const slotsToBook = studentBookingSelections.length
+      ? studentBookingSelections
+      : studentBookingDate && studentBookingTime
+        ? [{ date: studentBookingDate, time: studentBookingTime }]
+        : [];
+    if (!slotsToBook.length) {
+      setStudentBookingError("Please select at least one time slot.");
       return;
     }
     if (!assignedTeacherId) {
@@ -2867,11 +3708,15 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       setStudentBookingError("You have no classes left to book. Contact the admin for a new contract.");
       return;
     }
-    if (studentBookingDate < studentMonthMin || studentBookingDate > studentMonthMax) {
-      setStudentBookingError("Please pick a date in the current month only.");
+    if (slotsToBook.length > studentBookingLimit) {
+      setStudentBookingError(`You can only book ${studentBookingLimit} class${studentBookingLimit === 1 ? "" : "es"} based on your remaining package.`);
       return;
     }
-    if (isTeacherDateTimeBooked(studentBookingDate, studentBookingTime)) {
+    if (slotsToBook.some((slot) => slot.date < scheduleWindowStart || slot.date > scheduleWindowEnd)) {
+      setStudentBookingError(`Please pick a date from today up to ${SCHEDULE_WINDOW_MONTHS} months ahead.`);
+      return;
+    }
+    if (slotsToBook.some((slot) => isTeacherDateTimeBooked(slot.date, slot.time))) {
       setStudentBookingError("The teacher is already booked at this time. Please choose another slot.");
       return;
     }
@@ -2884,6 +3729,21 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     await submitStudentBooking();
   };
 
+  const uploadStartProof = async (file) => {
+    if (!file || !selectedClass?.id) return;
+    setIsUploadingStartProof(true);
+    try {
+      const form = new FormData();
+      form.append("teacher_id", localUserId);
+      form.append("proof_image", await compressImageFile(file));
+      const response = await axios.post(`${API}/api/calendar/classes/${selectedClass.id}/start-proof`, form);
+      setClassVerification(response.data.verification);
+      notify?.("Start screenshot uploaded. Remember the end screenshot before leaving the meeting.", "success");
+    } catch (error) {
+      notify?.(error.response?.data?.message || "Unable to upload start screenshot.", "error");
+    } finally { setIsUploadingStartProof(false); }
+  };
+
   const renderVerificationPanel = () => {
     if (!selectedClass || isSelectedClassCompleted) return null;
     const statusLabel = verificationStatusLabels[selectedVerificationStatus] || "Pending";
@@ -2892,37 +3752,257 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       : selectedVerificationStatus === "needs_review"
         ? "#b45309"
         : "#1864ab";
+    const checklistItems = [
+      { label: "Teacher start", done: selectedClassStarted, value: selectedClassStarted ? formatVerificationTimestamp(selectedClassVerification.teacher_started_at) : "Not started" },
+      { label: "Student attendance", done: selectedClassStudentConfirmed, value: selectedClassStudentConfirmed ? formatVerificationTimestamp(selectedClassVerification.student_joined_at) : "Not confirmed" },
+      { label: "Teacher end", done: selectedClassEnded, value: selectedClassEnded ? formatVerificationTimestamp(selectedClassVerification.teacher_ended_at) : "Not ended" },
+      ...(evidenceMode === "screenshots"
+        ? [
+            { label: "Start screenshot", done: hasStartScreenshot, value: hasStartScreenshot ? "Uploaded" : "Missing" },
+            { label: "End screenshot", done: hasEndScreenshot, value: hasEndScreenshot ? "Ready" : "Missing" },
+          ]
+        : [
+            { label: "Recording", done: hasVerificationRecording, value: hasVerificationRecording ? "Uploaded" : "Not uploaded" },
+          ]),
+      { label: "Class summary", done: hasVerificationSummarySentence, value: hasVerificationSummarySentence ? "Ready" : "Missing" },
+    ];
 
     return (
       <div style={verificationPanelStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10 }}>
-          <div style={{ fontWeight: 800, color: "#22313a", fontSize: "0.92rem" }}>Class Verification</div>
-          <span style={{ padding: "4px 8px", borderRadius: 999, background: `${statusColor}18`, color: statusColor, fontWeight: 800, fontSize: "0.72rem" }}>
+        <div className={styles.verificationHeader}>
+          <div>
+            <div className={styles.verificationTitle}>Class Verification</div>
+            <div className={styles.verificationMeta}>Duration verified: {Number(selectedClassVerification?.duration_minutes || 0)} min</div>
+          </div>
+          <span className={styles.verificationStatusPill} style={{ background: `${statusColor}18`, color: statusColor }}>
             {statusLabel}
           </span>
         </div>
-        <div style={{ display: "grid", gap: 6, fontSize: "0.82rem", color: "#25323a" }}>
-          <div><span style={verificationLabelStyle}>Teacher start:</span> {selectedClassStarted ? formatVerificationTimestamp(selectedClassVerification.teacher_started_at) : "Not started"}</div>
-          <div><span style={verificationLabelStyle}>Student attendance:</span> {selectedClassStudentConfirmed ? formatVerificationTimestamp(selectedClassVerification.student_joined_at) : "Not confirmed"}</div>
-          <div><span style={verificationLabelStyle}>Teacher end:</span> {selectedClassEnded ? formatVerificationTimestamp(selectedClassVerification.teacher_ended_at) : "Not ended"}</div>
-          <div><span style={verificationLabelStyle}>Verified duration:</span> {Number(selectedClassVerification?.duration_minutes || 0)} min</div>
+        <div className={styles.verificationChecklist}>
+          {checklistItems.map((item) => (
+            <div key={item.label} className={styles.verificationCheckRow}>
+              <span className={`${styles.verificationCheckIcon} ${item.done ? styles.verificationCheckDone : ""}`}>
+                {item.done ? "✓" : ""}
+              </span>
+              <span className={styles.verificationCheckLabel}>{item.label}</span>
+              <span className={styles.verificationCheckValue}>{item.value}</span>
+            </div>
+          ))}
+          {hasVerificationRecording && verificationRecordingExpiresAt && (
+            <div className={styles.verificationFootnote}>
+              Recording deletes automatically on{" "}
+              {formatVerificationTimestamp(verificationRecordingExpiresAt, true)}
+            </div>
+          )}
         </div>
 
         {localRole === "teacher" && !isAdmin && (
-          <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+          <div className={styles.verificationBody}>
+            {!selectedClassStarted && (
+              <label className={styles.verificationField}>Class evidence
+                <select value={evidenceChoice} onChange={event => setEvidenceChoice(event.target.value)} className={styles.verificationSelect}>
+                  <option value="screenshots">Start and end screenshots</option>
+                  <option value="recording">Video recording</option>
+                </select>
+              </label>
+            )}
+            {selectedClassStarted && <div className={styles.verificationSectionTitle}>Evidence: {evidenceMode === "recording" ? "Video recording" : "Start and end screenshots"}</div>}
+            {evidenceMode === "recording" && <small className={styles.verificationHelpText}>Minimum recording: {requiredRecordingMinutes} minutes. Uploaded capture: {formatRecordingDuration(selectedClassVerification?.recording_duration_seconds)}.</small>}
+            {selectedClassStarted && !selectedClassEnded && evidenceMode === "screenshots" && (
+              <div className={styles.evidenceGrid}>
+                <div className={styles.verificationHelpText}>Show the meeting, participants, and visible system time in both screenshots.</div>
+                {shouldRemindStartScreenshot && (
+                  <div role="alert" className={styles.verificationAlert}>
+                    Upload the start screenshot within 5 minutes of student confirmation.
+                  </div>
+                )}
+                <div
+                  tabIndex={0}
+                  onPaste={handleStartProofPaste}
+                  onClick={(event) => {
+                    if (event.target === event.currentTarget) {
+                      event.currentTarget.focus();
+                    }
+                  }}
+                  className={styles.evidenceUploadCard}
+                >
+                  <div className={styles.evidenceCardHeader}>
+                    <span>Start Screenshot</span>
+                    <span className={`${styles.evidenceStatus} ${hasStartScreenshot ? styles.evidenceStatusReady : ""}`}>{hasStartScreenshot ? "Uploaded" : "Missing"}</span>
+                  </div>
+                  <span className={styles.evidenceCardText}>Meeting, participants, and system time</span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    disabled={!selectedClassStudentConfirmed || isUploadingStartProof || Boolean(selectedClassVerification?.start_proof_url)}
+                    onChange={handleStartProofFileChange}
+                    className={styles.evidenceFileInput}
+                  />
+                  <span className={hasStartScreenshot ? styles.evidenceReadyText : styles.evidenceHintText}>
+                    {selectedClassVerification?.start_proof_url
+                      ? "Start screenshot uploaded."
+                      : isUploadingStartProof
+                        ? "Uploading..."
+                        : "Click this area and press Ctrl+V to paste, or use Choose File."}
+                  </span>
+                </div>
+                {selectedClassVerification?.start_proof_url && (
+                  <div className={styles.evidencePreview}>
+                    <div className={styles.evidencePreviewActions}>
+                      <a
+                        href={`${API}${selectedClassVerification.start_proof_url}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={styles.evidenceViewBtn}
+                      >
+                        View
+                      </a>
+                      <button
+                        type="button"
+                        onClick={removeStartProof}
+                        disabled={isUploadingStartProof}
+                        aria-label="Remove start screenshot"
+                        title="Remove start screenshot"
+                        className={styles.evidenceRemoveBtn}
+                      >
+                        x
+                      </button>
+                    </div>
+                    <img
+                      src={`${API}${selectedClassVerification.start_proof_url}`}
+                      alt="Start screenshot preview"
+                      className={styles.evidencePreviewImage}
+                    />
+                  </div>
+                )}
+                {selectedClassVerification?.__unused_start_proof_ui && (selectedClassVerification?.start_proof_url ? (
+                  <a href={`${API}${selectedClassVerification.start_proof_url}`} target="_blank" rel="noopener noreferrer">View start screenshot ✓</a>
+                ) : (
+                  <label onPaste={event => {
+                    const item = Array.from(event.clipboardData?.items || []).find(item => item.type.startsWith("image/"));
+                    if (item && selectedClassStudentConfirmed && !isUploadingStartProof) { event.preventDefault(); uploadStartProof(item.getAsFile()); }
+                  }} tabIndex={0}>
+                    Start screenshot (upload within 5 minutes of student confirmation)
+                    <input type="file" accept="image/png,image/jpeg,image/webp" disabled={!selectedClassStudentConfirmed || isUploadingStartProof} onChange={event => uploadStartProof(event.target.files?.[0])} style={{ width: "100%" }} />
+                    <small>{isUploadingStartProof ? "Uploading..." : "Choose File or focus here and paste with Ctrl+V. Join the meeting first and wait for the student."}</small>
+                  </label>
+                ))}
+                {shouldRemindEndScreenshot && <div role="alert" className={styles.verificationAlert}>Capture the end screenshot before leaving the meeting.</div>}
+              </div>
+            )}
+            {hasVerificationRecording && (
+              <div style={{ display: "grid", gap: 8 }}>
+                <strong style={{ color: "#166534", fontSize: "0.85rem" }}>Recording uploaded ✓</strong>
+                <a
+                  href={`${API}/api/calendar/classes/${selectedClass.id}/recording?user_id=${encodeURIComponent(localUserId)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ borderRadius: 8, padding: "12px 14px", background: "#1864ab", color: "#fff", textAlign: "center", textDecoration: "none", fontWeight: 800 }}
+                >
+                  View Recording
+                </a>
+                {!recording.session && selectedClassStarted && !selectedClassEnded && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm("Record a replacement? Your current recording will be replaced only after the new recording uploads successfully.")) {
+                          recording.start(selectedClass.id);
+                        }
+                      }}
+                      style={{ border: "1px solid #cfd8dc", borderRadius: 8, padding: "8px 12px", background: "#fff", color: "#344054", fontWeight: 600, cursor: "pointer" }}
+                    >
+                      Replace Recording
+                    </button>
+                    <span style={{ fontSize: "0.78rem", color: "#166534" }}>Next, write your class summary and select End, Verify &amp; Complete.</span>
+                  </>
+                )}
+              </div>
+            )}
+            {(recording.session || (evidenceMode === "recording" && !hasVerificationRecording && selectedClassStarted && !selectedClassEnded)) && (
+              <div style={{ display: "grid", gap: 8 }}>
+                {recording.session && String(recording.session.classId) !== String(selectedClass.id) && (
+                  <span>Recording for class #{recording.session.classId}</span>
+                )}
+                <button
+                  type="button"
+                  disabled={["starting", "uploading"].includes(recording.session?.status)}
+                  onClick={() => recording.session?.status === "recording" ? recording.stop() : recording.session?.status === "failed" ? recording.retry() : recording.start(selectedClass.id)}
+                  style={{ border: "none", borderRadius: 8, padding: "12px 14px", background: recording.session?.status === "recording" ? "#b42318" : "#1864ab", color: "#fff", fontWeight: 800, cursor: "pointer" }}
+                >
+                  {recording.session?.status === "recording" ? "Stop Recording" : recording.session?.status === "uploading" ? "Uploading Recording..." : recording.session?.status === "starting" ? "Starting Recording..." : recording.session?.status === "failed" ? "Retry Recording Upload" : "Start Recording"}
+                </button>
+                <span style={{ fontSize: "0.74rem", color: "#667085" }}>Select the meeting tab with audio. Keep Calendar open until the upload finishes.</span>
+              </div>
+            )}
             {selectedClassStarted && !selectedClassEnded && (
               <>
+                {evidenceMode === "screenshots" && <div className={styles.evidenceGrid}>
+                  <div
+                    tabIndex={0}
+                    onPaste={handleVerificationProofPaste}
+                    onClick={(event) => {
+                      if (event.target === event.currentTarget) {
+                        event.currentTarget.focus();
+                      }
+                    }}
+                    className={styles.evidenceUploadCard}
+                  >
+                    <div className={styles.evidenceCardHeader}>
+                      <span>End Screenshot</span>
+                      <span className={`${styles.evidenceStatus} ${hasEndScreenshot ? styles.evidenceStatusReady : ""}`}>{hasEndScreenshot ? "Ready" : "Missing"}</span>
+                    </div>
+                    <span className={styles.evidenceCardText}>Meeting, participants, and system time</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={handleVerificationProofFileChange}
+                      className={styles.evidenceFileInput}
+                    />
+                    <span className={hasEndScreenshot ? styles.evidenceReadyText : styles.evidenceHintText}>
+                      {hasEndScreenshot ? "End screenshot ready." : "Click this area and press Ctrl+V to paste, or use Choose File."}
+                    </span>
+                  </div>
+                </div>}
+                {evidenceMode === "screenshots" && hasEndScreenshot && (
+                  <div className={styles.evidencePreview}>
+                    <div className={styles.evidencePreviewActions}>
+                      <button
+                        type="button"
+                        onClick={() => openScreenshotPreview(verificationProofPreview || `${API}${verificationProofUrl}`)}
+                        className={styles.evidenceViewBtn}
+                      >
+                        View
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearVerificationProofImage}
+                        aria-label="Remove end screenshot"
+                        title="Remove end screenshot"
+                        className={styles.evidenceRemoveBtn}
+                      >
+                        x
+                      </button>
+                    </div>
+                    <img
+                      src={verificationProofPreview || `${API}${verificationProofUrl}`}
+                      alt="End screenshot preview"
+                      className={styles.evidencePreviewImage}
+                    />
+                  </div>
+                )}
+                <div className={styles.verificationSectionTitle}>Class Summary</div>
                 <textarea
                   value={verificationSummary}
                   onChange={(event) => setVerificationSummary(event.target.value)}
                   rows={3}
                   placeholder="Write at least one complete sentence about what happened in class."
-                  style={{ width: "100%", boxSizing: "border-box", padding: 10, border: "1px solid #cfd8dc", borderRadius: 8, fontFamily: "inherit", resize: "vertical" }}
+                  className={styles.verificationTextarea}
                 />
-                <span style={{ fontSize: "0.74rem", fontWeight: 600, color: hasVerificationSummarySentence ? "#166534" : "#92400e" }}>
+                <span className={hasVerificationSummarySentence ? styles.evidenceReadyText : styles.evidenceWarningText}>
                   Summary must be at least one complete sentence.
                 </span>
-                <div
+                {evidenceMode === "__unused_screenshots" && <div
                   tabIndex={0}
                   onPaste={handleVerificationProofPaste}
                   onClick={(event) => {
@@ -2932,7 +4012,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                   }}
                   style={{ display: "grid", gap: 6, fontSize: "0.82rem", fontWeight: 700, color: "#344054", outline: "none" }}
                 >
-                  <span>Class screenshot</span>
+                  <span>End screenshot — meeting, participants, and system time</span>
                   <input
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
@@ -2942,33 +4022,38 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                   <span style={{ fontSize: "0.74rem", fontWeight: 600, color: "#667085" }}>
                     Click this area and press Ctrl+V to paste, or use Choose File.
                   </span>
-                </div>
-                {(verificationProofPreview || verificationProofUrl) && (
+                </div>}
+                {evidenceMode === "__unused_screenshots" && (verificationProofPreview || verificationProofUrl) && (
                   <div style={{ position: "relative", border: "1px solid #dbe4ea", borderRadius: 8, overflow: "hidden", background: "#fff" }}>
-                    <button
-                      type="button"
-                      onClick={clearVerificationProofImage}
-                      aria-label="Remove screenshot"
-                      title="Remove screenshot"
-                      style={{
-                        position: "absolute",
-                        top: 8,
-                        right: 8,
-                        width: 28,
-                        height: 28,
-                        border: "none",
-                        borderRadius: "50%",
-                        background: "rgba(15, 23, 42, 0.82)",
-                        color: "#fff",
-                        cursor: "pointer",
-                        fontSize: 18,
-                        lineHeight: "28px",
-                        fontWeight: 800,
-                        zIndex: 1,
-                      }}
-                    >
-                      x
-                    </button>
+                    <div style={{ position: "absolute", top: 8, right: 8, display: "flex", gap: 6, alignItems: "center", zIndex: 1 }}>
+                      <button
+                        type="button"
+                        onClick={() => openScreenshotPreview(verificationProofPreview || `${API}${verificationProofUrl}`)}
+                        style={{ border: "none", borderRadius: 999, background: "rgba(15, 23, 42, 0.82)", color: "#fff", padding: "5px 10px", fontSize: "0.72rem", fontWeight: 800, cursor: "pointer" }}
+                      >
+                        View
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearVerificationProofImage}
+                        aria-label="Remove end screenshot"
+                        title="Remove end screenshot"
+                        style={{
+                          width: 28,
+                          height: 28,
+                          border: "none",
+                          borderRadius: "50%",
+                          background: "rgba(15, 23, 42, 0.82)",
+                          color: "#fff",
+                          cursor: "pointer",
+                          fontSize: 18,
+                          lineHeight: "28px",
+                          fontWeight: 800,
+                        }}
+                      >
+                        x
+                      </button>
+                    </div>
                     <img
                       src={verificationProofPreview || `${API}${verificationProofUrl}`}
                       alt="Class proof screenshot preview"
@@ -2990,9 +4075,39 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                   {isUpdatingVerification ? "Saving..." : "End, Verify & Complete"}
                 </button>
                 {endVerifyDisabledReason && (
-                  <span style={{ fontSize: "0.74rem", fontWeight: 600, color: "#92400e" }}>
-                    {endVerifyDisabledReason}
+                  <span className={styles.verificationMissingText}>
+                    Missing: {missingVerificationItems.length ? missingVerificationItems.join(", ") : endVerifyDisabledReason}
                   </span>
+                )}
+                {canSubmitClassForReview && (
+                  <div className={styles.reviewActionBox}>
+                    <div className={styles.reviewActionText}>
+                      Use admin review only when attendance or proof is missing, late, incomplete, or the recording failed.
+                    </div>
+                    <label className={styles.reviewReasonField}>
+                      Explain what happened
+                      <textarea
+                        value={reviewReason}
+                        onChange={(event) => setReviewReason(event.target.value)}
+                        rows={3}
+                        placeholder="Example: The student joined late, so the start screenshot was not captured within 5 minutes."
+                        className={styles.reviewReasonTextarea}
+                      />
+                    </label>
+                    <button type="button" className={`${styles.bookBtn} ${styles.reviewBtn}`} onClick={() => {
+                      const reason = reviewReason.trim();
+                      if (!reason) {
+                        notify?.("Please explain why this class needs admin review.", "warning");
+                        return;
+                      }
+                      endSelectedClassSession({ reviewReason: reason });
+                    }} disabled={!reviewReason.trim() || isUpdatingVerification}>
+                      {isUpdatingVerification ? "Sending..." : "Send to Admin Review"}
+                    </button>
+                    {!reviewReason.trim() && (
+                      <div className={styles.reviewReasonHint}>Required before sending to admin.</div>
+                    )}
+                  </div>
                 )}
               </>
             )}
@@ -3908,7 +5023,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                       <div style={{ marginBottom: 12 }}>
                         <h4 style={{ margin: "0 0 8px 0", fontSize: "0.95rem", color: "#333" }}>Set Your Schedule</h4>
                         <p style={{ margin: 0, fontSize: "0.8rem", color: "#666", lineHeight: 1.4 }}>
-                          Set your available times for the current month. You cannot set availability on dates with existing bookings or past dates.
+                          Set your available times from today up to 3 months ahead. You cannot set availability on dates with existing bookings or past dates.
                         </p>
                       </div>
 
@@ -3920,6 +5035,92 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
 
                       <div style={{ marginBottom: 12, display: "grid", gap: 10 }}>
                         <div>
+                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Apply To *</label>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAvailabilityApplyMode("single");
+                                setAvailabilityError("");
+                              }}
+                              style={{
+                                padding: "8px 10px",
+                                fontSize: "0.85rem",
+                                border: availabilityApplyMode === "single" ? "2px solid #4CAF50" : "1px solid #d0d0d0",
+                                borderRadius: 6,
+                                background: availabilityApplyMode === "single" ? "#e8f5e9" : "#fff",
+                                color: availabilityApplyMode === "single" ? "#2E7D32" : "#555",
+                                cursor: "pointer",
+                                fontWeight: 600,
+                              }}
+                            >
+                              Single Day
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAvailabilityApplyMode("bulk");
+                                setAvailabilityError("");
+                              }}
+                              style={{
+                                padding: "8px 10px",
+                                fontSize: "0.85rem",
+                                border: availabilityApplyMode === "bulk" ? "2px solid #4CAF50" : "1px solid #d0d0d0",
+                                borderRadius: 6,
+                                background: availabilityApplyMode === "bulk" ? "#e8f5e9" : "#fff",
+                                color: availabilityApplyMode === "bulk" ? "#2E7D32" : "#555",
+                                cursor: "pointer",
+                                fontWeight: 600,
+                              }}
+                            >
+                              Weekly Pattern
+                            </button>
+                          </div>
+                        </div>
+
+                        {availabilityApplyMode === "bulk" && (
+                          <div>
+                            <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Weekdays *</label>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 5 }}>
+                              {[
+                                [0, "Sun"],
+                                [1, "Mon"],
+                                [2, "Tue"],
+                                [3, "Wed"],
+                                [4, "Thu"],
+                                [5, "Fri"],
+                                [6, "Sat"],
+                              ].map(([weekday, label]) => {
+                                const active = bulkAvailabilityWeekdays.includes(weekday);
+                                return (
+                                  <button
+                                    key={weekday}
+                                    type="button"
+                                    onClick={() => toggleBulkAvailabilityWeekday(weekday)}
+                                    style={{
+                                      padding: "8px 4px",
+                                      fontSize: "0.72rem",
+                                      border: active ? "2px solid #4CAF50" : "1px solid #d0d0d0",
+                                      borderRadius: 6,
+                                      background: active ? "#e8f5e9" : "#fff",
+                                      color: active ? "#2E7D32" : "#555",
+                                      cursor: "pointer",
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    {label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666" }}>
+                              Applies to {bulkAvailabilityDates.length} date{bulkAvailabilityDates.length === 1 ? "" : "s"} in {monthName} {year}
+                            </div>
+                          </div>
+                        )}
+
+                        {availabilityApplyMode === "single" && (
+                        <div>
                           <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Date *</label>
 <div style={{ width: "100%", padding: "10px", fontSize: "0.95rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#fff", minHeight: "42px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                              <div style={{ color: availabilityDate ? "#111" : "#666" }}>
@@ -3928,7 +5129,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                            </div>
                            <div style={{ fontSize: "0.7rem", color: "#999", marginTop: 4 }}>Click a day on the calendar</div>
                            <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666" }}>
-                            Only current month dates allowed
+                            Dates allowed from today to {new Date(scheduleWindowEndKey + "T00:00:00").toLocaleDateString()}
                           </div>
                           {getAvailabilityFieldError("availabilityDate") && (
                             <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#d32f2f" }}>
@@ -3936,6 +5137,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                             </div>
                           )}
                         </div>
+                        )}
 
                         <div>
                           <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Availability Status *</label>
@@ -4122,11 +5324,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         </button>
                       </div>
 
-                      {/* Show current month's availability records */}
+                      {/* Show visible month's availability records */}
                       {teacherAvailabilityList && teacherAvailabilityList.length > 0 && (
                         <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: 12 }}>
                           <h5 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "#333", fontWeight: 600 }}>
-                            Your Availability This Month
+                            Your Availability for {monthName}
                           </h5>
                           <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "200px", overflowY: "auto" }}>
                             {teacherAvailabilityList.map(record => (
@@ -4140,26 +5342,42 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                                   fontSize: "0.8rem",
                                 }}
                               >
-                                <div className={styles.availabilityRecordHeader} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                                  <div>
-                                    <strong>{new Date(record.available_date + "T00:00:00").toLocaleDateString()}</strong>
-                                    {record.status === "available" ? (
-                                      <span style={{ color: "#2E7D32", marginLeft: 8 }}>✓ Available</span>
-                                    ) : (
-                                      <span style={{ color: "#c62828", marginLeft: 8 }}>✗ Unavailable</span>
-                                    )}
+                                <div className={styles.availabilityRecordHeader} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
+                                  <div style={{ minWidth: 0, flex: 1 }}>
+                                    <strong style={{ display: "block", lineHeight: 1.25 }}>{formatScheduleDate(record.available_date)}</strong>
+                                    <span
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        marginTop: 4,
+                                        padding: "2px 8px",
+                                        borderRadius: 999,
+                                        background: record.status === "available" ? "#d8e8df" : "#fde2e2",
+                                        color: record.status === "available" ? "#26423b" : "#b91c1c",
+                                        fontSize: "0.72rem",
+                                        fontWeight: 700,
+                                        lineHeight: 1.3,
+                                      }}
+                                    >
+                                      {record.status === "available" ? "Available" : "Unavailable"}
+                                    </span>
                                   </div>
                                   <button
                                     type="button"
                                     onClick={() => deleteTeacherAvailability(record.id || record.availability_id)}
                                     style={{
-                                      padding: "4px 8px",
+                                      padding: "6px 10px",
                                       fontSize: "0.75rem",
+                                      fontWeight: 700,
                                       border: "none",
                                       background: "#f44336",
                                       color: "#fff",
                                       borderRadius: 4,
                                       cursor: "pointer",
+                                      minWidth: 62,
+                                      lineHeight: 1,
+                                      whiteSpace: "nowrap",
+                                      flex: "0 0 auto",
                                     }}
                                   >
                                     Delete
@@ -4167,14 +5385,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                                 </div>
                                 {record.status === "available" && (record.start_time || record.end_time) ? (
                                   <div style={{ color: "#555", marginTop: 6, lineHeight: 1.5 }}>
-                                    <div>⏰ {humanTime(record.start_time)} - {humanTime(record.end_time)}</div>
+                                    <div style={{ fontWeight: 700 }}>{humanTime(record.start_time)} - {humanTime(record.end_time)}</div>
                                     {record.break_start && record.break_end && (
-                                      <div style={{ color: "#666", fontSize: "0.75rem", marginTop: 4 }}>☕ Break: {humanTime(record.break_start)} - {humanTime(record.break_end)}</div>
+                                      <div style={{ color: "#666", fontSize: "0.75rem", marginTop: 4 }}>Break: {humanTime(record.break_start)} - {humanTime(record.break_end)}</div>
                                     )}
                                   </div>
                                 ) : record.status === "available" ? (
                                   <div style={{ color: "#555", marginTop: 6, lineHeight: 1.5 }}>
-                                    ⏰ Available all day
+                                    Available all day
                                   </div>
                                 ) : null}
                               </div>
@@ -4475,16 +5693,221 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                   </>
                 ) : studentBookingMode ? (
                   <>
-                    <div className={styles.legendTitle}>Book Classes for This Month</div>
+                    <div className={styles.legendTitle}>Book Classes</div>
                     <div className={styles.slotList}>
                       <div style={{ padding: 12, color: "#333", fontSize: "0.95em" }}>
                         {assignedTeacherName ? (
-                          <p style={{ margin: 0 }}>Choose a date and time for {assignedTeacherName}. Only current month dates are allowed.</p>
+                          <p style={{ margin: 0 }}>Choose a date and time for {assignedTeacherName}. Dates are available from today up to 3 months ahead.</p>
                         ) : (
                           <p style={{ margin: 0 }}>You don&apos;t have an assigned teacher yet. Contact support to enable booking.</p>
                         )}
                       </div>
                       <div style={{ display: "grid", gap: 12 }}>
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Booking Mode *</label>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            <button
+                              type="button"
+                            onClick={() => {
+                              setStudentBookingApplyMode("manual");
+                              setStudentBookingError("");
+                              setStudentBookingSuggestions([]);
+                            }}
+                              style={{
+                                padding: "8px 10px",
+                                fontSize: "0.85rem",
+                                border: studentBookingApplyMode === "manual" ? "2px solid #4CAF50" : "1px solid #d0d0d0",
+                                borderRadius: 6,
+                                background: studentBookingApplyMode === "manual" ? "#e8f5e9" : "#fff",
+                                color: studentBookingApplyMode === "manual" ? "#2E7D32" : "#555",
+                                cursor: "pointer",
+                                fontWeight: 600,
+                              }}
+                            >
+                              Manual Slots
+                            </button>
+                            <button
+                              type="button"
+                            onClick={() => {
+                              setStudentBookingApplyMode("weekly");
+                              setStudentBookingError("");
+                              setStudentBookingSuggestions([]);
+                            }}
+                              style={{
+                                padding: "8px 10px",
+                                fontSize: "0.85rem",
+                                border: studentBookingApplyMode === "weekly" ? "2px solid #4CAF50" : "1px solid #d0d0d0",
+                                borderRadius: 6,
+                                background: studentBookingApplyMode === "weekly" ? "#e8f5e9" : "#fff",
+                                color: studentBookingApplyMode === "weekly" ? "#2E7D32" : "#555",
+                                cursor: "pointer",
+                                fontWeight: 600,
+                              }}
+                            >
+                              Weekly Pattern
+                            </button>
+                          </div>
+                        </div>
+
+                        {studentBookingApplyMode === "weekly" && studentBookingSelectionFull && (
+                          <div style={{ display: "grid", gap: 6, padding: "10px 11px", border: "1px solid #d7e5d9", borderRadius: 8, background: "#f6fbf8", color: "#26423b" }}>
+                            <div style={{ fontSize: "0.82rem", fontWeight: 800 }}>Selection full</div>
+                            <div style={{ fontSize: "0.74rem", lineHeight: 1.35, color: "#5e7268" }}>
+                              You selected all {studentBookingLimit} bookable class{studentBookingLimit === 1 ? "" : "es"}. Remove a class or clear selected to search again.
+                            </div>
+                          </div>
+                        )}
+
+                        {studentBookingApplyMode === "weekly" && !studentBookingSelectionFull && (
+                          <div style={{ display: "grid", gap: 10, padding: 10, border: "1px solid #d7e5d9", borderRadius: 8, background: "#f6fbf8" }}>
+                            {studentBookingSuggestions.length > 0 ? (
+                              <div style={{ display: "grid", gap: 8, padding: "10px 11px", border: "1px solid #d7e5d9", borderRadius: 6, background: "#fff" }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                  <div style={{ minWidth: 0 }}>
+                                    <div style={{ color: "#5e7268", fontSize: "0.72rem", fontWeight: 700, lineHeight: 1.25 }}>Search Criteria</div>
+                                    <div style={{ color: "#10231d", fontSize: "0.86rem", fontWeight: 800, lineHeight: 1.3, marginTop: 3 }}>
+                                      {studentBookingWeeklyWeekdays
+                                        .map((weekday) => WEEKDAY_OPTIONS.find(([value]) => value === weekday)?.[1])
+                                        .filter(Boolean)
+                                        .join(", ")} at {humanTime(studentBookingWeeklyTime)}
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setStudentBookingSuggestions([]);
+                                      setStudentBookingError("");
+                                    }}
+                                    style={{ border: "1px solid #91a79a", background: "#fff", color: "#26423b", borderRadius: 6, padding: "6px 9px", cursor: "pointer", fontSize: "0.72rem", fontWeight: 700, whiteSpace: "nowrap" }}
+                                  >
+                                    Edit Search
+                                  </button>
+                                </div>
+                                {studentBookingSelections.length > 0 && (
+                                  <div style={{ color: "#66756e", fontSize: "0.72rem", lineHeight: 1.35 }}>
+                                    Suggestions skip times that overlap with selected classes.
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <>
+                                <div>
+                                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Weekdays *</label>
+                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 5 }}>
+                                    {WEEKDAY_OPTIONS.map(([weekday, label]) => {
+                                      const active = studentBookingWeeklyWeekdays.includes(weekday);
+                                      return (
+                                        <button
+                                          key={weekday}
+                                          type="button"
+                                          onClick={() => toggleStudentBookingWeekday(weekday)}
+                                          style={{
+                                            padding: "8px 4px",
+                                            fontSize: "0.72rem",
+                                            border: active ? "2px solid #4CAF50" : "1px solid #d0d0d0",
+                                            borderRadius: 6,
+                                            background: active ? "#e8f5e9" : "#fff",
+                                            color: active ? "#2E7D32" : "#555",
+                                            cursor: "pointer",
+                                            fontWeight: 700,
+                                          }}
+                                        >
+                                          {label}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                                <div>
+                                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Preferred Time *</label>
+                                  <input
+                                    type="time"
+                                    value={studentBookingWeeklyTime}
+                                    onChange={e => {
+                                      setStudentBookingWeeklyTime(normalizeTime(e.target.value));
+                                      setStudentBookingError("");
+                                    }}
+                                    style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", background: "#fff" }}
+                                  />
+                                  <div style={{ fontSize: "0.7rem", color: "#666", marginTop: 4 }}>
+                                    The system will suggest the closest available teacher slot for each selected weekday.
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={applyStudentWeeklyPattern}
+                                  disabled={isSubmittingStudentBooking || hasNoClassesLeft}
+                                  style={{ padding: "10px 12px", fontSize: "0.85rem", fontWeight: 700, border: "none", borderRadius: 6, background: "#2E7D32", color: "#fff", cursor: (isSubmittingStudentBooking || hasNoClassesLeft) ? "not-allowed" : "pointer", opacity: (isSubmittingStudentBooking || hasNoClassesLeft) ? 0.6 : 1 }}
+                                >
+                                  Find Closest Slots
+                                </button>
+                                <div style={{ fontSize: "0.72rem", color: "#666", lineHeight: 1.4 }}>
+                                  Finds matching teacher availability from today up to 3 months ahead, capped by your remaining classes.
+                                </div>
+                                {studentBookingSelections.length > 0 && (
+                                  <div style={{ padding: "8px 10px", border: "1px solid #d7e5d9", borderRadius: 6, background: "#fff", color: "#5e7268", fontSize: "0.74rem", lineHeight: 1.35 }}>
+                                    New suggestions will skip times that overlap with your selected classes.
+                                  </div>
+                                )}
+                              </>
+                            )}
+                            {studentBookingSuggestions.length > 0 && (
+                              <div style={{ display: "grid", gap: 8, paddingTop: 4 }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 700, color: "#333" }}>
+                                    Suggested Slots ({studentBookingSuggestions.length})
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={addStudentBookingSuggestions}
+                                    disabled={isSubmittingStudentBooking || hasNoClassesLeft}
+                                    style={{ padding: "6px 9px", fontSize: "0.72rem", fontWeight: 700, border: "1px solid #4CAF50", borderRadius: 6, background: "#fff", color: "#2E7D32", cursor: (isSubmittingStudentBooking || hasNoClassesLeft) ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}
+                                  >
+                                    Add Earliest
+                                  </button>
+                                </div>
+                                <div style={{ display: "grid", gap: 7, maxHeight: 230, overflowY: "auto", paddingRight: 3 }}>
+                                  {studentBookingSuggestions.map((slot) => {
+                                    const slotEnd = timeToMinutes(slot.time) == null ? "" : minutesToTime(timeToMinutes(slot.time) + studentClassDuration);
+                                    const selected = isStudentBookingSelected(slot.date, slot.time);
+                                    const limitReached = studentBookingSelections.length >= studentBookingLimit;
+                                    const timeDistance = describeTimeDistance(slot.requested_time, slot.time);
+                                    return (
+                                      <div
+                                        key={studentBookingSelectionKey(slot.date, slot.time)}
+                                        style={{ display: "grid", gridTemplateColumns: "1fr auto", alignItems: "center", gap: 10, padding: "10px 11px", border: selected ? "2px solid #4CAF50" : "1px solid #cddfd2", borderRadius: 6, background: selected ? "#e8f5e9" : "#fff", fontSize: "0.8rem" }}
+                                      >
+                                        <div style={{ minWidth: 0 }}>
+                                          <div style={{ color: "#5e7268", fontSize: "0.72rem", fontWeight: 700, lineHeight: 1.25 }}>
+                                            {formatLongDate(slot.date)}
+                                          </div>
+                                          <div style={{ color: "#10231d", fontWeight: 800, fontSize: "0.88rem", lineHeight: 1.3, marginTop: 3 }}>
+                                            {humanTime(slot.time)}{slotEnd ? ` - ${humanTime(slotEnd)}` : ""}
+                                          </div>
+                                          <div style={{ color: "#66756e", marginTop: 4, lineHeight: 1.3 }}>
+                                            Preferred {humanTime(slot.requested_time)}
+                                            {timeDistance ? ` · ${timeDistance}` : ""}
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => addStudentBookingSuggestion(slot)}
+                                          disabled={selected || limitReached}
+                                          style={{ border: "1px solid #4CAF50", background: selected ? "#4CAF50" : "#fff", color: selected ? "#fff" : "#2E7D32", borderRadius: 6, padding: "6px 9px", cursor: (selected || limitReached) ? "not-allowed" : "pointer", fontSize: "0.74rem", fontWeight: 700, opacity: (!selected && limitReached) ? 0.55 : 1 }}
+                                        >
+                                          {selected ? "Added" : "Add"}
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {studentBookingApplyMode === "manual" && (
+                        <>
                         <div>
                           <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Date *</label>
 <div style={{ width: "100%", padding: "10px", fontSize: "0.95rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#fff", minHeight: "42px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -4496,6 +5919,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                          </div>
                          <div>
                           <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Available Times *</label>
+                          <div style={{ fontSize: "0.72rem", color: "#666", marginBottom: 6 }}>
+                            Select one or more slots. Overlapping slots are blocked automatically.
+                          </div>
                           {availability[studentBookingDate] === "unavailable" ? (
                             <div style={{ padding: 12, background: "#fff3e0", borderRadius: 8, color: "#b65f00" }}>
                               Teacher is unavailable on this date.
@@ -4504,6 +5930,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
                               {availableTimeSlots.map(time => {
                                 const isBooked = isTeacherDateTimeBooked(studentBookingDate, time);
+                                const isSelected = isStudentBookingSelected(studentBookingDate, time);
                                 return (
                                   <button
                                     key={time}
@@ -4511,15 +5938,15 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                                     onClick={() => {
                                       if (!isBooked) {
                                         setStudentBookingTime(time);
-                                        setStudentBookingError("");
+                                        toggleStudentBookingSelection(studentBookingDate, time);
                                       }
                                     }}
                                     disabled={isBooked}
                                     style={{
                                       padding: "12px 14px",
-                                      border: studentBookingTime === time ? "2px solid #4CAF50" : "1px solid #d0d0d0",
+                                      border: isSelected ? "2px solid #4CAF50" : "1px solid #d0d0d0",
                                       borderRadius: "8px",
-                                      background: studentBookingTime === time ? "#e8f5e9" : isBooked ? "#f8f8f8" : "#fff",
+                                      background: isSelected ? "#e8f5e9" : isBooked ? "#f8f8f8" : "#fff",
                                       color: isBooked ? "#999" : "#111",
                                       cursor: isBooked ? "not-allowed" : "pointer",
                                       textAlign: "center"
@@ -4532,10 +5959,60 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                             </div>
                           ) : (
                             <div style={{ padding: 12, background: "#f4f6f8", borderRadius: 8, color: "#555" }}>
-                              No available slots found for this date. Choose another day in the current month.
+                              No available slots found for this date. Choose another day within the scheduling window.
                             </div>
                           )}
                         </div>
+                        </>
+                        )}
+                        {studentBookingSelections.length > 0 && (
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "#333" }}>
+                                Selected Classes ({studentBookingSelections.length}/{studentBookingLimit})
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setStudentBookingSelections([]);
+                                  setStudentBookingTime("");
+                                  setStudentBookingError("");
+                                }}
+                                disabled={isSubmittingStudentBooking}
+                                style={{ border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, padding: "4px 7px", cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer", fontSize: "0.72rem", fontWeight: 700, color: "#374151", whiteSpace: "nowrap" }}
+                              >
+                                Clear Selected
+                              </button>
+                            </div>
+                            <div style={{ display: "grid", gap: 8, maxHeight: 180, overflowY: "auto" }}>
+                              {studentBookingSelections.map((slot) => {
+                                const slotEnd = timeToMinutes(slot.time) == null ? "" : minutesToTime(timeToMinutes(slot.time) + studentClassDuration);
+                                return (
+                                  <div
+                                    key={studentBookingSelectionKey(slot.date, slot.time)}
+                                    style={{ display: "grid", gridTemplateColumns: "1fr auto", alignItems: "center", gap: 10, padding: "10px 11px", border: "1px solid #d7e5d9", borderRadius: 6, background: "#f6fbf8", fontSize: "0.82rem" }}
+                                  >
+                                    <div style={{ minWidth: 0 }}>
+                                      <div style={{ color: "#5e7268", fontSize: "0.72rem", fontWeight: 700, lineHeight: 1.25 }}>
+                                        {formatLongDate(slot.date)}
+                                      </div>
+                                      <div style={{ color: "#10231d", fontWeight: 800, fontSize: "0.88rem", lineHeight: 1.3, marginTop: 3 }}>
+                                        {humanTime(slot.time)}{slotEnd ? ` - ${humanTime(slotEnd)}` : ""}
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleStudentBookingSelection(slot.date, slot.time)}
+                                      style={{ border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, padding: "5px 8px", cursor: "pointer", fontSize: "0.75rem", fontWeight: 700 }}
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                         <div>
                           <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Course</label>
                           <div style={{ width: "100%", padding: "12px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#f7fafc", color: "#111", minHeight: "42px", display: "flex", alignItems: "center" }}>
@@ -4566,7 +6043,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                           <button
                             type="button"
-                            onClick={() => setStudentBookingMode(false)}
+                            onClick={() => {
+                              setStudentBookingMode(false);
+                              setStudentBookingSelections([]);
+                              setStudentBookingSuggestions([]);
+                            }}
                             disabled={isSubmittingStudentBooking}
                             style={{ padding: "10px 16px", fontSize: "0.9em", border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer" }}
                           >
@@ -4575,10 +6056,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           <button
                             type="button"
                             onClick={openStudentBookingConfirmation}
-                            disabled={isSubmittingStudentBooking || !studentBookingTime || assignedTeacherId == null || hasNoClassesLeft}
-                            style={{ padding: "10px 16px", fontSize: "0.9em", border: "none", background: "#4CAF50", color: "#fff", borderRadius: 6, cursor: (isSubmittingStudentBooking || !studentBookingTime || assignedTeacherId == null || hasNoClassesLeft) ? "not-allowed" : "pointer" }}
+                            disabled={isSubmittingStudentBooking || studentBookingSelections.length === 0 || assignedTeacherId == null || hasNoClassesLeft}
+                            style={{ padding: "10px 16px", fontSize: "0.9em", border: "none", background: "#4CAF50", color: "#fff", borderRadius: 6, cursor: (isSubmittingStudentBooking || studentBookingSelections.length === 0 || assignedTeacherId == null || hasNoClassesLeft) ? "not-allowed" : "pointer" }}
                           >
-                            {isSubmittingStudentBooking ? "Booking..." : "Book Class"}
+                            {isSubmittingStudentBooking ? "Booking..." : studentBookingSelections.length > 1 ? `Book ${studentBookingSelections.length} Classes` : "Book Class"}
                           </button>
                         </div>
                       </div>
@@ -4590,22 +6071,32 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                     <div className={styles.legendTitle}>Your Classes</div>
                     <div className={styles.slotList}>
                       <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", textAlign: "center" }}>
-                        <div style={{ fontSize: 14, color: "#666" }}>Booked</div>
-                        <div style={{ fontSize: 20, fontWeight: 700, marginTop: 6 }}>{effectiveClassesUsed} / {effectiveClassesLimit}</div>
-                        <div style={{ marginTop: 6, color: "#374151", fontSize: 14 }}>Classes left: {effectiveClassesLeft}</div>
-                        {/* Restore this line if you want to show the booking availability counter again. */}
-                        {/* <div style={{ marginTop: 4, color: "#2563eb", fontSize: 14, fontWeight: 600 }}>Available to book: {effectiveBookableClasses}</div> */}
+                        <div style={{ fontSize: 14, color: "#666" }}>Classes Left</div>
+                        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 3, fontSize: 22, fontWeight: 750, marginTop: 6, lineHeight: 1.15, letterSpacing: 0, color: "#5f7f70" }}>
+                          <span>{effectiveClassesLeft}</span>
+                          <span style={{ fontSize: 20, fontWeight: 500, color: "#5f7f70" }}>/</span>
+                          <span>{effectiveClassesLimit}</span>
+                        </div>
+                        <div style={{ marginTop: 6, color: "#374151", fontSize: 14, fontWeight: 600 }}>
+                          Available to book: {effectiveBookableClasses}
+                        </div>
                         <div style={{ marginTop: 8 }}>
                           <div style={{ height: 8, background: "#eef2ff", borderRadius: 8, overflow: "hidden" }}>
-                            <div style={{ width: `${effectivePercent}%`, height: "100%", background: "#6366f1" }} />
+                            <div style={{ width: `${effectivePercent}%`, height: "100%", background: "#5f7f70" }} />
                           </div>
                         </div>
                       </div>
                     </div>
                     <div style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
-                      {hasNoClassesLeft ? "No active contract or bookable classes remain." : "Tip: Contact your teacher to add or reschedule classes."}
+                      {hasNoActiveStudentPackage
+                        ? "No active contract is available."
+                        : contractExhausted
+                          ? "All classes in this contract have been used."
+                          : allRemainingClassesReserved
+                            ? "All remaining classes are already scheduled. Reschedule or cancel a booked class to free a slot."
+                            : "Tip: Contact your teacher to add or reschedule classes."}
                     </div>
-                    {hasNoClassesLeft && (
+                    {canRequestNewContract && (
                       <div style={{ marginTop: 12, padding: 12, border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff" }}>
                         {contractRequests[0] && (
                           <div style={{ marginBottom: 10, fontSize: 12, color: "#4b5563" }}>
@@ -4790,7 +6281,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                           cursor: !assignedTeacherId || hasNoClassesLeft ? "not-allowed" : "pointer",
                         }}
                       >
-                        Book Classes for This Month
+                        Book Classes
                       </button>
                       <button type="button" className={styles.slotBtn} onClick={jumpToToday}>
                         Jump to Today
@@ -4840,8 +6331,59 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
             </div>
           </aside>
         </div>
-      </section>
+    </section>
     </main>
+    {classEntryConfirmOpen && selectedClass && (
+      <div
+        role="presentation"
+        className={styles.confirmOverlay}
+        onClick={() => setClassEntryConfirmOpen(false)}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="class-entry-confirm-title"
+          className={styles.classEntryDialog}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className={`${styles.classEntryBadge} ${classEntryConfirmMode === "screenshots" ? styles.classEntryBadgeScreenshots : styles.classEntryBadgeRecording}`}>
+            {classEntryConfirmContent.badge}
+          </div>
+          <h3 id="class-entry-confirm-title">{classEntryConfirmContent.title}</h3>
+          <p>{classEntryConfirmContent.message}</p>
+
+          <div className={styles.classEntryDetails}>
+            <div>
+              <span>Class</span>
+              <strong>{selectedClass.className || selectedClass.class_name || "Selected class"}</strong>
+            </div>
+            <div>
+              <span>Time</span>
+              <strong>{humanTime(selectedClass.start_time || selectedClass.time)} - {humanTime(selectedClass.end_time) || getEndTime(selectedClass.start_time || selectedClass.time, selectedClass.duration)}</strong>
+            </div>
+          </div>
+
+          <ul className={styles.classEntryChecklist}>
+            {classEntryConfirmContent.details.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+
+          <div className={styles.classEntryTerms}>
+            By joining this class, you agree to the class verification terms and evidence requirements.
+          </div>
+
+          <div className={styles.classEntryActions}>
+            <button type="button" className={styles.confirmSecondaryBtn} onClick={() => setClassEntryConfirmOpen(false)}>
+              Cancel
+            </button>
+            <button type="button" className={styles.confirmPrimaryBtn} onClick={continueSelectedClassEntry}>
+              {classEntryConfirmContent.confirmLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     {availabilityConfirmOpen && (
       <div
         role="presentation"
@@ -4909,8 +6451,23 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
             }}
           >
             <div style={{ fontWeight: 700, color: "#111827" }}>
-              {availabilityDate ? new Date(availabilityDate + "T00:00:00").toLocaleDateString() : "Selected date"}
+              {availabilityApplyMode === "bulk"
+                ? `${monthName} ${year}: ${bulkAvailabilityDates.length} date${bulkAvailabilityDates.length === 1 ? "" : "s"}`
+                : availabilityDate ? new Date(availabilityDate + "T00:00:00").toLocaleDateString() : "Selected date"}
             </div>
+            {availabilityApplyMode === "bulk" && (
+              <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+                Days: {[
+                  [0, "Sun"],
+                  [1, "Mon"],
+                  [2, "Tue"],
+                  [3, "Wed"],
+                  [4, "Thu"],
+                  [5, "Fri"],
+                  [6, "Sat"],
+                ].filter(([weekday]) => bulkAvailabilityWeekdays.includes(weekday)).map(([, label]) => label).join(", ")}
+              </div>
+            )}
             <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
               Status: {availabilityStatus === "available" ? "Available" : "Unavailable"}
             </div>
@@ -5156,10 +6713,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
               {studentProfile?.course_name || "General English"}
             </div>
             <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-              Date: {studentBookingDate ? new Date(studentBookingDate + "T00:00:00").toLocaleDateString() : "Not selected"}
+              Classes: {studentBookingSelections.length}
             </div>
-            <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-              Time: {humanTime(studentBookingTime)}{studentBookingEndTime ? ` - ${humanTime(studentBookingEndTime)}` : ""}
+            <div style={{ display: "grid", gap: 6, maxHeight: 180, overflowY: "auto" }}>
+              {studentBookingSelections.map((slot) => {
+                const slotEnd = timeToMinutes(slot.time) == null ? "" : minutesToTime(timeToMinutes(slot.time) + studentClassDuration);
+                return (
+                  <div key={studentBookingSelectionKey(slot.date, slot.time)} style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+                    {new Date(slot.date + "T00:00:00").toLocaleDateString()} at {humanTime(slot.time)}{slotEnd ? ` - ${humanTime(slotEnd)}` : ""}
+                  </div>
+                );
+              })}
             </div>
             <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
               Duration: {studentClassDuration} minutes

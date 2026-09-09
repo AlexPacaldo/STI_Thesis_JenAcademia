@@ -251,7 +251,10 @@ const getVerificationMissingItems = (row) => {
   if (!row.teacher_ended_at) missing.push("teacher end");
   if (Number(row.duration_minutes || 0) <= 0) missing.push("duration");
   if (!row.summary) missing.push("summary");
-  if (!row.proof_url) missing.push("screenshot");
+  if (row.evidence_mode === "screenshots") {
+    if (!row.start_proof_url) missing.push("start screenshot");
+    if (!row.proof_url) missing.push("end screenshot");
+  } else if (!row.recording_url) missing.push("recording");
   return missing;
 };
 
@@ -271,7 +274,11 @@ const getVerificationReviewReasons = (row) => {
   if (!row.teacher_ended_at) reasons.push("Missing teacher end");
   if (durationMinutes < requiredMinutes) reasons.push(`Duration too short: ${durationMinutes} / ${requiredMinutes} min`);
   if (!row.summary) reasons.push("Missing class summary");
-  if (!row.proof_url) reasons.push("Missing screenshot proof");
+  if (row.evidence_mode === "screenshots") {
+    if (!row.start_proof_url || !row.proof_url) reasons.push("Both start and end screenshots are required");
+    const delay = new Date(row.start_proof_uploaded_at).getTime() - new Date(row.student_joined_at).getTime();
+    if (row.start_proof_url && (!Number.isFinite(delay) || delay < 0 || delay > 300000)) reasons.push("Start screenshot was outside the five-minute submission window");
+  } else if (!row.recording_url || Number(row.recording_duration_seconds || 0) < requiredMinutes * 60) reasons.push(`Recording must cover at least ${requiredMinutes} minutes`);
 
   return reasons;
 };
@@ -281,6 +288,7 @@ export default function AdminDashboard() {
   const location = useLocation();
   const [active, setActive] = useState("calendar"); // 'calendar' | 'createTeacher' | 'createStudent' | 'archive' | 'requests'
   const [me, setMe] = useState(null);
+  const currentAdminId = me?.id || me?.user_id || me?.userId;
 
   useEffect(() => {
     const nextActive = getAdminTabFromSearch(location.search);
@@ -1040,8 +1048,9 @@ export default function AdminDashboard() {
 
   async function clearVerificationRecords() {
     try {
-      await axios.delete(`${API}/api/admin/class-verifications`);
-      notify("All verification records cleared", "success");
+      const response = await axios.delete(`${API}/api/admin/class-verifications`);
+      const removed = Number(response.data?.removed || 0);
+      notify(`${removed} final verification record${removed === 1 ? "" : "s"} cleared`, "success");
       setVerificationPage(1);
       await loadClassVerifications();
     } catch (e) {
@@ -1189,6 +1198,7 @@ export default function AdminDashboard() {
     incomplete: verifications.filter((row) => row.verification_status === "incomplete").length,
     missing: verifications.filter((row) => !row.teacher_started_at && row.verification_status === "pending").length,
   };
+  const clearableVerificationCount = verificationCounts.verified + verificationCounts.incomplete;
 
   const updateStudentCourse = (courseId) => {
     const currentTeacherCanTeach = !sForm.teacherId || !courseId || teacherCourseMap[String(sForm.teacherId)]?.has(String(courseId));
@@ -1332,7 +1342,7 @@ export default function AdminDashboard() {
     openAdminConfirm({
       action: "remove_verification",
       title: "Remove verification record?",
-      message: "Are you sure? This removes the verification log and its uploaded screenshot. The scheduled class will stay in the calendar.",
+      message: "Are you sure? This removes the verification log and its uploaded proof file. The scheduled class will stay in the calendar.",
       confirmLabel: "Remove",
       tone: "danger",
       payload: {
@@ -1386,18 +1396,18 @@ export default function AdminDashboard() {
   }
 
   function requestClearVerifications() {
-    if (!verifications.length) {
-      notify("There are no verification records to clear.", "info");
+    if (!clearableVerificationCount) {
+      notify("There are no verified or incomplete records to clear.", "info");
       return;
     }
     openAdminConfirm({
       action: "clear_verifications",
-      title: "Clear all verification records?",
-      message: "Are you sure? This removes every verification log and uploaded class screenshot. Scheduled classes will stay in the calendar.",
-      confirmLabel: "Clear All",
+      title: "Clear final verification records?",
+      message: "This removes only verified and incomplete verification logs with their uploaded proof files. Records still pending or waiting for admin review will stay.",
+      confirmLabel: "Clear Final Records",
       tone: "danger",
       payload: {
-        count: verifications.length,
+        count: clearableVerificationCount,
       },
     });
   }
@@ -1488,7 +1498,8 @@ export default function AdminDashboard() {
                   className={styles.dangerBtn}
                   type="button"
                   onClick={requestClearVerifications}
-                  disabled={!verifications.length || verificationsLoading}
+                  disabled={!clearableVerificationCount || verificationsLoading}
+                  title="Clears only verified and incomplete records"
                 >
                   Clear
                 </button>
@@ -1550,6 +1561,13 @@ export default function AdminDashboard() {
                   const reviewReasons = getVerificationReviewReasons(row);
                   const hasRequiredEvidence = missingItems.length === 0;
                   const needsAdminReview = displayStatus === "needs_review";
+                  const canRemoveVerification = ["verified", "incomplete"].includes(displayStatus);
+                  const evidenceLabel = row.evidence_mode === "screenshots"
+                    ? "Start and end screenshots"
+                    : row.evidence_mode === "recording"
+                      ? `Recording (${Math.floor(Number(row.recording_duration_seconds || 0) / 60)} min)`
+                      : "No evidence mode selected";
+                  const hasAnyProof = Boolean(row.start_proof_url || row.proof_url || row.recording_url);
 
                   return (
                     <article key={row.class_id} className={styles.verificationItem}>
@@ -1592,28 +1610,51 @@ export default function AdminDashboard() {
                           <div><span>Duration</span><strong>{Number(row.duration_minutes || 0)} min</strong></div>
                         </div>
 
-                        {needsAdminReview ? (
-                          <div className={styles.reviewReasonBox}>
-                            <strong>Review reason</strong>
-                            {reviewReasons.length
-                              ? reviewReasons.map((reason) => (
-                                  <span key={reason}>{reason}</span>
-                                ))
-                              : <span>Manual admin review required</span>}
+                        <div className={styles.verificationNotes}>
+                          {row.review_reason && (
+                            <div className={styles.teacherReviewBox}>
+                              <span>Teacher Review Request</span>
+                              <p>{row.review_reason}</p>
+                            </div>
+                          )}
+                          <div className={styles.evidenceModeBox}>
+                            <span>Evidence</span>
+                            <strong>{evidenceLabel}</strong>
                           </div>
-                        ) : (
-                          <div className={hasRequiredEvidence ? styles.goodEvidenceNote : styles.missingEvidenceNote}>
-                            {hasRequiredEvidence ? "Evidence complete" : `Missing: ${missingItems.join(", ")}`}
+                          <div className={needsAdminReview ? styles.reviewReasonBox : hasRequiredEvidence ? styles.goodEvidenceNote : styles.missingEvidenceNote}>
+                            <strong>{needsAdminReview ? "Admin Check" : hasRequiredEvidence ? "Ready" : "Missing"}</strong>
+                            {needsAdminReview
+                              ? (
+                                  reviewReasons.length
+                                    ? reviewReasons.map((reason) => <span key={reason}>{reason}</span>)
+                                    : <span>Manual admin review required</span>
+                                )
+                              : <span>{hasRequiredEvidence ? "Evidence complete" : missingItems.join(", ")}</span>}
                           </div>
-                        )}
+                        </div>
 
                         {row.summary && (
-                          <p className={styles.verificationSummary}>{row.summary}</p>
+                          <div className={styles.verificationSummaryBlock}>
+                            <span>Class Summary</span>
+                            <p className={styles.verificationSummary}>{row.summary}</p>
+                          </div>
                         )}
                       </div>
 
                       <div className={styles.verificationActions}>
-                        {row.proof_url ? (
+                        <div className={styles.verificationActionsTitle}>Proof & Actions</div>
+                        {!hasAnyProof && <span className={styles.noProofText}>No proof uploaded</span>}
+                        {row.start_proof_url && <a className={`${styles.linkBtn} ${styles.tableActionBtn}`} href={resolveUploadUrl(row.start_proof_url)} target="_blank" rel="noreferrer">View Start</a>}
+                        {row.recording_url ? (
+                          <a
+                            className={`${styles.linkBtn} ${styles.tableActionBtn}`}
+                            href={`${API}/api/calendar/classes/${row.class_id}/recording?user_id=${encodeURIComponent(currentAdminId || "")}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            View Recording
+                          </a>
+                        ) : row.proof_url ? (
                           <button
                             type="button"
                             className={`${styles.linkBtn} ${styles.tableActionBtn}`}
@@ -1625,11 +1666,9 @@ export default function AdminDashboard() {
                               schedule: `${formatDate(row.scheduled_date)} ${formatTime(row.start_time)}`,
                             })}
                           >
-                            Open Screenshot
+                            View End
                           </button>
-                        ) : (
-                          <span className={styles.noProofText}>No screenshot</span>
-                        )}
+                        ) : null}
 
                         {needsAdminReview && (
                           <>
@@ -1650,13 +1689,15 @@ export default function AdminDashboard() {
                           </>
                         )}
 
-                        <button
-                          type="button"
-                          className={`${styles.dangerBtn} ${styles.tableActionBtn}`}
-                          onClick={() => requestRemoveVerification(row)}
-                        >
-                          Remove
-                        </button>
+                        {canRemoveVerification && (
+                          <button
+                            type="button"
+                            className={`${styles.dangerBtn} ${styles.tableActionBtn}`}
+                            onClick={() => requestRemoveVerification(row)}
+                          >
+                            Remove
+                          </button>
+                        )}
                       </div>
                     </article>
                   );

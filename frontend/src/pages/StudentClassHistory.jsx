@@ -86,7 +86,10 @@ const getMissingItems = (row) => {
   if (!row.teacher_ended_at) missing.push("teacher end");
   if (Number(row.duration_minutes || 0) <= 0) missing.push("duration");
   if (!row.summary) missing.push("summary");
-  if (!row.proof_url) missing.push("screenshot");
+  if (row.evidence_mode === "screenshots") {
+    if (!row.start_proof_url) missing.push("start screenshot");
+    if (!row.proof_url) missing.push("end screenshot");
+  } else if (!row.recording_url) missing.push("recording");
   return missing;
 };
 
@@ -106,7 +109,11 @@ const getReviewReasons = (row) => {
   if (!row.teacher_ended_at) reasons.push("Missing teacher end");
   if (durationMinutes < requiredMinutes) reasons.push(`Duration too short: ${durationMinutes} / ${requiredMinutes} min`);
   if (!row.summary) reasons.push("Missing class summary");
-  if (!row.proof_url) reasons.push("Missing screenshot proof");
+  if (row.evidence_mode === "screenshots") {
+    if (!row.start_proof_url || !row.proof_url) reasons.push("Both start and end screenshots are required");
+    const delay = new Date(row.start_proof_uploaded_at).getTime() - new Date(row.student_joined_at).getTime();
+    if (row.start_proof_url && (!Number.isFinite(delay) || delay < 0 || delay > 300000)) reasons.push("Start screenshot was outside the five-minute submission window");
+  } else if (!row.recording_url || Number(row.recording_duration_seconds || 0) < requiredMinutes * 60) reasons.push(`Recording must cover at least ${requiredMinutes} minutes`);
 
   return reasons;
 };
@@ -132,8 +139,8 @@ export default function StudentClassHistory({ mode = "student" }) {
   const otherPartyLabel = isTeacherMode ? "Student" : "Teacher";
   const title = "Class History";
   const description = isTeacherMode
-    ? "Review your conducted classes, student attendance, verified duration, class summary, and screenshot proof."
-    : "Review your past class attendance, verified duration, teacher summary, and screenshot proof.";
+    ? "Review your conducted classes, student attendance, verified duration, class summary, and recording proof."
+    : "Review your past class attendance, verified duration, teacher summary, and recording proof.";
 
   const loadHistory = async () => {
     if (!currentUserId) return;
@@ -418,8 +425,14 @@ export default function StudentClassHistory({ mode = "student" }) {
                           </div>
                           <div>
                             <span>Proof</span>
-                            <strong>{row.proof_url ? "Uploaded" : "Not uploaded"}</strong>
-                            <small>{row.proof_url ? "Screenshot available" : "No screenshot"}</small>
+                            <strong>{row.recording_url ? "Recording" : row.proof_url ? "Screenshot" : "Not uploaded"}</strong>
+                            <small>
+                              {row.recording_url
+                                ? `Expires ${formatDateTime(row.recording_expires_at)}`
+                                : row.proof_url
+                                  ? "Screenshot available"
+                                  : "No proof"}
+                            </small>
                           </div>
                           <div>
                             <span>Evidence</span>
@@ -455,8 +468,20 @@ export default function StudentClassHistory({ mode = "student" }) {
                         )}
                       </div>
 
+                      {row.review_reason && <p><strong>Teacher review request:</strong> {row.review_reason}</p>}
+                      {row.evidence_mode && <p>Evidence: {row.evidence_mode === "screenshots" ? "Start and end screenshots" : `Recording (${Math.floor(Number(row.recording_duration_seconds || 0) / 60)} min)`}</p>}
                       <div className={styles.verificationActions}>
-                        {row.proof_url ? (
+                        {row.start_proof_url && <a className={`${styles.linkBtn} ${styles.tableActionBtn}`} href={resolveUploadUrl(row.start_proof_url)} target="_blank" rel="noreferrer">Open Start Screenshot</a>}
+                        {row.recording_url ? (
+                          <a
+                            className={`${styles.linkBtn} ${styles.tableActionBtn}`}
+                            href={`${API}/api/calendar/classes/${row.class_id}/recording?user_id=${encodeURIComponent(currentUserId)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open Recording
+                          </a>
+                        ) : row.proof_url ? (
                           <button
                             type="button"
                             className={`${styles.linkBtn} ${styles.tableActionBtn}`}
@@ -467,10 +492,10 @@ export default function StudentClassHistory({ mode = "student" }) {
                               schedule: `${formatDate(row.scheduled_date)} ${formatTime(row.start_time)}`,
                             })}
                           >
-                            Open Screenshot
+                            Open End Screenshot
                           </button>
                         ) : (
-                          <span className={styles.noProofText}>No screenshot</span>
+                          <span className={styles.noProofText}>No proof</span>
                         )}
                       </div>
                     </article>
