@@ -737,6 +737,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const selectedClassStudentConfirmed = Boolean(selectedClassVerification?.student_joined_at);
   const selectedClassEnded = Boolean(selectedClassVerification?.teacher_ended_at);
   const selectedClassVerified = selectedVerificationStatus === "verified";
+  const canShowClassEntryAction = !selectedClassEnded;
+  const canShowRescheduleAction = !selectedClassEnded && !isAdmin && !requestMode;
   const shouldRemindStartScreenshot =
     localRole === "teacher" &&
     !isAdmin &&
@@ -4347,23 +4349,25 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                       )}
                     </div>
                   )}
-                  <button
-                    type="button"
-                    disabled={isClassEntryDisabled}
-                    onClick={enterSelectedClass}
-                    className={`${styles.bookBtn} ${styles.joinBtn}`}
-                    style={{
-                      textAlign: "center",
-                      display: "block",
-                      width: "100%",
-                      cursor: isClassEntryDisabled ? "not-allowed" : "pointer",
-                      opacity: isClassEntryDisabled ? 0.5 : 1,
-                      filter: isClassEntryDisabled ? "grayscale(100%)" : "none",
-                    }}
-                    title={selectedClassEntryTitle}
-                  >
-                    {selectedClassEntryLabel}
-                  </button>
+                  {canShowClassEntryAction && (
+                    <button
+                      type="button"
+                      disabled={isClassEntryDisabled}
+                      onClick={enterSelectedClass}
+                      className={`${styles.bookBtn} ${styles.joinBtn}`}
+                      style={{
+                        textAlign: "center",
+                        display: "block",
+                        width: "100%",
+                        cursor: isClassEntryDisabled ? "not-allowed" : "pointer",
+                        opacity: isClassEntryDisabled ? 0.5 : 1,
+                        filter: isClassEntryDisabled ? "grayscale(100%)" : "none",
+                      }}
+                      title={selectedClassEntryTitle}
+                    >
+                      {selectedClassEntryLabel}
+                    </button>
+                  )}
                   { isTeacherOrAdmin && isSelectedClassNoShowable && !requestMode && (
                     <button
                       type="button"
@@ -4381,7 +4385,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                       Mark No-Show
                     </button>
                   ) }
-                  { !isAdmin && !requestMode && (
+                  { canShowRescheduleAction && (
                     <button
                       className={`${styles.bookBtn} ${styles.rescheduleBtn}`}
                       onClick={() => {
@@ -4431,7 +4435,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                       Request for Reschedule
                     </button>
                   ) }
-                  { requestMode && (
+                  { requestMode && !selectedClassEnded && (
                     <div style={{ marginTop: 12, padding: 14, border: "1px solid #e0e0e0", borderRadius: 8, background: "#fafafa" }}>
                       <div style={{ marginBottom: 12 }}>
                         <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#333" }}>Request Reschedule</h4>
@@ -5456,22 +5460,24 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                       )}
                     </div>
                     {renderVerificationPanel()}
-                    <button
-                      disabled={isClassEntryDisabled}
-                      onClick={enterSelectedClass}
-                      className={`${styles.bookBtn} ${styles.joinBtn}`}
-                      style={{
-                        textAlign: "center",
-                        display: "block",
-                        width: "100%",
-                        cursor: isClassEntryDisabled ? "not-allowed" : "pointer",
-                        opacity: isClassEntryDisabled ? 0.5 : 1,
-                        filter: isClassEntryDisabled ? "grayscale(100%)" : "none",
-                      }}
-                      title={selectedClassEntryTitle}
-                    >
-                      {selectedClassEntryLabel}
-                    </button>
+                    {canShowClassEntryAction && (
+                      <button
+                        disabled={isClassEntryDisabled}
+                        onClick={enterSelectedClass}
+                        className={`${styles.bookBtn} ${styles.joinBtn}`}
+                        style={{
+                          textAlign: "center",
+                          display: "block",
+                          width: "100%",
+                          cursor: isClassEntryDisabled ? "not-allowed" : "pointer",
+                          opacity: isClassEntryDisabled ? 0.5 : 1,
+                          filter: isClassEntryDisabled ? "grayscale(100%)" : "none",
+                        }}
+                        title={selectedClassEntryTitle}
+                      >
+                        {selectedClassEntryLabel}
+                      </button>
+                    )}
                     {isTeacherOrAdmin && isSelectedClassNoShowable && !requestMode && (
                       <button
                         type="button"
@@ -5489,10 +5495,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         Mark No-Show
                       </button>
                     )}
-                    <button
-                      type="button"
-                      className={`${styles.bookBtn} ${styles.rescheduleBtn}`}
-                      onClick={() => {
+                    {canShowRescheduleAction && (
+                      <button
+                        type="button"
+                        className={`${styles.bookBtn} ${styles.rescheduleBtn}`}
+                        onClick={() => {
                         // Fetch counterparty's booked dates
                         const otherPartyId = localRole === "student" ? selectedClass.teacher_id : selectedClass.student_id;
                         setCounterpartyId(otherPartyId);
@@ -5538,12 +5545,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                         setRequestMode(true);
                         setRequestDate(selectedDate);
                         setRequestTime("");
-                      }}
-                      style={{ marginTop: "8px" }}
-                    >
-                      Request for Reschedule
-                    </button>
-                    { requestMode && (
+                        }}
+                        style={{ marginTop: "8px" }}
+                      >
+                        Request for Reschedule
+                      </button>
+                    )}
+                    { requestMode && !selectedClassEnded && (
                       <div style={{ marginTop: 12, padding: 14, border: "1px solid #e0e0e0", borderRadius: 8, background: "#fafafa" }}>
                       <div style={{ marginBottom: 12 }}>
                         <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#333" }}>Request Reschedule</h4>
