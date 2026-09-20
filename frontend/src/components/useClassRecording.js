@@ -40,7 +40,9 @@ export default function useClassRecording({ teacherId, notify, onUploaded }) {
       notify?.("Class recording uploaded.", "success");
     } catch (error) {
       setSession({ classId, blob, durationSeconds, status: "failed" });
-      const backendDetail = error.response?.data?.error;
+      const backendDetail = typeof error.response?.data?.error === "string"
+        ? error.response.data.error
+        : (error.response?.data?.error?.message || "");
       const reason = (backendDetail && error.response?.data?.message)
         ? `${error.response.data.message} ${backendDetail}`
         : (error.response?.data?.message || (error.response
