@@ -48,11 +48,15 @@ export async function uploadRecordingToDrive({ filePath, filename, mimeType }) {
       fields: "id, webViewLink, webContentLink",
     });
   } catch (err) {
-    if (err?.errors?.[0]?.reason === "authError" || /invalid_grant|serviceAccount|credentials/i.test(err?.message || "")) {
+    const reason = err?.response?.data?.error || err?.message || "";
+    if (err?.errors?.[0]?.reason === "authError" || /invalid_grant|serviceAccount|credentials/i.test(String(reason))) {
+      if (DRIVE_OAUTH_REFRESH_TOKEN) {
+        throw new Error("Google Drive authorization expired or was revoked. Re-run driveOAuthSetup.js and update GOOGLE_DRIVE_REFRESH_TOKEN in Railway.");
+      }
       throw new Error("Google Drive auth failed. Check GOOGLE_DRIVE_CLIENT_EMAIL and GOOGLE_DRIVE_PRIVATE_KEY.");
     }
     if (err?.response?.status === 404) {
-      throw new Error(`Google Drive folder not found or not accessible by the service account. Check GOOGLE_DRIVE_FOLDER_ID (got "${DRIVE_FOLDER_ID}") and share that folder with ${DRIVE_CLIENT_EMAIL}.`);
+      throw new Error(`Google Drive folder not found or not accessible. Check GOOGLE_DRIVE_FOLDER_ID (got "${DRIVE_FOLDER_ID}") and share that folder with ${DRIVE_OAUTH_REFRESH_TOKEN ? "the authorized Google account" : DRIVE_CLIENT_EMAIL}.`);
     }
     throw err;
   }
