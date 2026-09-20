@@ -452,7 +452,7 @@ export default function Homepage() {
       </section>
 
       <div className={styles.services}>
-        <section className={styles.servicesIntro}>
+        <section className={styles.servicesIntro} id="services">
           <div className={styles.introCopy}>
             <span>Our services</span>
             <h2><strong>English learning services built around your goals.</strong></h2>
@@ -504,7 +504,7 @@ export default function Homepage() {
         </section>
       </div>
 
-      <section className={styles.processSection} ref={processRef}>
+      <section className={styles.processSection} id="how-it-works" ref={processRef}>
         <motion.div
           className={styles.processIntro}
           style={{ y: processIntroY }}
@@ -526,7 +526,7 @@ export default function Homepage() {
         </div>
       </section>
 
-      <section className={styles.contactSection}>
+      <section className={styles.contactSection} id="contact">
         <div className={styles.contactShell}>
           <div className={styles.contactIntro}>
             <span>Contact</span>
