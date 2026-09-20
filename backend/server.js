@@ -11,6 +11,7 @@ import net from "net";
 import path from "path";
 import tls from "tls";
 import { assessClassEvidence } from "./classEvidence.js";
+import { isGoogleDriveConfigured, uploadRecordingToDrive, deleteRecordingFromDrive } from "./googleDrive.js";
 
 dotenv.config();
 
@@ -856,6 +857,15 @@ async function deleteLocalClassRecording(recordingUrl) {
   }
 }
 
+async function deleteClassRecording(recordingUrl) {
+  if (!recordingUrl) return;
+  if (String(recordingUrl).startsWith("http")) {
+    await deleteRecordingFromDrive(recordingUrl);
+  } else {
+    await deleteLocalClassRecording(recordingUrl);
+  }
+}
+
 async function cleanupExpiredClassRecordings(db = pool) {
   const [rows] = await db.query(
     `SELECT class_id, recording_url
@@ -868,7 +878,7 @@ async function cleanupExpiredClassRecordings(db = pool) {
 
   if (!rows.length) return;
 
-  await Promise.all(rows.map((row) => deleteLocalClassRecording(row.recording_url)));
+  await Promise.all(rows.map((row) => deleteClassRecording(row.recording_url)));
   await db.query(
     `UPDATE class_attendance_logs
      SET recording_url = NULL,
@@ -4504,7 +4514,6 @@ app.post("/api/calendar/classes/:class_id/recording", (req, res, next) => {
       return res.status(403).json({ message: "Only the assigned teacher can upload this class recording" });
     }
 
-    const recordingUrl = `/private-uploads/class-recordings/${req.file.filename}`;
     const [existingRows] = await pool.query(
       "SELECT recording_url, evidence_mode, teacher_ended_at, recording_started_at, TIMESTAMPDIFF(SECOND, recording_started_at, NOW()) AS elapsed_seconds FROM class_attendance_logs WHERE class_id = ? LIMIT 1",
       [class_id]
@@ -4516,7 +4525,28 @@ app.post("/api/calendar/classes/:class_id/recording", (req, res, next) => {
       await deleteLocalClassRecording(`/private-uploads/class-recordings/${req.file.filename}`);
       return res.status(400).json({ message: "Start a recording from Calendar before uploading it." });
     }
+
     const recordingSeconds = Math.max(0, Math.floor(Math.min(reportedSeconds, Number(recordingLog.elapsed_seconds))));
+
+    let recordingUrl;
+    if (isGoogleDriveConfigured()) {
+      try {
+        const driveUpload = await uploadRecordingToDrive({
+          filePath: path.join(classRecordingUploadDir, req.file.filename),
+          filename: `${classInfo.class_id}-${Date.now()}-${path.basename(req.file.originalname) || "recording.webm"}`,
+          mimeType: req.file.mimetype,
+        });
+        recordingUrl = driveUpload.webContentLink;
+        await deleteLocalClassRecording(`/private-uploads/class-recordings/${req.file.filename}`);
+      } catch (err) {
+        await deleteLocalClassRecording(`/private-uploads/class-recordings/${req.file.filename}`);
+        console.error("Google Drive upload error:", err);
+        return res.status(502).json({ message: "The recording could not be stored in Google Drive. Please retry the upload." });
+      }
+    } else {
+      recordingUrl = `/private-uploads/class-recordings/${req.file.filename}`;
+    }
+
     await pool.query(
       `INSERT INTO class_attendance_logs (
          class_id, teacher_id, student_id, recording_url, recording_mime_type,
@@ -4545,7 +4575,7 @@ app.post("/api/calendar/classes/:class_id/recording", (req, res, next) => {
     );
 
     if (existingRows[0]?.recording_url && existingRows[0].recording_url !== recordingUrl) {
-      await deleteLocalClassRecording(existingRows[0].recording_url);
+      await deleteClassRecording(existingRows[0].recording_url);
     }
 
     const verification = await getClassVerification(pool, class_id);
@@ -4618,6 +4648,10 @@ app.get("/api/calendar/classes/:class_id/recording", async (req, res) => {
     if (row.recording_expires_at && new Date(row.recording_expires_at).getTime() <= Date.now()) {
       await cleanupExpiredClassRecordings(pool);
       return res.status(404).json({ message: "This recording has expired" });
+    }
+
+    if (String(row.recording_url).startsWith("http")) {
+      return res.redirect(302, row.recording_url);
     }
 
     const fileName = path.basename(row.recording_url);
@@ -4875,13 +4909,13 @@ app.delete("/api/admin/class-verifications/:class_id", async (req, res) => {
       return res.status(404).json({ message: "Verification record not found" });
     }
 
-    if (!["verified", "incomplete"].includes(rows[0].verification_status)) {
+if (!["verified", "incomplete"].includes(rows[0].verification_status)) {
       return res.status(400).json({ message: "Only verified or incomplete verification records can be removed." });
     }
 
     await pool.query("DELETE FROM class_attendance_logs WHERE class_id = ?", [class_id]);
     await Promise.all(rows.flatMap((row) => [deleteLocalClassProofImage(row.proof_url), deleteLocalClassProofImage(row.start_proof_url)]));
-    await Promise.all(rows.map((row) => deleteLocalClassRecording(row.recording_url)));
+    await Promise.all(rows.map((row) => deleteClassRecording(row.recording_url)));
 
     res.json({ message: "Verification record removed" });
   } catch (err) {
@@ -5103,12 +5137,12 @@ app.delete("/api/admin/class-verifications", async (req, res) => {
          )`
     );
 
-    const [result] = await pool.query(
+const [result] = await pool.query(
       "DELETE FROM class_attendance_logs WHERE verification_status IN ('verified', 'incomplete')"
     );
-    await Promise.all(rows.flatMap((row) => [deleteLocalClassProofImage(row.proof_url), deleteLocalClassProofImage(row.start_proof_url)]));
-    await Promise.all(rows.map((row) => deleteLocalClassRecording(row.recording_url)));
 
+    await Promise.all(rows.flatMap((row) => [deleteLocalClassProofImage(row.proof_url), deleteLocalClassProofImage(row.start_proof_url)]));
+    await Promise.all(rows.map((row) => deleteClassRecording(row.recording_url)));
     res.json({ message: "Final verification records cleared", removed: result.affectedRows || 0 });
   } catch (err) {
     console.error(err);
