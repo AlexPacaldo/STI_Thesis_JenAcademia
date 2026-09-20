@@ -40,9 +40,12 @@ export default function useClassRecording({ teacherId, notify, onUploaded }) {
       notify?.("Class recording uploaded.", "success");
     } catch (error) {
       setSession({ classId, blob, durationSeconds, status: "failed" });
-      const reason = error.response?.data?.message || (error.response
-        ? `Recording upload failed (HTTP ${error.response.status}). Retry before leaving Calendar.`
-        : "Could not reach the server. Retry the recording upload before leaving Calendar.");
+      const backendDetail = error.response?.data?.error;
+      const reason = (backendDetail && error.response?.data?.message)
+        ? `${error.response.data.message} ${backendDetail}`
+        : (error.response?.data?.message || (error.response
+          ? `Recording upload failed (HTTP ${error.response.status}). Retry before leaving Calendar.`
+          : "Could not reach the server. Retry the recording upload before leaving Calendar."));
       notify?.(reason, "error");
     }
   };
