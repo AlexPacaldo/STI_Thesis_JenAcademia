@@ -4540,8 +4540,12 @@ app.post("/api/calendar/classes/:class_id/recording", (req, res, next) => {
         await deleteLocalClassRecording(`/private-uploads/class-recordings/${req.file.filename}`);
       } catch (err) {
         await deleteLocalClassRecording(`/private-uploads/class-recordings/${req.file.filename}`);
-        console.error("Google Drive upload error:", err);
-        return res.status(502).json({ message: "The recording could not be stored in Google Drive. Please retry the upload." });
+        const driveDetail = err?.response?.data?.error || err?.message || String(err);
+        console.error("Google Drive upload error:", driveDetail);
+        return res.status(502).json({
+          message: "The recording could not be stored in Google Drive. Please retry the upload.",
+          error: driveDetail,
+        });
       }
     } else {
       recordingUrl = `/private-uploads/class-recordings/${req.file.filename}`;

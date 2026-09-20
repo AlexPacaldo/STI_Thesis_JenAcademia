@@ -23,17 +23,28 @@ function getDrive() {
 
 export async function uploadRecordingToDrive({ filePath, filename, mimeType }) {
   const drive = getDrive();
-  const response = await drive.files.create({
-    requestBody: {
-      name: filename,
-      parents: DRIVE_FOLDER_ID ? [DRIVE_FOLDER_ID] : undefined,
-    },
-    media: {
-      mimeType,
-      body: fs.createReadStream(filePath),
-    },
-    fields: "id, webViewLink, webContentLink",
-  });
+  let response;
+  try {
+    response = await drive.files.create({
+      requestBody: {
+        name: filename,
+        parents: DRIVE_FOLDER_ID ? [DRIVE_FOLDER_ID] : undefined,
+      },
+      media: {
+        mimeType,
+        body: fs.createReadStream(filePath),
+      },
+      fields: "id, webViewLink, webContentLink",
+    });
+  } catch (err) {
+    if (err?.errors?.[0]?.reason === "authError" || /invalid_grant|serviceAccount|credentials/i.test(err?.message || "")) {
+      throw new Error("Google Drive auth failed. Check GOOGLE_DRIVE_CLIENT_EMAIL and GOOGLE_DRIVE_PRIVATE_KEY.");
+    }
+    if (err?.response?.status === 404) {
+      throw new Error(`Google Drive folder not found or not accessible by the service account. Check GOOGLE_DRIVE_FOLDER_ID (got "${DRIVE_FOLDER_ID}") and share that folder with ${DRIVE_CLIENT_EMAIL}.`);
+    }
+    throw err;
+  }
 
   const fileId = response.data.id;
 
