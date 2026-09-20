@@ -5,11 +5,22 @@ const DRIVE_CLIENT_EMAIL = process.env.GOOGLE_DRIVE_CLIENT_EMAIL || "";
 const DRIVE_PRIVATE_KEY = (process.env.GOOGLE_DRIVE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
 const DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || "";
 
+const DRIVE_OAUTH_CLIENT_ID = process.env.GOOGLE_DRIVE_CLIENT_ID || "";
+const DRIVE_OAUTH_CLIENT_SECRET = process.env.GOOGLE_DRIVE_CLIENT_SECRET || "";
+const DRIVE_OAUTH_REFRESH_TOKEN = process.env.GOOGLE_DRIVE_REFRESH_TOKEN || "";
+
 export function isGoogleDriveConfigured() {
-  return Boolean(DRIVE_CLIENT_EMAIL && DRIVE_PRIVATE_KEY);
+  const serviceAccount = Boolean(DRIVE_CLIENT_EMAIL && DRIVE_PRIVATE_KEY);
+  const oauth = Boolean(DRIVE_OAUTH_CLIENT_ID && DRIVE_OAUTH_CLIENT_SECRET && DRIVE_OAUTH_REFRESH_TOKEN);
+  return serviceAccount || oauth;
 }
 
 function getDrive() {
+  if (DRIVE_OAUTH_CLIENT_ID && DRIVE_OAUTH_CLIENT_SECRET && DRIVE_OAUTH_REFRESH_TOKEN) {
+    const auth = new google.auth.OAuth2(DRIVE_OAUTH_CLIENT_ID, DRIVE_OAUTH_CLIENT_SECRET);
+    auth.setCredentials({ refresh_token: DRIVE_OAUTH_REFRESH_TOKEN });
+    return google.drive({ version: "v3", auth });
+  }
   const auth = new google.auth.GoogleAuth({
     credentials: {
       type: "service_account",
