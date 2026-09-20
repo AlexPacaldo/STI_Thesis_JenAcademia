@@ -11,7 +11,7 @@ import net from "net";
 import path from "path";
 import tls from "tls";
 import { assessClassEvidence } from "./classEvidence.js";
-import { isGoogleDriveConfigured, uploadRecordingToDrive, deleteRecordingFromDrive } from "./googleDrive.js";
+import { isGoogleDriveConfigured, uploadRecordingToDrive, deleteRecordingFromDrive, extractDriveFileId } from "./googleDrive.js";
 
 dotenv.config();
 
@@ -4536,7 +4536,7 @@ app.post("/api/calendar/classes/:class_id/recording", (req, res, next) => {
           filename: `${classInfo.class_id}-${Date.now()}-${path.basename(req.file.originalname) || "recording.webm"}`,
           mimeType: req.file.mimetype,
         });
-        recordingUrl = driveUpload.webContentLink;
+        recordingUrl = driveUpload.webViewLink || driveUpload.webContentLink;
         await deleteLocalClassRecording(`/private-uploads/class-recordings/${req.file.filename}`);
       } catch (err) {
         await deleteLocalClassRecording(`/private-uploads/class-recordings/${req.file.filename}`);
@@ -4659,6 +4659,10 @@ app.get("/api/calendar/classes/:class_id/recording", async (req, res) => {
     }
 
     if (String(row.recording_url).startsWith("http")) {
+      const fileId = extractDriveFileId(String(row.recording_url));
+      if (fileId) {
+        return res.redirect(302, `https://drive.google.com/file/d/${fileId}/view`);
+      }
       return res.redirect(302, row.recording_url);
     }
 
