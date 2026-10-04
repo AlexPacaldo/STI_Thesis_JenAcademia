@@ -285,6 +285,39 @@
   width: 100%;
 }
 
+.backButton {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: -4px;
+  padding: 10px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(38, 66, 59, 0.12);
+  background: #eef4f0;
+  color: #26423b;
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.backButton:hover {
+  background: #e3ede7;
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(18, 34, 30, 0.08);
+}
+
+.backButton:active {
+  transform: translateY(0);
+}
+
+.backButton:focus-visible {
+  outline: 2px solid #26423b;
+  outline-offset: 2px;
+}
+
 .TopContent {
   display: flex;
   align-items: center;
@@ -823,24 +856,31 @@
 
 .documentPreview,
 .noPreview,
-.fullscreenPrompt {
-  padding: 16px;
-  border-radius: 18px;
-  border: 1px dashed rgba(38, 66, 59, 0.16);
-  background: #fff;
-}
-
-.fullscreenPrompt {
-  min-height: 220px;
-  display: grid;
-  align-content: center;
+/* One muted line under the preview. Deliberately not a call to action - the
+   "Full screen" button in the file actions above already does that. */
+.progressHint {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  text-align: center;
+  margin: 12px 0 0;
+  padding: 10px 13px;
+  border-radius: 12px;
+  background: #f4f8f6;
+  color: #5e7268;
+  font-size: 0.84rem;
 }
 
-.fullscreenPrompt h3,
-.fullscreenPrompt p {
+.progressHint i {
+  flex-shrink: 0;
+  color: #91a79a;
+}
+
+.previewPageCount {
   margin: 0;
+  text-align: center;
+  color: #8a9b93;
+  font-size: 0.76rem;
+  letter-spacing: 0.03em;
 }
 
 .lessonActions {

@@ -11,7 +11,7 @@ import net from "net";
 import path from "path";
 import tls from "tls";
 import { assessClassEvidence } from "./classEvidence.js";
-import { isGoogleDriveConfigured, uploadRecordingToDrive, deleteRecordingFromDrive, extractDriveFileId } from "./googleDrive.js";
+import { deleteRecordingFromDrive, extractDriveFileId, isGoogleDriveConfigured, uploadRecordingToDrive } from "./googleDrive.js";
 
 dotenv.config();
 
@@ -43,7 +43,7 @@ const mysqlUrlConfig = parseMysqlUrl(mysqlUrl);
 const DB_HOST = process.env.DB_HOST || process.env.MYSQLHOST || mysqlUrlConfig.host || "localhost";
 const DB_USER = process.env.DB_USER || process.env.MYSQLUSER || mysqlUrlConfig.user || "root";
 const DB_PASSWORD =
-  process.env.DB_PASSWORD || process.env.MYSQLPASSWORD || mysqlUrlConfig.password || "123";
+  process.env.DB_PASSWORD || process.env.MYSQLPASSWORD || mysqlUrlConfig.password || "LORAKLANG0405++";
 const DB_NAME = process.env.DB_NAME || process.env.MYSQLDATABASE || mysqlUrlConfig.database || "jen_academia";
 const DB_PORT = Number(process.env.DB_PORT || process.env.MYSQLPORT || mysqlUrlConfig.port || 3306);
 const requestedConnectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 5);
@@ -1189,6 +1189,41 @@ async function ensureLessonsColumns() {
   }
 }
 
+async function indexColumnCount(tableName, indexName) {
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS column_count
+     FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND INDEX_NAME = ?`,
+    [DB_NAME, tableName, indexName]
+  );
+  return rows.length ? Number(rows[0].column_count) : 0;
+}
+
+async function ensureRemarkColumns() {
+  if (!(await columnExists("class_remarks", "status"))) {
+    await pool.query("ALTER TABLE class_remarks ADD COLUMN status ENUM('active','archived') NOT NULL DEFAULT 'active' AFTER rating");
+  }
+
+  if (!(await columnExists("class_remarks", "archived_at"))) {
+    await pool.query("ALTER TABLE class_remarks ADD COLUMN archived_at TIMESTAMP NULL DEFAULT NULL AFTER status");
+  }
+
+  // BUGFIX: the original unique key was (class_id, teacher_id) with no
+  // student_id. Remarking on a second student in the same class therefore
+  // collided with the first student's row, and because the upsert never
+  // updated student_id, the new text was written onto the FIRST student's
+  // remark - so the wrong student saw the remark and the right one saw nothing.
+  // Widening a too-narrow unique key cannot introduce violations, and the
+  // pre-existing rows are all still distinct on the wider key.
+  const uniqueColumns = await indexColumnCount("class_remarks", "unique_class_remark");
+  if (uniqueColumns > 0 && uniqueColumns < 3) {
+    await pool.query("ALTER TABLE class_remarks DROP INDEX unique_class_remark");
+    await pool.query("ALTER TABLE class_remarks ADD UNIQUE KEY unique_class_remark (class_id, teacher_id, student_id)");
+  }
+
+  await ensureIndex("class_remarks", "idx_remarks_teacher_status", "teacher_id, status, created_at");
+}
+
 async function ensureLessonProgressTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS lesson_progress (
@@ -1619,6 +1654,7 @@ async function encryptExistingPlaintextMessages() {
 async function prepareDatabase() {
   await ensureAssignmentAttemptColumns();
   await ensureBooksColumns();
+  await ensureRemarkColumns();
   await ensureLessonsColumns();
   await ensureLessonProgressTable();
   await ensureClassAttendanceLogsTable();
@@ -6290,10 +6326,12 @@ app.post("/api/calendar/remarks", async (req, res) => {
       return res.status(400).json({ message: "Teacher and student accounts must be active and complete before saving remarks" });
     }
 
+    // Re-submitting revives an archived remark: the teacher is deliberately
+    // posting this text again, so it should not stay hidden from the student.
     await pool.query(
-      `INSERT INTO class_remarks (class_id, teacher_id, student_id, remarks, rating)
-       VALUES (?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE remarks = ?, rating = ?`,
+      `INSERT INTO class_remarks (class_id, teacher_id, student_id, remarks, rating, status, archived_at)
+       VALUES (?, ?, ?, ?, ?, 'active', NULL)
+       ON DUPLICATE KEY UPDATE remarks = ?, rating = ?, status = 'active', archived_at = NULL`,
       [class_id, teacher_id, student_id, encryptNullableText(remarks), rating, encryptNullableText(remarks), rating]
     );
 
@@ -6363,6 +6401,7 @@ app.get("/api/student/:student_id/remarks", async (req, res) => {
        JOIN classes c ON cr.class_id = c.class_id
        JOIN users t ON cr.teacher_id = t.user_id
        WHERE cr.student_id = ?
+         AND cr.status = 'active'
        ORDER BY cr.created_at DESC`,
       [student_id]
     );
@@ -6385,6 +6424,221 @@ app.get("/api/student/:student_id/remarks", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching student remarks" });
+  }
+});
+
+// Loads a remark and confirms it belongs to the given teacher. Returns the row
+// or null so callers can distinguish "not found / not yours" from a real error.
+async function findTeacherOwnedRemark(remarkId, teacherId) {
+  const [rows] = await pool.query(
+    `SELECT remark_id, status FROM class_remarks WHERE remark_id = ? AND teacher_id = ? LIMIT 1`,
+    [remarkId, teacherId]
+  );
+  return rows.length ? rows[0] : null;
+}
+
+// SECURITY NOTE: this app has no session token - it passes teacher_id from the
+// client (the same convention as /api/teacher/:id/students). Every mutation
+// below re-checks that the remark's teacher_id matches, so a teacher can only
+// ever touch their own remarks, but a caller could still spoof the id itself.
+// Real authorization needs server-side sessions.
+
+// Get remarks a teacher has written, newest first.
+// ?status=active|archived|all (default all) and optional ?student_id=
+app.get("/api/teacher/:teacher_id/remarks", async (req, res) => {
+  try {
+    const { teacher_id } = req.params;
+    const { status = "all", student_id: studentId } = req.query;
+
+    const clauses = ["cr.teacher_id = ?"];
+    const params = [teacher_id];
+
+    if (status === "active" || status === "archived") {
+      clauses.push("cr.status = ?");
+      params.push(status);
+    }
+
+    if (studentId) {
+      clauses.push("cr.student_id = ?");
+      params.push(studentId);
+    }
+
+    const [rows] = await pool.query(
+      `SELECT cr.remark_id, cr.class_id, cr.student_id, cr.remarks, cr.rating,
+              cr.status, cr.created_at, cr.updated_at, cr.archived_at,
+              c.class_name, c.scheduled_date, c.start_time,
+              TRIM(CONCAT(COALESCE(stu.first_name, ''), ' ', COALESCE(stu.last_name, ''))) AS student_name,
+              stu.profile_image_url AS student_profile_image_url
+       FROM class_remarks cr
+       LEFT JOIN classes c ON cr.class_id = c.class_id
+       LEFT JOIN users stu ON cr.student_id = stu.user_id
+       WHERE ${clauses.join(" AND ")}
+       ORDER BY cr.created_at DESC`,
+      params
+    );
+
+    const remarks = rows.map((row) => ({
+      remark_id: row.remark_id,
+      class_id: row.class_id,
+      student_id: row.student_id,
+      student_name: row.student_name || "Student",
+      student_profile_image_url: row.student_profile_image_url,
+      class_name: row.class_name,
+      scheduled_date: row.scheduled_date,
+      start_time: row.start_time,
+      remarks: decryptNullableText(row.remarks),
+      rating: row.rating,
+      status: row.status || "active",
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      archived_at: row.archived_at,
+      // updated_at is ON UPDATE CURRENT_TIMESTAMP; a real edit moves it past
+      // created_at. 1s tolerance absorbs sub-second rounding on MySQL.
+      was_edited: Boolean(
+        row.updated_at &&
+        row.created_at &&
+        new Date(row.updated_at).getTime() - new Date(row.created_at).getTime() > 1000
+      ),
+    }));
+
+    res.json({ remarks });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching teacher remarks" });
+  }
+});
+
+// Edit the text of a remark the teacher owns
+app.patch("/api/teacher/remarks/:remark_id", async (req, res) => {
+  try {
+    const { remark_id } = req.params;
+    const { teacher_id, remarks } = req.body;
+
+    if (!teacher_id) {
+      return res.status(400).json({ message: "Missing teacher id" });
+    }
+
+    const text = String(remarks ?? "").trim();
+    if (!text) {
+      return res.status(400).json({ message: "Remark text cannot be empty." });
+    }
+
+    const existing = await findTeacherOwnedRemark(remark_id, teacher_id);
+    if (!existing) {
+      return res.status(404).json({ message: "Remark not found." });
+    }
+
+    if (existing.status === "archived") {
+      return res.status(400).json({ message: "Restore the remark before editing it." });
+    }
+
+    await pool.query(
+      `UPDATE class_remarks SET remarks = ? WHERE remark_id = ? AND teacher_id = ?`,
+      [encryptNullableText(text), remark_id, teacher_id]
+    );
+
+    res.json({ message: "Remark updated." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error updating remark" });
+  }
+});
+
+// Soft-delete: hides the remark from the student but keeps it restorable
+app.patch("/api/teacher/remarks/:remark_id/archive", async (req, res) => {
+  try {
+    const { remark_id } = req.params;
+    const { teacher_id } = req.body;
+
+    if (!teacher_id) {
+      return res.status(400).json({ message: "Missing teacher id" });
+    }
+
+    const existing = await findTeacherOwnedRemark(remark_id, teacher_id);
+    if (!existing) {
+      return res.status(404).json({ message: "Remark not found." });
+    }
+
+    if (existing.status === "archived") {
+      return res.json({ message: "Remark is already archived." });
+    }
+
+    await pool.query(
+      `UPDATE class_remarks
+       SET status = 'archived', archived_at = CURRENT_TIMESTAMP
+       WHERE remark_id = ? AND teacher_id = ?`,
+      [remark_id, teacher_id]
+    );
+
+    res.json({ message: "Remark archived." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error archiving remark" });
+  }
+});
+
+// Undo an archive
+app.patch("/api/teacher/remarks/:remark_id/restore", async (req, res) => {
+  try {
+    const { remark_id } = req.params;
+    const { teacher_id } = req.body;
+
+    if (!teacher_id) {
+      return res.status(400).json({ message: "Missing teacher id" });
+    }
+
+    const existing = await findTeacherOwnedRemark(remark_id, teacher_id);
+    if (!existing) {
+      return res.status(404).json({ message: "Remark not found." });
+    }
+
+    if (existing.status !== "archived") {
+      return res.json({ message: "Remark is already active." });
+    }
+
+    await pool.query(
+      `UPDATE class_remarks
+       SET status = 'active', archived_at = NULL
+       WHERE remark_id = ? AND teacher_id = ?`,
+      [remark_id, teacher_id]
+    );
+
+    res.json({ message: "Remark restored." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error restoring remark" });
+  }
+});
+
+// Permanent delete. Guarded so it can only ever remove an already-archived
+// remark - an accidental DELETE on an active one would be unrecoverable.
+app.delete("/api/teacher/remarks/:remark_id", async (req, res) => {
+  try {
+    const { remark_id } = req.params;
+    const { teacher_id } = req.body || {};
+
+    if (!teacher_id) {
+      return res.status(400).json({ message: "Missing teacher id" });
+    }
+
+    const existing = await findTeacherOwnedRemark(remark_id, teacher_id);
+    if (!existing) {
+      return res.status(404).json({ message: "Remark not found." });
+    }
+
+    if (existing.status !== "archived") {
+      return res.status(400).json({ message: "Archive the remark before deleting it permanently." });
+    }
+
+    await pool.query(
+      `DELETE FROM class_remarks WHERE remark_id = ? AND teacher_id = ?`,
+      [remark_id, teacher_id]
+    );
+
+    res.json({ message: "Remark permanently deleted." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error deleting remark" });
   }
 });
 
@@ -8498,7 +8752,8 @@ app.get("/api/books", async (req, res) => {
 
     let query = `SELECT b.*,
         TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS teacher_name,
-        NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), '') AS author
+        NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), '') AS author,
+        u.profile_image_url AS teacher_profile_image_url
       FROM books b
       LEFT JOIN users u ON u.user_id = b.teacher_id`;
     let params = [];
@@ -8896,6 +9151,34 @@ app.put("/api/books/:book_id/archive", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error archiving book" });
+  }
+});
+
+// Restore a previously archived book. Archiving is a soft delete, so this is
+// the only way back - without it an archived book is unreachable from the UI.
+app.put("/api/books/:book_id/restore", async (req, res) => {
+  try {
+    const { book_id } = req.params;
+    const teacher_id = getTeacherIdFromRequest(req);
+
+    // Verify teacher ownership before allowing restoration
+    if (!(await validateTeacherBookOwnership(res, book_id, teacher_id))) {
+      return;
+    }
+
+    const [result] = await pool.query(
+      "UPDATE books SET status = 'active', archived_at = NULL WHERE book_id = ? AND teacher_id = ?",
+      [book_id, teacher_id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Book not found" });
+    }
+
+    res.json({ message: "Book restored successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error restoring book" });
   }
 });
 
@@ -9343,9 +9626,19 @@ app.post("/api/lesson-progress", async (req, res) => {
 app.get("/api/teacher/books", async (req, res) => {
   try {
     const teacher_id = getTeacherIdFromRequest(req);
+    // Defaults to 'active' so existing callers keep seeing only live books.
+    // 'archived' powers the recycle bin; 'all' returns both.
+    const { status = "active" } = req.query;
 
     if (!teacher_id) {
       return res.status(401).json({ message: "Unauthorized: teacher_id is required" });
+    }
+
+    const params = [teacher_id];
+    let statusClause = "";
+    if (status === "active" || status === "archived") {
+      statusClause = "AND b.status = ?";
+      params.push(status);
     }
 
     // Enforce data isolation: teacher can only see their own books
@@ -9354,10 +9647,10 @@ app.get("/api/teacher/books", async (req, res) => {
        FROM books b
        LEFT JOIN lessons l ON b.book_id = l.book_id
        WHERE b.teacher_id = ?
-         AND b.status = 'active'
+         ${statusClause}
        GROUP BY b.book_id
        ORDER BY b.created_at DESC`,
-      [teacher_id]
+      params
     );
 
     res.json({ books });

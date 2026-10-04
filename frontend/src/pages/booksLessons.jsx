@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "../assets/booksLessons.module.css";
-import topImage from "../assets/img/Books-Lessons/top.jpg";
 import userPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
@@ -10,6 +9,18 @@ import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from ".
 import { API_BASE_URL } from "../utils/api.js";
 
 const API_BASE = API_BASE_URL;
+
+// Mirrors profileSrc() in remarks.jsx / assignmentsDropbox.jsx: uploads paths
+// come back from the API both with and without a leading slash, and Windows
+// paths may use "\". Returns the shared default when the teacher has no photo.
+function profileSrc(url) {
+  if (!url) return userPic;
+  const cleaned = String(url).replace(/\\/g, "/");
+  if (/^https?:\/\//i.test(cleaned)) return cleaned;
+  if (cleaned.startsWith("/uploads/")) return `${API_BASE}${cleaned}`;
+  if (cleaned.startsWith("uploads/")) return `${API_BASE}/${cleaned}`;
+  return cleaned;
+}
 
 
 export default function StudentBooksLessons() {
@@ -67,27 +78,28 @@ export default function StudentBooksLessons() {
   return (
     <div className={styles.cont}>
       <div className={styles.center}>
-        {/* Top Section */}
-        <div className={styles.TopSegment}>
-          <div className={styles.TopContent}>
-            <h1><b>Books & Lessons</b></h1>
-            <p>Explore the resources uploaded by your teachers.</p>
+        {/* Compact page header. Previously this was two stacked cards - a
+            "Books & Lessons" title block followed by a large banner with an
+            "Available Lessons" heading and a paragraph of filler copy - which
+            pushed every book below the fold. */}
+        <div className={styles.pageHeader}>
+          <div className={styles.pageHeaderMain}>
+            <span className={styles.headerIcon} aria-hidden="true">
+              <i className="bi bi-journal-bookmark-fill" />
+            </span>
+            <div className={styles.pageHeaderText}>
+              <h1>Books &amp; Lessons</h1>
+              <p>Explore the resources uploaded by your teachers.</p>
+            </div>
           </div>
-        </div>
-        <br />
-
-        {/* Available Lessons Segment */}
-        <div className={styles.AvailableLessonSegment}>
-          <img src={topImage} alt="Top banner" />
-          <div className={styles.ContentAvailable}>
-            <h1><b>Available Lessons</b></h1>
-            <p>
-              You'll find a collection of lessons and books here designed to help
-              you learn the English language. Whether you're just starting or
-              looking to improve your skills, these resources will guide you step
-              by step and make learning simple and enjoyable.
-            </p>
-          </div>
+          {!loading && !error && books.length > 0 ? (
+            <div className={styles.countTile}>
+              <span className={styles.countValue}>{books.length}</span>
+              <span className={styles.countLabel}>
+                {books.length === 1 ? "Book" : "Books"}
+              </span>
+            </div>
+          ) : null}
         </div>
 
         {/* Loading/Error State */}
@@ -102,8 +114,8 @@ export default function StudentBooksLessons() {
                 {book.cover_url ? (
                   <img
                     className={styles.bookCover}
-                    src={`${API_BASE}${book.cover_url}`}
-                    alt="Book cover"
+                    src={`${API_BASE}${book.cover_url.startsWith("/") ? "" : "/"}${book.cover_url}`}
+                    alt=""
                   />
                 ) : (
                   <div className={styles.bookImagePlaceholder}>
@@ -111,19 +123,27 @@ export default function StudentBooksLessons() {
                   </div>
                 )}
 
-                <br />
-
-                <h1><b>{book.title}</b></h1>
-                <div className={styles.Uploaded}>
-                  <img src={userPic} alt="Teacher" />
-                  <h3>{book.author || book.teacher_name || "Teacher"}</h3>
+                <div className={styles.cardBody}>
+                  <h3 className={styles.bookTitle}>{book.title}</h3>
+                  <div className={styles.Uploaded}>
+                    <img
+                      src={profileSrc(book.teacher_profile_image_url)}
+                      alt=""
+                      onError={(event) => {
+                        event.currentTarget.src = userPic;
+                      }}
+                    />
+                    <span className={styles.uploadedBy}>
+                      {book.author || book.teacher_name || "Teacher"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleBookClick(book.book_id)}
+                  >
+                    View Lessons
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleBookClick(book.book_id)}
-                >
-                  View Lessons
-                </button>
               </div>
             ))}
           </div>

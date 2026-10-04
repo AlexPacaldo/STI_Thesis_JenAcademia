@@ -62,6 +62,10 @@ function formatDateGiven(row) {
   });
 }
 
+function hasDueDate(row) {
+  return Boolean(row.dueDate || row.due);
+}
+
 export default function Assignments() {
   const [rows, setRows] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -107,52 +111,77 @@ export default function Assignments() {
   }, [currentStudentId]);
 
   return (
-    <>
-      <div className={styles.Center}>
+    <div className={styles.page}>
+      <div className={styles.tableWrap}>
         <table className={styles.table}>
-          <thead className={styles.theadLight}>
+          <thead>
             <tr>
-              <th scope="col">Assignments</th>
-              <th scope="col">Date Given</th>
+              <th scope="col">Assignment</th>
+              <th scope="col">Date and Time</th>
               <th scope="col">Due</th>
               <th scope="col">Subject</th>
-              <th scope="col">Action</th>
+              <th scope="col" className={styles.actionHeader}>Action</th>
             </tr>
           </thead>
 
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan="5" style={{ textAlign: "center", padding: "2rem" }}>
-                  Loading assignments...
+                <td colSpan="5">
+                  <p className={styles.stateCell}>Loading assignments…</p>
                 </td>
               </tr>
             ) : error ? (
               <tr>
-                <td colSpan="5" style={{ textAlign: "center", padding: "2rem" }}>
-                  {error}
+                <td colSpan="5">
+                  <p className={`${styles.stateCell} ${styles.stateCellError}`}>{error}</p>
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan="5" style={{ textAlign: "center", padding: "2rem" }}>
-                  No assignments have been posted to you yet.
+                <td colSpan="5">
+                  <div className={styles.emptyState}>
+                    <span className={styles.emptyIcon} aria-hidden="true">
+                      <i className="bi bi-inbox" />
+                    </span>
+                    <p className={styles.emptyTitle}>No assignments yet</p>
+                    <p className={styles.emptyText}>
+                      When a teacher posts homework, it will show up here.
+                    </p>
+                  </div>
                 </td>
               </tr>
             ) : (
               rows.map((r) => (
                 <tr key={r.id}>
-                  <td>{getAssignmentDisplayText(r)}</td>
-                  <td>{formatDateGiven(r)}</td>
-                  <td>{formatDueDate(r)}</td>
-                  <td>{r.subject || "General"}</td>
                   <td>
+                    <span className={styles.assignmentTitle}>
+                      {getAssignmentDisplayText(r)}
+                    </span>
+                  </td>
+                  <td>
+                    <time className={styles.dateCell} dateTime={r.postedAt || r.createdAt || undefined}>
+                      {formatDateGiven(r)}
+                    </time>
+                  </td>
+                  <td>
+                    {hasDueDate(r) ? (
+                      <span className={styles.duePill}>{formatDueDate(r)}</span>
+                    ) : (
+                      <span className={styles.noDue}>No due date</span>
+                    )}
+                  </td>
+                  <td>
+                    <span className={styles.subjectPill}>{r.subject || "General"}</span>
+                  </td>
+                  <td className={styles.actionCell}>
                     <Link
                       to={`/assignmentsDropbox?assignmentId=${r.id}`}
                       className={styles.submitButton}
-                      aria-label="View assignment"
+                      aria-label={`View ${getAssignmentDisplayText(r)}`}
                     >
                       View
+                      <i className="bi bi-arrow-right" aria-hidden="true" />
                     </Link>
                   </td>
                 </tr>
@@ -161,6 +190,6 @@ export default function Assignments() {
           </tbody>
         </table>
       </div>
-    </>
+    </div>
   );
 }

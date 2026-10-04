@@ -1,6 +1,6 @@
 // src/pages/AssignmentDetail.jsx
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import styles from "../assets/assignmentsDropbox.module.css";
 import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
@@ -32,6 +32,62 @@ function normalizeFileUrl(url) {
 function getFileName(url) {
   if (!url) return "Submitted file";
   return decodeURIComponent(String(url).split("/").pop() || "Submitted file");
+}
+
+const VIDEO_EXTENSIONS = ["mp4", "webm", "ogg", "ogv", "mov", "m4v"];
+const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico"];
+const AUDIO_EXTENSIONS = ["mp3", "wav", "m4a", "aac", "oga"];
+
+function getFileExtension(url) {
+  const clean = String(url || "").split("?")[0].split("#")[0];
+  return clean.includes(".") ? clean.split(".").pop().toLowerCase() : "";
+}
+
+// Renders the submitted media inline instead of only offering a download link,
+// so a student can review their own work without leaving the page.
+function SubmissionPreview({ fileUrl }) {
+  const ext = getFileExtension(fileUrl);
+  const fileName = getFileName(fileUrl);
+
+  if (VIDEO_EXTENSIONS.includes(ext)) {
+    return (
+      <video className={styles.previewMedia} controls preload="metadata" src={fileUrl}>
+        Your browser cannot play this video.{" "}
+        <a href={fileUrl} target="_blank" rel="noreferrer">Open it instead</a>.
+      </video>
+    );
+  }
+
+  if (IMAGE_EXTENSIONS.includes(ext)) {
+    return (
+      <img
+        className={styles.previewImage}
+        src={fileUrl}
+        alt={fileName}
+        loading="lazy"
+      />
+    );
+  }
+
+  if (AUDIO_EXTENSIONS.includes(ext)) {
+    return <audio className={styles.previewMedia} controls preload="metadata" src={fileUrl} />;
+  }
+
+  if (ext === "pdf") {
+    return (
+      <iframe
+        className={styles.previewFrame}
+        src={fileUrl}
+        title={`${fileName} preview`}
+      />
+    );
+  }
+
+  return (
+    <p className={styles.previewUnsupported}>
+      No inline preview available for this file type.
+    </p>
+  );
 }
 
 function getCurrentUser() {
@@ -133,8 +189,21 @@ export default function AssignmentsDropbox() {
   const [showResubmissionEditor, setShowResubmissionEditor] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
   const location = useLocation();
+  const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
   const assignmentId = searchParams.get("assignmentId");
+
+  const handleBack = () => {
+    // Only pop the history stack when there is an in-app entry behind us.
+    // On a direct link / refresh there is nothing to go back to, so fall back
+    // to the assignments list instead of leaving the site.
+    const historyIndex = typeof window !== "undefined" ? window.history.state?.idx : 0;
+    if (typeof historyIndex === "number" && historyIndex > 0) {
+      navigate(-1);
+    } else {
+      navigate("/assignments");
+    }
+  };
 
   const currentUser = useMemo(getCurrentUser, []);
   const currentStudentId = currentUser.id ?? currentUser.user_id ?? null;
@@ -211,6 +280,10 @@ export default function AssignmentsDropbox() {
   const submittedAnswer = selectedAssignment?.comments || "";
   const submittedFileUrl = normalizeFileUrl(selectedAssignment?.fileUrl);
   const hasSubmissionContent = Boolean(selectedAssignment?.submissionId && (submittedAnswer || submittedFileUrl));
+  // Guards against showSubmission staying true after the submission disappears,
+  // which would otherwise hide the instructions behind a tab that no longer
+  // exists.
+  const isViewingSubmission = showSubmission && hasSubmissionContent;
   const hasExistingSubmission = Boolean(selectedAssignment?.submissionId);
   const canResubmit = hasExistingSubmission && !isAttemptLimitReached;
   const submitButtonLabel = canResubmit ? "Submit Again" : "Submit";
@@ -334,6 +407,10 @@ export default function AssignmentsDropbox() {
     <div className={styles.cont}>
       <div className={styles.center}>
         <div className={styles.centerContent}>
+          <button type="button" className={styles.backButton} onClick={handleBack}>
+            <i className="bi bi-arrow-left" aria-hidden="true" />
+            <span>Back to Assignments</span>
+          </button>
           <h1><b>{selectedAssignment ? getAssignmentDisplayText(selectedAssignment) : (isLoading ? "Loading assignment..." : "Assignment")}</b></h1>
           {selectedAssignment ? (
             <p className={styles.assignmentMeta}>
@@ -350,42 +427,38 @@ export default function AssignmentsDropbox() {
             Attempt limit reached. You can no longer submit this assignment.
           </div>
         ) : null}
-        <br />
 
-        <div className={styles.tabContainer}>
-          <button type="button" className={`${styles.tabButton} ${styles.activeTab}`}>
+        <div className={styles.tabContainer} role="tablist" aria-label="Assignment views">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={!isViewingSubmission}
+            className={`${styles.tabButton} ${!isViewingSubmission ? styles.activeTab : ""}`}
+            onClick={() => setShowSubmission(false)}
+          >
             Instructions
           </button>
           {hasSubmissionContent ? (
             <button
               type="button"
-              className={`${styles.tabButton} ${styles.submissionTab}`}
+              role="tab"
+              aria-selected={isViewingSubmission}
+              className={`${styles.tabButton} ${isViewingSubmission ? styles.activeTab : styles.submissionTab}`}
               onClick={() => setShowSubmission((current) => !current)}
             >
-              {showSubmission ? "Hide submissions" : "View submissions"}
+              {isViewingSubmission ? "Hide submission" : "View submission"}
             </button>
           ) : null}
         </div>
-        <br />
 
         <div className={styles.instructionContent}>
           <div className={styles.leftSide}>
             {selectedAssignment ? (
-              <div className={styles.instructionsPanel}>
-                <section className={styles.instructionSheet}>
-                  <div className={styles.instructionHeader}>
-                    <span className={styles.instructionIcon}>i</span>
-                    <div>
-                      <span>Assignment Instructions</span>
-                      <h4>Read before submitting</h4>
-                    </div>
-                  </div>
-                  <div className={styles.instructionText}>
-                    {assignmentInstructions || "No instructions were provided for this assignment."}
-                  </div>
-                </section>
-
-                {showSubmission && hasSubmissionContent ? (
+              <>
+                {/* Shown ABOVE the instructions: this used to render below them,
+                    so clicking "View submissions" appeared to do nothing until
+                    you scrolled past the whole instruction sheet. */}
+                {isViewingSubmission ? (
                   <section className={styles.submissionViewer}>
                     <div className={styles.submissionViewerHeader}>
                       <span>Submitted Work</span>
@@ -399,22 +472,50 @@ export default function AssignmentsDropbox() {
                     ) : null}
                     {submittedFileUrl ? (
                       <div className={styles.submittedFile}>
-                        <span>File</span>
-                        <a href={submittedFileUrl} target="_blank" rel="noreferrer">
-                          {getFileName(submittedFileUrl)}
-                        </a>
+                        <div className={styles.submittedFileHeader}>
+                          <span>File</span>
+                          <a
+                            href={submittedFileUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={getFileName(submittedFileUrl)}
+                          >
+                            {getFileName(submittedFileUrl)}
+                          </a>
+                        </div>
+                        <SubmissionPreview fileUrl={submittedFileUrl} />
                       </div>
                     ) : null}
                   </section>
                 ) : null}
 
+                {/* Instructions are hidden while viewing the submission - the two
+                    tabs now swap content instead of stacking it. */}
+                {!isViewingSubmission ? (
+                  <div className={styles.instructionsPanel}>
+                    <section className={styles.instructionSheet}>
+                      <div className={styles.instructionHeader}>
+                        <span className={styles.instructionIcon}>i</span>
+                        <div>
+                          <span>Assignment Instructions</span>
+                          <h4>Read before submitting</h4>
+                        </div>
+                      </div>
+                      <div className={styles.instructionText}>
+                        {assignmentInstructions || "No instructions were provided for this assignment."}
+                      </div>
+                    </section>
+                  </div>
+                ) : null}
+
                 {canResubmit && !showResubmissionEditor ? (
                   <button
                     type="button"
-                    className={styles.submitComment}
+                    className={styles.resubmitButton}
                     onClick={() => setShowResubmissionEditor(true)}
                     disabled={!selectedAssignment || isAssignmentPastDue() || isAttemptLimitReached}
                   >
+                    <i className="bi bi-arrow-repeat" aria-hidden="true" />
                     Submit Again
                   </button>
                 ) : null}
@@ -482,7 +583,7 @@ export default function AssignmentsDropbox() {
                     ) : null}
                   </div>
                 ) : null}
-              </div>
+              </>
             ) : (
               <p>
                 {submitMessage || "No assignment is currently selected. Please return to the assignments list and open your assigned task."}

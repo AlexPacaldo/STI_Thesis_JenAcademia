@@ -13,8 +13,6 @@
   gap: 24px;
 }
 
-.TopSegment,
-.AvailableLessonSegment,
 .LessonsCard,
 .loading,
 .error,
@@ -25,50 +23,95 @@
   box-shadow: 0 18px 40px rgba(18, 34, 30, 0.06);
 }
 
-.TopSegment {
-  padding: 28px 32px;
+/* ---------- Page header ---------- */
+
+/* Tinted rather than white: the book cards below are white surfaces, so giving
+   the header its own tint keeps the books visually dominant instead of having
+   the header compete with them as another white card. */
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  background: linear-gradient(135deg, #f3f8f5 0%, #e7efea 100%);
 }
 
-.AvailableLessonSegment {
-  overflow: hidden;
+.pageHeaderMain {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.headerIcon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: #26423b;
+  color: #eef6ef;
+  font-size: 1.2rem;
+  box-shadow: 0 8px 18px rgba(18, 34, 30, 0.18);
+}
+
+.pageHeaderText {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 3px;
+  min-width: 0;
 }
 
-.AvailableLessonSegment img {
-  width: 100%;
-  aspect-ratio: 16 / 6;
-  object-fit: cover;
-  display: block;
-  border: 0;
-}
-
-.ContentAvailable {
-  padding: 28px 32px;
-}
-
-.TopContent {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 20px;
-}
-
-.TopContent h1,
-.ContentAvailable h1,
-.LessonsCard h1 {
+.pageHeaderText h1 {
   margin: 0;
+  font-size: clamp(1.4rem, 2vw, 1.8rem);
   line-height: 1.2;
-  color: #13251f;
+  color: #26423b;
+  letter-spacing: -0.02em;
 }
 
-.TopContent h1 {
-  font-size: clamp(1.7rem, 2.5vw, 2.35rem);
+.pageHeaderText p {
+  margin: 0;
+  color: #5e7268;
+  font-size: 0.88rem;
+  line-height: 1.5;
 }
 
-.TopContent p,
-.ContentAvailable p,
+.countTile {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-width: 74px;
+  padding: 8px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(38, 66, 59, 0.12);
+}
+
+.countValue {
+  font-size: 1.3rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #26423b;
+}
+
+.countLabel {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #7d9089;
+}
+
 .description,
 .lessonCount,
 .noBooks p,
@@ -79,16 +122,7 @@
   line-height: 1.6;
 }
 
-.ContentAvailable h1 {
-  font-size: clamp(1.45rem, 2vw, 2rem);
-}
-
-.ContentAvailable p {
-  max-width: 76ch;
-}
-
 .createBookBtn,
-.ContentAvailable a,
 .uploadLessonBtn,
 .LessonsCard button,
 .modalButtons button {
@@ -101,7 +135,6 @@
 }
 
 .createBookBtn,
-.ContentAvailable a,
 .uploadLessonBtn,
 .viewBtn,
 .confirmBtn {
@@ -116,7 +149,6 @@
 }
 
 .createBookBtn:hover,
-.ContentAvailable a:hover,
 .uploadLessonBtn:hover,
 .viewBtn:hover,
 .confirmBtn:hover {
@@ -125,25 +157,92 @@
   box-shadow: 0 10px 22px rgba(18, 34, 30, 0.14);
 }
 
+/* Flex rather than grid: `flex: 1 1 <basis>` makes the cards SHARE whatever
+   width is available, so 2 books fill the row completely instead of leaving an
+   empty third grid track. Grid's auto-fill/auto-fit can't do this - auto-fit
+   stretches a lone card to full width, auto-fill leaves gaps. */
 .AvailableLessons {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 22px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: stretch;
 }
 
 .LessonsCard {
-  min-height: 390px;
+  flex: 1 1 300px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px;
+  gap: 10px;
+  padding: 14px;
+  min-width: 0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+/* Title, author and action stay together so the card can flip to a horizontal
+   layout when it's the only one on the page. */
+.cardBody {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* A lone card spans the full row, so lay it out sideways - otherwise a 16/10
+   cover at ~940px wide grows to ~590px tall. :has() is supported in all current
+   browsers; without it this just falls back to the normal stacked card. */
+.AvailableLessons:has(> .LessonsCard:only-child) .LessonsCard {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 18px;
+  padding: 16px;
+}
+
+.AvailableLessons:has(> .LessonsCard:only-child) .bookCover,
+.AvailableLessons:has(> .LessonsCard:only-child) .bookImagePlaceholder {
+  flex: 0 0 300px;
+  width: 300px;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  align-self: stretch;
+}
+
+.AvailableLessons:has(> .LessonsCard:only-child) .bookTitle {
+  font-size: 1.35rem;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.AvailableLessons:has(> .LessonsCard:only-child) .LessonsCard button {
+  max-width: 260px;
+}
+
+.LessonsCard:hover {
+  transform: translateY(-2px);
+  border-color: rgba(145, 167, 154, 0.8);
+  box-shadow: 0 18px 36px rgba(18, 34, 30, 0.1);
+}
+
+.bookTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #13251f;
+  /* Two-line clamp keeps every card in a grid row the same height. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .bookImagePlaceholder,
 .bookCover {
   width: 100%;
-  aspect-ratio: 4 / 3;
-  border-radius: 18px;
+  /* 16/10 instead of 4/3 - noticeably shorter cover at the same width. */
+  aspect-ratio: 16 / 10;
+  border-radius: 14px;
   border: 1px solid rgba(38, 66, 59, 0.1);
 }
 
@@ -182,16 +281,29 @@
 .Uploaded {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   margin-top: auto;
+  min-width: 0;
 }
 
 .Uploaded img {
-  width: 34px;
-  height: 34px;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   object-fit: cover;
+  background: #dce7e2;
   border: 1px solid rgba(38, 66, 59, 0.1);
+}
+
+.uploadedBy {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #5e7268;
+  /* Keeps long teacher names from pushing the row wider than the card. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lessonCount {
@@ -357,18 +469,27 @@
   .cont {
     padding: 20px 14px 40px;
   }
-
-  .TopContent {
-    align-items: flex-start;
-    flex-direction: column;
-  }
 }
 
 @media (max-width: 520px) {
-  .TopSegment,
   .LessonsCard,
   .modalContent {
-    padding: 18px;
+    padding: 14px;
+  }
+
+  .pageHeader {
+    padding: 12px 14px;
+    gap: 12px;
+  }
+
+  .headerIcon {
+    width: 38px;
+    height: 38px;
+    font-size: 1.05rem;
+  }
+
+  .AvailableLessons {
+    grid-template-columns: 1fr;
   }
 
   .bookActions,

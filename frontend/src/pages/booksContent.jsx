@@ -42,7 +42,16 @@ const decodeText = (value) => {
   }
 };
 
-function InlineFilePreview({ fileUrl, fileName, onRendered }) {
+// Characters of plain-text shown when the preview is capped.
+const PREVIEW_TEXT_LIMIT = 1200;
+
+// Pages of a lesson file a student sees inline before full screen takes over.
+const STUDENT_PREVIEW_PAGES = 1;
+
+// pageLimit caps how much is rendered inline. Students get 1 page so the
+// fullscreen scroll stays a meaningful "I read the whole thing" gate; teachers
+// get the whole document.
+function InlineFilePreview({ fileUrl, fileName, onRendered, pageLimit = 0 }) {
   const ext = getFileExtension(fileName);
   const [textContent, setTextContent] = useState("");
   const [textStatus, setTextStatus] = useState("idle");
@@ -86,7 +95,14 @@ function InlineFilePreview({ fileUrl, fileName, onRendered }) {
   if (!fileUrl) return null;
 
   if (ext === "pdf") {
-    return <PdfLessonViewer fileUrl={fileUrl} title={fileName} onRendered={onRendered} />;
+    return (
+      <PdfLessonViewer
+        fileUrl={fileUrl}
+        title={fileName}
+        onRendered={onRendered}
+        pageLimit={pageLimit}
+      />
+    );
   }
 
   if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(ext)) {
@@ -98,6 +114,12 @@ function InlineFilePreview({ fileUrl, fileName, onRendered }) {
   }
 
   if (["txt", "md", "csv", "json", "log"].includes(ext)) {
+    // Plain text has no pages, so cap it by characters when a limit is set.
+    const isTruncated = pageLimit > 0 && textContent.length > PREVIEW_TEXT_LIMIT;
+    const visibleText = isTruncated
+      ? `${textContent.slice(0, PREVIEW_TEXT_LIMIT).trimEnd()}\n\n…`
+      : textContent;
+
     return (
       <div className={styles.textPreview}>
         {textStatus === "loading" ? (
@@ -105,7 +127,7 @@ function InlineFilePreview({ fileUrl, fileName, onRendered }) {
         ) : textStatus === "error" ? (
           <p className={styles.emptyText}>This file could not be loaded.</p>
         ) : (
-          <pre>{textContent}</pre>
+          <pre>{visibleText}</pre>
         )}
       </div>
     );
@@ -121,10 +143,11 @@ function InlineFilePreview({ fileUrl, fileName, onRendered }) {
   );
 }
 
-function PdfLessonViewer({ fileUrl, title, onRendered }) {
+function PdfLessonViewer({ fileUrl, title, onRendered, pageLimit = 0 }) {
   const containerRef = useRef(null);
   const renderTokenRef = useRef(0);
   const [status, setStatus] = useState("loading");
+  const [totalPages, setTotalPages] = useState(0);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -143,8 +166,13 @@ function PdfLessonViewer({ fileUrl, title, onRendered }) {
         const loadingTask = pdfjsLib.getDocument(fileUrl);
         const pdf = await loadingTask.promise;
         activeDocument = pdf;
+        if (cancelled || renderTokenRef.current !== renderToken) return;
+        setTotalPages(pdf.numPages);
 
-        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        // pageLimit > 0 renders only the first N pages (student preview).
+        const lastPage = pageLimit > 0 ? Math.min(pdf.numPages, pageLimit) : pdf.numPages;
+
+        for (let pageNumber = 1; pageNumber <= lastPage; pageNumber += 1) {
           if (cancelled || renderTokenRef.current !== renderToken) return;
 
           const page = await pdf.getPage(pageNumber);
@@ -193,7 +221,9 @@ function PdfLessonViewer({ fileUrl, title, onRendered }) {
       cancelled = true;
       activeDocument?.destroy?.();
     };
-  }, [fileUrl, onRendered]);
+  }, [fileUrl, onRendered, pageLimit]);
+
+  const hasMorePages = pageLimit > 0 && totalPages > pageLimit;
 
   return (
     <div className={styles.pdfViewerShell}>
@@ -207,6 +237,11 @@ function PdfLessonViewer({ fileUrl, title, onRendered }) {
         </div>
       )}
       <div ref={containerRef} className={styles.pdfPages} />
+      {hasMorePages && status === "ready" ? (
+        <p className={styles.previewPageCount}>
+          Showing page 1 of {totalPages}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -254,6 +289,24 @@ export default function BooksContent({ mode = "student" }) {
   }, [showPdfFullscreen]);
 
   const isTeacherView = mode === "teacher";
+
+  // This page serves two routes: /booksContent/:bookId (student) and
+  // /teacherBooksLessons/:bookId (teacher). Each list has a different path.
+  const backRoute = isTeacherView ? "/teacherBooksLessons" : "/booksLessons";
+
+  const handleBack = () => {
+    // Prefer the real history entry so the Dashboard entry point
+    // (Dashboard.jsx links straight here) returns to the Dashboard rather than
+    // being forced to the books list. Fall back to the list on a direct link or
+    // refresh, where there is nothing behind us to go back to.
+    const historyIndex = typeof window !== "undefined" ? window.history.state?.idx : 0;
+    if (typeof historyIndex === "number" && historyIndex > 0) {
+      navigate(-1);
+    } else {
+      navigate(backRoute);
+    }
+  };
+
   const teacherId = useMemo(() => {
     const storedUser = readStoredUser() || {};
     return readNamespacedStorageValue(STORAGE_KEYS.teacherId, LEGACY_STORAGE_KEYS.teacherId) || storedUser.id || storedUser.user_id || storedUser.userId || null;
@@ -695,6 +748,11 @@ export default function BooksContent({ mode = "student" }) {
   return (
     <div className={styles.Center}>
       <div className={styles.CenterContent}>
+        <button type="button" className={styles.backButton} onClick={handleBack}>
+          <i className="bi bi-arrow-left" aria-hidden="true" />
+          <span>{isTeacherView ? "Back to My Books" : "Back to Books"}</span>
+        </button>
+
         <div className={styles.TopContent}>
           <div className={styles.Teacher}>
             {book.cover_url ? (
@@ -906,7 +964,6 @@ export default function BooksContent({ mode = "student" }) {
                   <section className={styles.fileSection}>
                     <div className={styles.fileInfo}>
                       <h3>Uploaded File</h3>
-                      <p>{decodeText(selectedFileName)}</p>
                     </div>
 
                     <div className={styles.fileActions}>
@@ -928,10 +985,25 @@ export default function BooksContent({ mode = "student" }) {
                           fileName={selectedFileName}
                         />
                       ) : (
-                        <div className={styles.fullscreenPrompt}>
-                          <h3>Open full screen to read this lesson</h3>
-                          <p>Your reading progress is checked inside full screen mode.</p>
-                        </div>
+                        <>
+                          {/* First page only: lesson completion is gated on the
+                              fullscreen reader reaching the bottom, so showing
+                              the whole file here would make that check moot. */}
+                          <InlineFilePreview
+                            fileUrl={selectedFileUrl}
+                            fileName={selectedFileName}
+                            pageLimit={STUDENT_PREVIEW_PAGES}
+                          />
+                          {/* No second "Open full screen" button here - the
+                              file actions above already have one. Only the
+                              progress rule is worth stating, since a student
+                              can't otherwise tell why reading here won't
+                              count. */}
+                          <p className={styles.progressHint}>
+                            <i className="bi bi-info-circle" aria-hidden="true" />
+                            Reading progress is recorded in full screen mode.
+                          </p>
+                        </>
                       )}
                     </section>
                   ) : (

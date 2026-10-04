@@ -12,8 +12,24 @@ const API_BASE = API_BASE_URL;
 
 function absoluteUrl(url) {
   if (!url) return "";
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API_BASE}${url}`;
+  const cleaned = String(url).replace(/\\/g, "/");
+  if (/^https?:\/\//i.test(cleaned)) return cleaned;
+  // uploads paths arrive both with and without a leading slash; a bare concat
+  // produces "localhost:3001uploads/..." with no separator, which 404s.
+  if (cleaned.startsWith("/uploads/")) return `${API_BASE}${cleaned}`;
+  if (cleaned.startsWith("uploads/")) return `${API_BASE}/${cleaned}`;
+  return cleaned;
+}
+
+function formatArchivedAt(value) {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 export default function TeacherBooksLessons() {
@@ -29,6 +45,13 @@ export default function TeacherBooksLessons() {
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
   const [archivingBookId, setArchivingBookId] = useState(null);
   const [archivingBookTitle, setArchivingBookTitle] = useState("");
+  // 'active' | 'archived' - archived books are a soft delete, so the owner needs
+  // a way to see them and bring them back.
+  const [statusFilter, setStatusFilter] = useState("active");
+  // Covers whose URL 404s. Tracked so we can swap in the placeholder instead of
+  // hiding the image, which previously left an empty frame with the lesson
+  // badge floating above it.
+  const [coverErrors, setCoverErrors] = useState({});
 
   const storedUser = readStoredUser() || {};
   const teacherId = readNamespacedStorageValue(STORAGE_KEYS.teacherId, LEGACY_STORAGE_KEYS.teacherId) || storedUser.id || storedUser.user_id || storedUser.userId || null;
@@ -38,9 +61,14 @@ export default function TeacherBooksLessons() {
   const [selectedCourseId, setSelectedCourseId] = useState(null);
 
   useEffect(() => {
-    fetchBooks();
     loadTeacherCourses();
   }, []);
+
+  // Refetch whenever the active/archived filter changes.
+  useEffect(() => {
+    fetchBooks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter]);
 
   const loadTeacherCourses = async () => {
     try {
@@ -62,7 +90,9 @@ export default function TeacherBooksLessons() {
   const fetchBooks = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/api/teacher/books?teacher_id=${teacherId}`);
+      const response = await fetch(
+        `${API_BASE_URL}/api/teacher/books?teacher_id=${teacherId}&status=${statusFilter}`
+      );
       if (!response.ok) throw new Error("Failed to fetch books");
       
       const data = await response.json();
@@ -144,23 +174,63 @@ export default function TeacherBooksLessons() {
     }
   };
 
+  const handleRestoreBook = async (bookId, bookTitle) => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/books/${bookId}/restore?teacher_id=${encodeURIComponent(teacherId)}`,
+        { method: "PUT" }
+      );
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "Failed to restore book");
+
+      notify?.(`"${bookTitle}" restored`, "success");
+      fetchBooks();
+    } catch (err) {
+      console.error("Error restoring book:", err);
+      notify?.(`Error: ${err.message}`, "error");
+    }
+  };
+
   return (
     <div className={styles.cont}>
       <div className={styles.center}>
-        {/* Top Section */}
+        {/* Top Section - title/subtitle stacked left, action on the right */}
         <div className={styles.TopSegment}>
           <div className={styles.TopContent}>
-            <h1><b>Books & Lessons</b></h1>
-            <p>Manage your course materials and resources.</p>
-            <button 
-              className={styles.createBookBtn}
-              onClick={() => setShowCreateModal(true)}
-            >
-              + Create New Book
-            </button>
+            <div className={styles.TopContentText}>
+              <h1>Books &amp; Lessons</h1>
+              <p>Manage your course materials and resources.</p>
+            </div>
+            <div className={styles.TopContentActions}>
+              <div className={styles.statusFilters} role="tablist" aria-label="Filter books">
+                {[
+                  { key: "active", label: "Active" },
+                  { key: "archived", label: "Archived" },
+                ].map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={statusFilter === option.key}
+                    className={`${styles.statusFilter} ${statusFilter === option.key ? styles.statusFilterActive : ""}`}
+                    onClick={() => setStatusFilter(option.key)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className={styles.createBookBtn}
+                onClick={() => setShowCreateModal(true)}
+              >
+                <i className="bi bi-plus-lg" aria-hidden="true" />
+                Create New Book
+              </button>
+            </div>
           </div>
         </div>
-        <br />
 
         {/* Loading/Error State */}
         {loading && <p className={styles.loading}>Loading books...</p>}
@@ -169,51 +239,97 @@ export default function TeacherBooksLessons() {
         {/* Books Grid */}
         {!loading && books.length > 0 && (
           <div className={styles.AvailableLessons}>
-            {books.map((book) => (
-              <div key={book.book_id} className={styles.LessonsCard}>
-                {book.cover_url ? (
-                  <img className={styles.bookCover} src={`${API_BASE}${book.cover_url}`} alt="Book cover" />
-                ) : (
-                  <div className={styles.bookImagePlaceholder}>
-                    <span className={styles.placeholder}>Book</span>
-                  </div>
-                )}
-
-                <br />
-                <h1><b>{book.title}</b></h1>
-                <p className={styles.description}>{book.description || "No description"}</p>
-                <div className={styles.Uploaded}>
-                  <img src={teacherPicUrl} alt="Teacher" />
-                  <h3>You</h3>
+            {books.map((book) => {
+              const isArchived = book.status === "archived";
+              return (
+              <div key={book.book_id} className={`${styles.LessonsCard} ${isArchived ? styles.LessonsCardArchived : ""}`}>
+                <div className={styles.coverWrap}>
+                  {book.cover_url && !coverErrors[book.book_id] ? (
+                    <img
+                      className={styles.bookCover}
+                      src={absoluteUrl(book.cover_url)}
+                      alt=""
+                      onError={() =>
+                        setCoverErrors((prev) => ({ ...prev, [book.book_id]: true }))
+                      }
+                    />
+                  ) : (
+                    <div className={styles.bookImagePlaceholder}>
+                      <span className={styles.placeholder}>Book</span>
+                    </div>
+                  )}
+                  <span className={styles.lessonBadge}>
+                    {book.lesson_count || 0} {book.lesson_count === 1 ? "lesson" : "lessons"}
+                  </span>
+                  {isArchived ? (
+                    <span className={styles.archivedBadge}>Archived</span>
+                  ) : null}
                 </div>
-                <p className={styles.lessonCount}>{book.lesson_count || 0} lessons</p>
-                <div className={styles.bookActions}>
-                  <a href={`/teacherBooksLessons/${book.book_id}`}>
-                    <button type="button" className={styles.viewBtn}>View</button>
-                  </a>
-                  <button 
-                    type="button"
-                    className={styles.deleteBtn}
-                    onClick={() => handleArchiveBook(book.book_id, book.title)}
-                  >
-                    Archive
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.viewBtn}
-                    onClick={() => { setEditingBookId(book.book_id); setShowCoverModal(true); }}
-                  >
-                    Edit Cover
-                  </button>
+
+                <div className={styles.cardBody}>
+                  <h3 className={styles.bookTitle}>{book.title}</h3>
+                  <p className={styles.description}>{book.description || "No description"}</p>
+
+                  <div className={styles.Uploaded}>
+                    <img src={teacherPicUrl} alt="" />
+                    <span>Added by you</span>
+                  </div>
+
+                  <div className={styles.bookActions}>
+                    {isArchived ? (
+                      <>
+                        <button
+                          type="button"
+                          className={styles.restoreBtn}
+                          onClick={() => handleRestoreBook(book.book_id, book.title)}
+                        >
+                          <i className="bi bi-arrow-counterclockwise" aria-hidden="true" />
+                          Restore
+                        </button>
+                        {book.archived_at ? (
+                          <p className={styles.archivedNote}>
+                            Archived {formatArchivedAt(book.archived_at)}
+                          </p>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>
+                        <a href={`/teacherBooksLessons/${book.book_id}`} className={styles.viewAction}>
+                          View Lessons
+                        </a>
+                        <div className={styles.secondaryActions}>
+                          <button
+                            type="button"
+                            className={styles.editBtn}
+                            onClick={() => { setEditingBookId(book.book_id); setShowCoverModal(true); }}
+                          >
+                            Edit Cover
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.deleteBtn}
+                            onClick={() => handleArchiveBook(book.book_id, book.title)}
+                          >
+                            Archive
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
         {!loading && books.length === 0 && (
           <div className={styles.noBooks}>
-            <p>No books yet. Create your first book to get started!</p>
+            {statusFilter === "archived" ? (
+              <p>No archived books. Anything you archive will show up here and can be restored.</p>
+            ) : (
+              <p>No books yet. Create your first book to get started!</p>
+            )}
           </div>
         )}
       </div>

@@ -1,7 +1,9 @@
 .cont {
   display: flex;
   justify-content: center;
-  min-height: 85vh;
+  /* Fill the viewport below the 72px sticky header: 100vh - 72px header
+     - 32px outer gutter - 56px from .content-inner padding. */
+  min-height: calc(100vh - 160px);
   color: #13251f;
   font-family: "Poppins", sans-serif;
   padding: 32px 20px 56px;
@@ -10,9 +12,13 @@
 .center {
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
-  gap: 24px;
-  align-items: start;
+  /* A wider right column: the remark composer and the history panel are both
+     cramped at 440px. */
+  grid-template-columns: minmax(0, 1fr) minmax(400px, 520px);
+  gap: 20px;
+  /* stretch, not start - otherwise both cards sit at their natural height and
+     leave a void underneath instead of filling the panel. */
+  align-items: stretch;
 }
 
 .leftCard,
@@ -29,8 +35,26 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: 72vh;
-  overflow: auto;
+  /* min-height: 0 lets the scrolling child actually shrink inside a stretched
+     grid item; without it the list refuses to scroll and overflows the card. */
+  min-height: 0;
+}
+
+/* The heading stays put while only the roster scrolls. */
+.studentList {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.rightCard {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .boxCard {
@@ -105,6 +129,12 @@
 
 .rightContent {
   width: 100%;
+  /* Composer + history can exceed the viewport, so scroll inside the panel
+     rather than letting the card grow past the fold. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .user {
@@ -195,6 +225,275 @@
 
 .submitComment:hover:not(:disabled) {
   background: #35594e;
+}
+
+/* ---------- Remark history (teacher) ---------- */
+
+.historyPanel {
+  min-width: 0;
+  padding: 14px;
+  border-radius: 20px;
+  background: #f8fbf9;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+}
+
+.historyHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.historyHeader h1 {
+  margin: 0;
+  font-size: 1rem;
+  color: #13251f;
+}
+
+.historyFilters {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #eef4f0;
+}
+
+.historyFilter {
+  border: 0;
+  background: transparent;
+  color: #5e7268;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 6px 13px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+.historyFilter:hover {
+  color: #26423b;
+}
+
+.historyFilterActive {
+  background: #26423b;
+  color: #eef6ef;
+}
+
+.historyFilterActive:hover {
+  color: #eef6ef;
+}
+
+.historyHint {
+  margin: 0;
+  padding: 14px 0;
+  color: #5e7268;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.historyError {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #fdf6f6;
+  border: 1px solid rgba(220, 38, 38, 0.22);
+  color: #b91c1c;
+  font-size: 0.88rem;
+}
+
+.historyList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.historyItem {
+  padding: 13px 14px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.historyItem:hover {
+  border-color: rgba(38, 66, 59, 0.22);
+  box-shadow: 0 8px 20px rgba(18, 34, 30, 0.06);
+}
+
+.historyItemArchived {
+  background: #f4f6f5;
+  opacity: 0.82;
+}
+
+.historyItemTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 9px;
+}
+
+.historyIdentity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.historyIdentity img {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #dce7e2;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+}
+
+.historyStudent {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #13251f;
+}
+
+.historyClass {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #5e7268;
+}
+
+.historyBadges {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.historyBadge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(145, 167, 154, 0.18);
+  color: #26423b;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badgeArchived {
+  background: rgba(138, 62, 46, 0.12);
+  color: #8a3e2e;
+}
+
+.historyText {
+  margin: 0;
+  padding: 11px 13px;
+  border-left: 3px solid #91a79a;
+  border-radius: 0 12px 12px 0;
+  background: #f8fbf9;
+  color: #13251f;
+  font-size: 0.92rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.historyEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.historyEditor .commentBox {
+  min-height: 108px;
+}
+
+.historyFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(38, 66, 59, 0.1);
+}
+
+.historyStamp {
+  color: #7d9089;
+  font-size: 0.76rem;
+}
+
+.historyActions {
+  display: flex;
+  gap: 7px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.historyActions button {
+  min-height: 32px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.18s ease, color 0.18s ease, opacity 0.18s ease;
+}
+
+.historyActions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.historyActionPrimary {
+  border: 1px solid #26423b;
+  background: #26423b;
+  color: #fff;
+}
+
+.historyActionPrimary:hover:not(:disabled) {
+  background: #35594e;
+}
+
+.historyActionGhost {
+  border: 1px solid rgba(38, 66, 59, 0.16);
+  background: #fff;
+  color: #26423b;
+}
+
+.historyActionGhost:hover:not(:disabled) {
+  background: #eef4f0;
+}
+
+.historyActionDanger {
+  border: 1px solid rgba(138, 62, 46, 0.24);
+  background: #fce8e4;
+  color: #8a3e2e;
+}
+
+.historyActionDanger:hover:not(:disabled) {
+  background: #f7d6cf;
+}
+
+@media (max-width: 640px) {
+  .historyFooter {
+    align-items: flex-start;
+  }
+
+  .historyActions {
+    margin-left: 0;
+    width: 100%;
+  }
 }
 
 .tabBar {

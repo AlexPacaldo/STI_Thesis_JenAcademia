@@ -26,8 +26,54 @@ function getUserName(user) {
 function studentProfileSrc(student) {
   const url = student?.profileImageUrl || student?.profile_image_url || student?.profile_picture;
   if (!url) return userPic;
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API}${url}`;
+  const cleaned = String(url).replace(/\\/g, "/");
+  if (/^https?:\/\//i.test(cleaned)) return cleaned;
+  // uploads paths arrive both with and without a leading slash; a bare concat
+  // produces "localhost:3001uploads/..." with no separator, which 404s.
+  if (cleaned.startsWith("/uploads/")) return `${API}${cleaned}`;
+  if (cleaned.startsWith("uploads/")) return `${API}/${cleaned}`;
+  return cleaned;
+}
+
+// The API returns submittedAt as a MySQL-formatted string
+// ("2026-08-27 16:14"), which is not valid ISO - new Date() parses it
+// inconsistently across browsers. Parse the parts explicitly and build a local
+// Date so the output is stable.
+function formatSubmittedAt(value) {
+  if (!value) return "Not submitted";
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  if (match) {
+    const [, year, month, day, hour, minute] = match;
+    const parsed = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute)
+    );
+    if (!Number.isNaN(parsed.getTime())) {
+      const dateText = parsed.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+      const timeText = parsed.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      return `${dateText} at ${timeText}`;
+    }
+  }
+
+  const fallback = new Date(value);
+  if (!Number.isNaN(fallback.getTime())) {
+    return fallback.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
+  return String(value);
 }
 
 function formatStudent(student) {
@@ -327,35 +373,40 @@ export default function AssignTask() {
             />
           </div>
 
-          {filtered.length > 0 ? (
-            filtered.map((student) => (
-              <button
-                key={student.id}
-                type="button"
-                className={`${styles.boxCard} ${String(selectedStudentId) === String(student.id) ? styles.Active : ""}`}
-                onClick={() => {
-                  setSelectedStudentId(student.id);
-                  setSelectedSubmission(null);
-                }}
-              >
-                <div className={styles.studentSummary}>
-                  <img
-                    src={studentProfileSrc(student)}
-                    alt={student.name}
-                    className={styles.studentAvatar}
-                  />
-                  <h1>{student.name}</h1>
-                </div>
-              </button>
-            ))
-          ) : (
-            <div className={styles.emptyState} style={{ padding: 18 }}>
-              {isLoading ? "Loading students..." : "No students are currently assigned to this teacher."}
-            </div>
-          )}
+          <div className={styles.studentList}>
+            {filtered.length > 0 ? (
+              filtered.map((student) => (
+                <button
+                  key={student.id}
+                  type="button"
+                  className={`${styles.boxCard} ${String(selectedStudentId) === String(student.id) ? styles.Active : ""}`}
+                  onClick={() => {
+                    setSelectedStudentId(student.id);
+                    setSelectedSubmission(null);
+                  }}
+                >
+                  <div className={styles.studentSummary}>
+                    <img
+                      src={studentProfileSrc(student)}
+                      alt={student.name}
+                      className={styles.studentAvatar}
+                      onError={(event) => {
+                        event.currentTarget.src = userPic;
+                      }}
+                    />
+                    <h1>{student.name}</h1>
+                  </div>
+                </button>
+              ))
+            ) : (
+              <div className={styles.emptyState} style={{ padding: 18 }}>
+                {isLoading ? "Loading students..." : "No students are currently assigned to this teacher."}
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className={styles.rightCard}>
+        <div className={`${styles.rightCard} ${activeTab === "submissions" ? styles.rightCardFill : ""}`}>
           <div className={styles.rightContent}>
             <div className={styles.tabBar} role="tablist">
               <button
@@ -424,7 +475,6 @@ export default function AssignTask() {
                         />
                       ) : null}
                     </div>
-                    <br />
                     <div className={styles.Instructions}>
                       <h4>Instructions:</h4>
                       <textarea
@@ -450,81 +500,74 @@ export default function AssignTask() {
                       No submissions found for {selected || "this student"}.
                     </div>
                   ) : (
-                    currentSubmissions.map((item) => (
-                      <div key={item.id} className={styles.submissionRow}>
-                        <div>
-                          <strong>{item.student}</strong>
-                          <p>{item.assignmentName || "Assignment"}</p>
-                          <div className={styles.submissionInstructions}>
-                            <span>Instructions</span>
-                            <p>{item.assignmentInstructions || "No instructions recorded for this assignment."}</p>
+                    currentSubmissions.map((item) => {
+                      const isExpanded = selectedSubmission?.id === item.id;
+                      return (
+                        <div
+                          key={item.id}
+                          className={`${styles.submissionRow} ${isExpanded ? styles.submissionRowExpanded : ""}`}
+                        >
+                          <div className={styles.submissionSummary}>
+                            <div className={styles.submissionSummaryText}>
+                              <strong>{item.student}</strong>
+                              <p className={styles.submissionTask}>
+                                {item.assignmentName || "Assignment"}
+                              </p>
+                              <p className={styles.submissionMeta}>
+                                <i className="bi bi-clock" aria-hidden="true" />
+                                {formatSubmittedAt(item.submittedAt)}
+                                {item.attemptsUsed ? ` · Attempt ${item.attemptsUsed}` : ""}
+                                {item.attemptLimit ? ` of ${item.attemptLimit}` : ""}
+                              </p>
+                            </div>
+                            <div className={styles.submissionActions}>
+                              <span className={styles.submissionStatus}>{item.status}</span>
+                              <button
+                                type="button"
+                                className={styles.submissionAction}
+                                aria-expanded={isExpanded}
+                                onClick={() => {
+                                  // Toggle in place. Previously this opened a
+                                  // separate panel below the whole list, so the
+                                  // teacher had to scroll past every submission
+                                  // to reach the one they just clicked.
+                                  setSelectedSubmission(isExpanded ? null : item);
+                                }}
+                              >
+                                {isExpanded ? "Hide" : "View"}
+                              </button>
+                            </div>
                           </div>
-                          {item.comments ? (
-                            <>
-                              <span className={styles.submissionLabel}>Student answer</span>
-                              <p>{item.comments}</p>
-                            </>
-                          ) : null}
-                          {item.fileUrl ? (
-                            renderSubmissionFile(item.fileUrl)
-                          ) : null}
-                          {!item.comments && !item.fileUrl ? (
-                            <p>Comment submission</p>
-                          ) : null}
-                          <p className={styles.submissionMeta}>{item.submittedAt}</p>
-                          {item.attemptsUsed ? (
-                            <p className={styles.submissionMeta}>
-                              Attempts: {item.attemptsUsed}{item.attemptLimit ? ` / ${item.attemptLimit}` : ""}
-                            </p>
+
+                          {isExpanded ? (
+                            <div className={styles.submissionDetail}>
+                              <div className={styles.submissionBlock}>
+                                <span className={styles.submissionLabel}>Instructions</span>
+                                <p className={styles.submissionInstructionsText}>
+                                  {item.assignmentInstructions || "No instructions recorded for this assignment."}
+                                </p>
+                              </div>
+
+                              <div className={styles.submissionBlock}>
+                                <span className={styles.submissionLabel}>Student answer</span>
+                                <p className={styles.submissionAnswer}>
+                                  {item.comments || "Comment submission - no written answer."}
+                                </p>
+                              </div>
+
+                              {item.fileUrl ? (
+                                <div className={styles.submissionBlock}>
+                                  <span className={styles.submissionLabel}>Attachment</span>
+                                  {renderSubmissionFile(item.fileUrl)}
+                                </div>
+                              ) : null}
+                            </div>
                           ) : null}
                         </div>
-                        <div className={styles.submissionActions}>
-                          <span className={styles.submissionStatus}>{item.status}</span>
-                          <button
-                            type="button"
-                            className={styles.submissionAction}
-                            onClick={() => {
-                              setSelectedSubmission(item);
-                            }}
-                          >
-                            View
-                          </button>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
-
-                {selectedSubmission ? (
-                  <div className={styles.submissionDetail}>
-                    <h3>Submission Details</h3>
-                    <p><strong>Student:</strong> {selectedSubmission.student}</p>
-                    <p><strong>Assignment:</strong> {selectedSubmission.assignmentName || "Assignment"}</p>
-                    <p><strong>Instructions:</strong> {selectedSubmission.assignmentInstructions || "No instructions recorded for this assignment."}</p>
-                    {selectedSubmission.comments ? (
-                      <p><strong>Student answer:</strong> {selectedSubmission.comments}</p>
-                    ) : null}
-                    {selectedSubmission.fileUrl ? (
-                      renderSubmissionFile(selectedSubmission.fileUrl)
-                    ) : null}
-                    {!selectedSubmission.comments && !selectedSubmission.fileUrl ? (
-                      <p><strong>Student answer:</strong> Comment submission</p>
-                    ) : null}
-                    <p><strong>Status:</strong> {selectedSubmission.status}</p>
-                    <p>
-                      <strong>Attempts:</strong> {selectedSubmission.attemptsUsed || 1}
-                      {selectedSubmission.attemptLimit ? ` / ${selectedSubmission.attemptLimit}` : ""}
-                    </p>
-                    <p><strong>Submitted at:</strong> {selectedSubmission.submittedAt}</p>
-                    <button
-                      type="button"
-                      className={styles.closeDetail}
-                      onClick={() => setSelectedSubmission(null)}
-                    >
-                      Close
-                    </button>
-                  </div>
-                ) : null}
               </div>
             )}
           </div>
