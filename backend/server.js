@@ -7355,7 +7355,7 @@ app.get("/api/student/assigned-teacher/:student_id", async (req, res) => {
   try {
     const { student_id } = req.params;
     const [rows] = await pool.query(
-      `SELECT sp.assigned_teacher_id
+      `SELECT sp.assigned_teacher_id, t.first_name, t.last_name
        FROM student_profiles sp
        JOIN users t ON t.user_id = sp.assigned_teacher_id
        WHERE sp.user_id = ?
@@ -7369,7 +7369,10 @@ app.get("/api/student/assigned-teacher/:student_id", async (req, res) => {
       return res.status(404).json({ message: "Assigned teacher not found" });
     }
 
-    res.json({ assigned_teacher_id: rows[0].assigned_teacher_id ?? null });
+    res.json({
+      assigned_teacher_id: rows[0].assigned_teacher_id ?? null,
+      teacher_name: [rows[0].first_name, rows[0].last_name].filter(Boolean).join(" ").trim(),
+    });
   } catch (err) {
     console.error("GET /api/student/assigned-teacher/:student_id error:", err);
     res.status(500).json({ message: "Server error" });

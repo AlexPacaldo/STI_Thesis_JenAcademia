@@ -1206,6 +1206,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         const teacherIdFromProfile = r.data?.assigned_teacher_id ?? null;
         console.log("✅ Assigned teacher fetched:", teacherIdFromProfile, "Full response:", r.data);
         setAssignedTeacherId(teacherIdFromProfile);
+        setAssignedTeacherName(r.data?.teacher_name || "");
 
         if (teacherIdFromProfile) {
           try {
@@ -1225,6 +1226,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       })
       .catch(() => {
         setAssignedTeacherId(null);
+        setAssignedTeacherName("");
       });
   }, [localRole, localUserId]);
 
