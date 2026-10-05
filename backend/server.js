@@ -2676,6 +2676,8 @@ app.get("/api/reset-password/:token", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+app.get("/api/account-setup/:token", async (req, res) => {
   try {
     const tokenHash = hashInviteToken(req.params.token || "");
     const [rows] = await pool.query(
