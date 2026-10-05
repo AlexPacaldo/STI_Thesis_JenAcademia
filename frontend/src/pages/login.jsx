@@ -176,9 +176,9 @@ export default function Login() {
             </button>
 
             <div className={styles.formFooter}>
-              <a href="#" className={styles.forgotPass}>
+              <Link to="/forgot-password" className={styles.forgotPass}>
                 Forgot Password?
-              </a>
+              </Link>
             </div>
           </form>
 

@@ -9,6 +9,8 @@ const Homepage = lazy(() => import("./pages/homepage.jsx"));
 const Register = lazy(() => import("./pages/register.jsx"));
 const Login = lazy(() => import("./pages/login.jsx"));
 const SetupAccount = lazy(() => import("./pages/SetupAccount.jsx"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword.jsx"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword.jsx"));
 const Account = lazy(() => import("./pages/account.jsx"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard.jsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
@@ -37,6 +39,8 @@ const router = createBrowserRouter([
       { path: "register", element: <Page><Register /></Page> },
       { path: "login", element: <Page><Login /></Page> },
       { path: "setup-account/:token", element: <Page><SetupAccount /></Page> },
+      { path: "forgot-password", element: <Page><ForgotPassword /></Page> },
+      { path: "reset-password/:token", element: <Page><ResetPassword /></Page> },
       // { path: "loginChoice", element: <LoginChoice /> },
       
       // in your router

@@ -1383,6 +1383,24 @@ async function ensureAccountSetupInvitesTable() {
   `);
 }
 
+async function ensurePasswordResetTokensTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      reset_id INT NOT NULL AUTO_INCREMENT,
+      user_id INT NOT NULL,
+      token_hash CHAR(64) NOT NULL,
+      expires_at DATETIME NOT NULL,
+      used_at DATETIME DEFAULT NULL,
+      created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (reset_id),
+      UNIQUE KEY unique_password_reset_token_hash (token_hash),
+      KEY idx_password_reset_user (user_id),
+      KEY idx_password_reset_expires (expires_at),
+      CONSTRAINT password_reset_tokens_user_fk FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
+    )
+  `);
+}
+
 async function ensureUserDemographicsColumns() {
   if (!(await columnExists("users", "country"))) {
     await pool.query("ALTER TABLE users ADD COLUMN country VARCHAR(100) DEFAULT NULL AFTER contact_number");
@@ -1662,6 +1680,7 @@ async function prepareDatabase() {
   await ensureUserProfileImageColumn();
   await ensureUserPasswordChangedColumn();
   await ensureAccountSetupInvitesTable();
+  await ensurePasswordResetTokensTable();
   await ensureUserDemographicsColumns();
   await refreshAllProfileCompletion();
   await ensureStudentContractRequestsTable();
@@ -2524,7 +2543,139 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-app.get("/api/account-setup/:token", async (req, res) => {
+app.post("/api/forgot-password", async (req, res) => {
+  try {
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ message: "A valid email address is required" });
+    }
+
+    const [rows] = await pool.query(
+      "SELECT user_id, first_name, status FROM users WHERE email = ? LIMIT 1",
+      [email]
+    );
+
+    if (!rows.length || rows[0].status === "archived") {
+      return res.json({ message: "If that email exists, a reset link has been sent." });
+    }
+
+    const user = rows[0];
+    const token = createInviteToken();
+    const tokenHash = hashInviteToken(token);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    const expiresAtSql = expiresAt.toISOString().slice(0, 19).replace("T", " ");
+
+    await pool.query(
+      "UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL",
+      [user.user_id]
+    );
+    await pool.query(
+      "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)",
+      [user.user_id, tokenHash, expiresAtSql]
+    );
+
+    const resetUrl = `${getFrontendBaseUrl()}/reset-password/${encodeURIComponent(token)}`;
+
+    await sendSmtpMail({
+      to: email,
+      subject: "Reset your JEN Academia password",
+      text: [
+        `Hi ${user.first_name || "there"},`,
+        "",
+        "We received a request to reset your JEN Academia password.",
+        "Click the link below to set a new password:",
+        "",
+        resetUrl,
+        "",
+        "This link expires in 1 hour.",
+        "",
+        "If you did not request a password reset, you can safely ignore this email.",
+      ].join("\n"),
+    });
+
+    res.json({ message: "If that email exists, a reset link has been sent." });
+  } catch (err) {
+    console.error("POST /api/forgot-password error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.post("/api/reset-password/:token", async (req, res) => {
+  try {
+    const { password, confirmPassword } = req.body || {};
+    const newPassword = String(password || "");
+
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters" });
+    }
+    if (newPassword !== String(confirmPassword || "")) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    const tokenHash = hashInviteToken(req.params.token || "");
+    const [rows] = await pool.query(
+      `SELECT prt.reset_id, prt.expires_at, prt.used_at, prt.user_id
+       FROM password_reset_tokens prt
+       WHERE prt.token_hash = ?
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Reset link is invalid or has expired" });
+    }
+
+    const record = rows[0];
+
+    if (record.used_at) {
+      return res.status(410).json({ message: "This reset link has already been used" });
+    }
+    if (new Date(record.expires_at).getTime() <= Date.now()) {
+      return res.status(410).json({ message: "This reset link has expired. Please request a new one." });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await pool.query(
+      "UPDATE users SET password_hash = ?, password_changed = 1 WHERE user_id = ?",
+      [passwordHash, record.user_id]
+    );
+    await pool.query(
+      "UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE reset_id = ?",
+      [record.reset_id]
+    );
+
+    res.json({ message: "Password updated successfully. You can now sign in." });
+  } catch (err) {
+    console.error("POST /api/reset-password/:token error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.get("/api/reset-password/:token", async (req, res) => {
+  try {
+    const tokenHash = hashInviteToken(req.params.token || "");
+    const [rows] = await pool.query(
+      "SELECT reset_id, expires_at, used_at FROM password_reset_tokens WHERE token_hash = ? LIMIT 1",
+      [tokenHash]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Reset link is invalid or has expired" });
+    }
+    if (rows[0].used_at) {
+      return res.status(410).json({ message: "This reset link has already been used" });
+    }
+    if (new Date(rows[0].expires_at).getTime() <= Date.now()) {
+      return res.status(410).json({ message: "This reset link has expired. Please request a new one." });
+    }
+
+    res.json({ valid: true });
+  } catch (err) {
+    console.error("GET /api/reset-password/:token error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
   try {
     const tokenHash = hashInviteToken(req.params.token || "");
     const [rows] = await pool.query(
