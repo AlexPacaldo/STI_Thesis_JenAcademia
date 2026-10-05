@@ -7,9 +7,8 @@ import express from "express";
 import fs from "fs";
 import multer from "multer";
 import mysql from "mysql2/promise";
-import net from "net";
 import path from "path";
-import tls from "tls";
+import { Resend } from "resend";
 import { assessClassEvidence } from "./classEvidence.js";
 import { deleteRecordingFromDrive, extractDriveFileId, isGoogleDriveConfigured, uploadRecordingToDrive } from "./googleDrive.js";
 
@@ -178,113 +177,22 @@ function encodeEmailBody(value) {
 }
 
 function smtpConfigured() {
-  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+  return Boolean(process.env.RESEND_API_KEY);
 }
 
-function createSmtpClient({ host, port, secure }) {
-  return new Promise((resolve, reject) => {
-    const socket = secure
-      ? tls.connect(port, host, { servername: host }, () => resolve(socket))
-      : net.connect(port, host, () => resolve(socket));
-
-    socket.setEncoding("utf8");
-    socket.once("error", reject);
-  });
-}
-
-function readSmtpResponse(socket) {
-  return new Promise((resolve, reject) => {
-    let buffer = "";
-
-    function cleanup() {
-      socket.off("data", onData);
-      socket.off("error", onError);
-    }
-
-    function onError(err) {
-      cleanup();
-      reject(err);
-    }
-
-    function onData(chunk) {
-      buffer += chunk;
-      const lines = buffer.split(/\r?\n/).filter(Boolean);
-      const last = lines[lines.length - 1] || "";
-      if (/^\d{3} /.test(last)) {
-        cleanup();
-        resolve(buffer);
-      }
-    }
-
-    socket.on("data", onData);
-    socket.once("error", onError);
-  });
-}
-
-async function smtpCommand(socket, command, expectedCodes) {
-  if (command) socket.write(`${command}\r\n`);
-  const response = await readSmtpResponse(socket);
-  const code = response.slice(0, 3);
-  if (!expectedCodes.includes(code)) {
-    throw new Error(`SMTP command failed (${code}): ${response.trim()}`);
-  }
-  return response;
-}
-
-async function upgradeSmtpToTls(socket, host) {
-  return new Promise((resolve, reject) => {
-    const secureSocket = tls.connect({ socket, servername: host }, () => resolve(secureSocket));
-    secureSocket.setEncoding("utf8");
-    secureSocket.once("error", reject);
-  });
-}
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 async function sendSmtpMail({ to, subject, text }) {
   if (!smtpConfigured()) {
-    console.warn("SMTP is not configured; account invite email was not sent.");
+    console.warn("Resend is not configured; email was not sent.");
     return { sent: false, skipped: true };
   }
 
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || 587);
-  const secure = String(process.env.SMTP_SECURE || "").toLowerCase() === "true" || port === 465;
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
-  let socket = await createSmtpClient({ host, port, secure });
+  const from = `${process.env.SMTP_FROM_NAME || "JEN Academia"} <onboarding@resend.dev>`;
 
-  try {
-    await smtpCommand(socket, null, ["220"]);
-    await smtpCommand(socket, `EHLO ${process.env.SMTP_EHLO_DOMAIN || "jenacademia.local"}`, ["250"]);
-
-    if (!secure) {
-      await smtpCommand(socket, "STARTTLS", ["220"]);
-      socket = await upgradeSmtpToTls(socket, host);
-      await smtpCommand(socket, `EHLO ${process.env.SMTP_EHLO_DOMAIN || "jenacademia.local"}`, ["250"]);
-    }
-
-    await smtpCommand(socket, "AUTH LOGIN", ["334"]);
-    await smtpCommand(socket, Buffer.from(process.env.SMTP_USER).toString("base64"), ["334"]);
-    await smtpCommand(socket, Buffer.from(process.env.SMTP_PASS).toString("base64"), ["235"]);
-    await smtpCommand(socket, `MAIL FROM:<${from}>`, ["250"]);
-    await smtpCommand(socket, `RCPT TO:<${to}>`, ["250", "251"]);
-    await smtpCommand(socket, "DATA", ["354"]);
-
-    const body = [
-      `From: ${escapeEmailHeader(process.env.SMTP_FROM_NAME || "JEN Academia")} <${from}>`,
-      `To: <${to}>`,
-      `Subject: ${escapeEmailHeader(subject)}`,
-      "MIME-Version: 1.0",
-      "Content-Type: text/plain; charset=UTF-8",
-      "",
-      encodeEmailBody(text),
-    ].join("\r\n");
-
-    socket.write(`${body}\r\n.\r\n`);
-    await smtpCommand(socket, null, ["250"]);
-    await smtpCommand(socket, "QUIT", ["221"]);
-    return { sent: true };
-  } finally {
-    socket.end();
-  }
+  const { error } = await resend.emails.send({ from, to, subject, text });
+  if (error) throw new Error(error.message);
+  return { sent: true };
 }
 
 async function sendAccountSetupInviteEmail({ email, firstName, role, inviteUrl, expiresAt }) {
@@ -2559,8 +2467,7 @@ app.post("/api/contact", async (req, res) => {
       return res.status(400).json({ message: "Message is too long" });
     }
 
-    const smtpReady = process.env.SMTP_FROM || process.env.SMTP_USER;
-    if (!smtpReady) {
+    if (!smtpConfigured()) {
       return res.status(503).json({ message: "Contact form is not configured" });
     }
 
