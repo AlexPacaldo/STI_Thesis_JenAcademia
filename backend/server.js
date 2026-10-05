@@ -182,6 +182,8 @@ function smtpConfigured() {
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+const RESEND_TEST_EMAIL = "alexpacaldo1105@gmail.com";
+
 async function sendSmtpMail({ to, subject, text }) {
   if (!smtpConfigured()) {
     console.warn("Resend is not configured; email was not sent.");
@@ -189,8 +191,12 @@ async function sendSmtpMail({ to, subject, text }) {
   }
 
   const from = `${process.env.SMTP_FROM_NAME || "JEN Academia"} <onboarding@resend.dev>`;
+  const actualTo = RESEND_TEST_EMAIL;
+  const actualText = to !== RESEND_TEST_EMAIL
+    ? `[DEV] Originally addressed to: ${to}\n\n${text}`
+    : text;
 
-  const { error } = await resend.emails.send({ from, to, subject, text });
+  const { error } = await resend.emails.send({ from, to: actualTo, subject, text: actualText });
   if (error) throw new Error(error.message);
   return { sent: true };
 }
@@ -2472,7 +2478,7 @@ app.post("/api/contact", async (req, res) => {
     }
 
     await sendSmtpMail({
-      to: "odyssey.est25@gmail.com",
+      to: "alexpacaldo1105@gmail.com",
       subject: `JEN Academia contact form — ${escapeEmailHeader(name)}`,
       text: [
         `Name:    ${name}`,
