@@ -8044,16 +8044,16 @@ app.post("/api/calendar/set-availability", async (req, res) => {
       );
 
       if (existingClasses.length > 0) {
-        // Check for time conflict
-        for (const cls of existingClasses) {
-          const classStartMin = parseInt((cls.start_time || "00:00").split(":")[0]) * 60 + parseInt((cls.start_time || "00:00").split(":")[1]);
-          const classEndMin = parseInt((cls.end_time || "00:00").split(":")[0]) * 60 + parseInt((cls.end_time || "00:00").split(":")[1]);
-          
-          // Check if class overlaps with availability window
-          if (classStartMin < endMinutes && classEndMin > startMinutes) {
-            return res.status(409).json({ message: "You have a booked class during this time period" });
-          }
-        }
+        return res.status(409).json({ message: "Cannot update availability: a student has a booked class on this day." });
+      }
+    } else {
+      const [existingClassesAny] = await pool.query(
+        `SELECT class_id FROM classes 
+         WHERE teacher_id = ? AND scheduled_date = ? AND status = 'scheduled' LIMIT 1`,
+        [teacher_id, available_date]
+      );
+      if (existingClassesAny.length > 0) {
+        return res.status(409).json({ message: "Cannot update availability: a student has a booked class on this day." });
       }
     }
 
