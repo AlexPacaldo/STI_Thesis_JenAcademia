@@ -852,6 +852,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [teacherSelectedDate, setTeacherSelectedDate] = useState(null);
   const [teacherAvailabilityList, setTeacherAvailabilityList] = useState([]); // list of availability records for the visible month
   const [teacherAvailabilityRecordForDate, setTeacherAvailabilityRecordForDate] = useState(null); // individual selected date record
+  const [confirmAction, setConfirmAction] = useState(null);
+  const closeConfirmAction = () => setConfirmAction(null);
   const triggerCalendarRefresh = useCallback(() => {
     setClassesCache({});
     setTeacherClassesCache({});
@@ -2408,31 +2410,78 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     await submitTeacherAvailability();
   };
 
-  // Delete teacher availability
-  const deleteTeacherAvailability = async (recordId) => {
-    if (!window.confirm("Are you sure you want to delete this availability record?")) return;
+  const deleteTeacherAvailability = (recordId) => {
+    setConfirmAction({
+      type: "delete-availability",
+      recordId,
+      title: "Delete availability?",
+      message: "Are you sure you want to delete this availability record?",
+      confirmLabel: "Delete",
+    });
+  };
 
-    try {
-      await axios.delete(`${API}/api/calendar/availability/${recordId}`);
-      notify("Availability deleted successfully", "success");
-      triggerCalendarRefresh();
-      loadTeacherAvailabilityForMonth();
-      
-      // Refresh availability cache
-      const y = year;
-      const m = month + 1;
-      axios.get(`${API}/api/calendar/teacher-availability-records`, {
-        params: { teacher_id: localUserId, year: y, month: m }
-      }).then(r => {
-        if (r.data?.records) {
-          setAvailability(buildAvailabilityMapForViewer(r.data.records));
-        } else {
-          setAvailability({});
+  const performConfirmAction = async () => {
+    const action = confirmAction;
+    closeConfirmAction();
+    if (!action) return;
+
+    if (action.type === "delete-availability") {
+      try {
+        await axios.delete(`${API}/api/calendar/availability/${action.recordId}`);
+        notify("Availability deleted successfully", "success");
+        triggerCalendarRefresh();
+        loadTeacherAvailabilityForMonth();
+        const y = year;
+        const m = month + 1;
+        axios.get(`${API}/api/calendar/teacher-availability-records`, {
+          params: { teacher_id: localUserId, year: y, month: m }
+        }).then(r => {
+          if (r.data?.records) {
+            setAvailability(buildAvailabilityMapForViewer(r.data.records));
+          } else {
+            setAvailability({});
+          }
+        });
+      } catch (error) {
+        const msg = error?.response?.data?.message || "Failed to delete availability. Please try again.";
+        notify(msg, "error");
+      }
+    }
+
+    if (action.type === "no-show") {
+      setIsMarkingClassDone(true);
+      try {
+        const response = await axios.put(`${API}/api/calendar/classes/${selectedClass.id}/no-show`, {
+          teacher_id: localUserId,
+        });
+        setClassesCache(prev => ({
+          ...prev,
+          [selectedDate]: (prev[selectedDate] || []).filter(cls => String(cls.id) !== String(selectedClass.id)),
+        }));
+        setTeacherClassesCache(prev => ({
+          ...prev,
+          [selectedDate]: (prev[selectedDate] || []).filter(cls => String(cls.id || cls.class_id) !== String(selectedClass.id)),
+        }));
+        setBookedDates(prev =>
+          prev.filter(bd =>
+            normalizeDate(bd.scheduled_date) !== normalizeDate(selectedDate) ||
+            normalizeTime(bd.start_time) !== normalizeTime(selectedClass.start_time || selectedClass.time)
+          )
+        );
+        setSelectedClassId(null);
+        if (response.data?.package && localRole === "student") {
+          setStudentPackage(response.data.package);
         }
-      });
-    } catch (error) {
-      const msg = error?.response?.data?.message || "Failed to delete availability. Please try again.";
-      notify(msg, "error");
+        notify?.("Class marked as no-show. The booking credit was returned.", "success");
+      } catch (err) {
+        notify?.(err?.response?.data?.message || "Unable to mark class as no-show. Please try again.", "error");
+      } finally {
+        setIsMarkingClassDone(false);
+      }
+    }
+
+    if (action.type === "replace-recording") {
+      action.startRecording();
     }
   };
 
@@ -3057,43 +3106,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       return;
     }
 
-    if (!window.confirm("Mark this class as no-show and return the student's booking credit?")) {
-      return;
-    }
-
-    setIsMarkingClassDone(true);
-    try {
-      const response = await axios.put(`${API}/api/calendar/classes/${selectedClass.id}/no-show`, {
-        teacher_id: localUserId,
-      });
-
-      setClassesCache(prev => ({
-        ...prev,
-        [selectedDate]: (prev[selectedDate] || []).filter(cls => String(cls.id) !== String(selectedClass.id)),
-      }));
-      setTeacherClassesCache(prev => ({
-        ...prev,
-        [selectedDate]: (prev[selectedDate] || []).filter(cls => String(cls.id || cls.class_id) !== String(selectedClass.id)),
-      }));
-      setBookedDates(prev =>
-        prev.filter(bd =>
-          normalizeDate(bd.scheduled_date) !== normalizeDate(selectedDate) ||
-          normalizeTime(bd.start_time) !== normalizeTime(selectedClass.start_time || selectedClass.time)
-        )
-      );
-      setSelectedClassId(null);
-
-      if (response.data?.package && localRole === "student") {
-        setStudentPackage(response.data.package);
-      }
-
-      notify?.("Class marked as no-show. The booking credit was returned.", "success");
-    } catch (error) {
-      const message = error.response?.data?.message || "Unable to mark class as no-show. Please try again.";
-      notify?.(message, "error");
-    } finally {
-      setIsMarkingClassDone(false);
-    }
+    setConfirmAction({
+      type: "no-show",
+      title: "Mark as no-show?",
+      message: "Mark this class as no-show and return the student's booking credit?",
+      confirmLabel: "Mark No-Show",
+    });
   };
 
   // student package based usage calculation
@@ -3909,9 +3927,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                     <button
                       type="button"
                       onClick={() => {
-                        if (window.confirm("Record a replacement? Your current recording will be replaced only after the new recording uploads successfully.")) {
-                          recording.start(selectedClass.id);
-                        }
+                        setConfirmAction({
+                          type: "replace-recording",
+                          title: "Replace recording?",
+                          message: "Your current recording will be replaced only after the new recording uploads successfully.",
+                          confirmLabel: "Record",
+                          startRecording: () => recording.start(selectedClass.id),
+                        });
                       }}
                       style={{ border: "1px solid #cfd8dc", borderRadius: 8, padding: "8px 12px", background: "#fff", color: "#344054", fontWeight: 600, cursor: "pointer" }}
                     >
@@ -7034,6 +7056,55 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
               }}
             >
               {isMarkingClassDone ? "Saving..." : "Save Assessment & Complete"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    {confirmAction && (
+      <div
+        onClick={closeConfirmAction}
+        style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          background: "rgba(0,0,0,0.45)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            background: "#fff", borderRadius: 12, padding: "28px 24px",
+            minWidth: 320, maxWidth: 420, width: "90%",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+          }}
+        >
+          <h2 style={{ margin: "0 0 10px", fontSize: "1.1rem", fontWeight: 700, color: "#1a1a1a" }}>
+            {confirmAction.title}
+          </h2>
+          <p style={{ margin: "0 0 24px", color: "#555", fontSize: "0.95rem", lineHeight: 1.5 }}>
+            {confirmAction.message}
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button
+              type="button"
+              onClick={closeConfirmAction}
+              style={{
+                padding: "8px 18px", borderRadius: 7, border: "1px solid #d1d5db",
+                background: "#fff", color: "#374151", fontWeight: 600, cursor: "pointer", fontSize: "0.9rem",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={performConfirmAction}
+              style={{
+                padding: "8px 18px", borderRadius: 7, border: "none",
+                background: confirmAction.type === "delete-availability" ? "#f44336" : "#1a56db",
+                color: "#fff", fontWeight: 600, cursor: "pointer", fontSize: "0.9rem",
+              }}
+            >
+              {confirmAction.confirmLabel}
             </button>
           </div>
         </div>
