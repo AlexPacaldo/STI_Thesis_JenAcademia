@@ -2197,6 +2197,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     availabilityEndTime: endTime = availabilityEndTime,
     availabilityBreakStart: breakStart = availabilityBreakStart,
     availabilityBreakEnd: breakEnd = availabilityBreakEnd,
+    skipCurrentTimeCheck = false,
   } = {}) => {
     if (!date) {
       return "Please select a date";
@@ -2229,7 +2230,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       }
 
       const todayMidnight = new Date(viewerToday.getFullYear(), viewerToday.getMonth(), viewerToday.getDate(), 0, 0, 0, 0);
-      if (selectedDateObj.getTime() === todayMidnight.getTime()) {
+      if (!skipCurrentTimeCheck && selectedDateObj.getTime() === todayMidnight.getTime()) {
         const [currentHours, currentMins] = formatTimeInTimezone(new Date(), viewerTimezone).split(":").map(Number);
         const currentTotalMins = currentHours * 60 + currentMins;
 
@@ -2280,7 +2281,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   };
 
   const getAvailabilityFieldError = (field) => {
-    const error = validateAvailabilityInputs();
+    const error = availabilityApplyMode === "bulk"
+      ? validateBulkAvailabilityInputs()
+      : validateAvailabilityInputs();
     if (!error) return "";
 
     const fieldErrors = {
@@ -2319,11 +2322,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     if (!bulkAvailabilityDates.length) {
       return `No valid dates in ${monthName} within the 3-month scheduling window`;
     }
-    const error = validateAvailabilityInputs({ availabilityDate: bulkAvailabilityDates[0] });
-    if (error === "Start time must be after the current time" || error === "End time must be after the current time") {
-      return "";
-    }
-    return error;
+    return validateAvailabilityInputs({ availabilityDate: bulkAvailabilityDates[0], skipCurrentTimeCheck: true });
   };
 
   // Submit teacher availability
