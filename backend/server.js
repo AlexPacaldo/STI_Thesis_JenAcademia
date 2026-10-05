@@ -7874,7 +7874,13 @@ app.get("/api/calendar/teacher-availability-records", async (req, res) => {
               TIME_FORMAT(ta.end_time, '%H:%i:%s') AS end_time,
               TIME_FORMAT(ta.break_start, '%H:%i:%s') AS break_start,
               TIME_FORMAT(ta.break_end, '%H:%i:%s') AS break_end,
-              u.timezone AS teacher_timezone
+              u.timezone AS teacher_timezone,
+              EXISTS (
+                SELECT 1 FROM classes c
+                WHERE c.teacher_id = ta.teacher_id
+                  AND c.scheduled_date = ta.available_date
+                  AND c.status = 'scheduled'
+              ) AS has_booked_class
        FROM teacher_availability ta
        JOIN users u ON u.user_id = ta.teacher_id
        WHERE ta.teacher_id = ?
@@ -8030,7 +8036,7 @@ app.post("/api/calendar/set-availability", async (req, res) => {
       // Check if there's already a booked class during this time window
       const [existingClasses] = await pool.query(
         `SELECT class_id, start_time, end_time FROM classes 
-         WHERE teacher_id = ? AND scheduled_date = ?`,
+         WHERE teacher_id = ? AND scheduled_date = ? AND status = 'scheduled'`,
         [teacher_id, available_date]
       );
 
@@ -8330,6 +8336,23 @@ app.delete("/api/calendar/availability/:availability_id", async (req, res) => {
        LIMIT 1`,
       [availability_id]
     );
+
+    if (!availabilityRows.length) {
+      return res.status(404).json({ message: "Availability record not found" });
+    }
+
+    const { teacher_id, available_date } = availabilityRows[0];
+
+    const [bookedClasses] = await pool.query(
+      `SELECT class_id FROM classes
+       WHERE teacher_id = ? AND scheduled_date = ? AND status = 'scheduled'
+       LIMIT 1`,
+      [teacher_id, available_date]
+    );
+
+    if (bookedClasses.length > 0) {
+      return res.status(409).json({ message: "Cannot delete availability: a student has a booked class on this day." });
+    }
 
     const [result] = await pool.query(
       `DELETE FROM teacher_availability WHERE availability_id = ?`,

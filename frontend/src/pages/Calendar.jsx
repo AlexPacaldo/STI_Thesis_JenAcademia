@@ -2431,7 +2431,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         }
       });
     } catch (error) {
-      notify("Failed to delete availability. Please try again.", "error");
+      const msg = error?.response?.data?.message || "Failed to delete availability. Please try again.";
+      notify(msg, "error");
     }
   };
 
@@ -5369,15 +5370,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                                   <button
                                     type="button"
                                     onClick={() => deleteTeacherAvailability(record.id || record.availability_id)}
+                                    disabled={!!record.has_booked_class}
+                                    title={record.has_booked_class ? "A student has a booked class on this day" : undefined}
                                     style={{
                                       padding: "6px 10px",
                                       fontSize: "0.75rem",
                                       fontWeight: 700,
                                       border: "none",
-                                      background: "#f44336",
-                                      color: "#fff",
+                                      background: record.has_booked_class ? "#ccc" : "#f44336",
+                                      color: record.has_booked_class ? "#888" : "#fff",
                                       borderRadius: 4,
-                                      cursor: "pointer",
+                                      cursor: record.has_booked_class ? "not-allowed" : "pointer",
                                       minWidth: 62,
                                       lineHeight: 1,
                                       whiteSpace: "nowrap",
