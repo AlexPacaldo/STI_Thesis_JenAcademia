@@ -2317,7 +2317,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     if (!bulkAvailabilityDates.length) {
       return `No valid dates in ${monthName} within the 3-month scheduling window`;
     }
-    return validateAvailabilityInputs({ availabilityDate: bulkAvailabilityDates[0] });
+    const error = validateAvailabilityInputs({ availabilityDate: bulkAvailabilityDates[0] });
+    if (error === "Start time must be after the current time" || error === "End time must be after the current time") {
+      return "";
+    }
+    return error;
   };
 
   // Submit teacher availability
