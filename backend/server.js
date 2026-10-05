@@ -2543,6 +2543,46 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+app.post("/api/contact", async (req, res) => {
+  try {
+    const name = String(req.body?.name || "").trim();
+    const email = String(req.body?.email || "").trim();
+    const message = String(req.body?.message || "").trim();
+
+    if (!name || !email || !message) {
+      return res.status(400).json({ message: "Name, email, and message are required" });
+    }
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ message: "A valid email address is required" });
+    }
+    if (message.length > 2000) {
+      return res.status(400).json({ message: "Message is too long" });
+    }
+
+    const recipient = process.env.SMTP_FROM || process.env.SMTP_USER;
+    if (!recipient) {
+      return res.status(503).json({ message: "Contact form is not configured" });
+    }
+
+    await sendSmtpMail({
+      to: recipient,
+      subject: `JEN Academia contact form — ${escapeEmailHeader(name)}`,
+      text: [
+        `Name:    ${name}`,
+        `Email:   ${email}`,
+        ``,
+        `Message:`,
+        message,
+      ].join("\n"),
+    });
+
+    res.json({ message: "Message sent successfully." });
+  } catch (err) {
+    console.error("POST /api/contact error:", err);
+    res.status(500).json({ message: "Server error. Please try again later." });
+  }
+});
+
 app.post("/api/forgot-password", async (req, res) => {
   try {
     const email = String(req.body?.email || "").trim().toLowerCase();

@@ -1,4 +1,3 @@
-// src/pages/Homepage.jsx
 import { useRef, useState } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
@@ -8,6 +7,7 @@ import TextType from "../components/TextType";
 import styles from "../assets/homepage.module.css";
 import Girl from "../assets/img/homepage/Girl.png";
 import JenLogo from "../assets/img/homepage/jenlog.png";
+import { API_BASE_URL } from "../utils/api.js";
 
 const processSteps = [
   {
@@ -261,6 +261,9 @@ function ProcessStackCard({ step, index, progress, total }) {
 export default function Homepage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hoveredServiceTitle, setHoveredServiceTitle] = useState(null);
+  const [contactForm, setContactForm] = useState({ name: "", email: "", message: "" });
+  const [contactStatus, setContactStatus] = useState(null);
+  const [contactSubmitting, setContactSubmitting] = useState(false);
   const processRef = useRef(null);
   const { scrollYProgress } = useScroll({
     target: processRef,
@@ -269,6 +272,27 @@ export default function Homepage() {
   const processIntroY = useTransform(scrollYProgress, [0.22, 0.34], ["0%", "-115%"]);
   const navigate = useNavigate();
   const goToLogin = () => navigate("/login");
+
+  async function handleContactSubmit(e) {
+    e.preventDefault();
+    setContactSubmitting(true);
+    setContactStatus(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/contact`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(contactForm),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Something went wrong");
+      setContactStatus({ type: "success", message: "Message sent! We'll get back to you soon." });
+      setContactForm({ name: "", email: "", message: "" });
+    } catch (err) {
+      setContactStatus({ type: "error", message: err.message });
+    } finally {
+      setContactSubmitting(false);
+    }
+  }
 
   return (
     <main className={styles.page}>
@@ -540,21 +564,57 @@ export default function Homepage() {
           <div className={styles.contactBody}>
             <form
               className={styles.contactForm}
-              onSubmit={(event) => event.preventDefault()}
+              onSubmit={handleContactSubmit}
             >
               <label>
                 <span>Name</span>
-                <input type="text" name="name" autoComplete="name" />
+                <input
+                  type="text"
+                  name="name"
+                  autoComplete="name"
+                  value={contactForm.name}
+                  onChange={(e) => setContactForm((p) => ({ ...p, name: e.target.value }))}
+                  required
+                />
               </label>
               <label>
                 <span>Email</span>
-                <input type="email" name="email" autoComplete="email" />
+                <input
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  value={contactForm.email}
+                  onChange={(e) => setContactForm((p) => ({ ...p, email: e.target.value }))}
+                  required
+                />
               </label>
               <label>
                 <span>Message</span>
-                <textarea name="message" rows="5" />
+                <textarea
+                  name="message"
+                  rows="5"
+                  value={contactForm.message}
+                  onChange={(e) => setContactForm((p) => ({ ...p, message: e.target.value }))}
+                  required
+                />
               </label>
-              <button type="submit">Send message</button>
+              {contactStatus && (
+                <p style={{
+                  color: contactStatus.type === "success" ? "#006a43" : "#7a1f1f",
+                  background: contactStatus.type === "success" ? "#e6fff6" : "#ffecec",
+                  border: `1px solid ${contactStatus.type === "success" ? "#00c853" : "#ff5252"}`,
+                  borderRadius: "14px",
+                  padding: "12px 16px",
+                  fontSize: "0.9rem",
+                  fontWeight: 600,
+                  margin: 0,
+                }}>
+                  {contactStatus.message}
+                </p>
+              )}
+              <button type="submit" disabled={contactSubmitting}>
+                {contactSubmitting ? "Sending..." : "Send message"}
+              </button>
             </form>
 
             <aside className={styles.contactAside} aria-label="Contact options">
