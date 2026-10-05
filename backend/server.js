@@ -2559,13 +2559,13 @@ app.post("/api/contact", async (req, res) => {
       return res.status(400).json({ message: "Message is too long" });
     }
 
-    const recipient = process.env.SMTP_FROM || process.env.SMTP_USER;
-    if (!recipient) {
+    const smtpReady = process.env.SMTP_FROM || process.env.SMTP_USER;
+    if (!smtpReady) {
       return res.status(503).json({ message: "Contact form is not configured" });
     }
 
     await sendSmtpMail({
-      to: recipient,
+      to: "odyssey.est25@gmail.com",
       subject: `JEN Academia contact form — ${escapeEmailHeader(name)}`,
       text: [
         `Name:    ${name}`,
