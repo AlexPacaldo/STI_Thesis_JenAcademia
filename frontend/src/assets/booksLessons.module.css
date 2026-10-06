@@ -1,7 +1,7 @@
 .cont {
   display: flex;
   justify-content: center;
-  color: #1f2933;
+  color: var(--text);
   font-family: "Poppins", sans-serif;
   padding: 32px 20px 56px;
 }
@@ -20,7 +20,9 @@
   background: #fff;
   border: 1px solid rgba(38, 66, 59, 0.1);
   border-radius: 28px;
-  box-shadow: 0 18px 40px rgba(18, 34, 30, 0.06);
+  box-shadow:
+    6px 6px 16px rgba(18, 34, 30, 0.16),
+    -4px -4px 12px rgba(255, 255, 255, 0.72);
 }
 
 /* ---------- Page header ---------- */
@@ -55,10 +57,12 @@
   width: 44px;
   height: 44px;
   border-radius: 14px;
-  background: #26423b;
+  background: var(--primary);
   color: #eef6ef;
   font-size: 1.2rem;
-  box-shadow: 0 8px 18px rgba(18, 34, 30, 0.18);
+  box-shadow:
+    4px 4px 12px rgba(18, 34, 30, 0.18),
+    -2px -2px 8px rgba(255, 255, 255, 0.6);
 }
 
 .pageHeaderText {
@@ -72,13 +76,13 @@
   margin: 0;
   font-size: clamp(1.4rem, 2vw, 1.8rem);
   line-height: 1.2;
-  color: #26423b;
+  color: var(--primary);
   letter-spacing: -0.02em;
 }
 
 .pageHeaderText p {
   margin: 0;
-  color: #5e7268;
+  color: var(--muted);
   font-size: 0.88rem;
   line-height: 1.5;
 }
@@ -101,7 +105,7 @@
   font-size: 1.3rem;
   font-weight: 800;
   line-height: 1.1;
-  color: #26423b;
+  color: var(--primary);
 }
 
 .countLabel {
@@ -109,7 +113,7 @@
   font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: #7d9089;
+  color: var(--muted-light);
 }
 
 .description,
@@ -118,7 +122,7 @@
 .loading,
 .error {
   margin: 0;
-  color: #5e7268;
+  color: var(--muted);
   line-height: 1.6;
 }
 
@@ -138,7 +142,7 @@
 .uploadLessonBtn,
 .viewBtn,
 .confirmBtn {
-  background: #26423b;
+  background: var(--primary);
   color: #fff;
 }
 
@@ -152,7 +156,7 @@
 .uploadLessonBtn:hover,
 .viewBtn:hover,
 .confirmBtn:hover {
-  background: #35594e;
+  background: var(--primary-mid);
   transform: translateY(-1px);
   box-shadow: 0 10px 22px rgba(18, 34, 30, 0.14);
 }
@@ -228,7 +232,7 @@
   font-size: 1rem;
   font-weight: 700;
   line-height: 1.35;
-  color: #13251f;
+  color: var(--text);
   /* Two-line clamp keeps every card in a grid row the same height. */
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -249,7 +253,7 @@
 .bookCover {
   object-fit: cover;
   display: block;
-  background: #eef3f0;
+  background: var(--bg-alt);
 }
 
 .bookImagePlaceholder {
@@ -267,7 +271,7 @@
   height: 64px;
   border-radius: 50%;
   background: #fff;
-  color: #26423b;
+  color: var(--primary);
   font-size: 0.82rem;
   font-weight: 800;
   box-shadow: 0 8px 20px rgba(18, 34, 30, 0.12);
@@ -299,7 +303,7 @@
 .uploadedBy {
   font-size: 0.8rem;
   font-weight: 600;
-  color: #5e7268;
+  color: var(--muted);
   /* Keeps long teacher names from pushing the row wider than the card. */
   overflow: hidden;
   text-overflow: ellipsis;
@@ -329,24 +333,24 @@
   min-height: 40px;
   padding: 10px 14px;
   font-size: 0.9rem;
-  background: #26423b;
+  background: var(--primary);
   color: #fff;
 }
 
 .LessonsCard button:hover {
-  background: #35594e;
+  background: var(--primary-mid);
   transform: translateY(-1px);
   box-shadow: 0 10px 22px rgba(18, 34, 30, 0.14);
 }
 
 .deleteBtn {
   flex: 1;
-  background: #fce8e4;
+  background: var(--pill-danger);
   color: #8a3e2e;
 }
 
 .deleteBtn:hover {
-  background: #f7d6cf;
+  background: var(--pill-danger);
 }
 
 .noBooks {
@@ -364,7 +368,10 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(19, 37, 31, 0.52);
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: fadeInFast 0.18s ease-out;
 }
 
 .modalContent {
@@ -374,23 +381,25 @@
   align-items: stretch;
   gap: 16px;
   background: #fff;
+  border: 1px solid rgba(38, 66, 59, 0.12);
   border-radius: 24px;
-  padding: 26px;
-  box-shadow: 0 22px 70px rgba(15, 23, 42, 0.22);
+  padding: 24px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
   max-height: calc(100vh - 40px);
   overflow-y: auto;
+  animation: scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .modalContent h2 {
   font-size: 1.35rem;
-  color: #13251f;
+  color: var(--text);
 }
 
 .modalContent label {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  color: #374151;
+  color: var(--muted);
   font-size: 0.92rem;
   font-weight: 700;
 }
@@ -402,7 +411,7 @@
   border: 1px solid rgba(38, 66, 59, 0.14);
   border-radius: 18px;
   padding: 12px 14px;
-  color: #13251f;
+  color: var(--text);
   font: inherit;
   outline: none;
 }
@@ -415,7 +424,7 @@
 .modalContent input:focus,
 .modalContent textarea:focus,
 .modalContent select:focus {
-  border-color: #91a79a;
+  border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(145, 167, 154, 0.18);
 }
 
@@ -426,13 +435,13 @@
 
 .autoLessonNote {
   margin: -10px 0 0;
-  color: #5e7268;
+  color: var(--muted);
   font-size: 0.92rem;
 }
 
 .selectedFileName {
   margin: -6px 0 0;
-  color: #374151;
+  color: var(--muted);
   font-size: 0.9rem;
 }
 
@@ -451,7 +460,7 @@
 
 .cancelBtn {
   background: #edf2ef;
-  color: #26423b;
+  color: var(--primary);
 }
 
 .cancelBtn:hover {

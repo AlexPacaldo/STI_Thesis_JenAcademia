@@ -1,6 +1,6 @@
 :root{
-  --footer-bg: linear-gradient(135deg, #79a847 0%, #2f7a3d 44%, #15382c 100%);
-  --footer-fg: #ffffff;
+  --footer-bg: linear-gradient(135deg, var(--brand-lime) 0%, var(--brand-green) 44%, var(--primary) 100%);
+  --footer-fg: var(--surface-white);
   --footer-muted: rgba(255,255,255,0.78);
   --footer-border: rgba(255,255,255,0.16);
   --footer-faint: rgba(255,255,255,0.20);
@@ -32,7 +32,7 @@
 }
 .brandMark{
   background: rgba(255,255,255,0.96);
-  color: #15382c;
+  color: var(--primary-dark);
   padding: 3px 8px;
   border-radius: 8px;
   margin-right: 6px;
@@ -68,13 +68,13 @@
   border-radius: 6px;
 }
 .footerNav a:hover{
-  color: #ffffff;
+  color: var(--surface-white);
   text-decoration: underline;
   text-underline-offset: 4px;
 }
 
 .footerContact a{ color: var(--link); text-decoration: none; }
-.footerContact a:hover{ color: #ffffff; text-decoration: underline; }
+.footerContact a:hover{ color: var(--surface-white); text-decoration: underline; }
 
 .socials{
   margin-top: 14px;
@@ -92,7 +92,7 @@
   transition: transform .2s ease, background .2s ease, color .2s ease;
 }
 .iconBtn:hover{
-  background: #ffffff;
+  background: var(--surface-white);
   color: #1e5a33;
   transform: translateY(-3px);
 }

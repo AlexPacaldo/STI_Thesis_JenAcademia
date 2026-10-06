@@ -1,7 +1,7 @@
-﻿.page {
+.page {
   min-height: 100vh;
-  /* background: linear-gradient(180deg, #f6f3ee 0%, #f9f7f0 45%, #ffffff 100%); */
-  color: #2f4d3e;
+  /* background: linear-gradient(180deg, #f6f3ee 0%, #f9f7f0 45%, var(--surface-white) 100%); */
+  color: var(--primary);
   padding: 0 0 4rem;
 }
 
@@ -53,7 +53,7 @@
   padding: 0;
   border-radius: 0;
   background: transparent;
-  color: #1e3828;
+  color: var(--primary-dark);
   font-size: 1.28rem;
   font-weight: 900;
   letter-spacing: 0;
@@ -93,7 +93,7 @@
 }
 
 .topNav a:hover {
-  color: #1e3828;
+  color: var(--primary-dark);
 }
 
 .actionGroup {
@@ -120,7 +120,7 @@
   display: block;
   width: 18px;
   height: 2px;
-  background: #2f4d3e;
+  background: var(--primary);
   border-radius: 999px;
   margin: 4px 0;
 }
@@ -145,7 +145,7 @@
 }
 
 .mobileNav a {
-  color: #2f4d3e;
+  color: var(--primary);
   text-decoration: none;
   font-weight: 700;
   padding: 0.95rem 1rem;
@@ -154,8 +154,8 @@
 }
 
 .mobileLogin {
-  background: #2f4d3e;
-  color: #ffffff;
+  background: var(--primary);
+  color: var(--surface-white);
 }
 
 .navButton,
@@ -170,15 +170,15 @@
 }
 
 .navButton {
-  background: #1e3828;
-  color: #ffffff;
+  background: var(--primary-dark);
+  color: var(--surface-white);
   padding: 0.85rem 1.55rem;
   box-shadow: 0 24px 48px rgba(30, 56, 40, 0.18);
 }
 
 .secondaryButton {
   padding: 0.95rem 1.4rem;
-  color: #1e3828;
+  color: var(--primary-dark);
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(30, 56, 40, 0.08);
 }
@@ -252,7 +252,7 @@
   line-height: 0.95;
   letter-spacing: 0;
   font-weight: 900;
-  color: #15382c;
+  color: var(--primary-dark);
 }
 
 .heroTitleAccent {
@@ -280,8 +280,8 @@
   align-items: center;
   justify-content: center;
   padding: 1rem 1.9rem;
-  color: #ffffff;
-  background: #1e3828;
+  color: var(--surface-white);
+  background: var(--primary-dark);
   border-radius: 999px;
   text-decoration: none;
   font-weight: 700;
@@ -294,7 +294,7 @@
   align-items: center;
   justify-content: center;
   padding: 1rem 1.75rem;
-  color: #1e3828;
+  color: var(--primary-dark);
   background: rgba(255, 255, 255, 0.72);
   border-radius: 999px;
   text-decoration: none;
@@ -497,7 +497,7 @@
 }
 
 .heroVisualInfo small {
-  color: #54645d;
+  color: var(--muted);
   font-size: 0.9rem;
 }
 
@@ -510,7 +510,7 @@
   width: 280px;
   border-radius: 42px;
   padding: 1.4rem;
-  background: #ffffff;
+  background: var(--surface-white);
   box-shadow: 0 30px 70px rgba(47, 77, 62, 0.12);
   border: 1px solid rgba(47, 77, 62, 0.08);
 }
@@ -542,7 +542,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: #2f4d3e;
+  color: var(--primary);
   font-weight: 800;
   letter-spacing: 0.02em;
 }
@@ -555,7 +555,7 @@
   justify-content: center;
   border-radius: 14px;
   background: rgba(47, 77, 62, 0.08);
-  color: #2f4d3e;
+  color: var(--primary);
 }
 
 .phoneTag {
@@ -564,7 +564,7 @@
   padding: 0.55rem 0.9rem;
   border-radius: 999px;
   background: rgba(47, 77, 62, 0.08);
-  color: #2f4d3e;
+  color: var(--primary);
   font-weight: 700;
   font-size: 0.78rem;
   width: fit-content;
@@ -580,7 +580,7 @@
 
 .phoneText {
   margin: 0;
-  color: #54645d;
+  color: var(--muted);
   line-height: 1.75;
   font-size: 0.95rem;
 }
@@ -592,7 +592,7 @@
 }
 
 .phoneStat {
-  background: #ffffff;
+  background: var(--surface-white);
   border-radius: 22px;
   padding: 0.8rem;
   box-shadow: 0 12px 30px rgba(47, 77, 62, 0.08);
@@ -606,7 +606,7 @@
 }
 
 .phoneStat small {
-  color: #55675d;
+  color: var(--muted);
   font-size: 0.82rem;
 }
 
@@ -617,8 +617,8 @@
   width: 100%;
   padding: 0.95rem 0;
   border-radius: 999px;
-  background: #2f4d3e;
-  color: #ffffff;
+  background: var(--primary);
+  color: var(--surface-white);
   font-weight: 700;
   text-align: center;
 }
@@ -644,7 +644,7 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1rem;
   margin-top: 3rem;
-  background: #ffffff;
+  background: var(--surface-white);
   border-radius: 32px;
   padding: 1rem;
   box-shadow: 0 30px 80px rgba(23, 40, 25, 0.08);
@@ -666,7 +666,7 @@
 }
 
 .statLabel {
-  color: #55675d;
+  color: var(--muted);
   font-size: 0.95rem;
 }
 
@@ -677,7 +677,7 @@
   padding: 3.5rem 1.5rem 8rem;
   background:
     linear-gradient(180deg, #eef6ef 0%, #f7faf8 12rem, #f7faf8 100%);
-  color: #ffffff;
+  color: var(--surface-white);
   
 }
 
@@ -737,7 +737,7 @@
   padding: 2.8rem 3rem;
   border: 1px solid rgba(255, 255, 255, 0.38);
   border-radius: 34px;
-  background: linear-gradient(135deg, #79a847 0%, #2f7a3d 44%, #15382c 100%);
+  background: linear-gradient(135deg, #79a847 0%, #2f7a3d 44%, var(--primary-dark) 100%);
   box-shadow: 0 28px 68px rgba(25, 65, 43, 0.18);
   overflow: hidden;
   transform-origin: top center;
@@ -757,7 +757,7 @@
   padding: 0.62rem 0.9rem;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.18);
-  color: #ffffff;
+  color: var(--surface-white);
   font-weight: 800;
   font-size: 0.82rem;
   line-height: 1;
@@ -766,7 +766,7 @@
 
 .processCard h3 {
   margin: 1rem 0 0;
-  color: #ffffff;
+  color: var(--surface-white);
   font-size: clamp(2.2rem, 4vw, 3.4rem);
   line-height: 1.05;
 }
@@ -848,7 +848,7 @@
 .contactIntro p {
   margin: 0;
   max-width: 42rem;
-  color: #4e645c;
+  color: var(--muted);
   font-size: 1.05rem;
   line-height: 1.75;
 }
@@ -870,13 +870,13 @@
   gap: 1rem;
   padding: 1.45rem;
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--surface-white);
 }
 
 .contactForm label {
   display: grid;
   gap: 0.45rem;
-  color: #2f4d3e;
+  color: var(--primary);
   font-weight: 750;
 }
 
@@ -885,7 +885,7 @@
   width: 100%;
   border: 1px solid rgba(47, 77, 62, 0.14);
   border-radius: 10px;
-  background: #f9fbfa;
+  background: var(--surface-raised);
   color: #253f34;
   font: inherit;
   line-height: 1.45;
@@ -907,7 +907,7 @@
 .contactForm input:focus,
 .contactForm textarea:focus {
   border-color: rgba(47, 122, 61, 0.52);
-  background: #ffffff;
+  background: var(--surface-white);
   box-shadow: 0 0 0 4px rgba(121, 168, 71, 0.14);
 }
 
@@ -917,8 +917,8 @@
   padding: 0.85rem 1.4rem;
   border: 0;
   border-radius: 999px;
-  background: #1e3828;
-  color: #ffffff;
+  background: var(--primary-dark);
+  color: var(--surface-white);
   font: inherit;
   font-weight: 850;
   cursor: pointer;
@@ -942,8 +942,8 @@
   border-radius: 12px;
   background:
     radial-gradient(circle at 88% 16%, rgba(255, 255, 255, 0.24), transparent 11rem),
-    linear-gradient(135deg, #79a847 0%, #2f7a3d 48%, #15382c 100%);
-  color: #ffffff;
+    linear-gradient(135deg, var(--brand-lime) 0%, var(--brand-green) 48%, var(--primary) 100%);
+  color: var(--surface-white);
   overflow: hidden;
 }
 
@@ -975,7 +975,7 @@
   min-width: 0;
   padding: 0.85rem;
   border-radius: 12px;
-  color: #ffffff;
+  color: var(--surface-white);
   text-decoration: none;
   background: rgba(255, 255, 255, 0.12);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
@@ -1020,7 +1020,7 @@
 
 .contactMethod strong {
   margin-top: 0.12rem;
-  color: #ffffff;
+  color: var(--surface-white);
   font-size: 0.98rem;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -1379,7 +1379,7 @@
   margin: 1.1rem 0 0;
   max-width: 44rem;
   line-height: 1.78;
-  color: #4e645c;
+  color: var(--muted);
 }
 
 .featureGrid {
@@ -1458,7 +1458,7 @@
   gap: 0.95rem;
   height: 100%;
   padding: 1.65rem 1.45rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, #ffffff 68%, #ffffff 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, var(--surface-white) 68%, var(--surface-white) 100%);
 }
 
 .featureBackground {
@@ -1517,7 +1517,7 @@
   margin: 0;
   max-width: 34rem;
   font-size: clamp(1.9rem, 2.9vw, 3.15rem);
-  color: #2f4d3e;
+  color: var(--primary);
   font-weight: 900;
   line-height: 0.98;
   letter-spacing: 0;

@@ -4742,23 +4742,26 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                             left: 0,
                             right: 0,
                             bottom: 0,
-                            backgroundColor: "rgba(0, 0, 0, 0.5)",
+                            backgroundColor: "rgba(15, 23, 42, 0.48)",
+                            backdropFilter: "blur(8px)",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
-                            zIndex: 1000,
+$5zIndex: 1000,
+$5padding: 20,
                             animation: "fadeIn 0.2s ease-out"
                           }}>
                             <div style={{
                               background: "#fff",
-                              borderRadius: "16px",
-                              padding: "24px",
-                              maxWidth: "420px",
-                              width: "90%",
-                              maxHeight: "90vh",
+                              border: "1px solid rgba(38, 66, 59, 0.12)",
+                              borderRadius: 24,
+                              padding: 24,
+                              maxWidth: "440px",
+                              width: "100%",
+                              maxHeight: "calc(100vh - 40px)",
                               overflow: "auto",
-                              boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
-                              animation: "slideIn 0.3s ease-out",
+                              boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
+                              animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
                               position: "relative"
                             }}>
                               {/* Close button */}
@@ -6336,7 +6339,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
             )}
 
             <div className={styles.legendBlock}>
-              <div style={{ fontSize: "0.9rem", fontWeight: 600, marginBottom: 8 }}>Calendar Color Guide:</div>
+              <div className={styles.guideTitle}>Calendar Color Guide</div>
               
               <div className={styles.legendRow}>
                 <span className={`${styles.legendDot} ${styles.legendAvail}`} />
@@ -6363,9 +6366,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
                 <span>Past Date</span>
               </div>
 
-              <div className={styles.legendRow} style={{ marginTop: 8, fontSize: 12, color: "#666" }}>
-                Click a day to view details
-              </div>
+              <div className={styles.guideHint}>Click a day to view details</div>
             </div>
           </aside>
         </div>
@@ -6431,7 +6432,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(15, 23, 42, 0.45)",
+          background: "rgba(15, 23, 42, 0.48)",
+          backdropFilter: "blur(8px)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -6448,10 +6450,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
           style={{
             width: "min(460px, 100%)",
             background: "#fff",
-            borderRadius: 12,
-            boxShadow: "0 24px 60px rgba(15, 23, 42, 0.22)",
+            border: "1px solid rgba(38, 66, 59, 0.12)",
+            borderRadius: 24,
+            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
             padding: 24,
-            animation: "slideIn 0.22s ease-out",
+            animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         >
           <div
@@ -6526,11 +6529,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
               onClick={() => setAvailabilityConfirmOpen(false)}
               disabled={isSubmittingAvailability}
               style={{
-                border: "1px solid #d1d5db",
+                border: "1px solid rgba(38, 66, 59, 0.14)",
                 background: "#fff",
-                color: "#111827",
-                borderRadius: 8,
-                padding: "10px 14px",
+                color: "#26423b",
+                borderRadius: 14,
+                padding: "10px 18px",
+                minHeight: 42,
                 fontWeight: 700,
                 cursor: isSubmittingAvailability ? "not-allowed" : "pointer",
               }}
@@ -6543,13 +6547,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
               disabled={isSubmittingAvailability}
               style={{
                 border: "none",
-                background: "#2e7d32",
+                background: "#26423b",
                 color: "#fff",
-                borderRadius: 8,
-                padding: "10px 16px",
+                borderRadius: 14,
+                padding: "10px 18px",
+                minHeight: 42,
                 fontWeight: 700,
                 cursor: isSubmittingAvailability ? "not-allowed" : "pointer",
-                boxShadow: "0 8px 18px rgba(46, 125, 50, 0.22)",
+                boxShadow: "0 8px 20px rgba(38, 66, 59, 0.22)",
               }}
             >
               {isSubmittingAvailability ? "Saving..." : "Save Availability"}
@@ -6567,7 +6572,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(15, 23, 42, 0.45)",
+          background: "rgba(15, 23, 42, 0.48)",
+          backdropFilter: "blur(8px)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -6584,10 +6590,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
           style={{
             width: "min(460px, 100%)",
             background: "#fff",
-            borderRadius: 12,
-            boxShadow: "0 24px 60px rgba(15, 23, 42, 0.22)",
+            border: "1px solid rgba(38, 66, 59, 0.12)",
+            borderRadius: 24,
+            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
             padding: 24,
-            animation: "slideIn 0.22s ease-out",
+            animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         >
           <div
@@ -6649,11 +6656,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
               onClick={() => setRequestConfirmOpen(false)}
               disabled={isSubmittingRequest}
               style={{
-                border: "1px solid #d1d5db",
+                border: "1px solid rgba(38, 66, 59, 0.14)",
                 background: "#fff",
-                color: "#111827",
-                borderRadius: 8,
-                padding: "10px 14px",
+                color: "#26423b",
+                borderRadius: 14,
+                padding: "10px 18px",
+                minHeight: 42,
                 fontWeight: 700,
                 cursor: isSubmittingRequest ? "not-allowed" : "pointer",
               }}
@@ -6690,7 +6698,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(15, 23, 42, 0.45)",
+          background: "rgba(15, 23, 42, 0.48)",
+          backdropFilter: "blur(8px)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -6707,10 +6716,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
           style={{
             width: "min(430px, 100%)",
             background: "#fff",
-            borderRadius: 12,
-            boxShadow: "0 24px 60px rgba(15, 23, 42, 0.22)",
+            border: "1px solid rgba(38, 66, 59, 0.12)",
+            borderRadius: 24,
+            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
             padding: 24,
-            animation: "slideIn 0.22s ease-out",
+            animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         >
           <div
@@ -6778,11 +6788,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
               onClick={() => setStudentBookingConfirmOpen(false)}
               disabled={isSubmittingStudentBooking}
               style={{
-                border: "1px solid #d1d5db",
+                border: "1px solid rgba(38, 66, 59, 0.14)",
                 background: "#fff",
-                color: "#111827",
-                borderRadius: 8,
-                padding: "10px 14px",
+                color: "#26423b",
+                borderRadius: 14,
+                padding: "10px 18px",
+                minHeight: 42,
                 fontWeight: 700,
                 cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer",
               }}
@@ -6819,7 +6830,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(15, 23, 42, 0.45)",
+          background: "rgba(15, 23, 42, 0.48)",
+          backdropFilter: "blur(8px)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -6836,10 +6848,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
           style={{
             width: "min(420px, 100%)",
             background: "#fff",
-            borderRadius: 12,
-            boxShadow: "0 24px 60px rgba(15, 23, 42, 0.22)",
+            border: "1px solid rgba(38, 66, 59, 0.12)",
+            borderRadius: 24,
+            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
             padding: 24,
-            animation: "slideIn 0.22s ease-out",
+            animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         >
           <div
@@ -6888,11 +6901,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
               onClick={() => setClassDoneConfirmOpen(false)}
               disabled={isMarkingClassDone}
               style={{
-                border: "1px solid #d1d5db",
+                border: "1px solid rgba(38, 66, 59, 0.14)",
                 background: "#fff",
-                color: "#111827",
-                borderRadius: 8,
-                padding: "10px 14px",
+                color: "#26423b",
+                borderRadius: 14,
+                padding: "10px 18px",
+                minHeight: 42,
                 fontWeight: 700,
                 cursor: isMarkingClassDone ? "not-allowed" : "pointer",
               }}
@@ -6941,9 +6955,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
           style={{
             width: "min(520px, 100%)",
             background: "#fff",
-            borderRadius: 12,
-            boxShadow: "0 24px 60px rgba(15, 23, 42, 0.22)",
+            border: "1px solid rgba(38, 66, 59, 0.12)",
+            borderRadius: 24,
+            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
             padding: 24,
+            animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         >
           <div
@@ -7034,11 +7050,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
               }}
               disabled={isMarkingClassDone}
               style={{
-                border: "1px solid #d1d5db",
+                border: "1px solid rgba(38, 66, 59, 0.14)",
                 background: "#fff",
-                color: "#111827",
-                borderRadius: 8,
-                padding: "10px 14px",
+                color: "#26423b",
+                borderRadius: 14,
+                padding: "10px 18px",
+                minHeight: 42,
                 fontWeight: 700,
                 cursor: isMarkingClassDone ? "not-allowed" : "pointer",
               }}
@@ -7071,22 +7088,27 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         onClick={closeConfirmAction}
         style={{
           position: "fixed", inset: 0, zIndex: 9999,
-          background: "rgba(0,0,0,0.45)",
+          background: "rgba(15, 23, 42, 0.48)",
+          backdropFilter: "blur(8px)",
           display: "flex", alignItems: "center", justifyContent: "center",
+          padding: 20,
         }}
       >
         <div
           onClick={(e) => e.stopPropagation()}
           style={{
-            background: "#fff", borderRadius: 12, padding: "28px 24px",
-            minWidth: 320, maxWidth: 420, width: "90%",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+            background: "#fff",
+            border: "1px solid rgba(38, 66, 59, 0.12)",
+            borderRadius: 24, padding: 24,
+            minWidth: 320, maxWidth: 440, width: "100%",
+            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
+            animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         >
-          <h2 style={{ margin: "0 0 10px", fontSize: "1.1rem", fontWeight: 700, color: "#1a1a1a" }}>
+          <h2 style={{ margin: "0 0 10px", fontSize: "1.2rem", fontWeight: 800, color: "#13251f" }}>
             {confirmAction.title}
           </h2>
-          <p style={{ margin: "0 0 24px", color: "#555", fontSize: "0.95rem", lineHeight: 1.5 }}>
+          <p style={{ margin: "0 0 20px", color: "#5e7268", fontSize: "0.95rem", lineHeight: 1.6 }}>
             {confirmAction.message}
           </p>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
@@ -7094,8 +7116,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
               type="button"
               onClick={closeConfirmAction}
               style={{
-                padding: "8px 18px", borderRadius: 7, border: "1px solid #d1d5db",
-                background: "#fff", color: "#374151", fontWeight: 600, cursor: "pointer", fontSize: "0.9rem",
+                minHeight: "42px", padding: "10px 18px", borderRadius: 14, border: "1px solid rgba(38, 66, 59, 0.14)",
+                background: "#fff", color: "#26423b", fontWeight: 700, cursor: "pointer", fontSize: "0.95rem",
               }}
             >
               Cancel
@@ -7104,9 +7126,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
               type="button"
               onClick={performConfirmAction}
               style={{
-                padding: "8px 18px", borderRadius: 7, border: "none",
-                background: confirmAction.type === "delete-availability" ? "#f44336" : "#1a56db",
-                color: "#fff", fontWeight: 600, cursor: "pointer", fontSize: "0.9rem",
+                minHeight: "42px", padding: "10px 18px", borderRadius: 14, border: "none",
+                background: confirmAction.type === "delete-availability" ? "#8a3e2e" : "#26423b",
+                color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: "0.95rem",
               }}
             >
               {confirmAction.confirmLabel}

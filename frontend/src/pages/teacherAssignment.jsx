@@ -575,65 +575,71 @@ export default function AssignTask() {
       </div>
       {confirmAction && (
         <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1200,
-            padding: "20px",
-          }}
-          onClick={closeConfirmAction}
-        >
-          <div
             style={{
-              background: "#fff",
-              borderRadius: "16px",
-              padding: "24px",
-              maxWidth: "420px",
-              width: "100%",
-              boxShadow: "0 24px 60px rgba(0,0,0,0.16)",
+              position: "fixed",
+              inset: 0,
+              background: "rgba(15, 23, 42, 0.48)",
+              backdropFilter: "blur(8px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1200,
+              padding: "20px",
+              animation: "fadeInFast 0.18s ease-out",
             }}
-            onClick={(e) => e.stopPropagation()}
+            onClick={closeConfirmAction}
           >
-            <h3 style={{ margin: "0 0 12px", fontSize: "1.1rem" }}>{confirmAction.title}</h3>
-            <p style={{ margin: "0 0 24px", color: "#55606c", lineHeight: 1.6 }}>{confirmAction.message}</p>
-            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                onClick={closeConfirmAction}
-                style={{
-                  padding: "10px 16px",
-                  borderRadius: "12px",
-                  border: "1px solid #d0d5db",
-                  background: "#fff",
-                  color: "#13251f",
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={performConfirmAction}
-                style={{
-                  padding: "10px 16px",
-                  borderRadius: "12px",
-                  border: "none",
-                  background: "#26423b",
-                  color: "#fff",
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                {confirmAction.confirmLabel}
-              </button>
+            <div
+              style={{
+                background: "#fff",
+                border: "1px solid rgba(38, 66, 59, 0.12)",
+                borderRadius: "24px",
+                padding: "24px",
+                maxWidth: "440px",
+                width: "100%",
+                boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
+                animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: "0 0 12px", fontSize: "1.2rem", fontWeight: 800, color: "#13251f" }}>{confirmAction.title}</h3>
+              <p style={{ margin: "0 0 20px", color: "#5e7268", lineHeight: 1.6, fontSize: "0.95rem" }}>{confirmAction.message}</p>
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={closeConfirmAction}
+                  style={{
+                    minHeight: "42px",
+                    padding: "10px 18px",
+                    borderRadius: "14px",
+                    border: "1px solid rgba(38, 66, 59, 0.14)",
+                    background: "#fff",
+                    color: "#26423b",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={performConfirmAction}
+                  style={{
+                    minHeight: "42px",
+                    padding: "10px 18px",
+                    borderRadius: "14px",
+                    border: "none",
+                    background: "#26423b",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                  }}
+                >
+                  {confirmAction.confirmLabel}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
       )}
     </div>
   );

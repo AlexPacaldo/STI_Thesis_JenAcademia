@@ -2863,42 +2863,49 @@ export default function AdminDashboard() {
               left: 0,
               right: 0,
               bottom: 0,
-              background: "rgba(0,0,0,0.5)",
+              background: "rgba(15, 23, 42, 0.48)",
+              backdropFilter: "blur(8px)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               zIndex: 1000,
+              padding: "20px",
             }}
             onClick={() => setConfirmDialog(null)}
           >
             <div
               style={{
                 background: "#fff",
-                borderRadius: "8px",
+                border: "1px solid rgba(38, 66, 59, 0.12)",
+                borderRadius: "24px",
                 padding: "24px",
-                maxWidth: "400px",
-                boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+                maxWidth: "440px",
+                width: "100%",
+                boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
+                animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 style={{ margin: "0 0 12px 0", fontSize: "1.1em" }}>
+              <h3 style={{ margin: "0 0 12px 0", fontSize: "1.2rem", fontWeight: 800, color: "#13251f" }}>
                 {confirmDialog.status === "approved" ? "Approve Request?" : "Decline Request?"}
               </h3>
-              <p style={{ margin: "0 0 24px 0", color: "#666", lineHeight: "1.6" }}>
+              <p style={{ margin: "0 0 20px 0", color: "#5e7268", lineHeight: 1.6, fontSize: "0.95rem" }}>
                 {confirmDialog.status === "approved"
                   ? "Are you sure you want to approve this reschedule request? The student will be notified."
                   : "Are you sure you want to decline this reschedule request? The student will be notified and may submit a new request."}
               </p>
-              <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
                 <button
                   onClick={() => setConfirmDialog(null)}
                   style={{
-                    padding: "10px 16px",
-                    fontSize: "0.9em",
-                    fontWeight: "600",
-                    border: "1px solid #d0d0d0",
+                    minHeight: "42px",
+                    padding: "10px 18px",
+                    fontSize: "0.95rem",
+                    fontWeight: 700,
+                    border: "1px solid rgba(38, 66, 59, 0.14)",
                     background: "#fff",
-                    borderRadius: "6px",
+                    color: "#26423b",
+                    borderRadius: "14px",
                     cursor: "pointer",
                   }}
                 >
@@ -2907,13 +2914,14 @@ export default function AdminDashboard() {
                 <button
                   onClick={() => updateRequest(confirmDialog.id, confirmDialog.status)}
                   style={{
-                    padding: "10px 16px",
-                    fontSize: "0.9em",
-                    fontWeight: "600",
+                    minHeight: "42px",
+                    padding: "10px 18px",
+                    fontSize: "0.95rem",
+                    fontWeight: 700,
                     border: "none",
-                    background: confirmDialog.status === "approved" ? "#28a745" : "#dc3545",
+                    background: confirmDialog.status === "approved" ? "#26423b" : "#8a3e2e",
                     color: "#fff",
-                    borderRadius: "6px",
+                    borderRadius: "14px",
                     cursor: "pointer",
                   }}
                 >
@@ -2930,7 +2938,8 @@ export default function AdminDashboard() {
             style={{
               position: "fixed",
               inset: 0,
-              background: "rgba(15, 23, 42, 0.68)",
+              background: "rgba(15, 23, 42, 0.48)",
+              backdropFilter: "blur(8px)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -2948,8 +2957,10 @@ export default function AdminDashboard() {
                 maxHeight: "90vh",
                 overflow: "auto",
                 background: "#fff",
-                borderRadius: 12,
-                boxShadow: "0 24px 70px rgba(15, 23, 42, 0.28)",
+                border: "1px solid rgba(38, 66, 59, 0.12)",
+                borderRadius: 24,
+                boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
+                animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
               }}
             >
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, padding: "16px 18px", borderBottom: "1px solid #e5e7eb" }}>
@@ -2996,41 +3007,47 @@ export default function AdminDashboard() {
               left: 0,
               right: 0,
               bottom: 0,
-              background: "rgba(0,0,0,0.5)",
+              background: "rgba(15, 23, 42, 0.48)",
+              backdropFilter: "blur(8px)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               zIndex: 1000,
+              padding: "20px",
             }}
             onClick={() => setDeleteConfirm(null)}
           >
             <div
               style={{
                 background: "#fff",
-                borderRadius: "8px",
+                border: "1px solid rgba(38, 66, 59, 0.12)",
+                borderRadius: "24px",
                 padding: "24px",
-                maxWidth: "400px",
+                maxWidth: "440px",
                 width: "100%",
-                boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+                boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
+                animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 style={{ margin: "0 0 12px 0", fontSize: "1.1em" }}>
+              <h3 style={{ margin: "0 0 12px 0", fontSize: "1.2rem", fontWeight: 800, color: "#13251f" }}>
                 {deleteConfirm.title}
               </h3>
-              <p style={{ margin: "0 0 24px 0", color: "#666", lineHeight: "1.6" }}>
+              <p style={{ margin: "0 0 20px 0", color: "#5e7268", lineHeight: 1.6, fontSize: "0.95rem" }}>
                 {deleteConfirm.message}
               </p>
-              <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
                 <button
                   onClick={() => setDeleteConfirm(null)}
                   style={{
-                    padding: "10px 16px",
-                    fontSize: "0.9em",
-                    fontWeight: "600",
-                    border: "1px solid #d0d0d0",
+                    minHeight: "42px",
+                    padding: "10px 18px",
+                    fontSize: "0.95rem",
+                    fontWeight: 700,
+                    border: "1px solid rgba(38, 66, 59, 0.14)",
                     background: "#fff",
-                    borderRadius: "6px",
+                    color: "#26423b",
+                    borderRadius: "14px",
                     cursor: "pointer",
                   }}
                 >
@@ -3039,13 +3056,14 @@ export default function AdminDashboard() {
                 <button
                   onClick={confirmDeleteRequests}
                   style={{
-                    padding: "10px 16px",
-                    fontSize: "0.9em",
-                    fontWeight: "600",
+                    minHeight: "42px",
+                    padding: "10px 18px",
+                    fontSize: "0.95rem",
+                    fontWeight: 700,
                     border: "none",
-                    background: "#dc3545",
+                    background: "#8a3e2e",
                     color: "#fff",
-                    borderRadius: "6px",
+                    borderRadius: "14px",
                     cursor: "pointer",
                   }}
                 >
@@ -3080,8 +3098,10 @@ export default function AdminDashboard() {
                 maxHeight: "90vh",
                 overflow: "auto",
                 background: "#fff",
-                borderRadius: 8,
-                boxShadow: "0 24px 70px rgba(15, 23, 42, 0.24)",
+                border: "1px solid rgba(38, 66, 59, 0.12)",
+                borderRadius: 24,
+                boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
+                animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "18px 20px", borderBottom: "1px solid #e5e7eb" }}>
@@ -3209,39 +3229,43 @@ export default function AdminDashboard() {
             <div
               style={{
                 background: "#fff",
-                borderRadius: "8px",
-                padding: "24px",
-                maxWidth: "460px",
+                border: "1px solid rgba(38, 66, 59, 0.12)",
+                borderRadius: 24,
+                padding: 24,
+                maxWidth: "440px",
                 width: "100%",
-                boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+                boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
+                animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 style={{ margin: "0 0 12px 0", fontSize: "1.1em" }}>
+              <h3 style={{ margin: "0 0 12px 0", fontSize: "1.2rem", fontWeight: 800, color: "#13251f" }}>
                 {adminConfirm.title}
               </h3>
-              <p style={{ margin: "0 0 16px 0", color: "#666", lineHeight: "1.6" }}>
+              <p style={{ margin: "0 0 16px 0", color: "#5e7268", lineHeight: 1.6, fontSize: "0.95rem" }}>
                 {adminConfirm.message}
               </p>
               {adminConfirmLines.length > 0 && (
-                <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, background: "#f9fafb", padding: 12, marginBottom: 20 }}>
+                <div style={{ border: "1px solid rgba(38, 66, 59, 0.1)", borderRadius: 16, background: "#f8fbf9", padding: 12, marginBottom: 20 }}>
                   {adminConfirmLines.map((line) => (
-                    <div key={line} style={{ fontSize: "0.9em", color: "#374151", marginBottom: 6, wordBreak: "break-word" }}>
+                    <div key={line} style={{ fontSize: "0.9rem", color: "#26423b", marginBottom: 6, wordBreak: "break-word" }}>
                       {line}
                     </div>
                   ))}
                 </div>
               )}
-              <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
                 <button
                   onClick={closeAdminConfirm}
                   style={{
-                    padding: "10px 16px",
-                    fontSize: "0.9em",
-                    fontWeight: "600",
-                    border: "1px solid #d0d0d0",
+                    minHeight: "42px",
+                    padding: "10px 18px",
+                    fontSize: "0.95rem",
+                    fontWeight: 700,
+                    border: "1px solid rgba(38, 66, 59, 0.14)",
                     background: "#fff",
-                    borderRadius: "6px",
+                    color: "#26423b",
+                    borderRadius: 14,
                     cursor: "pointer",
                   }}
                 >
@@ -3250,13 +3274,14 @@ export default function AdminDashboard() {
                 <button
                   onClick={executeAdminConfirm}
                   style={{
-                    padding: "10px 16px",
-                    fontSize: "0.9em",
-                    fontWeight: "600",
+                    minHeight: "42px",
+                    padding: "10px 18px",
+                    fontSize: "0.95rem",
+                    fontWeight: 700,
                     border: "none",
-                    background: adminConfirm.tone === "danger" ? "#dc3545" : "#0f0f0f",
+                    background: adminConfirm.tone === "danger" ? "#8a3e2e" : "#26423b",
                     color: "#fff",
-                    borderRadius: "6px",
+                    borderRadius: 14,
                     cursor: "pointer",
                   }}
                 >

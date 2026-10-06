@@ -1,42 +1,162 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap');
+
 * {
   box-sizing: border-box;
   font-family: "Poppins", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color-scheme: light;
 }
 
+/* ============================================================
+   DESIGN SYSTEM TOKENS
+   ============================================================ */
 :root {
-  --primary: #26423b;
-  --accent: #91a79a;
-  --bg: #f4f7f5;
-  --surface: #ffffff;
-  --surface-soft: #f8fbf9;
-  --surface-muted: #eef3f0;
-  --text: #13251f;
-  --muted: #5e7268;
-  --border: rgba(38, 66, 59, 0.12);
-  --border-strong: rgba(38, 66, 59, 0.18);
-  --shadow-sm: 0 8px 24px rgba(18, 34, 30, 0.06);
-  --shadow-md: 0 16px 42px rgba(18, 34, 30, 0.09);
-  --shadow-lg: 0 24px 60px rgba(18, 34, 30, 0.12);
-  --radius-sm: 14px;
-  --radius-md: 20px;
-  --radius-lg: 28px;
-  --radius-xl: 36px;
+  /* Brand ramp — sourced from the JEN Academia contact & footer gradient */
+  --brand-lime:   #79a847;
+  --brand-green:  #2f7a3d;
+  --brand-forest: #1e3828;
+
+  /* Brand colors */
+  --primary:          var(--brand-forest);
+  --primary-dark:     #16301f;
+  --primary-mid:      var(--brand-green);
+  --accent:           var(--brand-lime);
+  --accent-lime:      var(--brand-lime);
+  --accent-lime-dark: #6a8f3c;
+  --accent-sage:      #91a79a;
+
+  /* Backgrounds */
+  --bg:               #f7f9f8;
+  --bg-alt:           #f1f4f2;
+  --surface:          #ffffff;
+  --surface-raised:   #ffffff;
+  --surface-recessed: #f0f3f1;
+  --surface-white:    #ffffff;
+  --surface-soft:     #f8fbf9;
+
+  /* Text */
+  --text:             #13251f;
+  --text-mid:         #26423b;
+  --muted:            #5e7268;
+  --muted-light:      #8a9b93;
+
+  /* Borders */
+  --border:           rgba(38, 66, 59, 0.08);
+  --border-mid:       rgba(38, 66, 59, 0.11);
+  --border-strong:    rgba(38, 66, 59, 0.18);
+
+  /* Status surfaces */
+  --pill-success:      #ecfdf3;
+  --pill-danger:       #fce8e4;
+  --pill-warn:         #fff4df;
+  --pill-info:         #eaf2ff;
+  --text-success:      #166534;
+  --text-danger:       #8a3e2e;
+  --text-warn:         #92400e;
+  --text-info:         #1e4a8a;
+
+  /* Status accents (icons, borders, dots) */
+  --accent-success:    #1f9d63;
+  --accent-danger:     #a83a34;
+  --accent-warn:       #d18a10;
+  --accent-info:       #3d6b8f;
+  --alert-danger:      #e8453c;
+
+  /* ── Calendar status palette (cells + legend dots share these) ── */
+  --cal-available-cell:     #e9f3dd;
+  --cal-available-dot:      #79a847;
+  --cal-scheduled-cell:     #dce8e1;
+  --cal-scheduled-dot:      #4f7161;
+  --cal-unavailable-cell:   #fbe7e4;
+  --cal-unavailable-dot:    #c0554b;
+  --cal-unscheduled-cell:   #fdeeda;
+  --cal-unscheduled-dot:    #d18a10;
+  --cal-past-cell:          #edf0ef;
+  --cal-past-dot:           #a3ada8;
+
+  /* ── Neumorphism shadow system (soft, modern, clean) ── */
+  --neu-shadow-sm:
+    2px 2px 8px  rgba(18, 34, 30, 0.08),
+    -2px -2px 6px rgba(255, 255, 255, 0.9);
+  --neu-shadow-md:
+    4px 4px 14px rgba(18, 34, 30, 0.09),
+    -3px -3px 10px rgba(255, 255, 255, 0.95);
+  --neu-shadow-lg:
+    8px 8px 24px rgba(18, 34, 30, 0.10),
+    -5px -5px 16px rgba(255, 255, 255, 0.95);
+  --neu-shadow-xl:
+    12px 12px 32px rgba(18, 34, 30, 0.11),
+    -6px -6px 20px rgba(255, 255, 255, 0.95);
+
+  /* Pressed / inset (interactive feedback) */
+  --neu-inset:
+    inset 2px 2px 6px rgba(18, 34, 30, 0.10),
+    inset -2px -2px 5px rgba(255, 255, 255, 0.8);
+  --neu-inset-strong:
+    inset 3px 3px 9px rgba(18, 34, 30, 0.14),
+    inset -2px -2px 7px rgba(255, 255, 255, 0.75);
+
+  /* Flat card shadow (for white surfaces over tinted bg) */
+  --shadow-sm:  0 2px 8px  rgba(18, 34, 30, 0.05);
+  --shadow-md:  0 4px 16px  rgba(18, 34, 30, 0.07);
+  --shadow-lg:  0 8px 28px  rgba(18, 34, 30, 0.09);
+  --shadow-xl:  0 16px 44px rgba(18, 34, 30, 0.11);
+
+  /* Border radius */
+  --radius-xs:  8px;
+  --radius-sm:  12px;
+  --radius-md:  18px;
+  --radius-lg:  24px;
+  --radius-xl:  32px;
+  --radius-2xl: 40px;
+  --radius-pill:999px;
   --control-radius: 18px;
-  --sidebar-width: 230px;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Layout */
+  --sidebar-width: 232px;
+  --header-height: 72px;
+
+  /* Transitions */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+  --duration-fast: 140ms;
+  --duration-base: 220ms;
+  --duration-slow: 360ms;
 }
 
-html,
-body,
-#root {
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
+html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
   overflow-x: hidden;
 }
 
+/* Long words, URLs and pasted IDs must never push the layout sideways. */
+h1, h2, h3, h4, h5, h6, p, span, a, li, td, th, label, button, input,
+textarea, select, div {
+  overflow-wrap: anywhere;
+}
+
+/* Media never exceeds its column. */
+img, video, canvas, svg, iframe {
+  max-width: 100%;
+}
+
 body {
-  background: linear-gradient(180deg, #f7faf8 0%, var(--bg) 100%);
+  background: linear-gradient(180deg, #fbfdfc 0%, var(--bg) 100%);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -47,26 +167,101 @@ img {
   max-width: 100%;
 }
 
-button,
-input,
-select,
-textarea {
+button, input, select, textarea {
   font: inherit;
   border-radius: var(--control-radius);
 }
 
-button {
-  color: inherit;
+button { color: inherit; }
+a      { color: inherit; }
+
+/* ============================================================
+   GLOBAL ANIMATIONS
+   ============================================================ */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-a {
-  color: inherit;
+@keyframes fadeInFast {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+/* ============================================================
+   SKELETON LOADER UTILITY
+   ============================================================ */
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--surface-recessed) 25%,
+    rgba(255,255,255,0.5) 50%,
+    var(--surface-recessed) 75%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+
+/* ============================================================
+   NEUMORPHIC UTILITY CLASSES
+   ============================================================ */
+.neu-raised {
+  background: var(--surface);
+  box-shadow: var(--neu-shadow-md);
+  border-radius: var(--radius-lg);
+}
+
+.neu-flat {
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+}
+
+.neu-pressed {
+  background: var(--surface-recessed);
+  box-shadow: var(--neu-inset);
+  border-radius: var(--radius-md);
+}
+
+/* ============================================================
+   LAYOUT SHELL
+   ============================================================ */
 .app-container {
   display: flex;
   min-height: 100vh;
   flex-direction: row;
+  background: var(--bg);
 }
 
 .app-container.full-bleed {
@@ -78,9 +273,11 @@ a {
 .app-layout {
   width: 100%;
   margin-left: var(--sidebar-width);
+  min-height: 100vh;
+  background: var(--bg);
+  transition: margin-left var(--duration-base) var(--ease-out);
 }
 
-/* When the account page intentionally hides the sidebar, remove left margin */
 .app-layout.account-no-sidebar {
   margin-left: 0;
 }
@@ -92,7 +289,8 @@ a {
 }
 
 .content-area {
-  margin: 0 1.8rem 2rem;
+  margin: 0 1.6rem 2rem;
+  animation: fadeIn 0.32s var(--ease-out) both;
 }
 
 .content-area.full-bleed {
@@ -101,9 +299,9 @@ a {
 
 .content-inner {
   background: var(--surface);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   padding: 28px;
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--neu-shadow-lg);
   border: 1px solid var(--border);
 }
 
@@ -115,44 +313,200 @@ a {
   border: 0;
 }
 
-@media (max-width: 1200px) {
-  :root {
-    --sidebar-width: 216px;
-  }
+/* ============================================================
+   GLOBAL BUTTON SYSTEM
+   ============================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius-md);
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+  white-space: nowrap;
+  text-decoration: none;
+  line-height: 1;
+  user-select: none;
+}
+
+.btn:active { transform: translateY(1px) scale(0.985); }
+.btn:disabled { opacity: 0.56; cursor: not-allowed; }
+.btn:disabled:active { transform: none; }
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-mid) 100%);
+  color: #fff;
+  padding: 11px 20px;
+  box-shadow: 0 8px 22px rgba(38, 66, 59, 0.22);
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(38, 66, 59, 0.28);
+}
+
+.btn-secondary {
+  background: var(--surface-raised);
+  color: var(--primary);
+  padding: 11px 20px;
+  border: 1px solid var(--border-mid);
+  box-shadow: var(--neu-shadow-sm);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--neu-shadow-md);
+  border-color: var(--border-strong);
+}
+
+.btn-danger {
+  background: #fce8e4;
+  color: #8a3e2e;
+  padding: 11px 20px;
+  border: 1px solid rgba(138, 62, 46, 0.2);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #f7d6cf;
+  transform: translateY(-1px);
+}
+
+.btn-sm {
+  padding: 8px 14px;
+  font-size: 0.84rem;
+  border-radius: var(--radius-sm);
+}
+
+.btn-lg {
+  padding: 14px 28px;
+  font-size: 1.05rem;
+  border-radius: var(--radius-lg);
+}
+
+/* ============================================================
+   GLOBAL INPUT SYSTEM
+   ============================================================ */
+.input-field {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-md);
+  background: var(--surface-white);
+  color: var(--text);
+  font-size: 0.95rem;
+  outline: none;
+  box-shadow: var(--neu-inset);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.input-field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(145, 167, 154, 0.18), var(--neu-inset);
+}
+
+.input-field::placeholder { color: var(--muted-light); }
+
+/* ============================================================
+   GLOBAL CARD
+   ============================================================ */
+.card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--neu-shadow-md);
+  border: 1px solid var(--border);
+}
+
+/* ============================================================
+   GLOBAL PILL / BADGE
+   ============================================================ */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: rgba(145, 167, 154, 0.16);
+  color: var(--primary);
+  border: 1px solid var(--border);
+}
+
+.pill-accent {
+  background: rgba(121, 168, 71, 0.14);
+  color: var(--accent-lime-dark);
+  border-color: rgba(121, 168, 71, 0.22);
+}
+
+.pill-danger {
+  background: #fce8e4;
+  color: #8a3e2e;
+  border-color: rgba(138, 62, 46, 0.2);
+}
+
+.pill-success {
+  background: #ecfdf3;
+  color: #166534;
+  border-color: rgba(22, 101, 52, 0.2);
+}
+
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(38, 66, 59, 0.18);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(38, 66, 59, 0.28);
+}
+
+/* ============================================================
+   FOCUS RING
+   ============================================================ */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* ============================================================
+   RESPONSIVE LAYOUT
+   ============================================================ */
+@media (max-width: 1280px) {
+  :root { --sidebar-width: 220px; }
 }
 
 @media (max-width: 1100px) {
-  .app-layout {
-    margin-left: var(--sidebar-width);
-  }
-
-  .right-panel {
-    display: none;
-  }
+  .right-panel { display: none; }
 }
 
 @media (max-width: 900px) {
-  :root {
-    --sidebar-width: 0px;
-  }
-
-  .app-layout {
-    margin-left: 0;
-  }
+  :root { --sidebar-width: 0px; }
+  .app-layout { margin-left: 0; }
 }
 
 @media (max-width: 800px) {
-  .app-layout {
-    grid-template-columns: 1fr;
-    padding: 12px;
-  }
-
-  .content-area {
-    margin: 0 0 1.25rem;
-  }
-
+  .content-area { margin: 0 0.75rem 1.25rem; }
   .content-inner {
-    padding: 16px;
+    padding: 18px;
+    border-radius: var(--radius-lg);
+  }
+}
+
+@media (max-width: 480px) {
+  .content-inner {
+    padding: 14px;
     border-radius: var(--radius-md);
   }
 }
