@@ -537,7 +537,8 @@ export default function StudentClassHistory({ mode = "student" }) {
             position: "fixed",
             inset: 0,
             zIndex: 1000,
-            background: "rgba(15, 23, 42, 0.68)",
+            background: "rgba(15, 23, 42, 0.48)",
+            backdropFilter: "blur(8px)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -554,14 +555,16 @@ export default function StudentClassHistory({ mode = "student" }) {
               maxHeight: "92vh",
               overflow: "auto",
               background: "#fff",
-              borderRadius: 14,
-              boxShadow: "0 24px 80px rgba(15, 23, 42, 0.35)",
+              border: "1px solid rgba(38, 66, 59, 0.12)",
+              borderRadius: 24,
+              boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
+              animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "16px 18px", borderBottom: "1px solid #e5e7eb" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "16px 18px", borderBottom: "1px solid rgba(38, 66, 59, 0.1)" }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: "1rem", color: "#10231d" }}>{selectedProof.className}</h3>
-                <p style={{ margin: "4px 0 0", color: "#667085", fontSize: "0.86rem" }}>
+                <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 800, color: "#13251f" }}>{selectedProof.className}</h3>
+                <p style={{ margin: "4px 0 0", color: "#5e7268", fontSize: "0.86rem" }}>
                   {selectedProof.otherPartyName} / {selectedProof.schedule}
                 </p>
               </div>

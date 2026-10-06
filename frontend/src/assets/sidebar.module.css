@@ -1,221 +1,302 @@
-:root {
-    --sidebar-bg: #203a35;
-    --sidebar-bg-light: #2e4f45;
-    --sidebar-text: #eef6ef;
-    --sidebar-muted: rgba(238, 246, 239, 0.68);
-    --sidebar-hover: rgba(145, 167, 154, 0.18);
-    --sidebar-active: #91a79a;
-    --radius: 24px;
-    --shadow: 0 20px 56px rgba(18, 34, 30, 0.16);
-}
+/* ============================================================
+   SIDEBAR — Neumorphic Design System
+   ============================================================ */
 
 .sidebar {
-    width: var(--sidebar-width, 230px);
-    height: 100vh;
-    background: linear-gradient(180deg, var(--sidebar-bg-light) 0%, var(--sidebar-bg) 100%);
-    /* border-top-right-radius: var(--radius); */
-    padding: 22px 16px;
-    box-shadow: var(--shadow);
-    position: fixed;
-    left: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-    z-index: 10;
-    overflow: hidden;
+  width: var(--sidebar-width, 232px);
+  height: 100vh;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px 14px 24px;
+  overflow: hidden;
+  overflow-y: auto;
+
+  /* Brand forest surface */
+  background: linear-gradient(180deg, var(--brand-forest) 0%, var(--primary-dark) 100%);
+  box-shadow:
+    0 20px 56px rgba(18, 34, 30, 0.16),
+    inset -1px 0 0 rgba(255, 255, 255, 0.05);
 }
 
-.backdrop,
+.sidebar::-webkit-scrollbar { width: 4px; }
+.sidebar::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 999px;
+}
+
+/* ── Backdrop overlay (mobile) ── */
+.backdrop {
+  display: none;
+}
+
 .closeButton {
-    display: none;
+  display: none;
 }
 
+/* ── Brand area ── */
 .brandName {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    text-decoration: none;
-    margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  text-decoration: none;
+  margin: 0 auto 4px;
+  padding: 4px 0;
 }
 
 .brandName img {
-    width: 75%;
-    max-width: 180px;
-    object-fit: cover;
-    margin-bottom: 2rem;
-    
+  width: 78%;
+  max-width: 172px;
+  object-fit: contain;
+  margin-bottom: 14px;
+  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.22));
 }
 
 .brandText {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .brandTitle {
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--sidebar-text);
-    letter-spacing: 0.04em;
+  font-size: 1rem;
+  font-weight: 800;
+  color: rgba(238, 246, 239, 0.96);
+  letter-spacing: 0.04em;
 }
 
 .brandSubtitle {
-    font-size: 0.82rem;
-    color: var(--sidebar-muted);
-    margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: rgba(238, 246, 239, 0.56);
+  margin-top: 0.2rem;
 }
 
+/* ── Section divider ── */
+.sectionLabel {
+  padding: 8px 10px 4px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(238, 246, 239, 0.36);
+}
+
+/* ── Nav list ── */
 .navList {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .navItem {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 11px 12px;
-    border-radius: 20px;
-    color: var(--sidebar-text);
-    text-decoration: none;
-    transition: transform 180ms ease, background 180ms ease, color 180ms ease;
-    font-weight: 700;
-    font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: 20px;
+  color: rgba(238, 246, 239, 0.68);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast, 140ms) ease,
+    color var(--duration-fast, 140ms) ease,
+    transform var(--duration-fast, 140ms) ease,
+    box-shadow var(--duration-fast, 140ms) ease;
+  position: relative;
 }
 
 .navItem:hover {
-    background: var(--sidebar-hover);
-    transform: translateY(-1px);
+  background: rgba(145, 167, 154, 0.18);
+  color: rgba(238, 246, 239, 0.96);
+  transform: translateY(-1px);
 }
 
+.navItem:active {
+  transform: translateX(0) scale(0.985);
+}
+
+/* Active state — solid sage fill */
 .active,
 .navItem.active {
-    background: var(--sidebar-active);
-    color: #fff;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  background: var(--accent-sage);
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
+/* ── Icon chip ── */
 .navItemIcon {
-    width: 36px;
-    height: 36px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 0.08);
-    color: #d7ece2;
-    font-size: 0.95rem;
-    flex-shrink: 0;
-    transition: background 180ms ease, color 180ms ease;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(238, 246, 239, 0.72);
+  font-size: 0.92rem;
+  flex-shrink: 0;
+  transition:
+    background var(--duration-fast, 140ms) ease,
+    color var(--duration-fast, 140ms) ease;
 }
 
-.navItem.active .navItemIcon {
-    background: var(--accent);
-    color: #fff;
+.navItem:hover .navItemIcon {
+  background: rgba(255, 255, 255, 0.12);
+  color: #eef6ef;
+}
+
+.navItem.active .navItemIcon,
+.active .navItemIcon {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  box-shadow: none;
 }
 
 .navText {
-    white-space: normal;
-    word-break: break-word;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.25;
 }
 
+/* ── Sidebar divider ── */
+.navDivider {
+  height: 1px;
+  margin: 6px 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+
+/* ── Footer / profile ── */
 .sidebarFooter {
-    margin-top: auto;
-    padding-top: 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.12);
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .profileCard {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 1px 1px 4px rgba(0,0,0,0.14);
 }
 
 .profilePhoto {
-    width: 44px;
-    height: 44px;
-    border-radius: 16px;
-    object-fit: cover;
-    border: 1px solid rgba(255, 255, 255, 0.14);
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.22);
+}
+
+.profileInfo {
+  min-width: 0;
+  flex: 1;
 }
 
 .profileName {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: var(--sidebar-text);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: rgba(238, 246, 239, 0.92);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .profileRole {
-    font-size: 0.82rem;
-    color: var(--sidebar-muted);
+  font-size: 0.74rem;
+  color: rgba(238, 246, 239, 0.48);
+  margin-top: 1px;
 }
 
+/* ============================================================
+   MOBILE — Drawer pattern
+   ============================================================ */
 @media (max-width: 900px) {
-    .backdrop {
-        position: fixed;
-        inset: 0;
-        display: block;
-        border: 0;
-        border-radius: 0;
-        background: rgba(19, 37, 31, 0.42);
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 180ms ease;
-        z-index: 109;
-    }
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    display: block;
+    border: 0;
+    border-radius: 0;
+    background: rgba(12, 22, 18, 0.52);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 220ms ease;
+    z-index: 108;
+    backdrop-filter: blur(2px);
+  }
 
-    .backdropOpen {
-        opacity: 1;
-        pointer-events: auto;
-    }
+  .backdropOpen {
+    opacity: 1;
+    pointer-events: auto;
+  }
 
-    .sidebar {
-        display: flex;
-        width: min(82vw, 280px);
-        transform: translateX(-105%);
-        transition: transform 220ms ease;
-        z-index: 110;
-        border-top-right-radius: 24px;
-        border-bottom-right-radius: 24px;
-    }
+  .sidebar {
+    width: min(84vw, 288px);
+    transform: translateX(-110%);
+    transition: transform 260ms var(--ease-out, cubic-bezier(0.22,1,0.36,1));
+    z-index: 109;
+    border-top-right-radius: 28px;
+    border-bottom-right-radius: 28px;
+    box-shadow:
+      8px 0 40px rgba(12, 22, 18, 0.32),
+      inset -1px 0 0 rgba(255,255,255,0.06);
+  }
 
-    .sidebarOpen {
-        transform: translateX(0);
-    }
+  .sidebarOpen {
+    transform: translateX(0);
+  }
 
-    .closeButton {
-        display: inline-flex;
-        position: absolute;
-        top: 14px;
-        right: 14px;
-        width: 38px;
-        height: 38px;
-        align-items: center;
-        justify-content: center;
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        background: rgba(255, 255, 255, 0.08);
-        color: var(--sidebar-text);
-        cursor: pointer;
-    }
+  .closeButton {
+    display: inline-flex;
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 36px;
+    height: 36px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.07);
+    color: rgba(238, 246, 239, 0.82);
+    cursor: pointer;
+    transition: background 140ms ease;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
 
-    .closeButton span {
-        position: absolute;
-        width: 18px;
-        height: 2px;
-        border-radius: 999px;
-        background: currentColor;
-    }
+  .closeButton:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
 
-    .closeButton span:first-child {
-        transform: rotate(45deg);
-    }
+  .closeButton span {
+    position: absolute;
+    width: 16px;
+    height: 2px;
+    border-radius: 999px;
+    background: currentColor;
+  }
 
-    .closeButton span:last-child {
-        transform: rotate(-45deg);
-    }
+  .closeButton span:first-child { transform: rotate(45deg); }
+  .closeButton span:last-child  { transform: rotate(-45deg); }
+}
+
+@media (max-width: 400px) {
+  .sidebar { width: min(92vw, 288px); }
 }

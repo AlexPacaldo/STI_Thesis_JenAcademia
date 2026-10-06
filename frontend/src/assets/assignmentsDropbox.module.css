@@ -1,7 +1,7 @@
 .cont {
   display: flex;
   justify-content: center;
-  color: #13251f;
+  color: var(--text);
   font-family: "Poppins", sans-serif;
   padding: 32px 28px 56px;
 }
@@ -22,7 +22,9 @@
   background: #fff;
   border: 1px solid rgba(38, 66, 59, 0.1);
   border-radius: 24px;
-  box-shadow: 0 18px 40px rgba(18, 34, 30, 0.06);
+  box-shadow:
+    6px 6px 16px rgba(18, 34, 30, 0.16),
+    -4px -4px 12px rgba(255, 255, 255, 0.72);
   padding: 16px;
 }
 
@@ -41,7 +43,7 @@
   padding: 12px 14px;
   border-radius: 18px;
   border: 1px solid rgba(38, 66, 59, 0.1);
-  background: #f8fbf9;
+  background: var(--surface-raised);
   transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
 }
 
@@ -60,13 +62,13 @@
 .boxCard h1 {
   font-size: 1rem;
   margin: 0;
-  color: #13251f;
+  color: var(--text);
   font-weight: 700;
 }
 
 .boxCard p {
   margin: 4px 0 0;
-  color: #5e7268;
+  color: var(--muted);
   font-size: 0.88rem;
 }
 
@@ -92,7 +94,7 @@
 .user h1 {
   margin: 0;
   font-size: 1.12rem;
-  color: #13251f;
+  color: var(--text);
 }
 
 .bottomInfo {
@@ -106,7 +108,7 @@
   flex: 1;
   padding: 14px;
   border-radius: 20px;
-  background: #f8fbf9;
+  background: var(--surface-raised);
   border: 1px solid rgba(38, 66, 59, 0.1);
 }
 
@@ -114,7 +116,7 @@
 .remarksBox h1 {
   margin: 0 0 8px;
   font-size: 1rem;
-  color: #13251f;
+  color: var(--text);
 }
 
 .commentBox {
@@ -128,7 +130,7 @@
   border: 1px solid rgba(38, 66, 59, 0.14);
   resize: vertical;
   font-size: 0.95rem;
-  color: #13251f;
+  color: var(--text);
   background: #fff;
 }
 
@@ -139,9 +141,9 @@
   justify-content: center;
   width: auto;
   flex: 1;
-  background: #26423b;
+  background: var(--primary);
   color: #fff;
-  border: 1px solid #26423b;
+  border: 1px solid var(--primary);
   padding: 14px 16px;
   border-radius: 18px;
   cursor: pointer;
@@ -149,7 +151,7 @@
 }
 
 .submitComment:hover:not(:disabled) {
-  background: #35594e;
+  background: var(--primary-mid);
 }
 
 /* Deliberately NOT reusing .submitComment: that has `flex: 1`, which is right
@@ -165,8 +167,8 @@
   min-height: 40px;
   padding: 9px 18px;
   border-radius: 999px;
-  border: 1px solid #26423b;
-  background: #26423b;
+  border: 1px solid var(--primary);
+  background: var(--primary);
   color: #fff;
   font-family: inherit;
   font-size: 0.88rem;
@@ -176,7 +178,7 @@
 }
 
 .resubmitButton:hover:not(:disabled) {
-  background: #35594e;
+  background: var(--primary-mid);
   transform: translateY(-1px);
 }
 
@@ -186,7 +188,7 @@
 }
 
 .resubmitButton:focus-visible {
-  outline: 2px solid #26423b;
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
@@ -203,8 +205,8 @@
   padding: 14px 16px;
   border-radius: 18px;
   border: 1px solid rgba(38, 66, 59, 0.14);
-  background: #eef4f0;
-  color: #26423b;
+  background: var(--bg-alt);
+  color: var(--primary);
   font-weight: 700;
   cursor: pointer;
   display: inline-flex;
@@ -217,7 +219,7 @@
 }
 
 .emptyState {
-  color: #5e7268;
+  color: var(--muted);
   padding: 1rem 0;
   text-align: center;
 }
@@ -235,7 +237,7 @@
   margin: 0;
   font-size: clamp(1.8rem, 2.3vw, 2.5rem);
   line-height: 1.12;
-  color: #13251f;
+  color: var(--text);
   letter-spacing: -0.02em;
 }
 
@@ -250,8 +252,8 @@
   padding: 10px 16px;
   border-radius: 18px;
   border: 1px solid rgba(38, 66, 59, 0.12);
-  background: #eef4f0;
-  color: #26423b;
+  background: var(--bg-alt);
+  color: var(--primary);
   font-family: inherit;
   font-size: 0.92rem;
   font-weight: 700;
@@ -270,13 +272,13 @@
 }
 
 .backButton:focus-visible {
-  outline: 2px solid #26423b;
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
 .assignmentMeta {
   margin: 0;
-  color: #60746a;
+  color: var(--muted);
   font-size: 0.98rem;
   font-weight: 600;
 }
@@ -286,7 +288,7 @@
   padding: 0.95rem 1rem;
   border-radius: 18px;
   border: 1px solid rgba(214, 106, 85, 0.45);
-  background: #fef2f0;
+  background: var(--pill-danger);
   color: #8a3e2e;
   font-weight: 600;
   text-align: center;
@@ -309,7 +311,9 @@
   border: 1px solid rgba(38, 66, 59, 0.1);
   border-radius: 28px;
   background: #fff;
-  box-shadow: 0 18px 40px rgba(18, 34, 30, 0.06);
+  box-shadow:
+    6px 6px 16px rgba(18, 34, 30, 0.16),
+    -4px -4px 12px rgba(255, 255, 255, 0.72);
 }
 
 .leftSide,
@@ -317,7 +321,7 @@
   width: auto;
   min-width: 0;
   padding: 24px;
-  background: linear-gradient(180deg, #f9fbfa 0%, #f6f9f7 100%);
+  background: linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-raised) 100%);
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -364,7 +368,7 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: 6px;
-  background: #26423b;
+  background: var(--primary);
 }
 
 .instructionHeader {
@@ -382,7 +386,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: #26423b;
+  background: var(--primary);
   color: #fff;
   font-weight: 800;
   font-size: 1.1rem;
@@ -392,7 +396,7 @@
 .instructionHeader span:not(.instructionIcon) {
   display: block;
   margin-bottom: 2px;
-  color: #60746a;
+  color: var(--muted);
   font-size: 0.78rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -401,7 +405,7 @@
 
 .instructionHeader h4 {
   margin: 0;
-  color: #13251f;
+  color: var(--text);
   font-size: 1.28rem;
   line-height: 1.25;
 }
@@ -412,7 +416,7 @@
   border-radius: 20px;
   border: 1px solid rgba(38, 66, 59, 0.1);
   background: rgba(255, 255, 255, 0.72);
-  color: #13251f;
+  color: var(--text);
   font-size: 1rem;
   line-height: 1.75;
   white-space: pre-wrap;
@@ -427,14 +431,14 @@
 
 .responseLabel {
   display: block;
-  color: #13251f;
+  color: var(--text);
   font-size: 0.95rem;
 }
 
 .fileLabel {
   display: block;
   margin: 0.6rem 0 0.4rem;
-  color: #13251f;
+  color: var(--text);
   font-weight: 700;
 }
 
@@ -445,7 +449,7 @@
   border-radius: 18px;
   border: 1px solid rgba(38, 66, 59, 0.14);
   background: #fff;
-  color: #13251f;
+  color: var(--text);
 }
 
 .fileInput::file-selector-button {
@@ -453,7 +457,7 @@
   border: 0;
   border-radius: 10px;
   background: rgba(145, 167, 154, 0.18);
-  color: #26423b;
+  color: var(--primary);
   padding: 8px 12px;
   font: inherit;
   font-weight: 700;
@@ -462,7 +466,7 @@
 
 .fileInfo {
   margin-top: 0.5rem;
-  color: #5e7268;
+  color: var(--muted);
   font-size: 0.95rem;
   overflow-wrap: anywhere;
 }
@@ -477,7 +481,7 @@
 
 .submitMessage {
   margin-top: 0.2rem;
-  color: #5e7268;
+  color: var(--muted);
   font-size: 0.92rem;
 }
 
@@ -492,8 +496,8 @@
   padding: 0.6rem 1.05rem;
   border-radius: 999px;
   border: 1px solid rgba(38, 66, 59, 0.12);
-  background: #f8fbf9;
-  color: #26423b;
+  background: var(--surface-raised);
+  color: var(--primary);
   font-family: inherit;
   font-size: 0.88rem;
   font-weight: 700;
@@ -503,20 +507,20 @@
 
 .tabButton:focus-visible,
 .activeTab:focus-visible {
-  outline: 2px solid #26423b;
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
 .activeTab {
-  background: #26423b;
-  border-color: #26423b;
+  background: var(--primary);
+  border-color: var(--primary);
   color: #fff;
   box-shadow: 0 10px 20px rgba(38, 66, 59, 0.16);
 }
 
 .submissionTab {
-  background: #eef4f0;
-  color: #26423b;
+  background: var(--bg-alt);
+  color: var(--primary);
 }
 
 .submissionTab:hover {
@@ -527,76 +531,84 @@
 .modalBackdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1200;
   padding: 24px;
+  animation: fadeInFast 0.18s ease-out;
 }
 
 .confirmModal {
   width: min(100%, 440px);
   background: #fff;
-  border-radius: 28px;
+  border-radius: 24px;
   padding: 24px;
-  box-shadow: 0 22px 50px rgba(18, 34, 30, 0.18);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
   border: 1px solid rgba(38, 66, 59, 0.12);
+  animation: scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .modalHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .modalHeader h2 {
   margin: 0;
-  font-size: 1.35rem;
-  color: #13251f;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--text);
 }
 
 .modalBody {
-  margin-bottom: 22px;
-  color: #4b5563;
-  line-height: 1.7;
+  margin-bottom: 20px;
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 0.95rem;
 }
 
 .modalActions {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 10px;
 }
 
 .textBtn {
-  min-width: 120px;
-  border: 1px solid rgba(38, 66, 59, 0.16);
-  background: #f8fbf9;
-  color: #26423b;
-  border-radius: 18px;
-  padding: 12px 18px;
+  min-width: 100px;
+  border: 1px solid rgba(38, 66, 59, 0.14);
+  background: #fff;
+  color: var(--primary);
+  border-radius: 14px;
+  padding: 10px 18px;
   font-weight: 700;
   cursor: pointer;
+  min-height: 42px;
 }
 
 .textBtn:hover {
-  background: #e3ede7;
+  background: var(--surface-raised);
 }
 
 .primaryBtn {
-  min-width: 120px;
-  border: 1px solid #26423b;
-  background: #26423b;
+  min-width: 100px;
+  border: 1px solid var(--primary);
+  background: var(--primary);
   color: #fff;
-  border-radius: 18px;
-  padding: 12px 18px;
+  border-radius: 14px;
+  padding: 10px 18px;
   font-weight: 700;
   cursor: pointer;
+  min-height: 42px;
 }
 
 .primaryBtn:hover {
-  background: #1f3a34;
+  background: var(--primary-mid);
 }
 
 .submissionViewer {
@@ -624,7 +636,7 @@
 .submissionViewerHeader span,
 .submittedAnswer span,
 .submittedFile span {
-  color: #60746a;
+  color: var(--muted);
   font-size: 0.78rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -636,7 +648,7 @@
 }
 
 .submissionViewerHeader strong {
-  color: #13251f;
+  color: var(--text);
   font-size: 0.85rem;
   font-weight: 600;
   white-space: nowrap;
@@ -649,7 +661,7 @@
      left for the video. */
   padding: 12px 14px;
   border-radius: 16px;
-  background: #f8fbf9;
+  background: var(--surface-raised);
   border: 1px solid rgba(38, 66, 59, 0.09);
 }
 
@@ -679,7 +691,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #26423b;
+  color: var(--primary);
   font-size: 0.84rem;
   font-weight: 700;
 }
@@ -705,7 +717,7 @@
 }
 
 audio.previewMedia {
-  background: #f4f8f6;
+  background: var(--surface-recessed);
 }
 
 .previewFrame {
@@ -719,7 +731,7 @@ audio.previewMedia {
   object-fit: contain;
   border-radius: 14px;
   border: 1px solid rgba(38, 66, 59, 0.12);
-  background: #f4f8f6;
+  background: var(--surface-recessed);
   display: block;
 }
 
@@ -727,15 +739,15 @@ audio.previewMedia {
   margin: 0;
   padding: 14px;
   border-radius: 12px;
-  background: #eef4f0;
-  color: #5e7268;
+  background: var(--bg-alt);
+  color: var(--muted);
   font-size: 0.84rem;
   text-align: center;
 }
 
 .submittedAnswer p {
   margin: 8px 0 0;
-  color: #13251f;
+  color: var(--text);
   line-height: 1.65;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -753,7 +765,9 @@ audio.previewMedia {
   border-radius: 24px;
   border: 1px solid rgba(38, 66, 59, 0.1);
   background: #fff;
-  box-shadow: 0 18px 40px rgba(18, 34, 30, 0.06);
+  box-shadow:
+    6px 6px 16px rgba(18, 34, 30, 0.16),
+    -4px -4px 12px rgba(255, 255, 255, 0.72);
   min-width: 0;
 }
 
@@ -778,11 +792,11 @@ audio.previewMedia {
 
 .statusPill {
   color: #fff;
-  background: #26423b;
+  background: var(--primary);
 }
 
 .coursePill {
-  color: #26423b;
+  color: var(--primary);
   background: rgba(145, 167, 154, 0.18);
 }
 
@@ -798,7 +812,7 @@ audio.previewMedia {
   padding: 14px;
   border-radius: 18px;
   border: 1px solid rgba(38, 66, 59, 0.1);
-  background: #f8fbf9;
+  background: var(--surface-raised);
 }
 
 .profileImg {
@@ -817,7 +831,7 @@ audio.previewMedia {
 
 .personRow strong {
   display: block;
-  color: #13251f;
+  color: var(--text);
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -825,7 +839,7 @@ audio.previewMedia {
 .kicker {
   display: block;
   margin-bottom: 3px;
-  color: #60746a;
+  color: var(--muted);
   font-size: 0.76rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -851,12 +865,12 @@ audio.previewMedia {
   padding: 14px;
   border-radius: 18px;
   border: 1px solid rgba(38, 66, 59, 0.1);
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbf9 100%);
+  background: linear-gradient(180deg, var(--surface-white) 0%, var(--surface-raised) 100%);
 }
 
 .detailItem span,
 .progressBlock span {
-  color: #60746a;
+  color: var(--muted);
   font-size: 0.78rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -865,7 +879,7 @@ audio.previewMedia {
 
 .detailItem strong,
 .progressBlock strong {
-  color: #13251f;
+  color: var(--text);
   font-size: 0.98rem;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -875,7 +889,7 @@ audio.previewMedia {
   margin-top: auto;
   padding: 16px;
   border-radius: 20px;
-  background: #f8fbf9;
+  background: var(--surface-raised);
   border: 1px solid rgba(38, 66, 59, 0.1);
 }
 
@@ -898,7 +912,7 @@ audio.previewMedia {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: #91a79a;
+  background: var(--accent);
   transition: width 180ms ease;
 }
 

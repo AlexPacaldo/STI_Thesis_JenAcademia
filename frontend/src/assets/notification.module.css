@@ -7,7 +7,9 @@
   border-radius: 18px;
   font-size: 14px;
   font-weight: 500;
-  box-shadow: 0 18px 40px rgba(18, 34, 30, 0.12);
+  box-shadow:
+    6px 6px 16px rgba(18, 34, 30, 0.16),
+    -4px -4px 12px rgba(255, 255, 255, 0.7);
   animation: slideIn 0.3s ease-out;
   transition: all 0.3s ease;
   border: 1px solid rgba(38, 66, 59, 0.08);
@@ -79,56 +81,56 @@
 
 /* Success notification */
 .notification.success {
-  background-color: #e6fff6; /* pale mint */
-  color: #006a43; /* rich green text */
-  border-left: 6px solid #00c853; /* vibrant green */
-  box-shadow: 0 18px 40px rgba(0, 200, 83, 0.06);
+  background-color: var(--pill-success);
+  color: var(--text-success);
+  border-left: 6px solid var(--accent-success);
+  box-shadow: var(--neu-shadow-sm);
 }
 
 .notification.success .icon {
-  background-color: #00c853;
-  color: white;
-  box-shadow: 0 6px 18px rgba(0,200,83,0.18);
+  background-color: var(--accent-success);
+  color: var(--surface-white);
+  box-shadow: 0 6px 16px rgba(31, 157, 99, 0.22);
 }
 
 /* Error notification */
 .notification.error {
-  background-color: #ffecec; /* pale red */
-  color: #7a1f1f; /* deep red text */
-  border-left: 6px solid #ff5252; /* vivid red */
-  box-shadow: 0 18px 40px rgba(255, 82, 82, 0.06);
+  background-color: var(--pill-danger);
+  color: var(--text-danger);
+  border-left: 6px solid #c2413b;
+  box-shadow: var(--neu-shadow-sm);
 }
 
 .notification.error .icon {
-  background-color: #ff5252;
-  color: white;
-  box-shadow: 0 6px 18px rgba(255,82,82,0.18);
+  background-color: #c2413b;
+  color: var(--surface-white);
+  box-shadow: 0 6px 16px rgba(194, 65, 59, 0.22);
 }
 
 /* Warning notification */
 .notification.warning {
-  background-color: #fff8e6; /* pale yellow */
-  color: #6b3f00; /* warm brown text */
-  border-left: 6px solid #ffb300; /* strong amber */
-  box-shadow: 0 18px 40px rgba(255, 179, 0, 0.06);
+  background-color: var(--pill-warn);
+  color: var(--text-warn);
+  border-left: 6px solid var(--accent-warn);
+  box-shadow: var(--neu-shadow-sm);
 }
 
 .notification.warning .icon {
-  background-color: #ffb300;
-  color: white;
-  box-shadow: 0 6px 18px rgba(255,179,0,0.18);
+  background-color: var(--accent-warn);
+  color: var(--surface-white);
+  box-shadow: 0 6px 16px rgba(209, 138, 16, 0.22);
 }
 
 /* Info notification */
 .notification.info {
-  background-color: #eaf2ff; /* soft blue */
-  color: #013a8a; /* deep blue text */
-  border-left: 6px solid #3b82f6; /* vibrant blue */
-  box-shadow: 0 18px 40px rgba(59,130,246,0.06);
+  background-color: var(--pill-info);
+  color: var(--text-info);
+  border-left: 6px solid var(--accent-info);
+  box-shadow: var(--neu-shadow-sm);
 }
 
 .notification.info .icon {
-  background-color: #3b82f6;
-  color: white;
-  box-shadow: 0 6px 18px rgba(59,130,246,0.18);
+  background-color: var(--accent-info);
+  color: var(--surface-white);
+  box-shadow: 0 6px 16px rgba(61, 107, 143, 0.22);
 }

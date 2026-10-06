@@ -278,7 +278,9 @@ function App() {
           )}
           <main className={`content-area ${isFullBleedPath ? 'full-bleed' : ''}`}>
             <div className={`content-inner ${isFullBleedPath ? 'full-bleed' : ''}`}>
-              <Outlet />
+              <div key={location.pathname} style={{ animation: 'fadeIn 0.32s cubic-bezier(0.22,1,0.36,1) both' }}>
+                <Outlet />
+              </div>
             </div>
           </main>
         </div>

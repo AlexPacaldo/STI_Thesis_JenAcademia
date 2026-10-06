@@ -1012,14 +1012,10 @@ export default function Account() {
           className={styles.modalBackdrop}
           onClick={closeConfirmAction}
         >
-          <section className={styles.cropModal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <h2>{confirmAction.title}</h2>
-            </div>
-            <div style={{ padding: "0 24px 24px" }}>
-              <p style={{ margin: 0, color: "#444", lineHeight: 1.6 }}>{confirmAction.message}</p>
-            </div>
-            <div className={styles.modalActions} style={{ justifyContent: "flex-end" }}>
+          <section className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
+            <h2>{confirmAction.title}</h2>
+            <p className={styles.confirmBody}>{confirmAction.message}</p>
+            <div className={styles.confirmActions}>
               <button type="button" className={styles.textBtn} onClick={closeConfirmAction}>
                 Cancel
               </button>

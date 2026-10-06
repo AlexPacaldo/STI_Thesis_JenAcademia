@@ -1,264 +1,344 @@
+/* ============================================================
+   HEADER — Neumorphic Design System
+   ============================================================ */
+
 .header {
-    height: 72px;
-    display: flex;
-    align-items: center;
-    color: var(--text, #13251f);
-    background: rgba(255, 255, 255, 0);
-    position: sticky;
-    top: 0;
-    width: 100%;
-    padding: 0 1.8rem;
-    z-index: 99;
-    transition: background 240ms ease, box-shadow 240ms ease, border-color 240ms ease;
-    border-bottom: 1px solid transparent;
-    box-shadow: none;
+  height: var(--header-height, 72px);
+  display: flex;
+  align-items: center;
+  background: rgba(244, 247, 245, 0);
+  position: sticky;
+  top: 0;
+  width: 100%;
+  padding: 0 1.6rem;
+  z-index: 99;
+  transition:
+    background var(--duration-base, 220ms) var(--ease-out),
+    box-shadow var(--duration-base, 220ms) var(--ease-out),
+    border-color var(--duration-base, 220ms) var(--ease-out);
+  border-bottom: 1px solid transparent;
 }
 
 .headerScrolled {
-    background: rgba(255, 255, 255, 0.82) !important;
-    box-shadow: var(--shadow-md, 0 16px 42px rgba(18, 34, 30, 0.09));
-    backdrop-filter: blur(18px);
-    border-bottom: 1px solid var(--border, rgba(38, 66, 59, 0.12));
+  background: rgba(244, 247, 245, 0.88) !important;
+  box-shadow:
+    0 4px 20px rgba(18, 34, 30, 0.08),
+    0 1px 0 rgba(38, 66, 59, 0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border, rgba(38, 66, 59, 0.10));
 }
 
 .headerContainer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    width: 100%;
-    gap: 16px;
-    min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  gap: 14px;
+  min-width: 0;
 }
 
+/* ── Mobile menu button ── */
 .menuButton {
-    display: none;
-    width: 42px;
-    height: 42px;
-    flex: 0 0 42px;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 5px;
-    border: 1px solid rgba(38, 66, 59, 0.12);
-    background: rgba(145, 167, 154, 0.12);
-    color: var(--primary, #26423b);
-    cursor: pointer;
+  display: none;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 5px;
+  border-radius: 14px;
+  border: 1px solid var(--border-mid, rgba(38, 66, 59, 0.14));
+  background: var(--surface, #f4f7f5);
+  color: var(--primary, var(--primary));
+  cursor: pointer;
+  box-shadow: var(--neu-shadow-sm);
+  transition:
+    box-shadow var(--duration-fast) ease,
+    transform var(--duration-fast) ease;
+}
+
+.menuButton:hover {
+  box-shadow: var(--neu-shadow-md);
+  transform: translateY(-1px);
+}
+
+.menuButton:active {
+  box-shadow: var(--neu-inset);
+  transform: translateY(0);
 }
 
 .menuButton span {
-    width: 18px;
-    height: 2px;
-    border-radius: 999px;
-    background: currentColor;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transition: transform var(--duration-fast) ease, opacity var(--duration-fast) ease;
 }
 
+/* ── Brand name pill ── */
 .brandName {
-    display: block;
-    font-size: 1.3rem;
-    font-weight: 800;
-    text-decoration: none;
-    color: var(--primary, #26423b);
-    white-space: nowrap;
-    line-height: 1.2;
-    padding: 10px 14px;
-    border-radius: 18px;
-    background: rgba(145, 167, 154, 0.08);
-    border: 1px solid rgba(38, 66, 59, 0.08);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.2rem;
+  font-weight: 800;
+  text-decoration: none;
+  color: var(--primary, var(--primary));
+  white-space: nowrap;
+  line-height: 1.2;
+  padding: 8px 16px;
+  border-radius: 16px;
+  background: var(--surface, #f4f7f5);
+  border: 1px solid var(--border, rgba(38, 66, 59, 0.10));
+  box-shadow: var(--neu-shadow-sm);
+  transition:
+    box-shadow var(--duration-fast) ease,
+    transform var(--duration-fast) ease;
 }
 
+.brandName:hover {
+  box-shadow: var(--neu-shadow-md);
+  transform: translateY(-1px);
+}
+
+/* ── Navbar ── */
 .navbar {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .navbar a {
-    color: var(--primary, #26423b);
-    text-decoration: none;
-    padding: 8px 10px;
-    border-radius: 14px;
-    transition: 160ms ease;
-    white-space: nowrap;
-    line-height: 1.2;
+  color: var(--primary, var(--primary));
+  text-decoration: none;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition:
+    background var(--duration-fast) ease,
+    transform var(--duration-fast) ease;
+  white-space: nowrap;
+}
+
+.navbar a:hover {
+  background: rgba(145, 167, 154, 0.14);
+  transform: translateY(-1px);
 }
 
 .navbar a.btn {
-    background: linear-gradient(90deg, var(--primary), #35594e);
-    color: white;
+  background: linear-gradient(135deg, var(--primary), var(--primary-mid));
+  color: white;
+  padding: 8px 16px;
+  box-shadow: 0 6px 16px rgba(38, 66, 59, 0.2);
 }
 
+.navbar a.btn:hover {
+  box-shadow: 0 8px 20px rgba(38, 66, 59, 0.26);
+}
+
+/* ── User account area ── */
 .StudentAccount,
 .TeacherAccount {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-    padding: 8px 10px;
-    border-radius: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px;
+  border-radius: 14px;
+  background: transparent;
+  border: none;
+  transition:
+    background var(--duration-fast) ease,
+    transform var(--duration-fast) ease;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.StudentAccount:hover,
+.TeacherAccount:hover {
+  background: rgba(38, 66, 59, 0.06);
+  transform: translateY(-1px);
 }
 
 .profilePic {
-    width: 3rem;
-    height: 3rem;
-    border-radius: 50%;
-    border: 1px solid rgba(38, 66, 59, 0.08);
-    object-fit: cover;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: none;
+  box-shadow: 0 2px 8px rgba(18, 34, 30, 0.1);
 }
 
 .account {
-    color: var(--text, #13251f);
-    text-decoration: none;
-    font-size: 0.85rem;
-    white-space: nowrap;
-    line-height: 1.2;
-    font-weight: 800;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 160px;
+  color: var(--text, var(--text));
+  text-decoration: none;
+  font-size: 0.84rem;
+  white-space: nowrap;
+  line-height: 1.2;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
 }
 
+/* ── Notification bell ── */
 .notificationBell {
-    position: relative;
-    background: rgba(145, 167, 154, 0.12);
-    border: 1px solid rgba(38, 66, 59, 0.08);
-    color: var(--primary, #26423b);
-    font-size: 1.05rem;
-    cursor: pointer;
-    width: 42px;
-    height: 42px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    flex-shrink: 0;
-    transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+  position: relative;
+  background: var(--surface, #f4f7f5);
+  border: 1px solid var(--border, rgba(38, 66, 59, 0.10));
+  color: var(--primary, var(--primary));
+  font-size: 1.05rem;
+  cursor: pointer;
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  flex-shrink: 0;
+  box-shadow: var(--neu-shadow-sm);
+  transition:
+    box-shadow var(--duration-fast) ease,
+    transform var(--duration-fast) ease,
+    background var(--duration-fast) ease;
 }
 
 .notificationBell:hover,
 .notificationBell:focus-visible {
-    background: rgba(145, 167, 154, 0.2);
-    border-color: rgba(38, 66, 59, 0.16);
-    transform: translateY(-1px);
+  box-shadow: var(--neu-shadow-md);
+  transform: translateY(-1px);
+  background: var(--surface-raised, var(--surface-raised));
+}
+
+.notificationBell:active {
+  box-shadow: var(--neu-inset);
+  transform: translateY(0);
 }
 
 .notificationBell i {
-    font-size: 1rem;
+  font-size: 1rem;
 }
 
+/* ── Header separator ── */
 .headerSeparator {
-    color: rgba(38, 66, 59, 0.28);
-    font-size: 1.5rem;
-    font-weight: 500;
-    line-height: 1;
-    user-select: none;
+  color: var(--border-mid, rgba(38, 66, 59, 0.18));
+  font-size: 1.4rem;
+  font-weight: 300;
+  line-height: 1;
+  user-select: none;
 }
 
+/* ── Badge ── */
 .badge {
-    position: absolute;
-    top: -6px;
-    right: -6px;
-    background: rgb(255, 64, 64);
-    color: white;
-    font-size: 0.7rem;
-    padding: 2px 6px;
-    border-radius: 999px;
-    box-shadow: 0 4px 12px rgba(38, 66, 59, 0.12);
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: var(--alert-danger);
+  color: white;
+  font-size: 0.66rem;
+  font-weight: 800;
+  padding: 2px 5px;
+  border-radius: 999px;
+  min-width: 18px;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(232, 69, 60, 0.4);
+  border: 1.5px solid var(--bg, var(--bg));
 }
 
-.account:hover {
-    text-decoration: none;
-}
-
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
 @media (max-width: 900px) {
-    .header {
-        padding: 0 1rem;
-    }
+  .header { padding: 0 1rem; }
 
-    .menuButton {
-        display: inline-flex;
-    }
+  .menuButton { display: inline-flex; }
 
-    .brandName {
-        font-size: 1.1rem;
-        padding: 8px 12px;
-    }
+  .brandName {
+    font-size: 1.05rem;
+    padding: 7px 12px;
+  }
 
-    .navbar {
-        gap: 10px;
-    }
+  .navbar { gap: 8px; }
 
-    .StudentAccount,
-    .TeacherAccount {
-        padding: 6px 8px;
-    }
+  .StudentAccount,
+  .TeacherAccount {
+    padding: 5px 10px 5px 5px;
+  }
 
-    .account {
-        max-width: 110px;
-    }
+  .account { max-width: 100px; }
 }
 
 @media (max-width: 640px) {
-    .header {
-        height: 72px;
-        min-height: 72px;
-        padding: 0 12px;
-    }
+  .header {
+    height: 66px;
+    min-height: 66px;
+    padding: 0 12px;
+  }
 
-    .headerContainer {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
-        gap: 8px;
-        flex-wrap: nowrap;
-    }
+  .headerContainer {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
 
-    .menuButton,
-    .notificationBell {
-        width: 40px;
-        height: 40px;
-        flex-basis: 40px;
-    }
+  .menuButton,
+  .notificationBell {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+    border-radius: 13px;
+  }
 
-    .brandName {
-        justify-self: center;
-        max-width: 100%;
-        padding: 8px 12px;
-        font-size: 1rem;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
+  .brandName {
+    justify-self: center;
+    max-width: 100%;
+    font-size: 0.96rem;
+    padding: 7px 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-radius: 14px;
+  }
 
-    .navbar {
-        width: auto;
-        justify-content: flex-end;
-        gap: 5px;
-        flex-wrap: nowrap;
-    }
+  .navbar {
+    width: auto;
+    justify-content: flex-end;
+    gap: 4px;
+    flex-wrap: nowrap;
+  }
 
-    .StudentAccount,
-    .TeacherAccount {
-        margin-left: 0;
-        gap: 6px;
-        padding: 4px 0 4px 4px;
-    }
+  .StudentAccount,
+  .TeacherAccount {
+    margin-left: 0;
+    gap: 6px;
+    padding: 4px 8px 4px 4px;
+    border-radius: 14px;
+  }
 
-    .account {
-        max-width: 84px;
-        font-size: 0.78rem;
-    }
+  .account {
+    max-width: 80px;
+    font-size: 0.76rem;
+  }
 
-    .profilePic {
-        width: 40px;
-        height: 40px;
-    }
+  .profilePic {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+  }
 
-    .headerSeparator {
-        font-size: 1.25rem;
-    }
+  .headerSeparator { font-size: 1.1rem; }
 }
 
-@media (max-width: 380px) {
-    .account {
-        display: none;
-    }
+@media (max-width: 400px) {
+  .account { display: none; }
+
+  .StudentAccount,
+  .TeacherAccount {
+    padding: 4px;
+    border-radius: 12px;
+  }
 }

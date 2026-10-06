@@ -47,21 +47,21 @@
   align-items: center;
   padding: 20px;
   border-bottom: 1px solid var(--border, rgba(38, 66, 59, 0.12));
-  background: var(--surface-soft, #f8fbf9);
+  background: var(--surface-soft, var(--surface-raised));
   position: relative;
 }
 
 .header h2 {
   margin: 0;
   font-size: 1.3rem;
-  color: var(--text, #13251f);
+  color: var(--text, var(--text));
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .badge {
-  background-color: #d66a55;
+  background-color: var(--text-danger);
   color: white;
   border-radius: 50%;
   width: 28px;
@@ -79,7 +79,7 @@
   border: 1px solid rgba(38, 66, 59, 0.08);
   font-size: 1.5rem;
   cursor: pointer;
-  color: var(--primary, #26423b);
+  color: var(--primary, var(--primary));
   padding: 0;
   width: 32px;
   height: 32px;
@@ -99,7 +99,7 @@
   display: flex;
   gap: 8px;
   padding: 12px 16px;
-  background: var(--surface-soft, #f8fbf9);
+  background: var(--surface-soft, var(--surface-raised));
   border-bottom: 1px solid var(--border, rgba(38, 66, 59, 0.12));
   overflow-x: auto;
   scroll-behavior: smooth;
@@ -123,18 +123,18 @@
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.2s;
-  color: var(--muted, #5e7268);
+  color: var(--muted, var(--muted));
 }
 
 .filterBtn:hover {
-  border-color: var(--primary, #26423b);
-  color: var(--primary, #26423b);
+  border-color: var(--primary, var(--primary));
+  color: var(--primary, var(--primary));
 }
 
 .filterBtn.active {
-  background: var(--primary, #26423b);
+  background: var(--primary, var(--primary));
   color: #fff;
-  border-color: var(--primary, #26423b);
+  border-color: var(--primary, var(--primary));
 }
 
 /* Main Content */
@@ -151,7 +151,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--muted, #5e7268);
+  color: var(--muted, var(--muted));
   font-size: 0.9rem;
 }
 
@@ -160,7 +160,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--muted, #5e7268);
+  color: var(--muted, var(--muted));
   text-align: center;
   padding: 20px;
 }
@@ -190,7 +190,7 @@
 }
 
 .notificationItem:hover {
-  background: var(--surface-soft, #f8fbf9);
+  background: var(--surface-soft, var(--surface-raised));
   border-left-color: inherit;
 }
 
@@ -205,7 +205,7 @@
   right: 12px;
   width: 8px;
   height: 8px;
-  background: #f44336;
+  background: var(--text-danger);
   border-radius: 50%;
   top: 50%;
   transform: translateY(-50%);
@@ -234,14 +234,14 @@
 .notifTitle {
   margin: 0;
   font-size: 0.95rem;
-  color: var(--text, #13251f);
+  color: var(--text, var(--text));
   font-weight: 600;
 }
 
 .notifType {
   font-size: 0.7rem;
   background: rgba(145, 167, 154, 0.18);
-  color: var(--primary, #26423b);
+  color: var(--primary, var(--primary));
   padding: 2px 8px;
   border-radius: 10px;
   white-space: nowrap;
@@ -252,7 +252,7 @@
 .notifMessage {
   margin: 6px 0 4px 0;
   font-size: 0.85rem;
-  color: var(--muted, #5e7268);
+  color: var(--muted, var(--muted));
   line-height: 1.4;
   white-space: pre-line;
   word-break: break-word;
@@ -265,7 +265,7 @@
 .reasonLine {
   margin-top: 8px;
   padding: 8px 10px;
-  border-left: 3px solid #d66a55;
+  border-left: 3px solid var(--text-danger);
   border-radius: 6px;
   background: rgba(214, 106, 85, 0.12);
   color: #8a3e2e;
@@ -274,7 +274,7 @@
 
 .notifTime {
   font-size: 0.75rem;
-  color: var(--muted, #5e7268);
+  color: var(--muted, var(--muted));
 }
 
 .notifActions {
@@ -294,12 +294,12 @@
   padding: 4px 6px;
   border-radius: 12px;
   transition: all 0.2s;
-  color: var(--primary, #26423b);
+  color: var(--primary, var(--primary));
 }
 
 .markReadBtn:hover {
   background: rgba(145, 167, 154, 0.18);
-  color: var(--primary, #26423b);
+  color: var(--primary, var(--primary));
 }
 
 .deleteBtn:hover {
@@ -309,7 +309,7 @@
 
 .approveBtn {
   background: rgba(145, 167, 154, 0.18);
-  color: var(--primary, #26423b);
+  color: var(--primary, var(--primary));
   font-weight: bold;
   padding: 6px 8px;
   border: 1px solid rgba(38, 66, 59, 0.14);
@@ -349,7 +349,7 @@
   gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid var(--border, rgba(38, 66, 59, 0.12));
-  background: var(--surface-soft, #f8fbf9);
+  background: var(--surface-soft, var(--surface-raised));
 }
 
 .pageBtn {
@@ -360,13 +360,13 @@
   font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s;
-  color: var(--text, #13251f);
+  color: var(--text, var(--text));
 }
 
 .pageBtn:hover:not(:disabled) {
-  background: var(--primary, #26423b);
+  background: var(--primary, var(--primary));
   color: #fff;
-  border-color: var(--primary, #26423b);
+  border-color: var(--primary, var(--primary));
 }
 
 .pageBtn:disabled {
@@ -376,7 +376,7 @@
 
 .pageInfo {
   font-size: 0.85rem;
-  color: var(--muted, #5e7268);
+  color: var(--muted, var(--muted));
 }
 
 /* Mark All Read Button */
@@ -384,7 +384,7 @@
   flex: 1;
   min-width: 150px;
   padding: 12px 16px;
-  background: var(--primary, #26423b);
+  background: var(--primary, var(--primary));
   color: #fff;
   border: none;
   border-radius: 18px;
@@ -395,7 +395,7 @@
 }
 
 .markAllReadBtn:hover {
-  background: #35594e;
+  background: var(--primary-mid);
 }
 
 .markAllReadBtn:active {
@@ -405,7 +405,7 @@
 /* Footer Actions */
 .footerActions {
   border-top: 1px solid var(--border, rgba(38, 66, 59, 0.12));
-  background: var(--surface-soft, #f8fbf9);
+  background: var(--surface-soft, var(--surface-raised));
   display: flex;
   gap: 8px;
   padding: 12px 16px;
@@ -416,7 +416,7 @@
   flex: 1;
   min-width: 150px;
   padding: 12px 16px;
-  background: #d66a55;
+  background: var(--text-danger);
   color: #fff;
   border: none;
   border-radius: 18px;
@@ -427,7 +427,7 @@
 }
 
 .clearAllBtn:hover {
-  background: #bb5742;
+  background: var(--text-danger);
 }
 
 .clearAllBtn:active {
