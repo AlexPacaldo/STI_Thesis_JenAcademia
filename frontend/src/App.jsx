@@ -12,7 +12,7 @@ import { API_BASE_URL } from "./utils/api.js";
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 60 * 1000; // 5 hours
 const ACCOUNT_STATUS_CHECK_MS = 60 * 1000;
-const PUBLIC_PATHS = ["/", "/login", "/register", "/setup-account"];
+const PUBLIC_PATHS = ["/", "/login", "/register", "/setup-account", "/forgot-password", "/reset-password"];
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
 
 function isProfileComplete(user) {
@@ -248,7 +248,7 @@ function App() {
     setIsSidebarOpen(false);
   }, [location.pathname, location.search]);
 
-  const hideHeaderPaths = ["/", "/login", "/register", "/setup-account"];
+  const hideHeaderPaths = ["/", "/login", "/register", "/setup-account", "/forgot-password", "/reset-password"];
   const shouldShowHeader = !hideHeaderPaths.some((publicPath) => {
     const normalizedPath = location.pathname.toLowerCase();
     return publicPath === "/" ? normalizedPath === "/" : normalizedPath === publicPath || normalizedPath.startsWith(`${publicPath}/`);
@@ -257,7 +257,7 @@ function App() {
   const isAccountPageNewUser = isAccountPage && !isProfileComplete(readStoredUser());
   const shouldShowSidebar = shouldShowHeader && !isAccountPageNewUser;
   const showFooter = location.pathname === "/" && !isAuthenticated(readStoredUser());
-  const isFullBleedPath = location.pathname === "/" || location.pathname === "/login" || location.pathname.toLowerCase().startsWith("/setup-account/");
+  const isFullBleedPath = location.pathname === "/" || location.pathname === "/login" || location.pathname.toLowerCase().startsWith("/setup-account/") || location.pathname.toLowerCase().startsWith("/forgot-password") || location.pathname.toLowerCase().startsWith("/reset-password/");
 
   return (
     <>

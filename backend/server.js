@@ -7,9 +7,8 @@ import express from "express";
 import fs from "fs";
 import multer from "multer";
 import mysql from "mysql2/promise";
-import net from "net";
 import path from "path";
-import tls from "tls";
+import { Resend } from "resend";
 import { assessClassEvidence } from "./classEvidence.js";
 import { deleteRecordingFromDrive, extractDriveFileId, isGoogleDriveConfigured, uploadRecordingToDrive } from "./googleDrive.js";
 
@@ -178,113 +177,28 @@ function encodeEmailBody(value) {
 }
 
 function smtpConfigured() {
-  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+  return Boolean(process.env.RESEND_API_KEY);
 }
 
-function createSmtpClient({ host, port, secure }) {
-  return new Promise((resolve, reject) => {
-    const socket = secure
-      ? tls.connect(port, host, { servername: host }, () => resolve(socket))
-      : net.connect(port, host, () => resolve(socket));
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-    socket.setEncoding("utf8");
-    socket.once("error", reject);
-  });
-}
-
-function readSmtpResponse(socket) {
-  return new Promise((resolve, reject) => {
-    let buffer = "";
-
-    function cleanup() {
-      socket.off("data", onData);
-      socket.off("error", onError);
-    }
-
-    function onError(err) {
-      cleanup();
-      reject(err);
-    }
-
-    function onData(chunk) {
-      buffer += chunk;
-      const lines = buffer.split(/\r?\n/).filter(Boolean);
-      const last = lines[lines.length - 1] || "";
-      if (/^\d{3} /.test(last)) {
-        cleanup();
-        resolve(buffer);
-      }
-    }
-
-    socket.on("data", onData);
-    socket.once("error", onError);
-  });
-}
-
-async function smtpCommand(socket, command, expectedCodes) {
-  if (command) socket.write(`${command}\r\n`);
-  const response = await readSmtpResponse(socket);
-  const code = response.slice(0, 3);
-  if (!expectedCodes.includes(code)) {
-    throw new Error(`SMTP command failed (${code}): ${response.trim()}`);
-  }
-  return response;
-}
-
-async function upgradeSmtpToTls(socket, host) {
-  return new Promise((resolve, reject) => {
-    const secureSocket = tls.connect({ socket, servername: host }, () => resolve(secureSocket));
-    secureSocket.setEncoding("utf8");
-    secureSocket.once("error", reject);
-  });
-}
+const RESEND_TEST_EMAIL = "alexpacaldo1105@gmail.com";
 
 async function sendSmtpMail({ to, subject, text }) {
   if (!smtpConfigured()) {
-    console.warn("SMTP is not configured; account invite email was not sent.");
+    console.warn("Resend is not configured; email was not sent.");
     return { sent: false, skipped: true };
   }
 
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || 587);
-  const secure = String(process.env.SMTP_SECURE || "").toLowerCase() === "true" || port === 465;
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
-  let socket = await createSmtpClient({ host, port, secure });
+  const from = `${process.env.SMTP_FROM_NAME || "JEN Academia"} <onboarding@resend.dev>`;
+  const actualTo = RESEND_TEST_EMAIL;
+  const actualText = to !== RESEND_TEST_EMAIL
+    ? `[DEV] Originally addressed to: ${to}\n\n${text}`
+    : text;
 
-  try {
-    await smtpCommand(socket, null, ["220"]);
-    await smtpCommand(socket, `EHLO ${process.env.SMTP_EHLO_DOMAIN || "jenacademia.local"}`, ["250"]);
-
-    if (!secure) {
-      await smtpCommand(socket, "STARTTLS", ["220"]);
-      socket = await upgradeSmtpToTls(socket, host);
-      await smtpCommand(socket, `EHLO ${process.env.SMTP_EHLO_DOMAIN || "jenacademia.local"}`, ["250"]);
-    }
-
-    await smtpCommand(socket, "AUTH LOGIN", ["334"]);
-    await smtpCommand(socket, Buffer.from(process.env.SMTP_USER).toString("base64"), ["334"]);
-    await smtpCommand(socket, Buffer.from(process.env.SMTP_PASS).toString("base64"), ["235"]);
-    await smtpCommand(socket, `MAIL FROM:<${from}>`, ["250"]);
-    await smtpCommand(socket, `RCPT TO:<${to}>`, ["250", "251"]);
-    await smtpCommand(socket, "DATA", ["354"]);
-
-    const body = [
-      `From: ${escapeEmailHeader(process.env.SMTP_FROM_NAME || "JEN Academia")} <${from}>`,
-      `To: <${to}>`,
-      `Subject: ${escapeEmailHeader(subject)}`,
-      "MIME-Version: 1.0",
-      "Content-Type: text/plain; charset=UTF-8",
-      "",
-      encodeEmailBody(text),
-    ].join("\r\n");
-
-    socket.write(`${body}\r\n.\r\n`);
-    await smtpCommand(socket, null, ["250"]);
-    await smtpCommand(socket, "QUIT", ["221"]);
-    return { sent: true };
-  } finally {
-    socket.end();
-  }
+  const { error } = await resend.emails.send({ from, to: actualTo, subject, text: actualText });
+  if (error) throw new Error(error.message);
+  return { sent: true };
 }
 
 async function sendAccountSetupInviteEmail({ email, firstName, role, inviteUrl, expiresAt }) {
@@ -1383,6 +1297,24 @@ async function ensureAccountSetupInvitesTable() {
   `);
 }
 
+async function ensurePasswordResetTokensTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      reset_id INT NOT NULL AUTO_INCREMENT,
+      user_id INT NOT NULL,
+      token_hash CHAR(64) NOT NULL,
+      expires_at DATETIME NOT NULL,
+      used_at DATETIME DEFAULT NULL,
+      created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (reset_id),
+      UNIQUE KEY unique_password_reset_token_hash (token_hash),
+      KEY idx_password_reset_user (user_id),
+      KEY idx_password_reset_expires (expires_at),
+      CONSTRAINT password_reset_tokens_user_fk FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
+    )
+  `);
+}
+
 async function ensureUserDemographicsColumns() {
   if (!(await columnExists("users", "country"))) {
     await pool.query("ALTER TABLE users ADD COLUMN country VARCHAR(100) DEFAULT NULL AFTER contact_number");
@@ -1662,6 +1594,7 @@ async function prepareDatabase() {
   await ensureUserProfileImageColumn();
   await ensureUserPasswordChangedColumn();
   await ensureAccountSetupInvitesTable();
+  await ensurePasswordResetTokensTable();
   await ensureUserDemographicsColumns();
   await refreshAllProfileCompletion();
   await ensureStudentContractRequestsTable();
@@ -2520,6 +2453,179 @@ app.post("/api/login", async (req, res) => {
     });
   } catch (err) {
     console.error("Login error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.post("/api/contact", async (req, res) => {
+  try {
+    const name = String(req.body?.name || "").trim();
+    const email = String(req.body?.email || "").trim();
+    const message = String(req.body?.message || "").trim();
+
+    if (!name || !email || !message) {
+      return res.status(400).json({ message: "Name, email, and message are required" });
+    }
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ message: "A valid email address is required" });
+    }
+    if (message.length > 2000) {
+      return res.status(400).json({ message: "Message is too long" });
+    }
+
+    if (!smtpConfigured()) {
+      return res.status(503).json({ message: "Contact form is not configured" });
+    }
+
+    await sendSmtpMail({
+      to: "alexpacaldo1105@gmail.com",
+      subject: `JEN Academia contact form — ${escapeEmailHeader(name)}`,
+      text: [
+        `Name:    ${name}`,
+        `Email:   ${email}`,
+        ``,
+        `Message:`,
+        message,
+      ].join("\n"),
+    });
+
+    res.json({ message: "Message sent successfully." });
+  } catch (err) {
+    console.error("POST /api/contact error:", err);
+    res.status(500).json({ message: "Server error. Please try again later." });
+  }
+});
+
+app.post("/api/forgot-password", async (req, res) => {
+  try {
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ message: "A valid email address is required" });
+    }
+
+    const [rows] = await pool.query(
+      "SELECT user_id, first_name, status FROM users WHERE email = ? LIMIT 1",
+      [email]
+    );
+
+    if (!rows.length || rows[0].status === "archived") {
+      return res.json({ message: "If that email exists, a reset link has been sent." });
+    }
+
+    const user = rows[0];
+    const token = createInviteToken();
+    const tokenHash = hashInviteToken(token);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    const expiresAtSql = expiresAt.toISOString().slice(0, 19).replace("T", " ");
+
+    await pool.query(
+      "UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL",
+      [user.user_id]
+    );
+    await pool.query(
+      "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)",
+      [user.user_id, tokenHash, expiresAtSql]
+    );
+
+    const resetUrl = `${getFrontendBaseUrl()}/reset-password/${encodeURIComponent(token)}`;
+
+    await sendSmtpMail({
+      to: email,
+      subject: "Reset your JEN Academia password",
+      text: [
+        `Hi ${user.first_name || "there"},`,
+        "",
+        "We received a request to reset your JEN Academia password.",
+        "Click the link below to set a new password:",
+        "",
+        resetUrl,
+        "",
+        "This link expires in 1 hour.",
+        "",
+        "If you did not request a password reset, you can safely ignore this email.",
+      ].join("\n"),
+    });
+
+    res.json({ message: "If that email exists, a reset link has been sent." });
+  } catch (err) {
+    console.error("POST /api/forgot-password error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.post("/api/reset-password/:token", async (req, res) => {
+  try {
+    const { password, confirmPassword } = req.body || {};
+    const newPassword = String(password || "");
+
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters" });
+    }
+    if (newPassword !== String(confirmPassword || "")) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    const tokenHash = hashInviteToken(req.params.token || "");
+    const [rows] = await pool.query(
+      `SELECT prt.reset_id, prt.expires_at, prt.used_at, prt.user_id
+       FROM password_reset_tokens prt
+       WHERE prt.token_hash = ?
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Reset link is invalid or has expired" });
+    }
+
+    const record = rows[0];
+
+    if (record.used_at) {
+      return res.status(410).json({ message: "This reset link has already been used" });
+    }
+    if (new Date(record.expires_at).getTime() <= Date.now()) {
+      return res.status(410).json({ message: "This reset link has expired. Please request a new one." });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await pool.query(
+      "UPDATE users SET password_hash = ?, password_changed = 1 WHERE user_id = ?",
+      [passwordHash, record.user_id]
+    );
+    await pool.query(
+      "UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE reset_id = ?",
+      [record.reset_id]
+    );
+
+    res.json({ message: "Password updated successfully. You can now sign in." });
+  } catch (err) {
+    console.error("POST /api/reset-password/:token error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.get("/api/reset-password/:token", async (req, res) => {
+  try {
+    const tokenHash = hashInviteToken(req.params.token || "");
+    const [rows] = await pool.query(
+      "SELECT reset_id, expires_at, used_at FROM password_reset_tokens WHERE token_hash = ? LIMIT 1",
+      [tokenHash]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Reset link is invalid or has expired" });
+    }
+    if (rows[0].used_at) {
+      return res.status(410).json({ message: "This reset link has already been used" });
+    }
+    if (new Date(rows[0].expires_at).getTime() <= Date.now()) {
+      return res.status(410).json({ message: "This reset link has expired. Please request a new one." });
+    }
+
+    res.json({ valid: true });
+  } catch (err) {
+    console.error("GET /api/reset-password/:token error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -7249,7 +7355,7 @@ app.get("/api/student/assigned-teacher/:student_id", async (req, res) => {
   try {
     const { student_id } = req.params;
     const [rows] = await pool.query(
-      `SELECT sp.assigned_teacher_id
+      `SELECT sp.assigned_teacher_id, t.first_name, t.last_name
        FROM student_profiles sp
        JOIN users t ON t.user_id = sp.assigned_teacher_id
        WHERE sp.user_id = ?
@@ -7263,7 +7369,10 @@ app.get("/api/student/assigned-teacher/:student_id", async (req, res) => {
       return res.status(404).json({ message: "Assigned teacher not found" });
     }
 
-    res.json({ assigned_teacher_id: rows[0].assigned_teacher_id ?? null });
+    res.json({
+      assigned_teacher_id: rows[0].assigned_teacher_id ?? null,
+      teacher_name: [rows[0].first_name, rows[0].last_name].filter(Boolean).join(" ").trim(),
+    });
   } catch (err) {
     console.error("GET /api/student/assigned-teacher/:student_id error:", err);
     res.status(500).json({ message: "Server error" });
@@ -7768,7 +7877,13 @@ app.get("/api/calendar/teacher-availability-records", async (req, res) => {
               TIME_FORMAT(ta.end_time, '%H:%i:%s') AS end_time,
               TIME_FORMAT(ta.break_start, '%H:%i:%s') AS break_start,
               TIME_FORMAT(ta.break_end, '%H:%i:%s') AS break_end,
-              u.timezone AS teacher_timezone
+              u.timezone AS teacher_timezone,
+              EXISTS (
+                SELECT 1 FROM classes c
+                WHERE c.teacher_id = ta.teacher_id
+                  AND c.scheduled_date = ta.available_date
+                  AND c.status = 'scheduled'
+              ) AS has_booked_class
        FROM teacher_availability ta
        JOIN users u ON u.user_id = ta.teacher_id
        WHERE ta.teacher_id = ?
@@ -7924,21 +8039,21 @@ app.post("/api/calendar/set-availability", async (req, res) => {
       // Check if there's already a booked class during this time window
       const [existingClasses] = await pool.query(
         `SELECT class_id, start_time, end_time FROM classes 
-         WHERE teacher_id = ? AND scheduled_date = ?`,
+         WHERE teacher_id = ? AND scheduled_date = ? AND status = 'scheduled'`,
         [teacher_id, available_date]
       );
 
       if (existingClasses.length > 0) {
-        // Check for time conflict
-        for (const cls of existingClasses) {
-          const classStartMin = parseInt((cls.start_time || "00:00").split(":")[0]) * 60 + parseInt((cls.start_time || "00:00").split(":")[1]);
-          const classEndMin = parseInt((cls.end_time || "00:00").split(":")[0]) * 60 + parseInt((cls.end_time || "00:00").split(":")[1]);
-          
-          // Check if class overlaps with availability window
-          if (classStartMin < endMinutes && classEndMin > startMinutes) {
-            return res.status(409).json({ message: "You have a booked class during this time period" });
-          }
-        }
+        return res.status(409).json({ message: "Cannot update availability: a student has a booked class on this day." });
+      }
+    } else {
+      const [existingClassesAny] = await pool.query(
+        `SELECT class_id FROM classes 
+         WHERE teacher_id = ? AND scheduled_date = ? AND status = 'scheduled' LIMIT 1`,
+        [teacher_id, available_date]
+      );
+      if (existingClassesAny.length > 0) {
+        return res.status(409).json({ message: "Cannot update availability: a student has a booked class on this day." });
       }
     }
 
@@ -8224,6 +8339,23 @@ app.delete("/api/calendar/availability/:availability_id", async (req, res) => {
        LIMIT 1`,
       [availability_id]
     );
+
+    if (!availabilityRows.length) {
+      return res.status(404).json({ message: "Availability record not found" });
+    }
+
+    const { teacher_id, available_date } = availabilityRows[0];
+
+    const [bookedClasses] = await pool.query(
+      `SELECT class_id FROM classes
+       WHERE teacher_id = ? AND scheduled_date = ? AND status = 'scheduled'
+       LIMIT 1`,
+      [teacher_id, available_date]
+    );
+
+    if (bookedClasses.length > 0) {
+      return res.status(409).json({ message: "Cannot delete availability: a student has a booked class on this day." });
+    }
 
     const [result] = await pool.query(
       `DELETE FROM teacher_availability WHERE availability_id = ?`,
