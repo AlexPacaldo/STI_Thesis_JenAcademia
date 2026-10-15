@@ -968,6 +968,32 @@
   resize: vertical;
 }
 
+/* Warning banner inside a modal, e.g. a teacher who can no longer be assigned. */
+.modalWarning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e0b158;
+  border-radius: 12px;
+  background: var(--pill-warn);
+  color: var(--text-warn);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.modalWarning button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .historyFilters {
   display: grid;
   grid-template-columns: repeat(4, minmax(150px, 1fr)) auto;

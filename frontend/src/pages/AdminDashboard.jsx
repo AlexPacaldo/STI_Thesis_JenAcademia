@@ -542,10 +542,12 @@ export default function AdminDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookStatusFilter, currentAdminId]);
 
-  // Only teachers assigned to the chosen course can usefully hold a book for
-  // it, so the picker narrows as the course changes.
+  // Only teachers assigned to the chosen course can hold a book for it, so the
+  // picker narrows as the course changes. With no course chosen it returns
+  // nothing: eligibility is per-course, so showing every teacher would offer
+  // choices that are all wrong and most of them invalid.
   const eligibleTeachersForCourse = useMemo(() => {
-    if (!bookDraft.courseId) return teachers;
+    if (!bookDraft.courseId) return [];
     const courseId = String(bookDraft.courseId);
     return teachers.filter((teacher) =>
       teacherCourses.some(
@@ -621,6 +623,18 @@ export default function AdminDashboard() {
     }
     setBookModal(kind);
   }
+
+  // Teachers already on the book who no longer appear in the eligible list -
+  // they left the course, or were archived. Their checkbox is not rendered, so
+  // without this the selection would be invisible and the save would fail with
+  // no way to fix it.
+  const orphanedTeacherIds = useMemo(
+    () =>
+      bookDraft.teacherIds.filter(
+        (id) => !eligibleTeachersForCourse.some((teacher) => String(teacher.user_id) === id)
+      ),
+    [bookDraft.teacherIds, eligibleTeachersForCourse]
+  );
 
   function toggleBookDraftTeacher(teacherId) {
     const key = String(teacherId);
@@ -3874,11 +3888,41 @@ export default function AdminDashboard() {
                       ? "Teachers assigned to this course. You can leave this empty and distribute later."
                       : "Pick a course first to see its teachers. You can leave this empty and distribute later."}
                   </p>
-                  {eligibleTeachersForCourse.length === 0 ? (
+                  {!bookDraft.courseId ? (
                     <div className={styles.empty}>
-                      {bookDraft.courseId
-                        ? "No teachers are assigned to this course yet."
-                        : "No active teachers found."}
+                      Select a course to see the teachers who can receive this book.
+                    </div>
+                  ) : orphanedTeacherIds.length > 0 ? (
+                    /* Still list the eligible teachers below - this only warns
+                       about the hidden ones. */
+                    <div className={styles.modalWarning}>
+                      <i className="bi bi-exclamation-triangle" aria-hidden="true" />
+                      <span>
+                        {orphanedTeacherIds.length === 1
+                          ? "1 assigned teacher can"
+                          : `${orphanedTeacherIds.length} assigned teachers can`}{" "}
+                        no longer receive this book - they left the course or were
+                        archived.{" "}
+                        <button
+                          type="button"
+                          className={styles.linkBtn}
+                          onClick={() =>
+                            setBookDraft((prev) => ({
+                              ...prev,
+                              teacherIds: prev.teacherIds.filter(
+                                (id) => !orphanedTeacherIds.includes(id)
+                              ),
+                            }))
+                          }
+                        >
+                          Remove them
+                        </button>
+                      </span>
+                    </div>
+                  ) : eligibleTeachersForCourse.length === 0 ? (
+                    <div className={styles.empty}>
+                      No teachers are assigned to this course yet. Assign them under
+                      Teacher Courses, or distribute the book later.
                     </div>
                   ) : (
                     <div className={styles.courseCheckboxGrid}>
