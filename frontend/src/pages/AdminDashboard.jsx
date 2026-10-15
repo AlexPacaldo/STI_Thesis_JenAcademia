@@ -662,11 +662,17 @@ export default function AdminDashboard() {
       const adminId = currentAdminId;
 
       if (bookModal === "distribute") {
-        await axios.put(`${API}/api/books/${bookDraft.bookId}/teachers`, {
+        const response = await axios.put(`${API}/api/books/${bookDraft.bookId}/teachers`, {
           admin_id: adminId,
           teacher_ids: bookDraft.teacherIds,
         });
-        notify("Book distribution updated", "success");
+        const assigned = response.data?.teacher_ids?.length ?? bookDraft.teacherIds.length;
+        notify(
+          assigned === 0
+            ? `${bookDraft.title} is no longer distributed to anyone.`
+            : `Distributed to ${assigned} ${assigned === 1 ? "teacher" : "teachers"}.`,
+          assigned === 0 ? "warning" : "success"
+        );
       } else {
         const formData = new FormData();
         formData.append("title", bookDraft.title);
@@ -686,12 +692,27 @@ export default function AdminDashboard() {
           bookModal === "create"
             ? `${API}/api/books`
             : `${API}/api/books/${bookDraft.bookId}`;
-        await axios({
+        const response = await axios({
           method: bookModal === "create" ? "post" : "put",
           url,
           data: formData,
         });
-        notify(bookModal === "create" ? "Book created" : "Book updated", "success");
+
+        // Echo what the server actually stored. A bare "Book created" gave no
+        // way to tell a silent distribution drop from success.
+        if (bookModal === "create") {
+          const assigned = response.data?.teacher_ids?.length ?? bookDraft.teacherIds.length;
+          notify(
+            assigned === 0
+              ? "Book created with no teachers. Distribute it when ready."
+              : `Book created and distributed to ${assigned} ${
+                  assigned === 1 ? "teacher" : "teachers"
+                }`,
+            assigned === 0 ? "warning" : "success"
+          );
+        } else {
+          notify("Book updated", "success");
+        }
       }
 
       setBookModal(null);
@@ -3842,15 +3863,28 @@ export default function AdminDashboard() {
                       Course
                       <select
                         value={bookDraft.courseId}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const nextCourseId = e.target.value;
+                          // Eligibility is per-course, so the picked teachers may no
+                          // longer be valid. Clear them - but never silently, which
+                          // reads as "my selection was lost" when the book saves with
+                          // nobody assigned. Re-picking the same course is a no-op.
+                          const dropped = bookDraft.teacherIds.length;
+                          if (bookDraft.courseId && nextCourseId !== bookDraft.courseId && dropped > 0) {
+                            notify(
+                              `Course changed, so ${dropped} selected ${
+                                dropped === 1 ? "teacher was" : "teachers were"
+                              } cleared. Pick the teachers for the new course.`,
+                              "warning"
+                            );
+                          }
                           setBookDraft((prev) => ({
                             ...prev,
-                            courseId: e.target.value,
-                            // Course changed, so the previously picked teachers may
-                            // no longer teach it.
-                            teacherIds: [],
-                          }))
-                        }
+                            courseId: nextCourseId,
+                            teacherIds:
+                              prev.courseId && nextCourseId !== prev.courseId ? [] : prev.teacherIds,
+                          }));
+                        }}
                       >
                         <option value="">Select course</option>
                         {courses.map((course) => (
@@ -3888,6 +3922,23 @@ export default function AdminDashboard() {
                       ? "Teachers assigned to this course. You can leave this empty and distribute later."
                       : "Pick a course first to see its teachers. You can leave this empty and distribute later."}
                   </p>
+                  {/* Live count, so what is about to be saved is never a surprise. */}
+                  {bookDraft.courseId && eligibleTeachersForCourse.length > 0 && (
+                    <p
+                      style={{
+                        margin: "0 0 12px 0",
+                        fontSize: "0.82rem",
+                        fontWeight: 700,
+                        color: bookDraft.teacherIds.length > 0 ? "#1f7a4d" : "#8a6d1f",
+                      }}
+                    >
+                      {bookDraft.teacherIds.length === 0
+                        ? "None selected - this book will be saved with no teachers."
+                        : `${bookDraft.teacherIds.length} of ${
+                            eligibleTeachersForCourse.length
+                          } selected`}
+                    </p>
+                  )}
                   {!bookDraft.courseId ? (
                     <div className={styles.empty}>
                       Select a course to see the teachers who can receive this book.
