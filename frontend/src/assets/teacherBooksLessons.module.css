@@ -33,6 +33,102 @@
   padding: 18px 22px;
 }
 
+/* ---------- Page header ----------
+   Mirrors booksLessons.module.css so the teacher and student book lists read as
+   the same screen at different roles. Tinted rather than white because the book
+   cards below are white surfaces; a white header competes with them. */
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  background: linear-gradient(135deg, #f3f8f5 0%, #e7efea 100%);
+}
+
+.pageHeaderMain {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.headerIcon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--primary);
+  color: #eef6ef;
+  font-size: 1.2rem;
+  box-shadow:
+    4px 4px 12px rgba(18, 34, 30, 0.18),
+    -2px -2px 8px rgba(255, 255, 255, 0.6);
+}
+
+.pageHeaderText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pageHeaderText h1 {
+  margin: 0;
+  font-size: clamp(1.4rem, 2vw, 1.8rem);
+  line-height: 1.2;
+  color: var(--primary);
+  letter-spacing: -0.02em;
+}
+
+.pageHeaderText p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.countTile {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-width: 74px;
+  padding: 8px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(38, 66, 59, 0.12);
+}
+
+.countValue {
+  font-size: 1.3rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--primary);
+}
+
+.countLabel {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted-light);
+}
+
+.uploadedBy {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .createBookModalContent {
   width: min(560px, calc(100vw - 40px));
 }
@@ -371,12 +467,11 @@
 .bookImagePlaceholder,
 .bookCover {
   width: 100%;
-  /* Capped height rather than a pure aspect ratio: on a wide card a 16/10 cover
-     grew to ~275px and pushed the title and every action below the fold. The
-     ratio keeps proportion on narrow cards, the cap keeps the card compact on
-     wide ones so View/Edit/Archive stay visible without scrolling. */
-  aspect-ratio: 16 / 8;
-  max-height: 170px;
+  /* 16/10 to match the student book cards. The previous 16/8 with a 170px cap
+     was sized for the old cards, which carried a description line and an
+     archive/edit row; read-only cards are shorter so the cap now just made the
+     cover look squat next to the student view. */
+  aspect-ratio: 16 / 10;
   border-radius: 14px;
   border: 1px solid rgba(38, 66, 59, 0.1);
   background: var(--surface-raised);

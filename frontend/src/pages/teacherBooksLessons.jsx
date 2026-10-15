@@ -64,13 +64,27 @@ export default function TeacherBooksLessons() {
   return (
     <div className={styles.cont}>
       <div className={styles.center}>
-        <div className={styles.TopSegment}>
-          <div className={styles.TopContent}>
-            <div className={styles.TopContentText}>
+        {/* Same compact header as the student view: icon, title, one line of
+            context and a count tile. The old stacked segment wasted the top of
+            the page on a heading with nothing beside it. */}
+        <div className={styles.pageHeader}>
+          <div className={styles.pageHeaderMain}>
+            <span className={styles.headerIcon} aria-hidden="true">
+              <i className="bi bi-journal-bookmark-fill" />
+            </span>
+            <div className={styles.pageHeaderText}>
               <h1>Books &amp; Lessons</h1>
-              <p>Books assigned to you by the administrator, with your students' progress.</p>
+              <p>Books assigned to you by the administrator.</p>
             </div>
           </div>
+          {!loading && !error && books.length > 0 ? (
+            <div className={styles.countTile}>
+              <span className={styles.countValue}>{books.length}</span>
+              <span className={styles.countLabel}>
+                {books.length === 1 ? "Book" : "Books"}
+              </span>
+            </div>
+          ) : null}
         </div>
 
         {loading && <p className={styles.loading}>Loading books...</p>}
@@ -80,42 +94,35 @@ export default function TeacherBooksLessons() {
           <div className={styles.AvailableLessons}>
             {books.map((book) => (
               <div key={book.book_id} className={styles.LessonsCard}>
-                <div className={styles.coverWrap}>
-                  {book.cover_url && !coverErrors[book.book_id] ? (
-                    <img
-                      className={styles.bookCover}
-                      src={absoluteUrl(book.cover_url)}
-                      alt=""
-                      onError={() =>
-                        setCoverErrors((prev) => ({ ...prev, [book.book_id]: true }))
-                      }
-                    />
-                  ) : (
-                    <div className={styles.bookImagePlaceholder}>
-                      <span className={styles.placeholder}>Book</span>
-                    </div>
-                  )}
-                  <span className={styles.lessonBadge}>
-                    {book.lesson_count || 0} {book.lesson_count === 1 ? "lesson" : "lessons"}
-                  </span>
-                </div>
+                {book.cover_url && !coverErrors[book.book_id] ? (
+                  <img
+                    className={styles.bookCover}
+                    src={absoluteUrl(book.cover_url)}
+                    alt=""
+                    onError={() =>
+                      setCoverErrors((prev) => ({ ...prev, [book.book_id]: true }))
+                    }
+                  />
+                ) : (
+                  <div className={styles.bookImagePlaceholder}>
+                    <span className={styles.placeholder}>Book</span>
+                  </div>
+                )}
 
                 <div className={styles.cardBody}>
                   <h3 className={styles.bookTitle}>{book.title}</h3>
-                  <p className={styles.description}>{book.description || "No description"}</p>
 
-                  {book.course_name && (
-                    <div className={styles.Uploaded}>
-                      <i className="bi bi-mortarboard" aria-hidden="true" />
-                      <span>{book.course_name}</span>
-                    </div>
-                  )}
-
-                  <div className={styles.bookActions}>
-                    <a href={`/teacherBooksLessons/${book.book_id}`} className={styles.viewAction}>
-                      View Lessons
-                    </a>
+                  {/* The course, not a person: these books are assigned to the
+                      signed-in teacher, so an "uploaded by" name would just be
+                      their own face. */}
+                  <div className={styles.Uploaded}>
+                    <i className="bi bi-mortarboard" aria-hidden="true" />
+                    <span>{book.course_name || "Course not set"}</span>
                   </div>
+
+                  <a href={`/teacherBooksLessons/${book.book_id}`} className={styles.viewAction}>
+                    View Lessons
+                  </a>
                 </div>
               </div>
             ))}
