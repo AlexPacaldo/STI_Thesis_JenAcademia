@@ -3216,6 +3216,7 @@ app.get("/api/admin/users", async (req, res) => {
     let query = `
       SELECT u.user_id, u.first_name, u.last_name, u.email, u.role, u.status,
              u.profile_completed, u.password_changed,
+             u.profile_image_url,
              asi.expires_at AS setup_invite_expires_at,
              asi.used_at AS setup_invite_used_at,
              CASE

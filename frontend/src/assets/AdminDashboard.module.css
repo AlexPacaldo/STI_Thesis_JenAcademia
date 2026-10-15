@@ -354,6 +354,13 @@
   border: 1px solid var(--border-mid);
   font-size: 0.62rem;
   font-weight: 800;
+  overflow: hidden;
+}
+
+/* Same circle when the element is a photo rather than initials. */
+.bookTeacherAvatar:not(span) {
+  object-fit: cover;
+  padding: 0;
 }
 
 .bookTeacherAvatar:first-child {

@@ -239,17 +239,46 @@ const verificationStatusStyle = (status) => {
   return palette[status] || palette.pending;
 };
 
+// Upload paths come back both with and without a leading slash, and Windows
+// paths may use "\". A bare concat on a slash-less path produces
+// "localhost:3001uploads/..." with no separator, which 404s - so normalise
+// first. Mirrors profileSrc() in remarks.jsx and booksLessons.jsx.
 const resolveUploadUrl = (url) => {
   if (!url) return "";
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API}${url}`;
+  const cleaned = String(url).replace(/\\/g, "/");
+  if (/^https?:\/\//i.test(cleaned)) return cleaned;
+  if (cleaned.startsWith("/")) return `${API}${cleaned}`;
+  return `${API}/${cleaned}`;
 };
 
-// The admin users endpoint doesn't return profile_image_url, so teacher chips
-// use initials rather than photos.
 const initialsOf = (person) =>
   `${(person?.first_name || "").charAt(0)}${(person?.last_name || "").charAt(0)}`.toUpperCase() ||
   "?";
+
+// The admin users endpoint returns profile_image_url, so teacher chips use the
+// real photo. Falls back to initials when a teacher has none, or when the image
+// 404s (an old uploads path, or a file removed outside the app).
+const TeacherAvatar = ({ teacher, broken, onError }) => {
+  const label = `${teacher.first_name || ""} ${teacher.last_name || ""}`.trim() || "Teacher";
+
+  if (teacher.profile_image_url && !broken) {
+    return (
+      <img
+        className={styles.bookTeacherAvatar}
+        src={resolveUploadUrl(teacher.profile_image_url)}
+        alt={label}
+        title={label}
+        onError={onError}
+      />
+    );
+  }
+
+  return (
+    <span className={styles.bookTeacherAvatar} title={label} aria-hidden="true">
+      {initialsOf(teacher)}
+    </span>
+  );
+};
 
 const getVerificationMissingItems = (row) => {
   const missing = [];
@@ -390,6 +419,9 @@ export default function AdminDashboard() {
   // Covers whose URL 404s. Swapped for the placeholder rather than hiding the
   // image, which would otherwise leave an empty frame with the badge floating.
   const [coverErrors, setCoverErrors] = useState({});
+  // Teacher photos that 404, so the chip falls back to initials instead of a
+  // broken-image icon.
+  const [avatarErrors, setAvatarErrors] = useState({});
   const selectedTeacherCourseNames = courses
     .filter((course) => tForm.courseIds.includes(String(course.course_id)))
     .map((course) => course.course_name);
@@ -3663,13 +3695,17 @@ export default function AdminDashboard() {
                             <span className={`${styles.bookChip} ${styles.bookChipPeople}`}>
                               <span className={styles.bookTeacherAvatars}>
                                 {bookTeachers.slice(0, 3).map((teacher) => (
-                                  <span
+                                  <TeacherAvatar
                                     key={teacher.user_id}
-                                    className={styles.bookTeacherAvatar}
-                                    title={`${teacher.first_name} ${teacher.last_name}`}
-                                  >
-                                    {initialsOf(teacher)}
-                                  </span>
+                                    teacher={teacher}
+                                    broken={avatarErrors[teacher.user_id]}
+                                    onError={() =>
+                                      setAvatarErrors((prev) => ({
+                                        ...prev,
+                                        [teacher.user_id]: true,
+                                      }))
+                                    }
+                                  />
                                 ))}
                               </span>
                               <span className={styles.bookChipText}>
