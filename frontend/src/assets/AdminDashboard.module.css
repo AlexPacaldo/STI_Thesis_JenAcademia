@@ -142,6 +142,257 @@
   font: inherit;
 }
 
+/* Without this the search box falls back to the browser's default focus ring,
+   which renders as a heavy black outline against the green surface. */
+.searchRow input:focus,
+.searchRow select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(47, 77, 62, 0.1);
+}
+
+/* ===== BOOK LIBRARY =====
+   Card grid rather than a table: it matches the student and teacher book
+   views, so the same cover reads the same way in every role, and five actions
+   stop crowding a single table cell. */
+
+.bookGrid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 18px;
+}
+
+.bookCard {
+  /* Capped so a lone book doesn't stretch into a full-width slab. */
+  flex: 1 1 300px;
+  min-width: 0;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-mid);
+  border-radius: 22px;
+  box-shadow: 0 10px 24px rgba(18, 34, 30, 0.05);
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.bookCard:hover {
+  transform: translateY(-2px);
+  border-color: rgba(145, 167, 154, 0.9);
+  box-shadow: 0 16px 32px rgba(18, 34, 30, 0.1);
+}
+
+/* Archived books stay listed but recede, so they read as "set aside". */
+.bookCardArchived {
+  background: #f7f9f8;
+  border-style: dashed;
+}
+
+.bookCardArchived:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.bookCoverWrap {
+  position: relative;
+}
+
+.bookCover,
+.bookCoverFallback {
+  width: 100%;
+  aspect-ratio: 16 / 8;
+  max-height: 170px;
+  border-radius: 14px;
+  border: 1px solid var(--border-mid);
+  background: linear-gradient(135deg, #edf2ef, #dce7e2);
+}
+
+.bookCover {
+  display: block;
+  /* contain, not cover: book art is usually portrait, and cropping it loses
+     the title. The gradient backing keeps the frame from looking empty. */
+  object-fit: contain;
+  padding: 8px;
+}
+
+.bookCoverFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bookCoverFallback span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  box-shadow: 0 8px 20px rgba(18, 34, 30, 0.12);
+}
+
+/* Lesson count sits over the cover, so it needs no extra chrome. */
+.bookLessonBadge {
+  position: absolute;
+  left: 9px;
+  bottom: 9px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(19, 37, 31, 0.78);
+  color: #eef6ef;
+  font-size: 0.68rem;
+  font-weight: 700;
+  backdrop-filter: blur(3px);
+}
+
+.bookArchivedBadge {
+  position: absolute;
+  right: 9px;
+  top: 9px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(138, 62, 46, 0.9);
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.bookCardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.bookCardTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.bookCardArchived .bookCardTitle {
+  color: var(--muted);
+}
+
+.bookCardDesc {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.bookMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.bookChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-alt);
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.bookChipText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookChipPeople {
+  background: #e3ede7;
+  color: var(--primary);
+}
+
+/* A book with no teachers is the one state worth drawing the eye to. */
+.bookChipWarn {
+  background: var(--pill-warn);
+  color: var(--text-warn);
+}
+
+.bookTeacherAvatars {
+  display: flex;
+  align-items: center;
+}
+
+.bookTeacherAvatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: -6px;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--primary);
+  border: 1px solid var(--border-mid);
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.bookTeacherAvatar:first-child {
+  margin-left: 0;
+}
+
+.bookCardActions {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bookCardActionRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+/* Size every card action to its cell so the rows stay aligned. */
+.cardBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.cardBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .card h3 {
   margin: 0 0 12px;
   color: var(--text);

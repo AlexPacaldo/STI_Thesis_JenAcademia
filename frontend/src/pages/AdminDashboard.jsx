@@ -245,6 +245,12 @@ const resolveUploadUrl = (url) => {
   return `${API}${url}`;
 };
 
+// The admin users endpoint doesn't return profile_image_url, so teacher chips
+// use initials rather than photos.
+const initialsOf = (person) =>
+  `${(person?.first_name || "").charAt(0)}${(person?.last_name || "").charAt(0)}`.toUpperCase() ||
+  "?";
+
 const getVerificationMissingItems = (row) => {
   const missing = [];
   if (!row.teacher_started_at) missing.push("teacher start");
@@ -381,6 +387,9 @@ export default function AdminDashboard() {
   const [bookDraft, setBookDraft] = useState({ bookId: null, title: "", description: "", courseId: "", teacherIds: [], coverFile: null });
   const [bookSaving, setBookSaving] = useState(false);
   const [bookBusyId, setBookBusyId] = useState(null);
+  // Covers whose URL 404s. Swapped for the placeholder rather than hiding the
+  // image, which would otherwise leave an empty frame with the badge floating.
+  const [coverErrors, setCoverErrors] = useState({});
   const selectedTeacherCourseNames = courses
     .filter((course) => tForm.courseIds.includes(String(course.course_id)))
     .map((course) => course.course_name);
@@ -519,6 +528,22 @@ export default function AdminDashboard() {
       .toLowerCase()
       .includes(bookSearchTerm);
   });
+
+  // book_teachers.teacher_ids comes back as a CSV, so resolve it against the
+  // loaded teacher list to get names back. Falls back to the rolled-up
+  // teacher_names string if a teacher is no longer in the active list.
+  function teachersForBook(book) {
+    const ids = String(book.teacher_ids || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+
+    const resolved = ids
+      .map((id) => teachers.find((teacher) => String(teacher.user_id) === id))
+      .filter(Boolean);
+
+    return resolved;
+  }
 
   function openBookModal(kind, book = null) {
     if (kind === "create") {
@@ -3548,94 +3573,145 @@ export default function AdminDashboard() {
                   : "No books match your search."}
               </div>
             ) : (
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Book</th>
-                      <th>Course</th>
-                      <th>Teachers</th>
-                      <th>Lessons</th>
-                      <th>Status</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredBooks.map((book) => (
-                      <tr key={book.book_id}>
-                        <td>
-                          <strong>{book.title}</strong>
-                          {book.description ? (
-                            <div style={{ fontSize: "0.85em", color: "#666", marginTop: "4px" }}>
-                              {book.description}
-                            </div>
-                          ) : null}
-                        </td>
-                        <td>{book.course_name || "-"}</td>
-                        <td>
-                          {book.teacher_names ? (
-                            book.teacher_names
-                          ) : (
-                            <span style={{ color: "#a2600f" }}>Not distributed</span>
+              <div className={styles.bookGrid}>
+                {filteredBooks.map((book) => {
+                  const isArchived = book.status === "archived";
+                  const bookTeachers = teachersForBook(book);
+                  const isBusy = bookBusyId === book.book_id;
+
+                  return (
+                    <article
+                      key={book.book_id}
+                      className={`${styles.bookCard} ${isArchived ? styles.bookCardArchived : ""}`}
+                    >
+                      <div className={styles.bookCoverWrap}>
+                        {book.cover_url && !coverErrors[book.book_id] ? (
+                          <img
+                            className={styles.bookCover}
+                            src={resolveUploadUrl(book.cover_url)}
+                            alt=""
+                            onError={() =>
+                              setCoverErrors((prev) => ({ ...prev, [book.book_id]: true }))
+                            }
+                          />
+                        ) : (
+                          <div className={styles.bookCoverFallback}>
+                            <span>Book</span>
+                          </div>
+                        )}
+                        <span className={styles.bookLessonBadge}>
+                          {book.lesson_count || 0}{" "}
+                          {book.lesson_count === 1 ? "lesson" : "lessons"}
+                        </span>
+                        {isArchived && <span className={styles.bookArchivedBadge}>Archived</span>}
+                      </div>
+
+                      <div className={styles.bookCardBody}>
+                        <h3 className={styles.bookCardTitle}>{book.title}</h3>
+                        {book.description && (
+                          <p className={styles.bookCardDesc}>{book.description}</p>
+                        )}
+
+                        <div className={styles.bookMetaRow}>
+                          {book.course_name && (
+                            <span className={styles.bookChip}>
+                              <i className="bi bi-mortarboard" aria-hidden="true" />
+                              <span className={styles.bookChipText}>{book.course_name}</span>
+                            </span>
                           )}
-                        </td>
-                        <td>{book.lesson_count ?? 0}</td>
-                        <td>{book.status === "archived" ? "Archived" : "Active"}</td>
-                        <td>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                            <a
-                              className={`${styles.linkBtn} ${styles.tableActionBtn}`}
-                              href={`/adminBooksContent/${book.book_id}`}
-                            >
-                              Lessons
-                            </a>
+
+                          {bookTeachers.length > 0 ? (
+                            <span className={`${styles.bookChip} ${styles.bookChipPeople}`}>
+                              <span className={styles.bookTeacherAvatars}>
+                                {bookTeachers.slice(0, 3).map((teacher) => (
+                                  <span
+                                    key={teacher.user_id}
+                                    className={styles.bookTeacherAvatar}
+                                    title={`${teacher.first_name} ${teacher.last_name}`}
+                                  >
+                                    {initialsOf(teacher)}
+                                  </span>
+                                ))}
+                              </span>
+                              <span className={styles.bookChipText}>
+                                {bookTeachers.length === 1
+                                  ? `${bookTeachers[0].first_name} ${bookTeachers[0].last_name}`.trim()
+                                  : `${bookTeachers.length} teachers`}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className={`${styles.bookChip} ${styles.bookChipWarn}`}>
+                              <i className="bi bi-exclamation-circle" aria-hidden="true" />
+                              <span className={styles.bookChipText}>Not distributed</span>
+                            </span>
+                          )}
+                        </div>
+
+                        <div className={styles.bookCardActions}>
+                          <a
+                            className={`${styles.primary} ${styles.cardBtn}`}
+                            href={`/adminBooksContent/${book.book_id}`}
+                          >
+                            <i className="bi bi-journal-text" aria-hidden="true" />
+                            Lessons
+                          </a>
+
+                          <div className={styles.bookCardActionRow}>
                             <button
-                              className={`${styles.secondaryBtn} ${styles.tableActionBtn}`}
+                              className={`${styles.secondaryBtn} ${styles.cardBtn}`}
                               type="button"
                               onClick={() => openBookModal("distribute", book)}
                             >
+                              <i className="bi bi-people" aria-hidden="true" />
                               Distribute
                             </button>
                             <button
-                              className={`${styles.linkBtn} ${styles.tableActionBtn}`}
+                              className={`${styles.linkBtn} ${styles.cardBtn}`}
                               type="button"
                               onClick={() => openBookModal("edit", book)}
                             >
+                              <i className="bi bi-pencil" aria-hidden="true" />
                               Edit
                             </button>
-                            {book.status === "archived" ? (
+                          </div>
+
+                          <div className={styles.bookCardActionRow}>
+                            {isArchived ? (
                               <button
-                                className={`${styles.approve} ${styles.tableActionBtn}`}
+                                className={`${styles.approve} ${styles.cardBtn}`}
                                 type="button"
-                                disabled={bookBusyId === book.book_id}
+                                disabled={isBusy}
                                 onClick={() => updateBookStatus(book, "restore")}
                               >
+                                <i className="bi bi-arrow-counterclockwise" aria-hidden="true" />
                                 Restore
                               </button>
                             ) : (
                               <button
-                                className={`${styles.warn} ${styles.tableActionBtn}`}
+                                className={`${styles.warn} ${styles.cardBtn}`}
                                 type="button"
-                                disabled={bookBusyId === book.book_id}
+                                disabled={isBusy}
                                 onClick={() => updateBookStatus(book, "archive")}
                               >
+                                <i className="bi bi-archive" aria-hidden="true" />
                                 Archive
                               </button>
                             )}
                             <button
-                              className={`${styles.dangerBtn} ${styles.tableActionBtn}`}
+                              className={`${styles.dangerBtn} ${styles.cardBtn}`}
                               type="button"
-                              disabled={bookBusyId === book.book_id}
+                              disabled={isBusy}
                               onClick={() => updateBookStatus(book, "delete")}
                             >
+                              <i className="bi bi-trash" aria-hidden="true" />
                               Delete
                             </button>
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             )}
           </section>
