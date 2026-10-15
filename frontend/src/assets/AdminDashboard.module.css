@@ -138,7 +138,9 @@
 }
 
 .bookCard {
-  /* Capped so a lone book doesn't stretch into a full-width slab. */
+  /* Caps the column width once several books are listed, so cards stay a
+     readable size instead of growing with the viewport. The lone-card rule
+     below lifts the cap. */
   flex: 1 1 300px;
   min-width: 0;
   max-width: 400px;
@@ -353,6 +355,68 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+/* ===== LONE CARD =====
+   With a single book the 400px cap leaves the card marooned at the left of a
+   wide row. It then spans the full width and lays out sideways - cover beside
+   the content, actions in one row - which is what the student and teacher book
+   views already do (see teacherBooksLessons.module.css). If :has() is
+   unsupported the card simply falls back to the normal stacked layout. */
+
+.bookGrid:has(> .bookCard:only-child) .bookCard {
+  max-width: none;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 20px;
+  padding: 16px;
+}
+
+.bookGrid:has(> .bookCard:only-child) .bookCoverWrap {
+  flex: 0 0 320px;
+  width: 320px;
+}
+
+.bookGrid:has(> .bookCard:only-child) .bookCover,
+.bookGrid:has(> .bookCard:only-child) .bookCoverFallback {
+  height: 100%;
+  max-height: none;
+  aspect-ratio: auto;
+  /* Centred rather than stretched: once the card runs the width of the row, a
+     cover pinned to the full height reads as an odd portrait strip. */
+  align-self: center;
+}
+
+.bookGrid:has(> .bookCard:only-child) .bookCardTitle {
+  font-size: 1.4rem;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.bookGrid:has(> .bookCard:only-child) .bookCardDesc {
+  font-size: 0.95rem;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+/* Enough room here for all four actions side by side. display:contents drops
+   the two wrapper rows out of the layout so their buttons join the same flex
+   line as Lessons - no JSX change needed. */
+.bookGrid:has(> .bookCard:only-child) .bookCardActionRow {
+  display: contents;
+}
+
+.bookGrid:has(> .bookCard:only-child) .bookCardActions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.bookGrid:has(> .bookCard:only-child) .bookCardActions > *,
+.bookGrid:has(> .bookCard:only-child) .bookCardActionRow > * {
+  flex: 1 1 150px;
+  width: auto;
 }
 
 /* Size every card action to its cell so the rows stay aligned. */
