@@ -243,6 +243,19 @@ const verificationStatusStyle = (status) => {
 // paths may use "\". A bare concat on a slash-less path produces
 // "localhost:3001uploads/..." with no separator, which 404s - so normalise
 // first. Mirrors profileSrc() in remarks.jsx and booksLessons.jsx.
+/**
+ * Pull a readable message out of a failed request. Backend 5xx responses carry
+ * the underlying cause in `error`, which the generic `message` hides - a stack
+ * overflow or a bad column name otherwise shows up as a bare "Error updating
+ * book distribution".
+ */
+const apiErrorMessage = (error, fallback) => {
+  const data = error?.response?.data;
+  const detail = data?.error || error?.message;
+  const base = data?.message || fallback;
+  return detail && detail !== base ? `${base} (${detail})` : base;
+};
+
 const resolveUploadUrl = (url) => {
   if (!url) return "";
   const cleaned = String(url).replace(/\\/g, "/");
@@ -525,7 +538,7 @@ export default function AdminDashboard() {
       setBooks(r.data?.books || []);
     } catch (e) {
       console.error(e);
-      notify?.(e?.response?.data?.message || "Failed to load books", "error");
+      notify?.(apiErrorMessage(e, "Failed to load books"), "error");
       setBooks([]);
     } finally {
       setBooksLoading(false);
@@ -719,7 +732,7 @@ export default function AdminDashboard() {
       loadBooks();
     } catch (e) {
       console.error(e);
-      notify(e?.response?.data?.message || "Failed to save book", "error");
+      notify(apiErrorMessage(e, "Failed to save book"), "error");
     } finally {
       setBookSaving(false);
     }
@@ -774,7 +787,7 @@ export default function AdminDashboard() {
       );
     } catch (e) {
       console.error(e);
-      notify(e?.response?.data?.message || `Failed to ${statusAction} book`, "error");
+      notify(apiErrorMessage(e, `Failed to ${statusAction} book`), "error");
     } finally {
       setBookBusyId(null);
     }

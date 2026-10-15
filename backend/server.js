@@ -8846,29 +8846,41 @@ function getAdminIdFromRequest(req) {
 }
 
 /**
- * Normalise a list of IDs arriving from a form field. Accepts a JSON array, a
- * comma separated string, or repeated fields (which arrive as a real array).
- * The JSON form is checked before splitting on commas, otherwise "[1,2,3]"
- * would be shredded into "[1", "2" and "3]".
- * @param {string|string[]|undefined} value
+ * Normalise a list of IDs arriving from a form field. Accepts a JSON array
+ * ('[1,2,3]'), a comma separated string ("1,2,3"), a real array (repeated form
+ * fields, or a JSON request body), or a bare single value.
+ *
+ * Recursion must terminate on a value with no comma: splitting "5" yields
+ * ["5"], and recursing on that hands the same string straight back. An earlier
+ * version had no such guard and threw "Maximum call stack size exceeded" on
+ * every non-empty input - silently returning [] when a JSON parse was in
+ * progress, because the try/catch swallowed the overflow.
+ *
+ * @param {string|string[]|number|undefined} value
  * @returns {number[]} unique positive integers
  */
 function parseIdList(value) {
   const collect = (input) => {
-    if (Array.isArray(input)) return input.flatMap(collect);
     if (input === undefined || input === null) return [];
+    if (Array.isArray(input)) return input.flatMap(collect);
 
     const trimmed = String(input).trim();
     if (!trimmed) return [];
 
     if (trimmed.startsWith("[")) {
+      let parsed;
       try {
-        const parsed = JSON.parse(trimmed);
-        return Array.isArray(parsed) ? parsed.flatMap(collect) : [];
+        parsed = JSON.parse(trimmed);
       } catch {
         return [];
       }
+      // Parsing must not swallow a downstream failure - only handle the parse.
+      return Array.isArray(parsed) ? parsed.flatMap(collect) : [];
     }
+
+    // Base case: a single value with no comma. Anything else is split, and each
+    // part reaches this branch.
+    if (!trimmed.includes(",")) return [trimmed];
 
     return trimmed.split(",").flatMap(collect);
   };
