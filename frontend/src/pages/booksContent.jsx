@@ -1068,9 +1068,6 @@ export default function BooksContent({ mode = "student" }) {
                         >
                           Full screen
                         </button>
-                        <a href={selectedFileUrl} download>
-                          Download
-                        </a>
                       </div>
 
                       {!isStudentView ? (
