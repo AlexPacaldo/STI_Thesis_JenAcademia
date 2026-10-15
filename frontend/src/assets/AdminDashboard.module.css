@@ -96,6 +96,52 @@
   font-weight: 800;
 }
 
+/* Right-hand button group in a card head (e.g. Refresh + Add Book).
+   flex-shrink:0 keeps the buttons at their natural width, so a long title
+   shrinks instead of the buttons wrapping one letter per line. */
+.cardHeadActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.cardHeadActions > * {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* The title/description column is the one allowed to shrink. */
+.cardHead > :first-child {
+  min-width: 0;
+}
+
+/* Search input plus a status filter, on one row. */
+.searchRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 18px;
+}
+
+.searchRow input {
+  flex: 1 1 260px;
+  min-width: 0;
+  width: auto;
+}
+
+.searchRow select {
+  flex: 0 0 auto;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border-mid);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+}
+
 .card h3 {
   margin: 0 0 12px;
   color: var(--text);

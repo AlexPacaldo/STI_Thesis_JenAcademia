@@ -3510,7 +3510,7 @@ export default function AdminDashboard() {
                   track student progress, but only you can change a book.
                 </p>
               </div>
-              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+              <div className={styles.cardHeadActions}>
                 <button className={styles.linkBtn} type="button" onClick={loadBooks}>
                   Refresh
                 </button>
@@ -3520,7 +3520,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div className={styles.compactSearch} style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            <div className={styles.searchRow}>
               <input
                 type="search"
                 value={bookSearch}
@@ -3532,14 +3532,6 @@ export default function AdminDashboard() {
                 value={bookStatusFilter}
                 onChange={(e) => setBookStatusFilter(e.target.value)}
                 aria-label="Filter books by status"
-                style={{
-                  minHeight: "42px",
-                  padding: "0 12px",
-                  borderRadius: 14,
-                  border: "1px solid rgba(38, 66, 59, 0.14)",
-                  background: "#fff",
-                  color: "#26423b",
-                }}
               >
                 <option value="active">Active</option>
                 <option value="archived">Archived</option>
