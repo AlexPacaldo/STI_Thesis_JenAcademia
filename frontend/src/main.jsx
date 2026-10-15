@@ -70,6 +70,9 @@ const router = createBrowserRouter([
       { path: "teacherAssignment", element: <Page><TeacherAssignment /></Page> },
       { path: "TeacherBooksLessons", element: <Page><TeacherBooksLessons /></Page> },
       { path: "teacherBooksLessons/:bookId", element: <Page><BooksContent mode="teacher" /></Page> },
+      // Admin owns the book library: creates books, distributes them to teachers
+      // and maintains their lessons.
+      { path: "adminBooksContent/:bookId", element: <Page><BooksContent mode="admin" /></Page> },
 
 
        // "/register"

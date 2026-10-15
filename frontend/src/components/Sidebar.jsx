@@ -130,6 +130,7 @@ function Sidebar({ isMobileOpen = false, onClose }) {
   const isCallPage = path.startsWith("/call");
 
   const isAdminDashboardPage = path === "/AdminDashboard";
+  const isAdminBooksContentPage = path.startsWith("/adminBooksContent/");
   const studentHasNoClassesLeft = role === "student" && studentPackage && Number(studentPackage.classes_left) <= 0;
 
   const isStudentDashboardPage = path === "/StudentDashboard";
@@ -185,7 +186,8 @@ function Sidebar({ isMobileOpen = false, onClose }) {
 
   const isAdminArea =
     isAccountPage ||
-    isAdminDashboardPage;
+    isAdminDashboardPage ||
+    isAdminBooksContentPage;
 
   const navConfig = {
     student: [
@@ -207,6 +209,7 @@ function Sidebar({ isMobileOpen = false, onClose }) {
     ],
     admin: [
       { to: "/AdminDashboard?tab=calendar", label: "Calendar", icon: "bi-calendar3" },
+      { to: "/AdminDashboard?tab=books", label: "Books / Lessons", icon: "bi-book" },
       { to: "/AdminDashboard?tab=verifications", label: "Verifications", icon: "bi-shield-check" },
       { to: "/AdminDashboard?tab=requests", label: "Requests", icon: "bi-list-check" },
       { to: "/AdminDashboard?tab=contracts", label: "Contracts", icon: "bi-folder-check" },

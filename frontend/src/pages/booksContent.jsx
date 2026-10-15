@@ -289,10 +289,19 @@ export default function BooksContent({ mode = "student" }) {
   }, [showPdfFullscreen]);
 
   const isTeacherView = mode === "teacher";
+  // The admin owns the library: only this view may change a book or its lessons.
+  const isAdminView = mode === "admin";
+  const canManage = isAdminView;
+  const isStudentView = mode === "student";
 
-  // This page serves two routes: /booksContent/:bookId (student) and
-  // /teacherBooksLessons/:bookId (teacher). Each list has a different path.
-  const backRoute = isTeacherView ? "/teacherBooksLessons" : "/booksLessons";
+  // This page serves three routes: /booksContent/:bookId (student),
+  // /teacherBooksLessons/:bookId (teacher, read-only) and
+  // /adminBooksContent/:bookId (admin). Each list has a different path.
+  const backRoute = isAdminView
+    ? "/AdminDashboard?tab=books"
+    : isTeacherView
+      ? "/teacherBooksLessons"
+      : "/booksLessons";
 
   const handleBack = () => {
     // Prefer the real history entry so the Dashboard entry point
@@ -311,10 +320,26 @@ export default function BooksContent({ mode = "student" }) {
     const storedUser = readStoredUser() || {};
     return readNamespacedStorageValue(STORAGE_KEYS.teacherId, LEGACY_STORAGE_KEYS.teacherId) || storedUser.id || storedUser.user_id || storedUser.userId || null;
   }, []);
+  const adminId = useMemo(() => {
+    const storedUser = readStoredUser() || {};
+    return storedUser.id || storedUser.user_id || storedUser.userId || null;
+  }, []);
   const studentId = useMemo(() => {
     const storedUser = readStoredUser() || {};
     return storedUser.id || storedUser.user_id || storedUser.userId || readNamespacedStorageValue(STORAGE_KEYS.studentId, LEGACY_STORAGE_KEYS.studentId) || null;
   }, []);
+
+  // Who the API should treat this session as. Teachers and admins read the book
+  // through the same route; the admin additionally gets the write calls.
+  const staffQueryParams = useMemo(() => {
+    const params = new URLSearchParams();
+    if (isAdminView) {
+      if (adminId) params.set("admin_id", String(adminId));
+    } else if (teacherId) {
+      params.set("teacher_id", String(teacherId));
+    }
+    return params;
+  }, [adminId, isAdminView, teacherId]);
 
   useEffect(() => {
     if (!bookId) {
@@ -327,7 +352,7 @@ export default function BooksContent({ mode = "student" }) {
         setLoading(true);
         setAccessError("");
 
-        if (!isTeacherView) {
+        if (!isTeacherView && !isAdminView) {
           const storedUser = readStoredUser() || {};
           const currentStudentId = storedUser.id || storedUser.user_id || storedUser.userId || studentId;
           const packageResponse = await fetch(`${API_BASE}/api/calendar/student-package/${currentStudentId}`);
@@ -342,25 +367,25 @@ export default function BooksContent({ mode = "student" }) {
           }
         }
 
-        const accessQuery = !isTeacherView
+        const accessQuery = !isTeacherView && !isAdminView
           ? studentId
             ? `?student_id=${encodeURIComponent(studentId)}`
             : ""
-          : teacherId
-            ? `?teacher_id=${encodeURIComponent(teacherId)}`
-            : "";
+          : `?${staffQueryParams.toString()}`;
         const lessonQuery = new URLSearchParams({ book_id: bookId });
-        if (!isTeacherView) {
+        if (!isTeacherView && !isAdminView) {
           lessonQuery.set("student_id", studentId);
-        } else if (teacherId) {
-          lessonQuery.set("teacher_id", teacherId);
+        } else {
+          staffQueryParams.forEach((value, key) => lessonQuery.set(key, value));
         }
+
+        const progressQuery = new URLSearchParams(staffQueryParams);
 
         const [bookResponse, lessonsResponse, progressResponse] = await Promise.all([
           fetch(`${API_BASE}/api/books/${bookId}${accessQuery}`),
           fetch(`${API_BASE}/api/lessons?${lessonQuery.toString()}`),
-          isTeacherView
-            ? fetch(`${API_BASE}/api/teacher/book/${bookId}/progress?teacher_id=${encodeURIComponent(teacherId)}`)
+          isAdminView || isTeacherView
+            ? fetch(`${API_BASE}/api/teacher/book/${bookId}/progress?${progressQuery.toString()}`)
             : fetch(`${API_BASE}/api/lesson-progress?student_id=${studentId}&book_id=${bookId}`),
         ]);
 
@@ -381,15 +406,20 @@ export default function BooksContent({ mode = "student" }) {
         setLessons(lessonsList);
         setSelectedLesson(lessonsList[0] || null);
 
-        if (progressResponse) {
-          if (!progressResponse.ok) throw new Error("Failed to fetch progress");
-          const progressData = await progressResponse.json();
-          const progressMap = {};
-          (progressData.progress || []).forEach((item) => {
-            progressMap[item.lesson_id] = item;
-          });
-          setProgress(progressMap);
+        if (!progressResponse?.ok) return;
+
+        const progressData = await progressResponse.json();
+
+        if (isAdminView || isTeacherView) {
+          setStudentProgress(progressData.students || []);
+          return;
         }
+
+        const progressMap = {};
+        (progressData.progress || []).forEach((item) => {
+          progressMap[item.lesson_id] = item;
+        });
+        setProgress(progressMap);
       } catch (err) {
         console.error("Error loading book content:", err);
         notify?.(`Error: ${err.message}`, "error");
@@ -399,17 +429,17 @@ export default function BooksContent({ mode = "student" }) {
     };
 
     loadBookContent();
-  }, [bookId, isTeacherView, navigate, notify, studentId, teacherId]);
+  }, [bookId, isAdminView, isTeacherView, navigate, notify, staffQueryParams, studentId]);
 
   useEffect(() => {
-    if (!isTeacherView || activeTeacherTab !== "progress" || !bookId) return;
+    if (!activeTeacherTab || activeTeacherTab !== "progress" || !bookId) return;
 
     const loadStudentProgress = async () => {
       try {
         setProgressLoading(true);
         setProgressError("");
 
-        const response = await fetch(`${API_BASE}/api/teacher/book/${bookId}/progress?teacher_id=${encodeURIComponent(teacherId)}`);
+        const response = await fetch(`${API_BASE}/api/teacher/book/${bookId}/progress?${staffQueryParams.toString()}`);
         if (!response.ok) throw new Error("Failed to fetch student progress");
 
         const data = await response.json();
@@ -423,7 +453,7 @@ export default function BooksContent({ mode = "student" }) {
     };
 
     loadStudentProgress();
-  }, [activeTeacherTab, bookId, isTeacherView, teacherId]);
+  }, [activeTeacherTab, bookId, staffQueryParams]);
 
   const selectedFileUrl = useMemo(() => {
     if (!selectedLesson?.file_path) return "";
@@ -553,7 +583,7 @@ export default function BooksContent({ mode = "student" }) {
   }, [selectedLessonId, selectedFileUrl, showPdfFullscreen]);
 
   const handleLessonClick = (lesson) => {
-    if (!isTeacherView) {
+    if (isStudentView) {
       const lessonIndex = lessons.findIndex((item) => item.lesson_id === lesson.lesson_id);
       const previousLesson = lessons[lessonIndex - 1];
       const isLocked = lessonIndex > 0 && !isLessonCompleted(progress[previousLesson?.lesson_id]);
@@ -573,7 +603,7 @@ export default function BooksContent({ mode = "student" }) {
   };
 
   const markLessonComplete = async () => {
-    if (!selectedLesson || isTeacherView || selectedLessonCompleted) return;
+    if (!selectedLesson || !isStudentView || selectedLessonCompleted) return;
     const readerAtBottomNow = !lessonRequiresScroll || (
       readerContentReady && isReaderAtBottom(fullscreenReaderRef.current)
     );
@@ -671,6 +701,17 @@ export default function BooksContent({ mode = "student" }) {
     setLessonData({ ...lessonData, file });
   };
 
+  const reloadLessons = async () => {
+    const lessonQuery = new URLSearchParams({ book_id: bookId });
+    staffQueryParams.forEach((value, key) => lessonQuery.set(key, value));
+
+    const lessonsResponse = await fetch(`${API_BASE}/api/lessons?${lessonQuery.toString()}`);
+    if (!lessonsResponse.ok) return;
+
+    const lessonsData = await lessonsResponse.json();
+    setLessons(lessonsData.lessons || []);
+  };
+
   const handleUploadLesson = async () => {
     if (!lessonData.title.trim()) {
       notify?.("Lesson title is required", "error");
@@ -691,7 +732,9 @@ export default function BooksContent({ mode = "student" }) {
       formData.append("content", lessonData.content || "");
       const uploadFile = await compressFileIfImage(lessonData.file);
       formData.append("file", uploadFile, uploadFile.name);
-      formData.append("teacher_id", teacherId);
+      if (adminId) {
+        formData.append("admin_id", String(adminId));
+      }
 
       const response = await fetch(`${API_BASE}/api/lessons`, {
         method: "POST",
@@ -710,22 +753,33 @@ export default function BooksContent({ mode = "student" }) {
         content: "",
         file: null,
       });
-      // Reload the lessons
-      const bookId_param = bookId;
-      const lessonQuery = new URLSearchParams({ book_id: bookId_param });
-      if (teacherId) {
-        lessonQuery.set("teacher_id", teacherId);
-      }
-      const lessonsResponse = await fetch(`${API_BASE}/api/lessons?${lessonQuery.toString()}`);
-      if (lessonsResponse.ok) {
-        const lessonsData = await lessonsResponse.json();
-        setLessons(lessonsData.lessons || []);
-      }
+      await reloadLessons();
     } catch (err) {
       console.error("Error uploading lesson:", err);
       notify?.(`Error: ${err.message}`, "error");
     } finally {
       setUploadingLesson(false);
+    }
+  };
+
+  const handleDeleteLesson = async (lesson) => {
+    if (!window.confirm(`Delete lesson "${lesson.title}"? Students' progress on it is removed too.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/lessons/${lesson.lesson_id}?admin_id=${encodeURIComponent(adminId)}`,
+        { method: "DELETE" }
+      );
+
+      if (!response.ok) throw new Error("Failed to delete lesson");
+
+      notify?.("Lesson deleted", "success");
+      await reloadLessons();
+    } catch (err) {
+      console.error("Error deleting lesson:", err);
+      notify?.(`Error: ${err.message}`, "error");
     }
   };
 
@@ -750,7 +804,9 @@ export default function BooksContent({ mode = "student" }) {
       <div className={styles.CenterContent}>
         <button type="button" className={styles.backButton} onClick={handleBack}>
           <i className="bi bi-arrow-left" aria-hidden="true" />
-          <span>{isTeacherView ? "Back to My Books" : "Back to Books"}</span>
+          <span>
+            {isAdminView ? "Back to Book Library" : isTeacherView ? "Back to My Books" : "Back to Books"}
+          </span>
         </button>
 
         <div className={styles.TopContent}>
@@ -763,7 +819,7 @@ export default function BooksContent({ mode = "student" }) {
             <div className={styles.bookTitleGroup}>
               <div className={styles.bookTitleRow}>
                 <h1><b>{book.title}</b></h1>
-                {isTeacherView && (
+                {canManage && (
                   <button
                     type="button"
                     className={styles.changeCoverBtn}
@@ -773,7 +829,13 @@ export default function BooksContent({ mode = "student" }) {
                   </button>
                 )}
               </div>
-              <p>{isTeacherView ? "Uploaded lessons" : book.author || "Your Teacher"}</p>
+              <p>
+                {isAdminView
+                  ? `Distributed to ${book.teacher_names || "nobody yet"}`
+                  : isTeacherView
+                    ? book.course_name || "Assigned to you"
+                    : book.author || "Your Teacher"}
+              </p>
             </div>
           </div>
           <div className={styles.Date}>
@@ -782,7 +844,7 @@ export default function BooksContent({ mode = "student" }) {
           </div>
         </div>
 
-        {!isTeacherView && (
+        {isStudentView && (
           <div className={styles.progressContainer}>
             <h3>Your Progress: {getCompletionPercentage()}% completed</h3>
             <div className={styles.progressBar}>
@@ -794,7 +856,7 @@ export default function BooksContent({ mode = "student" }) {
           </div>
         )}
 
-        {isTeacherView && (
+        {!isStudentView && (
           <div className={styles.teacherTabs} role="tablist" aria-label="Teacher book sections">
             <button
               type="button"
@@ -817,7 +879,7 @@ export default function BooksContent({ mode = "student" }) {
           </div>
         )}
 
-        {isTeacherView && activeTeacherTab === "progress" ? (
+        {!isStudentView && activeTeacherTab === "progress" ? (
           <section className={styles.progressPanel}>
             <div className={styles.progressPanelHeader}>
               <div>
@@ -902,7 +964,7 @@ export default function BooksContent({ mode = "student" }) {
           <aside className={styles.lessonsList}>
             <div className={styles.lessonsHeader}>
               <h3>Lessons</h3>
-              {isTeacherView && (
+              {canManage && (
                 <button
                   type="button"
                   className={styles.uploadLessonBtn}
@@ -921,24 +983,41 @@ export default function BooksContent({ mode = "student" }) {
                 const isCompleted = isLessonCompleted(progress[lesson.lesson_id]);
                 const lessonIndex = lessons.findIndex((item) => item.lesson_id === lesson.lesson_id);
                 const previousLesson = lessons[lessonIndex - 1];
-                const isLocked = !isTeacherView && lessonIndex > 0 && !isLessonCompleted(progress[previousLesson?.lesson_id]);
+                const isLocked = isStudentView && lessonIndex > 0 && !isLessonCompleted(progress[previousLesson?.lesson_id]);
 
                 return (
-                  <button
-                    type="button"
+                  <div
                     key={lesson.lesson_id}
-                    className={`${styles.lessonButton} ${
-                      selectedLesson?.lesson_id === lesson.lesson_id ? styles.active : ""
-                    } ${isCompleted ? styles.completed : ""} ${isLocked ? styles.locked : ""}`}
-                    onClick={() => handleLessonClick(lesson)}
-                    aria-disabled={isLocked}
+                    className={styles.lessonRow}
                   >
-                    <span className={styles.lessonNumber}>Lesson {lesson.lesson_number}</span>
-                    <span className={styles.lessonTitle}>{lesson.title}</span>
-                    <span className={styles.lessonProgressText}>
-                      {isLocked ? "Locked" : isCompleted ? "Completed" : "In Progress"}
-                    </span>
-                  </button>
+                    <button
+                      type="button"
+                      className={`${styles.lessonButton} ${
+                        selectedLesson?.lesson_id === lesson.lesson_id ? styles.active : ""
+                      } ${isCompleted ? styles.completed : ""} ${isLocked ? styles.locked : ""}`}
+                      onClick={() => handleLessonClick(lesson)}
+                      aria-disabled={isLocked}
+                    >
+                      <span className={styles.lessonNumber}>Lesson {lesson.lesson_number}</span>
+                      <span className={styles.lessonTitle}>{lesson.title}</span>
+                      {isStudentView && (
+                        <span className={styles.lessonProgressText}>
+                          {isLocked ? "Locked" : isCompleted ? "Completed" : "In Progress"}
+                        </span>
+                      )}
+                    </button>
+                    {canManage && (
+                      <button
+                        type="button"
+                        className={styles.deleteLessonBtn}
+                        onClick={() => handleDeleteLesson(lesson)}
+                        aria-label={`Delete lesson ${lesson.lesson_number}`}
+                        title="Delete lesson"
+                      >
+                        <i className="bi bi-trash" aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -979,12 +1058,12 @@ export default function BooksContent({ mode = "student" }) {
                         </a>
                       </div>
 
-                      {isTeacherView ? (
-                        <InlineFilePreview
-                          fileUrl={selectedFileUrl}
-                          fileName={selectedFileName}
-                        />
-                      ) : (
+                      {!isStudentView ? (
+                      <InlineFilePreview
+                        fileUrl={selectedFileUrl}
+                        fileName={selectedFileName}
+                      />
+                    ) : (
                         <>
                           {/* First page only: lesson completion is gated on the
                               fullscreen reader reaching the bottom, so showing
@@ -1048,10 +1127,8 @@ export default function BooksContent({ mode = "student" }) {
                     const fd = new FormData();
                     const compressedCover = await compressFileIfImage(coverFile);
                     fd.append("cover", compressedCover, compressedCover.name);
-                    fd.append("title", book.title);
-                    fd.append("description", book.description || "");
-                    if (teacherId) {
-                      fd.append("teacher_id", teacherId);
+                    if (adminId) {
+                      fd.append("admin_id", String(adminId));
                     }
 
                     const res = await fetch(`${API_BASE}/api/books/${book.book_id}`, {
@@ -1065,8 +1142,10 @@ export default function BooksContent({ mode = "student" }) {
                     setShowCoverModal(false);
                     setCoverFile(null);
                     // reload book
-                    const bookQuery = teacherId ? `?teacher_id=${encodeURIComponent(teacherId)}` : "";
-                    const bk = await (await fetch(`${API_BASE}/api/books/${bookId}${bookQuery}`)).json();
+                    const bookQuery = new URLSearchParams(staffQueryParams);
+                    const bk = await (
+                      await fetch(`${API_BASE}/api/books/${bookId}?${bookQuery.toString()}`)
+                    ).json();
                     setBook(bk.book);
                   } catch (err) {
                     console.error(err);
@@ -1167,7 +1246,7 @@ export default function BooksContent({ mode = "student" }) {
               <p>{decodeText(selectedFileName)}</p>
             </div>
             <div className={styles.fullscreenActions}>
-              {!isTeacherView && (
+              {isStudentView && (
                 <>
                   <span className={`${styles.lessonStatus} ${selectedLessonCompleted ? styles.statusCompleted : ""}`}>
                     {selectedLessonCompleted ? "Completed" : selectedLessonReadReady ? "Ready to complete" : "Read to the end"}

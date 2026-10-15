@@ -108,6 +108,9 @@ DROP TABLE IF EXISTS `books`;
 CREATE TABLE `books` (
   `book_id` int NOT NULL AUTO_INCREMENT,
   `course_id` int NOT NULL,
+  -- Legacy: books used to be created by a teacher and this column recorded the
+  -- owner. Books are now authored by an admin and distributed via book_teachers,
+  -- so this is NULL for new books and only kept for pre-migration rows.
   `teacher_id` int DEFAULT NULL,
   `cover_url` varchar(1000) DEFAULT NULL,
   `status` enum('active','archived') NOT NULL DEFAULT 'active',
@@ -134,6 +137,30 @@ LOCK TABLES `books` WRITE;
 /*!40000 ALTER TABLE `books` DISABLE KEYS */;
 /*!40000 ALTER TABLE `books` ENABLE KEYS */;
 UNLOCK TABLES;
+
+--
+-- Table structure for table `book_teachers`
+--
+-- Which teachers a book was distributed to. Books are authored by an admin and
+-- handed out, so one book can belong to many teachers at once.
+--
+
+DROP TABLE IF EXISTS `book_teachers`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `book_teachers` (
+  `book_id` int NOT NULL,
+  `teacher_id` int NOT NULL,
+  `assigned_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `assigned_by` int DEFAULT NULL,
+  PRIMARY KEY (`book_id`,`teacher_id`),
+  KEY `idx_book_teachers_teacher` (`teacher_id`),
+  KEY `idx_book_teachers_teacher_assigned` (`teacher_id`,`assigned_at`),
+  CONSTRAINT `book_teachers_book_fk` FOREIGN KEY (`book_id`) REFERENCES `books` (`book_id`) ON DELETE CASCADE,
+  CONSTRAINT `book_teachers_teacher_fk` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  CONSTRAINT `book_teachers_assigner_fk` FOREIGN KEY (`assigned_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
 --
 -- Table structure for table `class_remarks`

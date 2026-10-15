@@ -1,5 +1,10 @@
 # Teacher Data Isolation - Quick Reference
 
+> **Superseded.** This document describes the old model where teachers created
+> and owned books (`books.teacher_id` meant "mine"). Books are now owned by the
+> admin and distributed to teachers - see [BOOK_DISTRIBUTION.md](./BOOK_DISTRIBUTION.md)
+> for the current behaviour. Kept for historical reference only.
+
 ## Summary
 Implemented strict data isolation for teachers on the dashboard. Teachers can only see and manage books they personally uploaded. Unauthorized access attempts return **403 Forbidden**.
 

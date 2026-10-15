@@ -726,6 +726,40 @@
   box-shadow: 0 14px 26px rgba(18, 34, 30, 0.06);
 }
 
+/* Wraps the lesson button plus the admin-only delete action so the button can
+   still span the full row width without the trash icon overlapping it. */
+.lessonRow {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.lessonRow .lessonButton {
+  flex: 1;
+  min-width: 0;
+}
+
+.deleteLessonBtn {
+  flex-shrink: 0;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(193, 90, 79, 0.32);
+  background: rgba(193, 90, 79, 0.08);
+  color: #b3453a;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.deleteLessonBtn:hover {
+  background: rgba(193, 90, 79, 0.16);
+  border-color: rgba(193, 90, 79, 0.55);
+}
+
 .active {
   background: rgba(145, 167, 154, 0.16);
   border-color: rgba(145, 167, 154, 0.9);

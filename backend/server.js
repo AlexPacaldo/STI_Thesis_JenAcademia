@@ -1103,6 +1103,39 @@ async function ensureLessonsColumns() {
   }
 }
 
+/**
+ * Books are now authored by an admin and handed out to teachers, so the
+ * "which teacher owns this" link moved off books.teacher_id and into its own
+ * join table - one book can be distributed to many teachers at once.
+ */
+async function ensureBookTeachersTable() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS book_teachers (
+       book_id INT NOT NULL,
+       teacher_id INT NOT NULL,
+       assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       assigned_by INT DEFAULT NULL,
+       PRIMARY KEY (book_id, teacher_id),
+       KEY idx_book_teachers_teacher (teacher_id),
+       KEY idx_book_teachers_teacher_assigned (teacher_id, assigned_at),
+       CONSTRAINT book_teachers_book_fk FOREIGN KEY (book_id) REFERENCES books (book_id) ON DELETE CASCADE,
+       CONSTRAINT book_teachers_teacher_fk FOREIGN KEY (teacher_id) REFERENCES users (user_id) ON DELETE CASCADE,
+       CONSTRAINT book_teachers_assigner_fk FOREIGN KEY (assigned_by) REFERENCES users (user_id) ON DELETE SET NULL
+     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+
+  // Books created before this table existed recorded their teacher straight on
+  // books.teacher_id. Carry those over so nothing a teacher could already see
+  // vanishes the moment they lose the right to create books.
+  const [backfilled] = await pool.query(
+    `INSERT IGNORE INTO book_teachers (book_id, teacher_id)
+     SELECT book_id, teacher_id FROM books WHERE teacher_id IS NOT NULL`
+  );
+  if (backfilled?.affectedRows) {
+    console.log(`Migrated ${backfilled.affectedRows} book(s) into book_teachers.`);
+  }
+}
+
 async function indexColumnCount(tableName, indexName) {
   const [rows] = await pool.query(
     `SELECT COUNT(*) AS column_count
@@ -1588,6 +1621,7 @@ async function prepareDatabase() {
   await ensureBooksColumns();
   await ensureRemarkColumns();
   await ensureLessonsColumns();
+  await ensureBookTeachersTable();
   await ensureLessonProgressTable();
   await ensureClassAttendanceLogsTable();
   await ensureStudentCourseProgressTable();
@@ -2139,12 +2173,12 @@ app.get("/api/dashboard/:role/:user_id", async (req, res) => {
             [user_id]
           ),
           pool.query(
-            `SELECT b.*,
-                    TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS teacher_name,
-                    NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), '') AS author
-             FROM books b
-             LEFT JOIN users u ON u.user_id = b.teacher_id
-             WHERE b.status = 'active' AND b.teacher_id = ?
+            `${bookListSelectFields}
+             WHERE b.status = 'active'
+               AND EXISTS (
+                 SELECT 1 FROM book_teachers dbt
+                 WHERE dbt.book_id = b.book_id AND dbt.teacher_id = ?
+               )
              ORDER BY b.created_at DESC`,
             [user_id]
           ),
@@ -2177,13 +2211,12 @@ app.get("/api/dashboard/:role/:user_id", async (req, res) => {
     const profile = await getStudentProfile(user_id);
     const booksPromise = profile?.assigned_teacher_id
       ? pool.query(
-          `SELECT b.*,
-                  TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS teacher_name,
-                  NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), '') AS author
-           FROM books b
-           LEFT JOIN users u ON u.user_id = b.teacher_id
+          `${bookListSelectFields}
            WHERE b.status = 'active'
-             AND b.teacher_id = ?
+             AND EXISTS (
+               SELECT 1 FROM book_teachers sbt
+               WHERE sbt.book_id = b.book_id AND sbt.teacher_id = ?
+             )
              ${profile.course_id ? "AND b.course_id = ?" : ""}
            ORDER BY b.created_at DESC`,
           profile.course_id ? [profile.assigned_teacher_id, profile.course_id] : [profile.assigned_teacher_id]
@@ -8467,16 +8500,20 @@ async function canStudentAccessBook(studentId, bookId) {
   const profile = await getStudentProfile(studentId);
   if (!profile?.assigned_teacher_id) return false;
 
-  const params = [studentId, bookId, profile.assigned_teacher_id];
+  // A student inherits access from their assigned teacher, and only for books
+  // that teacher was actually distributed.
+  const assignedTeacherId = profile.assigned_teacher_id;
+  const params = [studentId, assignedTeacherId, bookId];
   let query = `SELECT b.book_id
      FROM books b
      JOIN student_profiles sp ON sp.user_id = ?
      JOIN users student ON student.user_id = sp.user_id
       AND student.status = 'active' AND student.profile_completed = TRUE
-     JOIN users teacher ON teacher.user_id = b.teacher_id
+     JOIN book_teachers bt ON bt.book_id = b.book_id
+     JOIN users teacher ON teacher.user_id = bt.teacher_id
       AND teacher.status = 'active' AND teacher.profile_completed = TRUE
-     WHERE b.book_id = ?
-       AND b.teacher_id = ?`;
+     WHERE sp.assigned_teacher_id = ?
+       AND b.book_id = ?`;
 
   if (profile.course_id) {
     query += ' AND b.course_id = ?';
@@ -8493,17 +8530,19 @@ async function canStudentAccessLesson(studentId, lessonId) {
   const profile = await getStudentProfile(studentId);
   if (!profile?.assigned_teacher_id) return false;
 
-  const params = [studentId, lessonId, profile.assigned_teacher_id];
+  const assignedTeacherId = profile.assigned_teacher_id;
+  const params = [studentId, assignedTeacherId, lessonId];
   let query = `SELECT l.lesson_id
      FROM lessons l
      JOIN books b ON l.book_id = b.book_id
      JOIN student_profiles sp ON sp.user_id = ?
      JOIN users student ON student.user_id = sp.user_id
       AND student.status = 'active' AND student.profile_completed = TRUE
-     JOIN users teacher ON teacher.user_id = b.teacher_id
+     JOIN book_teachers bt ON bt.book_id = b.book_id
+     JOIN users teacher ON teacher.user_id = bt.teacher_id
       AND teacher.status = 'active' AND teacher.profile_completed = TRUE
-     WHERE l.lesson_id = ?
-       AND b.teacher_id = ?`;
+     WHERE sp.assigned_teacher_id = ?
+       AND l.lesson_id = ?`;
 
   if (profile.course_id) {
     query += ' AND b.course_id = ?';
@@ -8783,7 +8822,11 @@ async function getChatThread(userId, otherUserId) {
   }));
 }
 
-// ========== TEACHER DATA ISOLATION & SECURITY HELPERS ==========
+// ========== BOOK ACCESS CONTROL & SECURITY HELPERS ==========
+// Books are authored by an admin and distributed to teachers. Teachers no
+// longer own the books they can see, so ownership checks were replaced by two
+// narrower gates: requireAdmin for every write, and distribution membership for
+// reads.
 
 /**
  * Extract teacher ID from request (query, body, or headers)
@@ -8794,35 +8837,129 @@ function getTeacherIdFromRequest(req) {
 }
 
 /**
- * Check if a teacher owns a specific book
- * @param {number} bookId - The book ID to check
- * @param {number} teacherId - The teacher ID making the request
- * @returns {Promise<boolean>} True if teacher owns the book
+ * Extract admin ID from request (query, body, or headers)
+ * Priority: query param > body > header
  */
-async function isTeacherBookOwner(bookId, teacherId) {
+function getAdminIdFromRequest(req) {
+  return req.query.admin_id || req.body?.admin_id || req.headers?.['x-admin-id'];
+}
+
+/**
+ * Normalise a list of IDs arriving from a form field. Accepts a JSON array, a
+ * comma separated string, or repeated fields (which arrive as a real array).
+ * The JSON form is checked before splitting on commas, otherwise "[1,2,3]"
+ * would be shredded into "[1", "2" and "3]".
+ * @param {string|string[]|undefined} value
+ * @returns {number[]} unique positive integers
+ */
+function parseIdList(value) {
+  const collect = (input) => {
+    if (Array.isArray(input)) return input.flatMap(collect);
+    if (input === undefined || input === null) return [];
+
+    const trimmed = String(input).trim();
+    if (!trimmed) return [];
+
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        return Array.isArray(parsed) ? parsed.flatMap(collect) : [];
+      } catch {
+        return [];
+      }
+    }
+
+    return trimmed.split(",").flatMap(collect);
+  };
+
+  const ids = collect(value).map((part) => Number(part));
+  return [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+}
+
+async function isActiveAdmin(userId) {
+  if (!userId) return false;
+
   const [rows] = await pool.query(
-    "SELECT book_id FROM books WHERE book_id = ? AND teacher_id = ? LIMIT 1",
-    [bookId, teacherId]
+    `SELECT user_id FROM users
+     WHERE user_id = ? AND role = 'admin' AND status = 'active'
+     LIMIT 1`,
+    [userId]
   );
+
   return rows.length > 0;
 }
 
 /**
- * Validate that the requesting teacher owns the book
- * Throws 403 error if teacher does not own the book or if book doesn't exist
- * @param {Object} res - Express response object
- * @param {number} bookId - The book ID to check
- * @param {number} teacherId - The authenticated teacher's ID
- * @returns {Promise<boolean>} True if authorized, throws error otherwise
+ * Check whether a book has been distributed to a teacher.
+ * @param {number} bookId
+ * @param {number} teacherId
+ * @returns {Promise<boolean>}
  */
-async function validateTeacherBookOwnership(res, bookId, teacherId) {
+async function isBookDistributedToTeacher(bookId, teacherId) {
+  if (!teacherId) return false;
+
+  const [rows] = await pool.query(
+    "SELECT 1 FROM book_teachers WHERE book_id = ? AND teacher_id = ? LIMIT 1",
+    [bookId, teacherId]
+  );
+
+  return rows.length > 0;
+}
+
+/**
+ * Gate for every book/lesson write. Only an admin may author books, distribute
+ * them, or touch their lessons.
+ * @param {Object} res - Express response object
+ * @param {number} adminId - The admin ID making the request
+ * @param {number|null} bookId - When given, also asserts the book exists
+ * @returns {Promise<boolean>} True if authorized; sends 401/403/404 otherwise
+ */
+async function requireAdmin(res, adminId, bookId = null) {
+  if (!adminId) {
+    res.status(401).json({ message: "Unauthorized: admin_id is required" });
+    return false;
+  }
+
+  if (!(await isActiveAdmin(adminId))) {
+    res.status(403).json({
+      message: "Forbidden: Only an administrator can manage books and lessons.",
+    });
+    return false;
+  }
+
+  if (bookId) {
+    const [books] = await pool.query(
+      "SELECT book_id FROM books WHERE book_id = ? LIMIT 1",
+      [bookId]
+    );
+
+    if (books.length === 0) {
+      res.status(404).json({ message: "Book not found" });
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Read access to a book: the admin who owns the library, or a teacher the book
+ * has been distributed to. Students are handled separately by
+ * canStudentAccessBook, since they inherit access through their teacher.
+ * @returns {Promise<boolean>} True if authorized; sends 401/403/404 otherwise
+ */
+async function validateBookReadAccess(res, bookId, adminId, teacherId) {
+  if (adminId) {
+    return requireAdmin(res, adminId, bookId);
+  }
+
   if (!teacherId) {
-    res.status(401).json({ message: "Unauthorized: Teacher ID not provided" });
+    res.status(401).json({ message: "Unauthorized: teacher_id or admin_id is required" });
     return false;
   }
 
   const [books] = await pool.query(
-    "SELECT book_id, teacher_id FROM books WHERE book_id = ? LIMIT 1",
+    "SELECT book_id FROM books WHERE book_id = ? LIMIT 1",
     [bookId]
   );
 
@@ -8831,9 +8968,9 @@ async function validateTeacherBookOwnership(res, bookId, teacherId) {
     return false;
   }
 
-  if (books[0].teacher_id !== parseInt(teacherId)) {
-    res.status(403).json({ 
-      message: "Forbidden: You do not have permission to access this book. You can only manage books you uploaded." 
+  if (!(await isBookDistributedToTeacher(bookId, teacherId))) {
+    res.status(403).json({
+      message: "Forbidden: This book has not been distributed to you.",
     });
     return false;
   }
@@ -8842,23 +8979,12 @@ async function validateTeacherBookOwnership(res, bookId, teacherId) {
 }
 
 /**
- * Validate that the requesting teacher owns the book containing a lesson
- * @param {Object} res - Express response object
- * @param {number} lessonId - The lesson ID to check
- * @param {number} teacherId - The authenticated teacher's ID
- * @returns {Promise<boolean>} True if authorized, throws error otherwise
+ * Read access to a lesson, resolved through the book that contains it.
+ * @returns {Promise<boolean>} True if authorized; sends 401/403/404 otherwise
  */
-async function validateTeacherLessonOwnership(res, lessonId, teacherId) {
-  if (!teacherId) {
-    res.status(401).json({ message: "Unauthorized: Teacher ID not provided" });
-    return false;
-  }
-
+async function validateLessonReadAccess(res, lessonId, adminId, teacherId) {
   const [lessons] = await pool.query(
-    `SELECT l.lesson_id, b.teacher_id, l.book_id
-     FROM lessons l
-     JOIN books b ON l.book_id = b.book_id
-     WHERE l.lesson_id = ? LIMIT 1`,
+    "SELECT lesson_id, book_id FROM lessons WHERE lesson_id = ? LIMIT 1",
     [lessonId]
   );
 
@@ -8867,38 +8993,111 @@ async function validateTeacherLessonOwnership(res, lessonId, teacherId) {
     return false;
   }
 
-  if (lessons[0].teacher_id !== parseInt(teacherId)) {
-    res.status(403).json({ 
-      message: "Forbidden: You do not have permission to manage this lesson. The lesson belongs to a book uploaded by another teacher." 
-    });
-    return false;
-  }
-
-  return true;
+  return validateBookReadAccess(res, lessons[0].book_id, adminId, teacherId);
 }
 
-// GET all books (filtered by course, teacher, or assigned student teacher)
+/**
+ * The teachers a book is currently distributed to.
+ * @returns {Promise<number[]>}
+ */
+async function getBookTeacherIds(bookId) {
+  const [rows] = await pool.query(
+    "SELECT teacher_id FROM book_teachers WHERE book_id = ? ORDER BY teacher_id",
+    [bookId]
+  );
+
+  return rows.map((row) => row.teacher_id);
+}
+
+/**
+ * Narrow a list of teacher IDs down to the ones that can actually be assigned a
+ * book: real, active teacher accounts.
+ * @returns {Promise<{ valid: number[], invalid: number[] }>}
+ */
+async function validateTeacherIds(teacherIds) {
+  const unique = [...new Set(teacherIds.map((id) => Number(id)).filter(Boolean))];
+  if (unique.length === 0) return { valid: [], invalid: [] };
+
+  const [rows] = await pool.query(
+    `SELECT user_id FROM users
+     WHERE user_id IN (?)
+       AND role = 'teacher'
+       AND status = 'active'`,
+    [unique]
+  );
+
+  const found = new Set(rows.map((row) => row.user_id));
+  return {
+    valid: unique.filter((id) => found.has(id)),
+    invalid: unique.filter((id) => !found.has(id)),
+  };
+}
+
+/**
+ * Teacher roll-up used by every book list, so the UI can show who a book was
+ * distributed to without a second request.
+ *
+ * The names are aggregated with DISTINCT and no ORDER BY on a different
+ * expression: MySQL rejects `GROUP_CONCAT(DISTINCT x ORDER BY y)` unless y is
+ * in the select list, and ordering by an unrelated id is not worth the risk.
+ */
+const BOOK_TEACHER_NAMES_SUBQUERY = `(
+         SELECT GROUP_CONCAT(
+                  DISTINCT TRIM(CONCAT(COALESCE(bt_user.first_name, ''), ' ', COALESCE(bt_user.last_name, '')))
+                  SEPARATOR ', '
+                )
+         FROM book_teachers bt
+         JOIN users bt_user ON bt_user.user_id = bt.teacher_id
+         WHERE bt.book_id = b.book_id AND bt_user.status = 'active'
+       )`;
+
+const BOOK_TEACHER_IDS_SUBQUERY = `(
+       SELECT GROUP_CONCAT(bt2.teacher_id ORDER BY bt2.teacher_id)
+       FROM book_teachers bt2
+       WHERE bt2.book_id = b.book_id
+     )`;
+
+/**
+ * Shared SELECT for book lists. The roll-ups are correlated subqueries rather
+ * than joins so lesson counts and teacher lists never multiply each other.
+ */
+const bookListSelectFields = `SELECT b.*, c.course_name,
+       ${BOOK_TEACHER_NAMES_SUBQUERY} AS teacher_names,
+       ${BOOK_TEACHER_IDS_SUBQUERY} AS teacher_ids,
+       COALESCE(NULLIF(b.author, ''), NULLIF(${BOOK_TEACHER_NAMES_SUBQUERY}, '')) AS author,
+       (SELECT COUNT(*) FROM lessons l WHERE l.book_id = b.book_id) AS lesson_count
+     FROM books b
+     JOIN courses c ON c.course_id = b.course_id`;
+
+// GET all books (admin: whole library; teacher: distributed to them; student:
+// distributed to their assigned teacher)
 app.get("/api/books", async (req, res) => {
   try {
-    const { course_id, teacher_id, student_id } = req.query;
+    const { course_id, teacher_id, student_id, admin_id, status = "active" } = req.query;
 
-    let query = `SELECT b.*,
-        TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS teacher_name,
-        NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), '') AS author,
-        u.profile_image_url AS teacher_profile_image_url
-      FROM books b
-      LEFT JOIN users u ON u.user_id = b.teacher_id`;
-    let params = [];
+    let query = bookListSelectFields;
+    const params = [];
 
-    const whereClauses = ["b.status = 'active'"];
+    const whereClauses = [];
 
-    if (student_id) {
+    if (status === "active" || status === "archived") {
+      whereClauses.push("b.status = ?");
+      params.push(status);
+    }
+
+    if (admin_id) {
+      if (!(await isActiveAdmin(admin_id))) {
+        return res.status(403).json({ message: "Forbidden: admin access required" });
+      }
+    } else if (student_id) {
       const profile = await getStudentProfile(student_id);
       if (!profile?.assigned_teacher_id) {
         return res.json({ books: [] });
       }
 
-      whereClauses.push("b.teacher_id = ?");
+      whereClauses.push(
+        "EXISTS (SELECT 1 FROM book_teachers sbt WHERE sbt.book_id = b.book_id AND sbt.teacher_id = ?)"
+      );
       params.push(profile.assigned_teacher_id);
 
       if (profile.course_id) {
@@ -8909,14 +9108,18 @@ app.get("/api/books", async (req, res) => {
         params.push(course_id);
       }
     } else if (teacher_id) {
-      whereClauses.push("b.teacher_id = ?");
+      whereClauses.push(
+        "EXISTS (SELECT 1 FROM book_teachers tbt WHERE tbt.book_id = b.book_id AND tbt.teacher_id = ?)"
+      );
       params.push(teacher_id);
     } else if (course_id) {
       whereClauses.push("b.course_id = ?");
       params.push(course_id);
     }
 
-    query += ` WHERE ${whereClauses.join(" AND ")}`;
+    if (whereClauses.length > 0) {
+      query += ` WHERE ${whereClauses.join(" AND ")}`;
+    }
     query += " ORDER BY b.created_at DESC";
 
     const [books] = await pool.query(query, params);
@@ -8928,14 +9131,25 @@ app.get("/api/books", async (req, res) => {
 });
 
 // GET single book with lesson count
-// SECURITY: Teacher can only view books they own; students can view their assigned teacher's books
+// SECURITY: The admin can read any book; a teacher only books distributed to
+// them; a student only books distributed to their assigned teacher.
 app.get("/api/books/:book_id", async (req, res) => {
   try {
     const { book_id } = req.params;
-    const { student_id, teacher_id } = req.query;
+    const { student_id, teacher_id, admin_id } = req.query;
+
+    if (student_id) {
+      if (!(await canStudentAccessBook(student_id, book_id))) {
+        return res.status(403).json({ message: "You do not have access to this book" });
+      }
+    } else if (!admin_id && !teacher_id) {
+      return res.status(401).json({ message: "student_id, teacher_id or admin_id is required" });
+    } else if (!(await validateBookReadAccess(res, book_id, admin_id, teacher_id))) {
+      return;
+    }
 
     const [books] = await pool.query(
-      "SELECT * FROM books WHERE book_id = ?",
+      `${bookListSelectFields} WHERE b.book_id = ? LIMIT 1`,
       [book_id]
     );
 
@@ -8943,29 +9157,7 @@ app.get("/api/books/:book_id", async (req, res) => {
       return res.status(404).json({ message: "Book not found" });
     }
 
-    if (teacher_id) {
-      if (!(await validateTeacherBookOwnership(res, book_id, teacher_id))) {
-        return;
-      }
-    } else if (student_id) {
-      if (!(await canStudentAccessBook(student_id, book_id))) {
-        return res.status(403).json({ message: "You do not have access to this book" });
-      }
-    } else {
-      return res.status(401).json({ message: "student_id or teacher_id is required" });
-    }
-
-    const [lessons] = await pool.query(
-      "SELECT COUNT(*) as lesson_count FROM lessons WHERE book_id = ?",
-      [book_id]
-    );
-
-    res.json({ 
-      book: {
-        ...books[0],
-        lesson_count: lessons[0].lesson_count
-      }
-    });
+    res.json({ book: books[0] });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching book" });
@@ -8973,17 +9165,20 @@ app.get("/api/books/:book_id", async (req, res) => {
 });
 
 // GET teacher-facing student progress for a book
+// SECURITY: readable by the admin, and by any teacher the book was distributed
+// to. Progress is read-only for teachers, so no write gate is involved.
 app.get("/api/teacher/book/:bookId/progress", async (req, res) => {
   try {
     const { bookId } = req.params;
     const teacher_id = getTeacherIdFromRequest(req);
+    const admin_id = getAdminIdFromRequest(req);
 
-    if (!teacher_id) {
-      return res.status(401).json({ message: "Unauthorized: teacher_id is required" });
+    if (!admin_id && !teacher_id) {
+      return res.status(401).json({ message: "Unauthorized: teacher_id or admin_id is required" });
     }
 
     const [bookRows] = await pool.query(
-      "SELECT book_id, title, course_id, teacher_id FROM books WHERE book_id = ? LIMIT 1",
+      "SELECT book_id, title, course_id FROM books WHERE book_id = ? LIMIT 1",
       [bookId]
     );
 
@@ -8991,10 +9186,11 @@ app.get("/api/teacher/book/:bookId/progress", async (req, res) => {
       return res.status(404).json({ message: "Book not found" });
     }
 
-    const book = bookRows[0];
-    if (book.teacher_id !== parseInt(teacher_id, 10)) {
-      return res.status(403).json({ message: "Forbidden: You do not have permission to view progress for this book." });
+    if (!(await validateBookReadAccess(res, bookId, admin_id, teacher_id))) {
+      return;
     }
+
+    const book = bookRows[0];
 
     const [lessons] = await pool.query(
       `SELECT lesson_id, lesson_number, title
@@ -9004,18 +9200,21 @@ app.get("/api/teacher/book/:bookId/progress", async (req, res) => {
       [bookId]
     );
 
+    // A book can sit with several teachers, so progress is aggregated across
+    // every student of the course who is assigned to one of them.
     const [students] = await pool.query(
-      `SELECT u.user_id AS student_id, u.first_name, u.last_name, u.email, u.profile_image_url,
+      `SELECT DISTINCT u.user_id AS student_id, u.first_name, u.last_name, u.email, u.profile_image_url,
               sp.course_id, sp.assigned_teacher_id
        FROM users u
        JOIN student_profiles sp ON sp.user_id = u.user_id
+       JOIN book_teachers bt ON bt.teacher_id = sp.assigned_teacher_id
        WHERE u.role = 'student'
          AND u.status = 'active'
          AND u.profile_completed = TRUE
          AND sp.course_id = ?
-         AND sp.assigned_teacher_id = ?
+         AND bt.book_id = ?
        ORDER BY u.last_name ASC, u.first_name ASC`,
-      [book.course_id, book.teacher_id]
+      [book.course_id, bookId]
     );
 
     if (students.length === 0) {
@@ -9106,44 +9305,103 @@ app.get("/api/teacher/book/:bookId/progress", async (req, res) => {
   }
 });
 
+/**
+ * Tell every teacher who now has a book about it, and their students about the
+ * book itself. Called on creation and on every distribution change so a teacher
+ * who is added to a book finds out without having to refresh and notice.
+ */
+async function notifyBookDistribution(bookId, bookTitle, courseId, teacherIds, { notifyStudents }) {
+  if (!teacherIds.length) return;
+
+  await createNotificationsForUsers(
+    teacherIds,
+    'general',
+    `New book assigned: ${bookTitle}`,
+    `The administrator assigned you the book "${bookTitle}". View it under Books / Lessons.`,
+    bookId,
+    'book',
+    `/teacherBooksLessons/${bookId}`
+  );
+
+  if (!notifyStudents) return;
+
+  for (const teacherId of teacherIds) {
+    const studentIds = await getAssignedStudentIds(teacherId, courseId);
+    if (!studentIds.length) continue;
+
+    await createNotificationsForUsers(
+      studentIds,
+      'general',
+      `New book available: ${bookTitle}`,
+      `A new book titled "${bookTitle}" is now available in your course. Check it out in Books & Lessons.`,
+      bookId,
+      'book',
+      `/bookscontent/${bookId}`
+    );
+  }
+}
+
 // CREATE new book
+// SECURITY: admin only. Books belong to the library, and the admin decides which
+// teachers receive them.
 app.post("/api/books", bookCoverUpload.single("cover"), async (req, res) => {
   try {
-    const { title, description, course_id, teacher_id } = req.body;
+    const { title, description, course_id, author } = req.body;
+    const admin_id = getAdminIdFromRequest(req);
 
-    console.log('DEBUG create book inputs:', { title, description, course_id, teacher_id, file: req.file && req.file.filename });
+    if (!(await requireAdmin(res, admin_id))) {
+      return;
+    }
 
-    if (!title || !course_id || !teacher_id) {
+    if (!title || !course_id) {
       return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const { valid: teacherIds, invalid } = await validateTeacherIds(parseIdList(req.body.teacher_ids));
+    if (invalid.length > 0) {
+      return res.status(400).json({
+        message: `These teachers cannot be assigned books: ${invalid.join(", ")}.`,
+      });
+    }
+
+    const [courseRows] = await pool.query(
+      "SELECT course_id FROM courses WHERE course_id = ? LIMIT 1",
+      [course_id]
+    );
+
+    if (courseRows.length === 0) {
+      return res.status(400).json({ message: "Invalid course" });
     }
 
     const cover_url = req.file ? `/uploads/books/${req.file.filename}` : null;
 
     try {
       const [result] = await pool.query(
-        "INSERT INTO books (title, description, course_id, teacher_id, cover_url) VALUES (?, ?, ?, ?, ?)",
-        [title, description || null, course_id, teacher_id, cover_url]
+        `INSERT INTO books (title, description, course_id, author, cover_url)
+         VALUES (?, ?, ?, ?, ?)`,
+        [title, description || null, course_id, author || null, cover_url]
       );
 
-      const studentIds = await getAssignedStudentIds(teacher_id, course_id);
-      if (studentIds.length > 0) {
-        const notificationTitle = `New book available: ${title}`;
-        const notificationMessage = `A new book titled "${title}" has been added to your course by your teacher. Check it out in Books & Lessons.`;
-        await createNotificationsForUsers(
-          studentIds,
-          'general',
-          notificationTitle,
-          notificationMessage,
-          result.insertId,
-          'book',
-          `/bookscontent/${result.insertId}`
+      const bookId = result.insertId;
+
+      if (teacherIds.length > 0) {
+        await pool.query(
+          `INSERT INTO book_teachers (book_id, teacher_id, assigned_by) VALUES ${teacherIds
+            .map(() => "(?, ?, ?)")
+            .join(", ")}`,
+          teacherIds.flatMap((teacherId) => [bookId, teacherId, admin_id])
         );
+
+        await notifyBookDistribution(bookId, title, course_id, teacherIds, {
+          notifyStudents: true,
+        });
       }
 
       res.status(201).json({
         message: "Book created successfully",
-        book_id: result.insertId,
+        book_id: bookId,
         cover_url,
+        teacher_ids: teacherIds,
       });
     } catch (dbErr) {
       console.error('DB ERROR creating book:', dbErr && dbErr.message, dbErr);
@@ -9155,18 +9413,72 @@ app.post("/api/books", bookCoverUpload.single("cover"), async (req, res) => {
   }
 });
 
+// Distribute (or redistribute) a book to teachers
+// SECURITY: admin only. Replaces the current set outright, so removing a
+// teacher immediately revokes their access.
+app.put("/api/books/:book_id/teachers", async (req, res) => {
+  try {
+    const { book_id } = req.params;
+    const admin_id = getAdminIdFromRequest(req);
+
+    if (!(await requireAdmin(res, admin_id, book_id))) {
+      return;
+    }
+
+    const { valid: teacherIds, invalid } = await validateTeacherIds(parseIdList(req.body.teacher_ids));
+    if (invalid.length > 0) {
+      return res.status(400).json({
+        message: `These teachers cannot be assigned books: ${invalid.join(", ")}.`,
+      });
+    }
+
+    const previousTeacherIds = await getBookTeacherIds(book_id);
+    const addedTeacherIds = teacherIds.filter((id) => !previousTeacherIds.includes(id));
+
+    await pool.query("DELETE FROM book_teachers WHERE book_id = ?", [book_id]);
+
+    if (teacherIds.length > 0) {
+      await pool.query(
+        `INSERT INTO book_teachers (book_id, teacher_id, assigned_by) VALUES ${teacherIds
+          .map(() => "(?, ?, ?)")
+          .join(", ")}`,
+        teacherIds.flatMap((teacherId) => [book_id, teacherId, admin_id])
+      );
+    }
+
+    const [bookRows] = await pool.query(
+      "SELECT title, course_id FROM books WHERE book_id = ? LIMIT 1",
+      [book_id]
+    );
+    const book = bookRows[0];
+
+    if (addedTeacherIds.length > 0) {
+      await notifyBookDistribution(book_id, book.title, book.course_id, addedTeacherIds, {
+        notifyStudents: true,
+      });
+    }
+
+    res.json({
+      message: "Book distribution updated",
+      teacher_ids: teacherIds,
+      added_teacher_ids: addedTeacherIds,
+      removed_teacher_ids: previousTeacherIds.filter((id) => !teacherIds.includes(id)),
+    });
+  } catch (err) {
+    console.error('DISTRIBUTE BOOK ERROR', err && err.stack || err);
+    res.status(500).json({ message: "Error updating book distribution", error: err && err.message });
+  }
+});
 
 // UPDATE book
-// SECURITY: Only the teacher who uploaded the book can update it
+// SECURITY: admin only. Teachers are read-only on books.
 app.put("/api/books/:book_id", bookCoverUpload.single("cover"), async (req, res) => {
   try {
     const { book_id } = req.params;
-    const { title, description, teacher_id } = req.body;
+    const { title, description, author } = req.body;
+    const admin_id = getAdminIdFromRequest(req);
 
-    console.log('DEBUG update book inputs:', { book_id, title, description, teacher_id, file: req.file && req.file.filename });
-
-    // Verify teacher ownership before allowing update
-    if (!(await validateTeacherBookOwnership(res, book_id, teacher_id))) {
+    if (!(await requireAdmin(res, admin_id, book_id))) {
       return;
     }
 
@@ -9182,6 +9494,10 @@ app.put("/api/books/:book_id", bookCoverUpload.single("cover"), async (req, res)
     if (description !== undefined) {
       updates.push("description = ?");
       params.push(description || null);
+    }
+    if (author !== undefined) {
+      updates.push("author = ?");
+      params.push(author || null);
     }
     if (cover_url !== null) {
       updates.push("cover_url = ?");
@@ -9214,14 +9530,13 @@ app.put("/api/books/:book_id", bookCoverUpload.single("cover"), async (req, res)
 });
 
 // DELETE book (cascade delete lessons and progress)
-// SECURITY: Only the teacher who uploaded the book can delete it
+// SECURITY: admin only
 app.delete("/api/books/:book_id", async (req, res) => {
   try {
     const { book_id } = req.params;
-    const teacher_id = getTeacherIdFromRequest(req);
+    const admin_id = getAdminIdFromRequest(req);
 
-    // Verify teacher ownership before allowing deletion
-    if (!(await validateTeacherBookOwnership(res, book_id, teacher_id))) {
+    if (!(await requireAdmin(res, admin_id, book_id))) {
       return;
     }
 
@@ -9239,7 +9554,7 @@ app.delete("/api/books/:book_id", async (req, res) => {
       );
     }
 
-    // Delete all lessons
+    // Delete all lessons. book_teachers rows cascade from the books delete.
     await pool.query("DELETE FROM lessons WHERE book_id = ?", [book_id]);
 
     // Delete the book
@@ -9260,19 +9575,19 @@ app.delete("/api/books/:book_id", async (req, res) => {
 });
 
 // Archive a book without deleting lessons or progress
+// SECURITY: admin only
 app.put("/api/books/:book_id/archive", async (req, res) => {
   try {
     const { book_id } = req.params;
-    const teacher_id = getTeacherIdFromRequest(req);
+    const admin_id = getAdminIdFromRequest(req);
 
-    // Verify teacher ownership before allowing archival
-    if (!(await validateTeacherBookOwnership(res, book_id, teacher_id))) {
+    if (!(await requireAdmin(res, admin_id, book_id))) {
       return;
     }
 
     const [result] = await pool.query(
-      "UPDATE books SET status = 'archived', archived_at = CURRENT_TIMESTAMP WHERE book_id = ? AND teacher_id = ?",
-      [book_id, teacher_id]
+      "UPDATE books SET status = 'archived', archived_at = CURRENT_TIMESTAMP WHERE book_id = ?",
+      [book_id]
     );
 
     if (result.affectedRows === 0) {
@@ -9288,19 +9603,19 @@ app.put("/api/books/:book_id/archive", async (req, res) => {
 
 // Restore a previously archived book. Archiving is a soft delete, so this is
 // the only way back - without it an archived book is unreachable from the UI.
+// SECURITY: admin only
 app.put("/api/books/:book_id/restore", async (req, res) => {
   try {
     const { book_id } = req.params;
-    const teacher_id = getTeacherIdFromRequest(req);
+    const admin_id = getAdminIdFromRequest(req);
 
-    // Verify teacher ownership before allowing restoration
-    if (!(await validateTeacherBookOwnership(res, book_id, teacher_id))) {
+    if (!(await requireAdmin(res, admin_id, book_id))) {
       return;
     }
 
     const [result] = await pool.query(
-      "UPDATE books SET status = 'active', archived_at = NULL WHERE book_id = ? AND teacher_id = ?",
-      [book_id, teacher_id]
+      "UPDATE books SET status = 'active', archived_at = NULL WHERE book_id = ?",
+      [book_id]
     );
 
     if (result.affectedRows === 0) {
@@ -9317,9 +9632,10 @@ app.put("/api/books/:book_id/restore", async (req, res) => {
 // ===== LESSONS ENDPOINTS =====
 
 // GET all lessons for a book
+// SECURITY: readable by the admin and by teachers the book was distributed to.
 app.get("/api/lessons", async (req, res) => {
   try {
-    const { book_id, student_id, teacher_id } = req.query;
+    const { book_id, student_id, teacher_id, admin_id } = req.query;
 
     if (!book_id) {
       return res.status(400).json({ message: "book_id is required" });
@@ -9329,12 +9645,10 @@ app.get("/api/lessons", async (req, res) => {
       if (!(await canStudentAccessBook(student_id, book_id))) {
         return res.status(403).json({ message: "You do not have access to this book" });
       }
-    } else if (teacher_id) {
-      if (!(await validateTeacherBookOwnership(res, book_id, teacher_id))) {
-        return;
-      }
-    } else {
-      return res.status(401).json({ message: "student_id or teacher_id is required" });
+    } else if (!admin_id && !teacher_id) {
+      return res.status(401).json({ message: "student_id, teacher_id or admin_id is required" });
+    } else if (!(await validateBookReadAccess(res, book_id, admin_id, teacher_id))) {
+      return;
     }
 
     const [lessons] = await pool.query(
@@ -9350,10 +9664,11 @@ app.get("/api/lessons", async (req, res) => {
 });
 
 // GET single lesson with progress info
+// SECURITY: readable by the admin and by teachers the book was distributed to.
 app.get("/api/lessons/:lesson_id", async (req, res) => {
   try {
     const { lesson_id } = req.params;
-    const { student_id, teacher_id } = req.query;
+    const { student_id, teacher_id, admin_id } = req.query;
 
     const [lessons] = await pool.query(
       "SELECT * FROM lessons WHERE lesson_id = ?",
@@ -9368,12 +9683,10 @@ app.get("/api/lessons/:lesson_id", async (req, res) => {
       if (!(await canStudentAccessLesson(student_id, lesson_id))) {
         return res.status(403).json({ message: "You do not have access to this lesson" });
       }
-    } else if (teacher_id) {
-      if (!(await validateTeacherLessonOwnership(res, lesson_id, teacher_id))) {
-        return;
-      }
-    } else {
-      return res.status(401).json({ message: "student_id or teacher_id is required" });
+    } else if (!admin_id && !teacher_id) {
+      return res.status(401).json({ message: "student_id, teacher_id or admin_id is required" });
+    } else if (!(await validateLessonReadAccess(res, lesson_id, admin_id, teacher_id))) {
+      return;
     }
 
     let progress = null;
@@ -9396,18 +9709,17 @@ app.get("/api/lessons/:lesson_id", async (req, res) => {
 });
 
 // CREATE new lesson (with file upload)
-// CREATE lesson
-// SECURITY: Only the teacher who owns the book can create lessons for it
+// SECURITY: admin only. Lessons ship with the book, so teachers are read-only.
 app.post("/api/lessons", lessonUpload.single("file"), async (req, res) => {
   try {
-    const { book_id, title, content, is_published, teacher_id } = req.body;
+    const { book_id, title, content, is_published } = req.body;
+    const admin_id = getAdminIdFromRequest(req);
 
     if (!book_id || !title) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    // Verify teacher owns the book before allowing lesson creation
-    if (!(await validateTeacherBookOwnership(res, book_id, teacher_id))) {
+    if (!(await requireAdmin(res, admin_id, book_id))) {
       return;
     }
 
@@ -9436,16 +9748,18 @@ app.post("/api/lessons", lessonUpload.single("file"), async (req, res) => {
     if (bookRows.length > 0) {
       const bookTitle = bookRows[0].title || 'your book';
       const courseIdForNotification = bookRows[0].course_id;
-      const studentIds = await getAssignedStudentIds(teacher_id, courseIdForNotification);
 
-      if (studentIds.length > 0) {
-        const notificationTitle = `New lesson added to ${bookTitle}`;
-        const notificationMessage = `A new lesson "${title}" has been added to the book ${bookTitle}. Visit Books & Lessons to review it.`;
+      // Only the students of teachers who actually hold this book.
+      const teacherIds = await getBookTeacherIds(book_id);
+      for (const teacherId of teacherIds) {
+        const studentIds = await getAssignedStudentIds(teacherId, courseIdForNotification);
+        if (!studentIds.length) continue;
+
         await createNotificationsForUsers(
           studentIds,
           'general',
-          notificationTitle,
-          notificationMessage,
+          `New lesson added to ${bookTitle}`,
+          `A new lesson "${title}" has been added to the book ${bookTitle}. Visit Books & Lessons to review it.`,
           book_id,
           'book',
           `/bookscontent/${book_id}`
@@ -9466,18 +9780,14 @@ app.post("/api/lessons", lessonUpload.single("file"), async (req, res) => {
 });
 
 // UPDATE lesson (with optional file replacement)
-// SECURITY: Only the teacher who owns the book containing the lesson can update it
+// SECURITY: admin only
 app.put("/api/lessons/:lesson_id", lessonUpload.single("file"), async (req, res) => {
   try {
     const { lesson_id } = req.params;
-    const { lesson_number, title, content, order_number, is_published, teacher_id } = req.body;
+    const { lesson_number, title, content, order_number, is_published } = req.body;
+    const admin_id = getAdminIdFromRequest(req);
 
-    // Verify teacher owns the lesson's book before allowing update
-    if (!(await validateTeacherLessonOwnership(res, lesson_id, teacher_id))) {
-      return;
-    }
-
-    // Get current lesson to check for old file
+    // Get current lesson to resolve its book and keep the old file
     const [lessons] = await pool.query(
       "SELECT * FROM lessons WHERE lesson_id = ?",
       [lesson_id]
@@ -9485,6 +9795,10 @@ app.put("/api/lessons/:lesson_id", lessonUpload.single("file"), async (req, res)
 
     if (lessons.length === 0) {
       return res.status(404).json({ message: "Lesson not found" });
+    }
+
+    if (!(await requireAdmin(res, admin_id, lessons[0].book_id))) {
+      return;
     }
 
     let file_path = lessons[0].file_path;
@@ -9512,14 +9826,22 @@ app.put("/api/lessons/:lesson_id", lessonUpload.single("file"), async (req, res)
 });
 
 // DELETE lesson
-// SECURITY: Only the teacher who owns the book containing the lesson can delete it
+// SECURITY: admin only
 app.delete("/api/lessons/:lesson_id", async (req, res) => {
   try {
     const { lesson_id } = req.params;
-    const teacher_id = getTeacherIdFromRequest(req);
+    const admin_id = getAdminIdFromRequest(req);
 
-    // Verify teacher owns the lesson's book before allowing deletion
-    if (!(await validateTeacherLessonOwnership(res, lesson_id, teacher_id))) {
+    const [lessons] = await pool.query(
+      "SELECT lesson_id, book_id FROM lessons WHERE lesson_id = ? LIMIT 1",
+      [lesson_id]
+    );
+
+    if (lessons.length === 0) {
+      return res.status(404).json({ message: "Lesson not found" });
+    }
+
+    if (!(await requireAdmin(res, admin_id, lessons[0].book_id))) {
       return;
     }
 
@@ -9589,7 +9911,7 @@ function normalizeLessonProgress(value) {
 
 async function refreshStudentBookProgress(studentId, lessonId) {
   const [lessonRows] = await pool.query(
-    `SELECT l.book_id, b.course_id, b.teacher_id, b.title AS book_title
+    `SELECT l.book_id, b.course_id, b.title AS book_title
      FROM lessons l
      JOIN books b ON b.book_id = l.book_id
      WHERE l.lesson_id = ?
@@ -9599,7 +9921,7 @@ async function refreshStudentBookProgress(studentId, lessonId) {
 
   if (lessonRows.length === 0) return null;
 
-  const { book_id: bookId, course_id: courseId, teacher_id: teacherId, book_title: bookTitle } = lessonRows[0];
+  const { book_id: bookId, course_id: courseId, book_title: bookTitle } = lessonRows[0];
   const [existingProgressRows] = await pool.query(
     "SELECT status FROM student_course_progress WHERE student_id = ? AND book_id = ? LIMIT 1",
     [studentId, bookId]
@@ -9646,23 +9968,32 @@ async function refreshStudentBookProgress(studentId, lessonId) {
     [studentId, bookId, courseId, status, completedLessons, totalLessons, progressPercentage, completedAt]
   );
 
-  if (status === 'Completed' && !wasCompleted && teacherId) {
-    const [studentRows] = await pool.query(
-      "SELECT first_name, last_name FROM users WHERE user_id = ? LIMIT 1",
-      [studentId]
-    );
-    const studentName = studentRows.length
-      ? `${studentRows[0].first_name || ''} ${studentRows[0].last_name || ''}`.trim() || `Student ${studentId}`
-      : `Student ${studentId}`;
+  if (status === 'Completed' && !wasCompleted) {
+    // Every teacher holding the book hears about it, since any of them could be
+    // the one teaching that student.
+    const teacherIds = await getBookTeacherIds(bookId);
+    if (teacherIds.length > 0) {
+      const [studentRows] = await pool.query(
+        "SELECT first_name, last_name FROM users WHERE user_id = ? LIMIT 1",
+        [studentId]
+      );
+      const studentName = studentRows.length
+        ? `${studentRows[0].first_name || ''} ${studentRows[0].last_name || ''}`.trim() || `Student ${studentId}`
+        : `Student ${studentId}`;
 
-    const notificationTitle = `Student completed ${bookTitle}`;
-    const notificationMessage = `${studentName} has completed 100% of lessons in "${bookTitle}".`;
+      const notificationTitle = `Student completed ${bookTitle}`;
+      const notificationMessage = `${studentName} has completed 100% of lessons in "${bookTitle}".`;
 
-    await pool.query(
-      `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
-       VALUES (?, 'general', ?, ?, ?, 'book', ?)`,
-      [teacherId, encryptNullableText(notificationTitle), encryptNullableText(notificationMessage), bookId, `/teacherBooksLessons/${bookId}`]
-    );
+      await createNotificationsForUsers(
+        teacherIds,
+        'general',
+        notificationTitle,
+        notificationMessage,
+        bookId,
+        'book',
+        `/teacherBooksLessons/${bookId}`
+      );
+    }
   }
 
   return {
@@ -9766,21 +10097,26 @@ app.get("/api/teacher/books", async (req, res) => {
       return res.status(401).json({ message: "Unauthorized: teacher_id is required" });
     }
 
+    // Defaults to 'active' so existing callers keep seeing only live books.
+    // 'archived' powers the recycle bin and 'all' returns both.
+    const whereClauses = [
+      `EXISTS (
+         SELECT 1 FROM book_teachers btc
+         WHERE btc.book_id = b.book_id AND btc.teacher_id = ?
+       )`,
+    ];
     const params = [teacher_id];
-    let statusClause = "";
+
     if (status === "active" || status === "archived") {
-      statusClause = "AND b.status = ?";
+      whereClauses.push("b.status = ?");
       params.push(status);
     }
 
-    // Enforce data isolation: teacher can only see their own books
+    // Read-only view of what the admin distributed to this teacher. Teachers
+    // cannot add or change books, so nothing here exposes a write path.
     const [books] = await pool.query(
-      `SELECT b.*, COUNT(l.lesson_id) as lesson_count
-       FROM books b
-       LEFT JOIN lessons l ON b.book_id = l.book_id
-       WHERE b.teacher_id = ?
-         ${statusClause}
-       GROUP BY b.book_id
+      `${bookListSelectFields}
+       WHERE ${whereClauses.join(" AND ")}
        ORDER BY b.created_at DESC`,
       params
     );
@@ -9789,6 +10125,46 @@ app.get("/api/teacher/books", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching teacher books" });
+  }
+});
+
+// GET the whole book library for the admin
+// SECURITY: admin only. Unlike /api/books this also returns archived books and
+// works without a status filter defaulting to 'active', because the admin is
+// the one who recycles and restores.
+app.get("/api/admin/books", async (req, res) => {
+  try {
+    const admin_id = getAdminIdFromRequest(req);
+
+    if (!(await requireAdmin(res, admin_id))) {
+      return;
+    }
+
+    const { status = "all", course_id } = req.query;
+    const params = [];
+    const whereClauses = [];
+
+    if (status === "active" || status === "archived") {
+      whereClauses.push("b.status = ?");
+      params.push(status);
+    }
+
+    if (course_id) {
+      whereClauses.push("b.course_id = ?");
+      params.push(course_id);
+    }
+
+    let query = bookListSelectFields;
+    if (whereClauses.length > 0) {
+      query += ` WHERE ${whereClauses.join(" AND ")}`;
+    }
+    query += " ORDER BY b.created_at DESC";
+
+    const [books] = await pool.query(query, params);
+    res.json({ books });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching books" });
   }
 });
 

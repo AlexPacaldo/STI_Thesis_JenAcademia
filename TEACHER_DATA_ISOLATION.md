@@ -1,5 +1,12 @@
 # Teacher Data Isolation Implementation
 
+> **Superseded for books and lessons.** The book/lesson sections below describe
+> the old model where teachers created and owned books, gated by
+> `books.teacher_id`. Books are now created by the admin and distributed to
+> teachers via the `book_teachers` table, and teachers are read-only - see
+> [BOOK_DISTRIBUTION.md](./BOOK_DISTRIBUTION.md). The class/assignment isolation
+> sections below are still accurate. Kept for historical reference.
+
 ## Overview
 This document describes the implementation of **teacher data isolation** for the Jen Academia platform. Teachers can now only see and manage books/lessons they personally uploaded. Unauthorized access attempts return a **403 Forbidden** error.
 

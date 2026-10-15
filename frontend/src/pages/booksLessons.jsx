@@ -2,26 +2,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "../assets/booksLessons.module.css";
-import userPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
 import { API_BASE_URL } from "../utils/api.js";
 
 const API_BASE = API_BASE_URL;
-
-// Mirrors profileSrc() in remarks.jsx / assignmentsDropbox.jsx: uploads paths
-// come back from the API both with and without a leading slash, and Windows
-// paths may use "\". Returns the shared default when the teacher has no photo.
-function profileSrc(url) {
-  if (!url) return userPic;
-  const cleaned = String(url).replace(/\\/g, "/");
-  if (/^https?:\/\//i.test(cleaned)) return cleaned;
-  if (cleaned.startsWith("/uploads/")) return `${API_BASE}${cleaned}`;
-  if (cleaned.startsWith("uploads/")) return `${API_BASE}/${cleaned}`;
-  return cleaned;
-}
-
 
 export default function StudentBooksLessons() {
   const { notify } = useNotification() || {};
@@ -125,16 +111,12 @@ export default function StudentBooksLessons() {
 
                 <div className={styles.cardBody}>
                   <h3 className={styles.bookTitle}>{book.title}</h3>
+                  {/* A book can be distributed to several teachers at once, so
+                      there is no single "uploaded by" person to show here. */}
                   <div className={styles.Uploaded}>
-                    <img
-                      src={profileSrc(book.teacher_profile_image_url)}
-                      alt=""
-                      onError={(event) => {
-                        event.currentTarget.src = userPic;
-                      }}
-                    />
+                    <i className="bi bi-people" aria-hidden="true" />
                     <span className={styles.uploadedBy}>
-                      {book.author || book.teacher_name || "Teacher"}
+                      {book.author || book.teacher_names || "Assigned by the admin"}
                     </span>
                   </div>
                   <button

@@ -1,5 +1,5 @@
 import axios from "axios";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import styles from "../assets/AdminDashboard.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
@@ -13,6 +13,7 @@ const VERIFICATIONS_PER_PAGE = 10;
 
 const ADMIN_TABS = [
   "calendar",
+  "books",
   "verifications",
   "requests",
   "contracts",
@@ -371,6 +372,15 @@ export default function AdminDashboard() {
   const [studentAccountLoading, setStudentAccountLoading] = useState(false);
   const [studentEmailDraft, setStudentEmailDraft] = useState("");
   const [studentAccountActionLoading, setStudentAccountActionLoading] = useState("");
+  // ---- book library (admin is the only role that can author or distribute) ----
+  const [books, setBooks] = useState([]);
+  const [booksLoading, setBooksLoading] = useState(false);
+  const [bookSearch, setBookSearch] = useState("");
+  const [bookStatusFilter, setBookStatusFilter] = useState("active"); // 'active' | 'archived' | 'all'
+  const [bookModal, setBookModal] = useState(null); // null | 'create' | 'edit' | 'distribute'
+  const [bookDraft, setBookDraft] = useState({ bookId: null, title: "", description: "", courseId: "", teacherIds: [], coverFile: null });
+  const [bookSaving, setBookSaving] = useState(false);
+  const [bookBusyId, setBookBusyId] = useState(null);
   const selectedTeacherCourseNames = courses
     .filter((course) => tForm.courseIds.includes(String(course.course_id)))
     .map((course) => course.course_name);
@@ -426,6 +436,7 @@ export default function AdminDashboard() {
     // preload default data
     loadUsers();
     loadCourses();
+    loadBooks();
     if (active === "requests") loadRequests();
     if (active === "verifications") loadClassVerifications();
   }, [me]);
@@ -453,7 +464,198 @@ export default function AdminDashboard() {
     if (active === "verifications") {
       loadClassVerifications();
     }
+    if (active === "books") {
+      loadBooks();
+    }
   }, [active]);
+
+  // ===== BOOK LIBRARY =====
+  // Books are authored here and handed out to teachers. Teachers get read-only
+  // access to whatever they are given, so everything about a book's lifecycle
+  // (create, edit, distribute, archive, delete) happens on this tab.
+
+  async function loadBooks() {
+    if (!currentAdminId) return;
+    try {
+      setBooksLoading(true);
+      const r = await axios.get(`${API}/api/admin/books`, {
+        params: { admin_id: currentAdminId, status: bookStatusFilter },
+      });
+      setBooks(r.data?.books || []);
+    } catch (e) {
+      console.error(e);
+      notify?.(e?.response?.data?.message || "Failed to load books", "error");
+      setBooks([]);
+    } finally {
+      setBooksLoading(false);
+    }
+  }
+
+  // Only teachers assigned to the chosen course can usefully hold a book for
+  // it, so the picker narrows as the course changes.
+  const eligibleTeachersForCourse = useMemo(() => {
+    if (!bookDraft.courseId) return teachers;
+    const courseId = String(bookDraft.courseId);
+    return teachers.filter((teacher) =>
+      teacherCourses.some(
+        (item) =>
+          String(item.teacher_id) === String(teacher.user_id) &&
+          String(item.course_id) === courseId
+      )
+    );
+  }, [bookDraft.courseId, teacherCourses, teachers]);
+
+  const bookSearchTerm = bookSearch.trim().toLowerCase();
+  const filteredBooks = books.filter((book) => {
+    if (!bookSearchTerm) return true;
+    return [
+      book.title,
+      book.description,
+      book.course_name,
+      book.teacher_names,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(bookSearchTerm);
+  });
+
+  function openBookModal(kind, book = null) {
+    if (kind === "create") {
+      setBookDraft({
+        bookId: null,
+        title: "",
+        description: "",
+        courseId: "",
+        teacherIds: [],
+        coverFile: null,
+      });
+    } else if (kind === "edit" && book) {
+      setBookDraft({
+        bookId: book.book_id,
+        title: book.title || "",
+        description: book.description || "",
+        courseId: String(book.course_id),
+        teacherIds: [],
+        coverFile: null,
+      });
+    } else if (kind === "distribute" && book) {
+      setBookDraft({
+        bookId: book.book_id,
+        title: book.title || "",
+        description: book.description || "",
+        courseId: String(book.course_id),
+        teacherIds: String(book.teacher_ids || "")
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean),
+        coverFile: null,
+      });
+    }
+    setBookModal(kind);
+  }
+
+  function toggleBookDraftTeacher(teacherId) {
+    const key = String(teacherId);
+    setBookDraft((prev) => ({
+      ...prev,
+      teacherIds: prev.teacherIds.includes(key)
+        ? prev.teacherIds.filter((id) => id !== key)
+        : [...prev.teacherIds, key],
+    }));
+  }
+
+  async function submitBookModal() {
+    if (!bookDraft.title.trim()) {
+      notify("Book title is required", "error");
+      return;
+    }
+
+    if (bookModal !== "distribute" && !bookDraft.courseId) {
+      notify("Select the course this book belongs to", "error");
+      return;
+    }
+
+    try {
+      setBookSaving(true);
+      const adminId = currentAdminId;
+
+      if (bookModal === "distribute") {
+        await axios.put(`${API}/api/books/${bookDraft.bookId}/teachers`, {
+          admin_id: adminId,
+          teacher_ids: bookDraft.teacherIds,
+        });
+        notify("Book distribution updated", "success");
+      } else {
+        const formData = new FormData();
+        formData.append("title", bookDraft.title);
+        formData.append("description", bookDraft.description || "");
+        formData.append("admin_id", String(adminId));
+
+        if (bookModal === "create") {
+          formData.append("course_id", String(bookDraft.courseId));
+          formData.append("teacher_ids", JSON.stringify(bookDraft.teacherIds));
+        } else if (bookDraft.coverFile) {
+          // Course and teacher list are deliberately left out of the edit form:
+          // those have their own endpoints, so a stray field can't blank them.
+          formData.append("cover", bookDraft.coverFile, bookDraft.coverFile.name);
+        }
+
+        const url =
+          bookModal === "create"
+            ? `${API}/api/books`
+            : `${API}/api/books/${bookDraft.bookId}`;
+        await axios({
+          method: bookModal === "create" ? "post" : "put",
+          url,
+          data: formData,
+        });
+        notify(bookModal === "create" ? "Book created" : "Book updated", "success");
+      }
+
+      setBookModal(null);
+      loadBooks();
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || "Failed to save book", "error");
+    } finally {
+      setBookSaving(false);
+    }
+  }
+
+  async function updateBookStatus(book, action) {
+    const verb = action === "archive" ? "archive" : action === "restore" ? "restore" : "permanently delete";
+    if (
+      !window.confirm(
+        action === "delete"
+          ? `Permanently delete "${book.title}"? All of its lessons and student progress are removed. This cannot be undone.`
+          : `${action === "archive" ? "Archive" : "Restore"} "${book.title}"?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setBookBusyId(book.book_id);
+      const adminId = currentAdminId;
+
+      if (action === "delete") {
+        await axios.delete(`${API}/api/books/${book.book_id}`, { params: { admin_id: adminId } });
+      } else {
+        await axios.put(`${API}/api/books/${book.book_id}/${action}`, null, {
+          params: { admin_id: adminId },
+        });
+      }
+
+      notify(`Book ${verb}d`, "success");
+      loadBooks();
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || `Failed to ${verb} book`, "error");
+    } finally {
+      setBookBusyId(null);
+    }
+  }
 
   useEffect(() => {
     setVerificationPage(1);
@@ -3296,6 +3498,294 @@ export default function AdminDashboard() {
             <div className={styles.cardHead}><h2>Scheduled Classes</h2></div>
             <Calendar />
           </section>
+        )}
+
+        {active === "books" && (
+          <section className={styles.card}>
+            <div className={styles.cardHead}>
+              <div>
+                <h2>Book Library</h2>
+                <p style={{ margin: "4px 0 0 0", fontSize: "0.9em", color: "#666" }}>
+                  Add books and distribute them to teachers. Teachers can view and
+                  track student progress, but only you can change a book.
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                <button className={styles.linkBtn} type="button" onClick={loadBooks}>
+                  Refresh
+                </button>
+                <button className={styles.primary} type="button" onClick={() => openBookModal("create")}>
+                  + Add Book
+                </button>
+              </div>
+            </div>
+
+            <div className={styles.compactSearch} style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+              <input
+                type="search"
+                value={bookSearch}
+                onChange={(e) => setBookSearch(e.target.value)}
+                placeholder="Search by title, course or teacher"
+                aria-label="Search books"
+              />
+              <select
+                value={bookStatusFilter}
+                onChange={(e) => setBookStatusFilter(e.target.value)}
+                aria-label="Filter books by status"
+                style={{
+                  minHeight: "42px",
+                  padding: "0 12px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(38, 66, 59, 0.14)",
+                  background: "#fff",
+                  color: "#26423b",
+                }}
+              >
+                <option value="active">Active</option>
+                <option value="archived">Archived</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+
+            {booksLoading ? (
+              <div className={styles.empty}>Loading books...</div>
+            ) : filteredBooks.length === 0 ? (
+              <div className={styles.empty}>
+                {books.length === 0
+                  ? "No books yet. Add one to get started."
+                  : "No books match your search."}
+              </div>
+            ) : (
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Book</th>
+                      <th>Course</th>
+                      <th>Teachers</th>
+                      <th>Lessons</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredBooks.map((book) => (
+                      <tr key={book.book_id}>
+                        <td>
+                          <strong>{book.title}</strong>
+                          {book.description ? (
+                            <div style={{ fontSize: "0.85em", color: "#666", marginTop: "4px" }}>
+                              {book.description}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td>{book.course_name || "-"}</td>
+                        <td>
+                          {book.teacher_names ? (
+                            book.teacher_names
+                          ) : (
+                            <span style={{ color: "#a2600f" }}>Not distributed</span>
+                          )}
+                        </td>
+                        <td>{book.lesson_count ?? 0}</td>
+                        <td>{book.status === "archived" ? "Archived" : "Active"}</td>
+                        <td>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                            <a
+                              className={`${styles.linkBtn} ${styles.tableActionBtn}`}
+                              href={`/adminBooksContent/${book.book_id}`}
+                            >
+                              Lessons
+                            </a>
+                            <button
+                              className={`${styles.secondaryBtn} ${styles.tableActionBtn}`}
+                              type="button"
+                              onClick={() => openBookModal("distribute", book)}
+                            >
+                              Distribute
+                            </button>
+                            <button
+                              className={`${styles.linkBtn} ${styles.tableActionBtn}`}
+                              type="button"
+                              onClick={() => openBookModal("edit", book)}
+                            >
+                              Edit
+                            </button>
+                            {book.status === "archived" ? (
+                              <button
+                                className={`${styles.approve} ${styles.tableActionBtn}`}
+                                type="button"
+                                disabled={bookBusyId === book.book_id}
+                                onClick={() => updateBookStatus(book, "restore")}
+                              >
+                                Restore
+                              </button>
+                            ) : (
+                              <button
+                                className={`${styles.warn} ${styles.tableActionBtn}`}
+                                type="button"
+                                disabled={bookBusyId === book.book_id}
+                                onClick={() => updateBookStatus(book, "archive")}
+                              >
+                                Archive
+                              </button>
+                            )}
+                            <button
+                              className={`${styles.dangerBtn} ${styles.tableActionBtn}`}
+                              type="button"
+                              disabled={bookBusyId === book.book_id}
+                              onClick={() => updateBookStatus(book, "delete")}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
+
+        {bookModal && (
+          <div className={styles.modalBackdrop} onClick={() => setBookModal(null)}>
+            <div
+              className={styles.modalCard}
+              onClick={(e) => e.stopPropagation()}
+              style={{ maxWidth: "560px" }}
+            >
+              <h3 style={{ margin: "0 0 16px 0", fontSize: "1.2rem", fontWeight: 800, color: "#13251f" }}>
+                {bookModal === "create"
+                  ? "Add Book"
+                  : bookModal === "edit"
+                    ? "Edit Book"
+                    : `Distribute "${bookDraft.title}"`}
+              </h3>
+
+              {bookModal !== "distribute" && (
+                <div style={{ display: "grid", gap: "14px", marginBottom: "20px" }}>
+                  <label style={{ display: "grid", gap: "6px", fontSize: "0.9rem", fontWeight: 600 }}>
+                    Title
+                    <input
+                      value={bookDraft.title}
+                      onChange={(e) => setBookDraft((prev) => ({ ...prev, title: e.target.value }))}
+                      placeholder="Book title"
+                    />
+                  </label>
+
+                  <label style={{ display: "grid", gap: "6px", fontSize: "0.9rem", fontWeight: 600 }}>
+                    Description (optional)
+                    <textarea
+                      rows={3}
+                      value={bookDraft.description}
+                      onChange={(e) =>
+                        setBookDraft((prev) => ({ ...prev, description: e.target.value }))
+                      }
+                      placeholder="Short summary shown on the book card"
+                    />
+                  </label>
+
+                  {bookModal === "create" && (
+                    <label style={{ display: "grid", gap: "6px", fontSize: "0.9rem", fontWeight: 600 }}>
+                      Course
+                      <select
+                        value={bookDraft.courseId}
+                        onChange={(e) =>
+                          setBookDraft((prev) => ({
+                            ...prev,
+                            courseId: e.target.value,
+                            // Course changed, so the previously picked teachers may
+                            // no longer teach it.
+                            teacherIds: [],
+                          }))
+                        }
+                      >
+                        <option value="">Select course</option>
+                        {courses.map((course) => (
+                          <option key={course.course_id} value={course.course_id}>
+                            {course.course_name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+
+                  <label style={{ display: "grid", gap: "6px", fontSize: "0.9rem", fontWeight: 600 }}>
+                    Cover image (optional)
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={(e) =>
+                        setBookDraft((prev) => ({
+                          ...prev,
+                          coverFile: e.target.files?.[0] || null,
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+              )}
+
+              {bookModal !== "edit" && (
+                <div style={{ marginBottom: "20px" }}>
+                  <h4 style={{ margin: "0 0 4px 0", fontSize: "0.95rem", fontWeight: 700, color: "#13251f" }}>
+                    Distribute to teachers
+                  </h4>
+                  <p style={{ margin: "0 0 12px 0", fontSize: "0.85rem", color: "#666" }}>
+                    {bookDraft.courseId
+                      ? "Teachers assigned to this course. You can leave this empty and distribute later."
+                      : "Pick a course first to see its teachers. You can leave this empty and distribute later."}
+                  </p>
+                  {eligibleTeachersForCourse.length === 0 ? (
+                    <div className={styles.empty}>
+                      {bookDraft.courseId
+                        ? "No teachers are assigned to this course yet."
+                        : "No active teachers found."}
+                    </div>
+                  ) : (
+                    <div className={styles.courseCheckboxGrid}>
+                      {eligibleTeachersForCourse.map((teacher) => {
+                        const teacherId = String(teacher.user_id);
+                        const isSelected = bookDraft.teacherIds.includes(teacherId);
+                        return (
+                          <label
+                            key={teacher.user_id}
+                            className={`${styles.courseCheck} ${isSelected ? styles.courseCheckActive : ""}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleBookDraftTeacher(teacher.user_id)}
+                            />
+                            <span>
+                              {teacher.first_name} {teacher.last_name}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                <button className={styles.secondaryBtn} type="button" onClick={() => setBookModal(null)}>
+                  Cancel
+                </button>
+                <button className={styles.primary} type="button" onClick={submitBookModal} disabled={bookSaving}>
+                  {bookSaving
+                    ? "Saving..."
+                    : bookModal === "create"
+                      ? "Add Book"
+                      : bookModal === "edit"
+                        ? "Save Changes"
+                        : "Save Distribution"}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </main>
     </div>

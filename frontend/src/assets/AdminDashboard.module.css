@@ -566,6 +566,45 @@
   width: min(460px, 100%);
 }
 
+/* Book create/edit/distribute dialog. */
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.modalCard {
+  background: #fff;
+  border: 1px solid rgba(38, 66, 59, 0.12);
+  border-radius: 24px;
+  padding: 24px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
+  animation: scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.modalCard label input,
+.modalCard label textarea,
+.modalCard label select {
+  font: inherit;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(38, 66, 59, 0.16);
+  background: #fff;
+  color: var(--text);
+}
+
+.modalCard textarea {
+  resize: vertical;
+}
+
 .historyFilters {
   display: grid;
   grid-template-columns: repeat(4, minmax(150px, 1fr)) auto;

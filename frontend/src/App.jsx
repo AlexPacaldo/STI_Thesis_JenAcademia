@@ -97,6 +97,8 @@ function App() {
         "/login",
         "/register",
         "/admindashboard",
+        "/adminbookscontent",
+        "/adminbookscontent/",
         "/account",
       ],
     };
