@@ -143,11 +143,34 @@ function InlineFilePreview({ fileUrl, fileName, onRendered, pageLimit = 0 }) {
   );
 }
 
-function PdfLessonViewer({ fileUrl, title, onRendered, pageLimit = 0 }) {
+// Nearest ancestor that actually scrolls. Used to measure how much height a
+// page may occupy, since the page container's own height is the content it
+// has just been filled with - measuring that would always report "too tall".
+function findScrollParent(element) {
+  let node = element?.parentElement ?? null;
+  while (node) {
+    const overflowY = window.getComputedStyle(node).overflowY;
+    if (overflowY === "auto" || overflowY === "scroll") return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+
+function PdfLessonViewer({ fileUrl, title, onRendered, pageLimit = 0, fitToPage = false }) {
   const containerRef = useRef(null);
   const renderTokenRef = useRef(0);
   const [status, setStatus] = useState("loading");
   const [totalPages, setTotalPages] = useState(0);
+  // Bumped on window resize so pages re-fit. A size listener rather than a
+  // ResizeObserver on the page container: the container's height grows as pages
+  // are appended, so observing it would re-trigger the render that grew it.
+  const [sizeVersion, setSizeVersion] = useState(0);
+
+  useEffect(() => {
+    const handleResize = () => setSizeVersion((version) => version + 1);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -178,7 +201,24 @@ function PdfLessonViewer({ fileUrl, title, onRendered, pageLimit = 0 }) {
           const page = await pdf.getPage(pageNumber);
           const baseViewport = page.getViewport({ scale: 1 });
           const availableWidth = Math.max(container.clientWidth - 28, 320);
-          const scale = Math.min(1.6, Math.max(0.8, availableWidth / baseViewport.width));
+          const widthScale = availableWidth / baseViewport.width;
+
+          let scale;
+          if (fitToPage) {
+            // Fitting to width alone renders a portrait page ~3x taller than the
+            // window, so only a third of it is visible at a time and the reader
+            // has to scroll through ~14 screens for a 5-page handout. Fitting to
+            // the shorter of width and height shows a whole page per screen,
+            // which is what full screen is for.
+            const scroller = findScrollParent(container);
+            const availableHeight = scroller ? scroller.clientHeight - 40 : 0;
+            const heightScale =
+              availableHeight > 160 ? availableHeight / baseViewport.height : Number.POSITIVE_INFINITY;
+            scale = Math.min(1.6, Math.max(0.25, Math.min(widthScale, heightScale)));
+          } else {
+            scale = Math.min(1.6, Math.max(0.8, widthScale));
+          }
+
           const viewport = page.getViewport({ scale });
           const canvas = document.createElement("canvas");
           const context = canvas.getContext("2d");
@@ -221,7 +261,7 @@ function PdfLessonViewer({ fileUrl, title, onRendered, pageLimit = 0 }) {
       cancelled = true;
       activeDocument?.destroy?.();
     };
-  }, [fileUrl, onRendered, pageLimit]);
+  }, [fileUrl, onRendered, pageLimit, fitToPage, sizeVersion]);
 
   const hasMorePages = pageLimit > 0 && totalPages > pageLimit;
 
@@ -1281,6 +1321,7 @@ export default function BooksContent({ mode = "student" }) {
                 fileUrl={selectedFileUrl}
                 title={selectedLesson?.title || "Lesson file"}
                 onRendered={handleRendered}
+                fitToPage
               />
             ) : fileExtension && ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(fileExtension) ? (
               <div className={styles.imagePreview}>
