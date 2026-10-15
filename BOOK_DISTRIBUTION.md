@@ -11,14 +11,17 @@ they are handed.
 
 ## Model
 
-| Role   | Add book | Distribute | Edit book | Archive/Delete | Lessons | Student progress |
-|--------|----------|------------|-----------|----------------|---------|------------------|
-| Admin  | ✅       | ✅         | ✅        | ✅             | ✅      | ✅               |
-| Teacher| ❌       | ❌         | ❌        | ❌             | ❌      | ✅ (read-only)   |
-| Student| ❌       | ❌         | ❌        | ❌             | ❌      | ❌               |
+| Role   | Add book | Distribute | Edit book | Archive | Hard delete | Lessons | Student progress |
+|--------|----------|------------|-----------|---------|-------------|---------|------------------|
+| Admin  | ✅       | ✅         | ✅        | ✅      | ❌          | ✅      | ✅               |
+| Teacher| ❌       | ❌         | ❌        | ❌      | ❌          | ❌      | ✅ (read-only)   |
+| Student| ❌       | ❌         | ❌        | ❌      | ❌          | ❌      | ❌               |
 
 A book can be distributed to **many teachers at once**. Each of those teachers'
 students see it for the matching course.
+
+Archive is the only way a book leaves the library, and it is reversible. There
+is no hard delete endpoint — see [No hard delete](#no-hard-delete) below.
 
 ## Database
 
@@ -72,7 +75,7 @@ matching the existing `teacher_id` convention.
 | `/api/books` | POST | **admin** — accepts `teacher_ids` (JSON array or CSV) |
 | `/api/books/:book_id` | PUT | **admin** — title / description / author / cover |
 | `/api/books/:book_id/teachers` | PUT | **admin** — replaces the teacher set wholesale |
-| `/api/books/:book_id` | DELETE | **admin** |
+| `/api/books/:book_id` | DELETE | *removed — see below* |
 | `/api/books/:book_id/archive` | PUT | **admin** |
 | `/api/books/:book_id/restore` | PUT | **admin** |
 | `/api/admin/books` | GET | **admin** — includes archived; `status=active\|archived\|all` |
@@ -101,6 +104,26 @@ not joins, so they can't multiply each other.
 `BooksContent` now takes three modes. `isAdminView` gates every write control;
 `isStudentView` gates progress tracking and lesson locking. `isTeacherView` is
 now purely a read view.
+
+## No hard delete
+
+`DELETE /api/books/:book_id` was removed along with its UI button.
+
+Two reasons:
+
+- **It is irreversible.** A hard delete cascades through lessons, `lesson_progress`
+  and the `student_course_progress` rollup. Archive hides a book and Restore
+  brings it back, so a mistake costs one click instead of a database restore.
+- **It was the sharpest edge in the app.** Authorisation is an `admin_id` query
+  parameter with no session token to verify. Anyone who could reach the URL
+  could have destroyed the whole library by guessing `admin_id=1`.
+
+Keeping the affordance and the endpoint in sync matters: an endpoint with no UI
+is still callable by hand.
+
+If a genuine need for hard delete appears later, it should not be a plain
+`DELETE`. Require an explicit confirmation token, and consider a two-person rule
+for the whole library.
 
 ## Notifications
 

@@ -481,7 +481,7 @@ export default function AdminDashboard() {
   // ===== BOOK LIBRARY =====
   // Books are authored here and handed out to teachers. Teachers get read-only
   // access to whatever they are given, so everything about a book's lifecycle
-  // (create, edit, distribute, archive, delete) happens on this tab.
+  // (create, edit, distribute, archive) happens on this tab.
 
   async function loadBooks() {
     if (!currentAdminId) return;
@@ -659,14 +659,14 @@ export default function AdminDashboard() {
   }
 
   /**
-   * Archive / restore / delete all need a confirmation step, so they go through
-   * the dashboard's shared confirm modal instead of a native window.confirm.
+   * Archive and restore both need a confirmation step, so they go through the
+   * dashboard's shared confirm modal instead of a native window.confirm.
    */
   function requestBookStatusChange(book, action) {
     const copy = {
       archive: {
         title: "Archive book",
-        message: `Archive "${book.title}"? Teachers and students stop seeing it, but its lessons and student progress are kept.`,
+        message: `Archive "${book.title}"? Teachers and students stop seeing it, but its lessons and student progress are kept, and you can restore it later.`,
         confirmLabel: "Archive",
       },
       restore: {
@@ -674,56 +674,40 @@ export default function AdminDashboard() {
         message: `Restore "${book.title}"? It becomes visible to its teachers and their students again.`,
         confirmLabel: "Restore",
       },
-      delete: {
-        title: "Delete book permanently",
-        message: `Permanently delete "${book.title}"? Its lessons and all student progress are removed. This cannot be undone.`,
-        confirmLabel: "Delete",
-      },
     }[action];
 
     setAdminConfirm({
       ...copy,
-      tone: action === "delete" ? "danger" : "default",
+      tone: "default",
       action: "book_status",
       payload: { book, statusAction: action },
     });
   }
 
   async function applyBookStatusChange({ book, statusAction }) {
-    const verb =
-      statusAction === "archive" ? "archive" : statusAction === "restore" ? "restore" : "delete";
-
     // Keep the card locked until the list has actually been refreshed,
     // otherwise a second click lands while the first write is still settling
     // and reports a confusing failure.
     setBookBusyId(book.book_id);
 
     try {
-      if (statusAction === "delete") {
-        await axios.delete(`${API}/api/books/${book.book_id}`, {
-          params: { admin_id: currentAdminId },
-        });
-      } else {
-        await axios.put(`${API}/api/books/${book.book_id}/${statusAction}`, null, {
-          params: { admin_id: currentAdminId },
-        });
-      }
+      await axios.put(`${API}/api/books/${book.book_id}/${statusAction}`, null, {
+        params: { admin_id: currentAdminId },
+      });
 
       await loadBooks();
 
       // Archived books drop out of the "Active" filter, so say so rather than
       // letting the card silently vanish.
       notify(
-        statusAction === "delete"
-          ? `"${book.title}" deleted`
-          : statusAction === "archive"
-            ? `"${book.title}" archived. Find it under the Archived filter.`
-            : `"${book.title}" restored`,
+        statusAction === "archive"
+          ? `"${book.title}" archived. Find it under the Archived filter.`
+          : `"${book.title}" restored`,
         "success"
       );
     } catch (e) {
       console.error(e);
-      notify(e?.response?.data?.message || `Failed to ${verb} book`, "error");
+      notify(e?.response?.data?.message || `Failed to ${statusAction} book`, "error");
     } finally {
       setBookBusyId(null);
     }
@@ -3732,38 +3716,29 @@ export default function AdminDashboard() {
                             </button>
                           </div>
 
-                          <div className={styles.bookCardActionRow}>
-                            {isArchived ? (
-                              <button
-                                className={`${styles.approve} ${styles.cardBtn}`}
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => requestBookStatusChange(book, "restore")}
-                              >
-                                <i className="bi bi-arrow-counterclockwise" aria-hidden="true" />
-                                Restore
-                              </button>
-                            ) : (
-                              <button
-                                className={`${styles.warn} ${styles.cardBtn}`}
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => requestBookStatusChange(book, "archive")}
-                              >
-                                <i className="bi bi-archive" aria-hidden="true" />
-                                Archive
-                              </button>
-                            )}
+                          {/* Archive is the only way a book leaves the library, and
+                              it is reversible. There is no hard delete. */}
+                          {isArchived ? (
                             <button
-                              className={`${styles.dangerBtn} ${styles.cardBtn}`}
+                              className={`${styles.approve} ${styles.cardBtn}`}
                               type="button"
                               disabled={isBusy}
-                              onClick={() => requestBookStatusChange(book, "delete")}
+                              onClick={() => requestBookStatusChange(book, "restore")}
                             >
-                              <i className="bi bi-trash" aria-hidden="true" />
-                              Delete
+                              <i className="bi bi-arrow-counterclockwise" aria-hidden="true" />
+                              Restore
                             </button>
-                          </div>
+                          ) : (
+                            <button
+                              className={`${styles.warn} ${styles.cardBtn}`}
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => requestBookStatusChange(book, "archive")}
+                            >
+                              <i className="bi bi-archive" aria-hidden="true" />
+                              Archive
+                            </button>
+                          )}
                         </div>
                       </div>
                     </article>

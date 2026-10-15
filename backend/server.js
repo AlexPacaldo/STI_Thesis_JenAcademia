@@ -9529,50 +9529,17 @@ app.put("/api/books/:book_id", bookCoverUpload.single("cover"), async (req, res)
   }
 });
 
-// DELETE book (cascade delete lessons and progress)
-// SECURITY: admin only
-app.delete("/api/books/:book_id", async (req, res) => {
-  try {
-    const { book_id } = req.params;
-    const admin_id = getAdminIdFromRequest(req);
-
-    if (!(await requireAdmin(res, admin_id, book_id))) {
-      return;
-    }
-
-    // Get all lesson IDs for this book
-    const [lessons] = await pool.query(
-      "SELECT lesson_id FROM lessons WHERE book_id = ?",
-      [book_id]
-    );
-
-    // Delete lesson progress for all lessons in this book
-    for (const lesson of lessons) {
-      await pool.query(
-        "DELETE FROM lesson_progress WHERE lesson_id = ?",
-        [lesson.lesson_id]
-      );
-    }
-
-    // Delete all lessons. book_teachers rows cascade from the books delete.
-    await pool.query("DELETE FROM lessons WHERE book_id = ?", [book_id]);
-
-    // Delete the book
-    const [result] = await pool.query(
-      "DELETE FROM books WHERE book_id = ?",
-      [book_id]
-    );
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Book not found" });
-    }
-
-    res.json({ message: "Book deleted successfully" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Error deleting book" });
-  }
-});
+// There is deliberately no DELETE /api/books/:book_id.
+//
+// Archive is the only way a book leaves the library, and it is reversible, so a
+// mistake costs one click to undo. A hard delete would cascade through lessons,
+// lesson progress and the course-progress rollup, and it cannot be undone.
+//
+// It was also the sharpest edge in the app: authorisation here is just an
+// admin_id query parameter, with no session token to verify, so anyone who could
+// reach the URL could have destroyed the whole library by guessing admin_id=1.
+// Removing the affordance and the endpoint together keeps the UI and the API
+// telling the same story.
 
 // Archive a book without deleting lessons or progress
 // SECURITY: admin only
