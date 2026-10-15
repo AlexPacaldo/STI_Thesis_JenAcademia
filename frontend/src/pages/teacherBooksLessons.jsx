@@ -117,7 +117,9 @@ export default function TeacherBooksLessons() {
                       their own face. */}
                   <div className={styles.Uploaded}>
                     <i className="bi bi-mortarboard" aria-hidden="true" />
-                    <span>{book.course_name || "Course not set"}</span>
+                    <span className={styles.uploadedBy}>
+                      {book.course_name || "Course not set"}
+                    </span>
                   </div>
 
                   <a href={`/teacherBooksLessons/${book.book_id}`} className={styles.viewAction}>

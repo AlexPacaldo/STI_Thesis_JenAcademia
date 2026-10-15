@@ -161,19 +161,19 @@
   box-shadow: 0 10px 22px rgba(18, 34, 30, 0.14);
 }
 
-/* Flex rather than grid: `flex: 1 1 <basis>` makes the cards SHARE whatever
-   width is available, so 2 books fill the row completely instead of leaving an
-   empty third grid track. Grid's auto-fill/auto-fit can't do this - auto-fit
-   stretches a lone card to full width, auto-fill leaves gaps. */
+/* Grid rather than flex-wrap. As a flex row a trailing lone card inherited
+   flex-grow and inflated to the full row width, so a 4th book would render twice
+   as wide as the three above it. auto-fill (not auto-fit): auto-fit collapses
+   the empty tracks and brings the stretch back. A genuinely single book is
+   handled by the :only-child rule below, which spans it across every column. */
 .AvailableLessons {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
   gap: 18px;
   align-items: stretch;
 }
 
 .LessonsCard {
-  flex: 1 1 300px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -196,6 +196,9 @@
    cover at ~940px wide grows to ~590px tall. :has() is supported in all current
    browsers; without it this just falls back to the normal stacked card. */
 .AvailableLessons:has(> .LessonsCard:only-child) .LessonsCard {
+  /* auto-fill leaves the empty tracks in place, so a lone card still sits in
+     one narrow column unless it is told to span them. */
+  grid-column: 1 / -1;
   flex-direction: row;
   align-items: stretch;
   gap: 18px;
