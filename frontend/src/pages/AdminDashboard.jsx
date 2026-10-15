@@ -5,6 +5,7 @@ import styles from "../assets/AdminDashboard.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { PROFICIENCY_LEVEL_OPTIONS } from "../utils/proficiencyLevels.js";
 import { readStoredUser } from "../utils/sessionUser.js";
+import ModalPortal from "../utils/ModalPortal.jsx";
 import Calendar from "./Calendar.jsx"; // admin calendar view
 import { API_BASE_URL } from "../utils/api.js";
 
@@ -3559,7 +3560,9 @@ export default function AdminDashboard() {
             </section>
           </div>
         )}
-        {adminConfirm && (
+        {/* Portalled so the overlay covers the whole viewport. See ModalPortal. */}
+        <ModalPortal>
+          {adminConfirm && (
           <div
             style={{
               position: "fixed",
@@ -3640,6 +3643,7 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+        </ModalPortal>
         {active === "calendar" && (
           <section className={styles.card}>
             <div className={styles.cardHead}><h2>Scheduled Classes</h2></div>
@@ -3834,6 +3838,7 @@ export default function AdminDashboard() {
         )}
 
         {bookModal && (
+          <ModalPortal>
           <div className={styles.modalBackdrop} onClick={() => setBookModal(null)}>
             <div
               className={styles.modalCard}
@@ -4030,6 +4035,7 @@ export default function AdminDashboard() {
               </div>
             </div>
           </div>
+          </ModalPortal>
         )}
       </main>
     </div>

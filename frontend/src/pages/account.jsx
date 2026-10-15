@@ -8,6 +8,7 @@ import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessi
 import { formatTimezoneLabel, getTimezoneOptions, getUserTimezone } from "../utils/timezone.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { compressFileIfImage } from "../utils/imageCompression.js";
+import ModalPortal from "../utils/ModalPortal.jsx";
 
 const API = API_BASE_URL;
 const CROP_SIZE = 320;
@@ -955,7 +956,8 @@ export default function Account() {
       </div>
 
       {cropModal && (
-        <div className={styles.modalBackdrop} onPointerMove={moveCropDrag} onPointerUp={endCropDrag} onPointerLeave={endCropDrag}>
+        <ModalPortal>
+          <div className={styles.modalBackdrop} onPointerMove={moveCropDrag} onPointerUp={endCropDrag} onPointerLeave={endCropDrag}>
           <section className={styles.cropModal}>
             <div className={styles.modalHeader}>
               <h2>Adjust profile picture</h2>
@@ -1005,63 +1007,67 @@ export default function Account() {
             </div>
           </section>
         </div>
+        </ModalPortal>
       )}
 
-      {confirmAction && (
-        <div
-          className={styles.modalBackdrop}
-          onClick={closeConfirmAction}
-        >
-          <section className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
-            <h2>{confirmAction.title}</h2>
-            <p className={styles.confirmBody}>{confirmAction.message}</p>
-            <div className={styles.confirmActions}>
-              <button type="button" className={styles.textBtn} onClick={closeConfirmAction}>
-                Cancel
-              </button>
-              <button type="button" className={styles.primaryBtn} onClick={performConfirmAction}>
-                {confirmAction.confirmLabel}
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
-      {cameraOpen && (
-        <div className={styles.modalBackdrop}>
-          <section className={styles.cameraModal}>
-            <div className={styles.modalHeader}>
-              <h2>Take profile picture</h2>
-              <button type="button" className={styles.closeBtn} onClick={closeCameraModal}>x</button>
-            </div>
-            <div className={styles.cameraBody}>
-              <div className={styles.cameraFrame}>
-                {cameraStarting && <span>Starting camera...</span>}
-                <video ref={cameraVideoRef} playsInline muted />
+      {/* Portalled so the backdrop covers the whole viewport. See ModalPortal. */}
+      <ModalPortal>
+        {confirmAction && (
+          <div
+            className={styles.modalBackdrop}
+            onClick={closeConfirmAction}
+          >
+            <section className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
+              <h2>{confirmAction.title}</h2>
+              <p className={styles.confirmBody}>{confirmAction.message}</p>
+              <div className={styles.confirmActions}>
+                <button type="button" className={styles.textBtn} onClick={closeConfirmAction}>
+                  Cancel
+                </button>
+                <button type="button" className={styles.primaryBtn} onClick={performConfirmAction}>
+                  {confirmAction.confirmLabel}
+                </button>
               </div>
-            </div>
-            <div className={styles.modalActions}>
-              <button type="button" className={styles.textBtn} onClick={closeCameraModal}>Cancel</button>
-              <button type="button" className={styles.primaryBtn} onClick={captureProfilePicture} disabled={cameraStarting}>
-                Capture
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
+            </section>
+          </div>
+        )}
+        {cameraOpen && (
+          <div className={styles.modalBackdrop}>
+            <section className={styles.cameraModal}>
+              <div className={styles.modalHeader}>
+                <h2>Take profile picture</h2>
+                <button type="button" className={styles.closeBtn} onClick={closeCameraModal}>x</button>
+              </div>
+              <div className={styles.cameraBody}>
+                <div className={styles.cameraFrame}>
+                  {cameraStarting && <span>Starting camera...</span>}
+                  <video ref={cameraVideoRef} playsInline muted />
+                </div>
+              </div>
+              <div className={styles.modalActions}>
+                <button type="button" className={styles.textBtn} onClick={closeCameraModal}>Cancel</button>
+                <button type="button" className={styles.primaryBtn} onClick={captureProfilePicture} disabled={cameraStarting}>
+                  Capture
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
 
-      {previewOpen && (
-        <div className={styles.modalBackdrop} onClick={() => setPreviewOpen(false)}>
-          <section className={styles.previewModal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <h2>Profile picture</h2>
-              <button type="button" className={styles.closeBtn} onClick={() => setPreviewOpen(false)}>x</button>
-            </div>
-            <div className={styles.previewBody}>
-              <img src={avatarSrc} alt={`${fullName} profile preview`} />
-            </div>
-          </section>
-        </div>
-      )}
+        {previewOpen && (
+          <div className={styles.modalBackdrop} onClick={() => setPreviewOpen(false)}>
+            <section className={styles.previewModal} onClick={(e) => e.stopPropagation()}>
+              <div className={styles.modalHeader}>
+                <h2>Profile picture</h2>
+                <button type="button" className={styles.closeBtn} onClick={() => setPreviewOpen(false)}>x</button>
+              </div>
+              <div className={styles.previewBody}>
+                <img src={avatarSrc} alt={`${fullName} profile preview`} />
+              </div>
+            </section>
+          </div>
+        )}
+      </ModalPortal>
     </main>
   );
 }

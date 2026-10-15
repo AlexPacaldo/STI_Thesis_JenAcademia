@@ -10,6 +10,7 @@ import { API_BASE_URL } from "../utils/api.js";
 import { compressFileIfImage } from "../utils/imageCompression.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
+import ModalPortal from "../utils/ModalPortal.jsx";
 
 const API_BASE = API_BASE_URL;
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -1117,7 +1118,8 @@ export default function BooksContent({ mode = "student" }) {
 
       {/* Change Cover Modal (teacher only) */}
       {showCoverModal && (
-        <div className={styles.modal}>
+        <ModalPortal>
+          <div className={styles.modal}>
           <div className={styles.modalContent}>
             <h2>Change Book Cover</h2>
             <label>
@@ -1173,12 +1175,14 @@ export default function BooksContent({ mode = "student" }) {
               <button onClick={() => { setShowCoverModal(false); setCoverFile(null); }} className={styles.cancelBtn}>Cancel</button>
             </div>
           </div>
-        </div>
+          </div>
+        </ModalPortal>
       )}
 
       {/* Upload Lesson Modal */}
       {showLessonModal && (
-        <div className={styles.modal}>
+        <ModalPortal>
+          <div className={styles.modal}>
           <div className={`${styles.modalContent} ${styles.lessonModalContent}`}>
             <h2>Upload Lesson</h2>
             <p className={styles.autoLessonNote}>
@@ -1249,11 +1253,13 @@ export default function BooksContent({ mode = "student" }) {
               </button>
             </div>
           </div>
-        </div>
+          </div>
+        </ModalPortal>
       )}
 
       {showPdfFullscreen && selectedFileUrl && (
-        <div className={styles.fullscreenPdf}>
+        <ModalPortal>
+          <div className={styles.fullscreenPdf}>
           <div className={styles.fullscreenHeader}>
             <div>
               <h2>{selectedLesson?.title || "Lesson file"}</h2>
@@ -1315,7 +1321,8 @@ export default function BooksContent({ mode = "student" }) {
               />
             )}
           </div>
-        </div>
+          </div>
+        </ModalPortal>
       )}
 
     </div>
