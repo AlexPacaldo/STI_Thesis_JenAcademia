@@ -500,6 +500,16 @@ export default function AdminDashboard() {
     }
   }
 
+  // The status filter is sent to the server, so changing it has to re-query.
+  // Without this the dropdown filtered client-side against whatever the last
+  // fetch returned, and switching Active -> Archived showed an empty list.
+  // On mount currentAdminId is still null, so this bails and the initial load
+  // comes from the [me] effect instead of firing twice.
+  useEffect(() => {
+    loadBooks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookStatusFilter, currentAdminId]);
+
   // Only teachers assigned to the chosen course can usefully hold a book for
   // it, so the picker narrows as the course changes.
   const eligibleTeachersForCourse = useMemo(() => {
@@ -3584,9 +3594,6 @@ export default function AdminDashboard() {
                 </p>
               </div>
               <div className={styles.cardHeadActions}>
-                <button className={styles.linkBtn} type="button" onClick={loadBooks}>
-                  Refresh
-                </button>
                 <button className={styles.primary} type="button" onClick={() => openBookModal("create")}>
                   + Add Book
                 </button>
