@@ -9591,10 +9591,24 @@ app.put("/api/books/:book_id/archive", async (req, res) => {
     );
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Book not found" });
+      // affectedRows counts rows CHANGED, not rows matched, so 0 here is
+      // ambiguous: either the book is already archived, or someone else got
+      // there first. requireAdmin already proved the book exists, so this is a
+      // no-op success rather than a 404.
+      const [current] = await pool.query(
+        "SELECT status, archived_at FROM books WHERE book_id = ? LIMIT 1",
+        [book_id]
+      );
+
+      return res.json({
+        message: "Book is already archived",
+        status: current[0]?.status || "archived",
+        archived_at: current[0]?.archived_at || null,
+        changed: false,
+      });
     }
 
-    res.json({ message: "Book archived successfully" });
+    res.json({ message: "Book archived successfully", changed: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error archiving book" });
@@ -9619,10 +9633,21 @@ app.put("/api/books/:book_id/restore", async (req, res) => {
     );
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Book not found" });
+      // Same ambiguity as archive: the book exists, it is just already active.
+      const [current] = await pool.query(
+        "SELECT status, archived_at FROM books WHERE book_id = ? LIMIT 1",
+        [book_id]
+      );
+
+      return res.json({
+        message: "Book is already active",
+        status: current[0]?.status || "active",
+        archived_at: current[0]?.archived_at || null,
+        changed: false,
+      });
     }
 
-    res.json({ message: "Book restored successfully" });
+    res.json({ message: "Book restored successfully", changed: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error restoring book" });

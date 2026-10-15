@@ -648,32 +648,69 @@ export default function AdminDashboard() {
     }
   }
 
-  async function updateBookStatus(book, action) {
-    const verb = action === "archive" ? "archive" : action === "restore" ? "restore" : "permanently delete";
-    if (
-      !window.confirm(
-        action === "delete"
-          ? `Permanently delete "${book.title}"? All of its lessons and student progress are removed. This cannot be undone.`
-          : `${action === "archive" ? "Archive" : "Restore"} "${book.title}"?`
-      )
-    ) {
-      return;
-    }
+  /**
+   * Archive / restore / delete all need a confirmation step, so they go through
+   * the dashboard's shared confirm modal instead of a native window.confirm.
+   */
+  function requestBookStatusChange(book, action) {
+    const copy = {
+      archive: {
+        title: "Archive book",
+        message: `Archive "${book.title}"? Teachers and students stop seeing it, but its lessons and student progress are kept.`,
+        confirmLabel: "Archive",
+      },
+      restore: {
+        title: "Restore book",
+        message: `Restore "${book.title}"? It becomes visible to its teachers and their students again.`,
+        confirmLabel: "Restore",
+      },
+      delete: {
+        title: "Delete book permanently",
+        message: `Permanently delete "${book.title}"? Its lessons and all student progress are removed. This cannot be undone.`,
+        confirmLabel: "Delete",
+      },
+    }[action];
+
+    setAdminConfirm({
+      ...copy,
+      tone: action === "delete" ? "danger" : "default",
+      action: "book_status",
+      payload: { book, statusAction: action },
+    });
+  }
+
+  async function applyBookStatusChange({ book, statusAction }) {
+    const verb =
+      statusAction === "archive" ? "archive" : statusAction === "restore" ? "restore" : "delete";
+
+    // Keep the card locked until the list has actually been refreshed,
+    // otherwise a second click lands while the first write is still settling
+    // and reports a confusing failure.
+    setBookBusyId(book.book_id);
 
     try {
-      setBookBusyId(book.book_id);
-      const adminId = currentAdminId;
-
-      if (action === "delete") {
-        await axios.delete(`${API}/api/books/${book.book_id}`, { params: { admin_id: adminId } });
+      if (statusAction === "delete") {
+        await axios.delete(`${API}/api/books/${book.book_id}`, {
+          params: { admin_id: currentAdminId },
+        });
       } else {
-        await axios.put(`${API}/api/books/${book.book_id}/${action}`, null, {
-          params: { admin_id: adminId },
+        await axios.put(`${API}/api/books/${book.book_id}/${statusAction}`, null, {
+          params: { admin_id: currentAdminId },
         });
       }
 
-      notify(`Book ${verb}d`, "success");
-      loadBooks();
+      await loadBooks();
+
+      // Archived books drop out of the "Active" filter, so say so rather than
+      // letting the card silently vanish.
+      notify(
+        statusAction === "delete"
+          ? `"${book.title}" deleted`
+          : statusAction === "archive"
+            ? `"${book.title}" archived. Find it under the Archived filter.`
+            : `"${book.title}" restored`,
+        "success"
+      );
     } catch (e) {
       console.error(e);
       notify(e?.response?.data?.message || `Failed to ${verb} book`, "error");
@@ -806,6 +843,8 @@ export default function AdminDashboard() {
         await removeVerificationRecord(adminConfirm.payload.classId);
       } else if (adminConfirm.action === "clear_verifications") {
         await clearVerificationRecords();
+      } else if (adminConfirm.action === "book_status") {
+        await applyBookStatusChange(adminConfirm.payload);
       }
     } finally {
       setAdminConfirm(null);
@@ -1699,6 +1738,15 @@ export default function AdminDashboard() {
     }
     if (adminConfirm.action === "clear_verifications") {
       return [`Records: ${payload.count || 0}`];
+    }
+    if (adminConfirm.action === "book_status") {
+      const book = payload.book || {};
+      return [
+        `Book: ${book.title || "-"}`,
+        `Course: ${book.course_name || "Not set"}`,
+        `Teachers: ${book.teacher_names || "Not distributed"}`,
+        `Lessons: ${book.lesson_count ?? 0}`,
+      ];
     }
     return [];
   })() : [];
@@ -3660,6 +3708,7 @@ export default function AdminDashboard() {
                             <button
                               className={`${styles.secondaryBtn} ${styles.cardBtn}`}
                               type="button"
+                              disabled={isBusy}
                               onClick={() => openBookModal("distribute", book)}
                             >
                               <i className="bi bi-people" aria-hidden="true" />
@@ -3668,6 +3717,7 @@ export default function AdminDashboard() {
                             <button
                               className={`${styles.linkBtn} ${styles.cardBtn}`}
                               type="button"
+                              disabled={isBusy}
                               onClick={() => openBookModal("edit", book)}
                             >
                               <i className="bi bi-pencil" aria-hidden="true" />
@@ -3681,7 +3731,7 @@ export default function AdminDashboard() {
                                 className={`${styles.approve} ${styles.cardBtn}`}
                                 type="button"
                                 disabled={isBusy}
-                                onClick={() => updateBookStatus(book, "restore")}
+                                onClick={() => requestBookStatusChange(book, "restore")}
                               >
                                 <i className="bi bi-arrow-counterclockwise" aria-hidden="true" />
                                 Restore
@@ -3691,7 +3741,7 @@ export default function AdminDashboard() {
                                 className={`${styles.warn} ${styles.cardBtn}`}
                                 type="button"
                                 disabled={isBusy}
-                                onClick={() => updateBookStatus(book, "archive")}
+                                onClick={() => requestBookStatusChange(book, "archive")}
                               >
                                 <i className="bi bi-archive" aria-hidden="true" />
                                 Archive
@@ -3701,7 +3751,7 @@ export default function AdminDashboard() {
                               className={`${styles.dangerBtn} ${styles.cardBtn}`}
                               type="button"
                               disabled={isBusy}
-                              onClick={() => updateBookStatus(book, "delete")}
+                              onClick={() => requestBookStatusChange(book, "delete")}
                             >
                               <i className="bi bi-trash" aria-hidden="true" />
                               Delete
