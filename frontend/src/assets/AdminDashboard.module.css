@@ -125,31 +125,6 @@
   margin: 0 0 18px;
 }
 
-.searchRow input {
-  flex: 1 1 260px;
-  min-width: 0;
-  width: auto;
-}
-
-.searchRow select {
-  flex: 0 0 auto;
-  min-height: 42px;
-  padding: 0 12px;
-  border-radius: 14px;
-  border: 1px solid var(--border-mid);
-  background: var(--surface-raised);
-  color: var(--text);
-  font: inherit;
-}
-
-/* Without this the search box falls back to the browser's default focus ring,
-   which renders as a heavy black outline against the green surface. */
-.searchRow input:focus,
-.searchRow select:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 4px rgba(47, 77, 62, 0.1);
-}
-
 /* ===== BOOK LIBRARY =====
    Card grid rather than a table: it matches the student and teacher book
    views, so the same cover reads the same way in every role, and five actions
@@ -736,6 +711,8 @@
 .form textarea,
 .searchBar input,
 .compactSearch input,
+.searchRow input,
+.searchRow select,
 .historyFilters input,
 .historyFilters select {
   width: 100%;
@@ -757,10 +734,28 @@
 .form textarea:focus,
 .searchBar input:focus,
 .compactSearch input:focus,
+.searchRow input:focus,
+.searchRow select:focus,
 .historyFilters input:focus,
 .historyFilters select:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 4px rgba(47, 77, 62, 0.1);
+}
+
+/* Row layout for the book search + status filter. Placed after the shared
+   rules above because those set width: 100%, and at equal specificity the
+   later rule wins - so the sizing has to be re-stated here, not up by
+   .searchRow. */
+.searchRow input {
+  flex: 1 1 260px;
+  min-width: 0;
+  width: auto;
+}
+
+.searchRow select {
+  /* Sized to its own label instead of stretching to match the input. */
+  flex: 0 0 auto;
+  width: auto;
 }
 
 .rowActions {
