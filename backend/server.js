@@ -22,6 +22,13 @@ import {
   scoreTeacherForStudent,
   selectTeacherFromRanking,
 } from "./teacherMatching.js";
+import {
+  isResumeParserConfigured,
+  MAX_RESUME_BYTES,
+  parseResumeCourseNames,
+  parseTeacherResume,
+  RESUME_MIME_TYPES,
+} from "./teacherResumeParser.js";
 
 dotenv.config();
 
@@ -345,6 +352,21 @@ const classRecordingUpload = multer({
     cb(new Error("Only WEBM or MP4 class recordings are allowed"));
   },
 });
+// Resume auto-fill. Memory storage, not disk: the upload is forwarded to Gemini
+// and never persisted, so a CV cannot be left sitting in the uploads folder.
+// The stored resume is the admin's own text bio, not the file.
+const resumeUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_RESUME_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (RESUME_MIME_TYPES[file.mimetype]) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error("Resume must be a PDF, DOCX, or TXT file"));
+  },
+});
+
 app.use("/uploads", express.static(UPLOAD_ROOT));
 
 app.get("/healthz", (_req, res) => {
@@ -2961,6 +2983,74 @@ app.post("/api/admin/recommend-teacher", async (req, res) => {
   }
 });
 
+// Read a teacher resume and return the AI Matching Profile it implies. The
+// response is only pre-filled form state: the admin confirms it and the real
+// insert still happens on POST /api/admin/users.
+app.post("/api/admin/parse-resume", (req, res, next) =>
+  // Multer raises filter/size errors in middleware, before the route body runs,
+  // and there is no global error handler, so without this wrapper they would
+  // surface as Express's default HTML error page.
+  resumeUpload.single("resume")(req, res, (err) => {
+    if (!err) {
+      next();
+      return;
+    }
+    const message =
+      err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE"
+        ? "Resume must be 8 MB or smaller"
+        : err.message || "Could not read the uploaded resume";
+    res.status(400).json({ message });
+  }), async (req, res) => {
+  try {
+    if (!isResumeParserConfigured()) {
+      return res.status(503).json({
+        message: "Resume auto-fill is not configured. Set GOOGLE_GEMINI_API_KEY on the backend.",
+      });
+    }
+    if (!req.file) {
+      return res.status(400).json({ message: "Please choose a resume to upload" });
+    }
+
+    const profile = await parseTeacherResume({
+      file: req.file,
+      // Specialization chips are filtered by the ticked courses, so the parser
+      // needs to know which ones are selected or it will suggest chips that
+      // are not on screen and would be dropped on save.
+      courseNames: parseResumeCourseNames(req.body?.courseNames),
+    });
+
+    res.json(profile);
+  } catch (err) {
+    console.error("POST /api/admin/parse-resume error:", err);
+    res.status(500).json({ message: err.message || "Could not read that resume" });
+  }
+});
+
+/**
+ * teacher_profiles.specialization is VARCHAR(255) and holds the whole
+ * comma-joined list. Nine specializations land right around the limit, so drop
+ * whole trailing entries rather than let MySQL reject the insert in strict mode
+ * and fail the whole teacher creation with a cryptic error.
+ */
+function clampSpecialization(value) {
+  const items = (Array.isArray(value)
+    ? value
+    : String(value || "").split(",")
+  )
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+
+  const kept = [];
+  let length = 0;
+  for (const item of items) {
+    const next = kept.length ? length + 2 : item.length;
+    if (next > 255) break;
+    kept.push(item);
+    length = next;
+  }
+  return kept.join(", ");
+}
+
 //Create Teacher Account
 app.post("/api/admin/users", async (req, res) => {
   try {
@@ -3063,9 +3153,7 @@ app.post("/api/admin/users", async (req, res) => {
         teachingStyle,
         idealStudentPace,
       });
-      const specializationText = Array.isArray(specialization)
-        ? specialization.map((item) => String(item || "").trim()).filter(Boolean).join(", ")
-        : String(specialization || "").trim();
+      const specializationText = clampSpecialization(specialization);
 
       await pool.query(
         `INSERT INTO teacher_profiles (user_id, bio, specialization, experience_years)

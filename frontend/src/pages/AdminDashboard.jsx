@@ -1,5 +1,5 @@
 import axios from "axios";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import styles from "../assets/AdminDashboard.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
@@ -50,6 +50,57 @@ const getAdminTabFromSearch = (search) => {
   const requestedTab = new URLSearchParams(search).get("tab");
   return ADMIN_TABS.includes(requestedTab) ? requestedTab : "calendar";
 };
+
+// Resume auto-fill on the Create Teacher form. The client-side checks mirror the
+// backend's upload limits so an unsupported or oversized file fails immediately
+// instead of after a slow upload; backend/teacherResumeParser.js still does the
+// real validation, this is only there to save the admin a round trip.
+const RESUME_MAX_BYTES = 8 * 1024 * 1024;
+const RESUME_ACCEPTED = /\.(pdf|docx|txt)$/i;
+
+/**
+ * Fold a parsed resume into the create-teacher form without destroying anything
+ * the admin already entered: chip selections union with what is already ticked,
+ * and the free-text fields are only written while they are still blank. That
+ * keeps re-uploading a corrected CV safe on a form that is already part filled
+ * in, and leaves every value editable before the teacher is created.
+ */
+function mergeResumeIntoTeacherForm(form, parsed) {
+  const union = (current, incoming) => [...new Set([...(current || []), ...(incoming || [])])];
+  const isBlank = (value) => !String(value ?? "").trim();
+  const years = parsed.experienceYears;
+
+  return {
+    ...form,
+    specialization: union(form.specialization, parsed.specialization),
+    teachingStyle: union(form.teachingStyle, parsed.teachingStyle),
+    idealStudentPace: union(form.idealStudentPace, parsed.idealStudentPace),
+    experienceYears: isBlank(form.experienceYears)
+      ? years === null || years === undefined
+        ? ""
+        : String(years)
+      : form.experienceYears,
+    bio: isBlank(form.bio) ? parsed.bio || "" : form.bio,
+  };
+}
+
+const pluralize = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+
+/** Spells out what the parser actually produced, for the confirmation toast. */
+function describeResumeFill(parsed) {
+  const parts = [];
+  if (parsed.bio) parts.push("bio");
+  if (parsed.specialization?.length) parts.push(pluralize(parsed.specialization.length, "specialization"));
+  if (parsed.teachingStyle?.length) parts.push(pluralize(parsed.teachingStyle.length, "teaching style"));
+  if (parsed.idealStudentPace?.length) parts.push(pluralize(parsed.idealStudentPace.length, "pace choice"));
+  if (parsed.experienceYears !== null && parsed.experienceYears !== undefined) {
+    parts.push(`${parsed.experienceYears} year${parsed.experienceYears === 1 ? "" : "s"} experience`);
+  }
+
+  return parts.length
+    ? `Filled from resume: ${parts.join(", ")}. Review it before saving.`
+    : "Nothing usable was found in that resume. Fill the matching profile manually.";
+}
 
 const COUNTRY_OPTIONS = [
   "Australia",
@@ -300,6 +351,11 @@ export default function AdminDashboard() {
     bio: "",
     courseIds: [],
   });
+  // Resume auto-fill. The parsed profile is a draft for the fields above; nothing
+  // is submitted until the admin saves the teacher.
+  const [resumeParsing, setResumeParsing] = useState(false);
+  const [resumeFileName, setResumeFileName] = useState("");
+  const resumeInputRef = useRef(null);
   // create-student form
   const [sForm, setSForm] = useState({
     firstName: "",
@@ -785,6 +841,7 @@ export default function AdminDashboard() {
         bio: "",
         courseIds: [],
       });
+      setResumeFileName("");
       loadUsers();
     } catch (e) {
       console.error(e);
@@ -954,6 +1011,54 @@ export default function AdminDashboard() {
         ),
       };
     });
+  }
+
+  // Auto-fill the AI Matching Profile from an uploaded CV. Non-destructive, so
+  // it can be re-run on a form that is already partly filled in. The parsed
+  // values are suggestions only: the admin edits and confirms them, and the
+  // teacher is still created by the same POST /api/admin/users as before.
+  async function handleResumeSelected(file) {
+    if (!file) return;
+
+    const resetInput = () => {
+      if (resumeInputRef.current) resumeInputRef.current.value = "";
+    };
+
+    // Check the extension rather than the MIME type: browsers often report an
+    // empty or generic type for .docx.
+    if (!RESUME_ACCEPTED.test(file.name)) {
+      notify("Resume must be a PDF, DOCX, or TXT file.", "error");
+      resetInput();
+      return;
+    }
+    if (file.size > RESUME_MAX_BYTES) {
+      notify("Resume must be 8 MB or smaller.", "error");
+      resetInput();
+      return;
+    }
+
+    setResumeParsing(true);
+    setResumeFileName(file.name);
+    try {
+      const formData = new FormData();
+      formData.append("resume", file, file.name);
+      // The specialization chips are filtered by the ticked courses, so the
+      // parser needs to know which ones are selected. Without this it could
+      // suggest a specialization whose chip is not on screen, which would then
+      // be dropped silently on save.
+      formData.append("courseNames", JSON.stringify(selectedTeacherCourseNames));
+
+      const response = await axios.post(`${API}/api/admin/parse-resume`, formData);
+      const parsed = response.data || {};
+      setTForm((prev) => mergeResumeIntoTeacherForm(prev, parsed));
+      notify(describeResumeFill(parsed), "success");
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || "Could not read that resume", "error");
+    } finally {
+      setResumeParsing(false);
+      resetInput();
+    }
   }
 
   function toggleManagedTeacherCourse(teacherId, courseId) {
@@ -2223,6 +2328,31 @@ export default function AdminDashboard() {
               <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
                 <div className={styles.criteriaCard}>
                   <div className={styles.criteriaCardHead}>
+                    <h3 className={styles.criteriaCardTitle}>Auto-fill From Resume</h3>
+                  </div>
+                  <p className={styles.criteriaCardIntro}>
+                    Upload the teacher&apos;s CV and it reads the file and fills in the matching
+                    profile below - bio, specialization, teaching style, best student pace and
+                    experience years. Tick the courses first so the specializations fit. Everything
+                    it fills in stays editable, and the file itself is not stored.
+                  </p>
+                  <div className={styles.resumeRow}>
+                    <input
+                      ref={resumeInputRef}
+                      id="teacher-resume"
+                      type="file"
+                      className={styles.resumeInput}
+                      accept=".pdf,.docx,.txt"
+                      onChange={(e) => handleResumeSelected(e.target.files?.[0])}
+                      disabled={resumeParsing || loading}
+                    />
+                    {resumeParsing && (
+                      <span className={styles.resumeStatus}>Reading {resumeFileName}...</span>
+                    )}
+                  </div>
+                </div>
+                <div className={styles.criteriaCard}>
+                  <div className={styles.criteriaCardHead}>
                     <h3 className={styles.criteriaCardTitle}>AI Matching Profile</h3>
                   </div>
                   <p className={styles.criteriaCardIntro}>
@@ -2276,8 +2406,9 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div style={{ marginTop: "12px" }}>
-                  <label>Teacher Bio / Notes</label>
+                  <label htmlFor="teacher-bio">Teacher Bio / Notes</label>
                   <textarea
+                    id="teacher-bio"
                     value={tForm.bio}
                     onChange={(e)=>setTForm({...tForm, bio:e.target.value})}
                     rows={4}
@@ -2298,7 +2429,7 @@ export default function AdminDashboard() {
               </div>
               <br />
               <br />
-              <button className={styles.primary} disabled={loading}>
+              <button className={styles.primary} disabled={loading || resumeParsing}>
                 {loading ? "Creating..." : "Create Teacher"}
               </button>
             </form>

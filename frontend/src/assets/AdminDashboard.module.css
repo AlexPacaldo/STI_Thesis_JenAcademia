@@ -1203,6 +1203,55 @@
   grid-column: 1 / -1;
 }
 
+/* Resume auto-fill input on the Create Teacher form. A native file input styled
+   to match the rest of the form, so it stays keyboard- and label-accessible. */
+.resumeRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.resumeInput {
+  flex: 1 1 320px;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px dashed var(--border-mid, #d0d0d0);
+  border-radius: 10px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 0.88em;
+  color: var(--text-mid, #6b7280);
+  cursor: pointer;
+}
+
+.resumeInput::file-selector-button {
+  margin-right: 12px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-family: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.resumeInput:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.resumeInput:disabled::file-selector-button {
+  cursor: not-allowed;
+}
+
+.resumeStatus {
+  font-size: 0.82em;
+  font-weight: 700;
+  color: var(--text-mid, #6b7280);
+}
+
 .criteriaField {
   margin: 0;
   padding: 10px 12px;

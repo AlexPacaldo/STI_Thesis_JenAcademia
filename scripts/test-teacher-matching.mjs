@@ -25,6 +25,13 @@ import {
   TEACHER_CRITERIA_OPTIONS,
   toggleValue,
 } from "../frontend/src/utils/matchingCriteria.js";
+import {
+  IDEAL_STUDENT_PACE_OPTIONS,
+  normalizeParsedProfile,
+  specializationValuesForCourses,
+  SPECIALIZATION_OPTIONS,
+  TEACHING_STYLE_OPTIONS,
+} from "../backend/teacherResumeParser.js";
 
 let failures = 0;
 let checks = 0;
@@ -256,6 +263,53 @@ console.log("\n=== multi-select helper ===");
 check("toggles on", toggleValue([], "a"), ["a"]);
 check("toggles off", toggleValue(["a", "b"], "a"), ["b"]);
 check("appends without duplicates", toggleValue(["a"], "b"), ["a", "b"]);
+
+// ------------------------------------------------------- resume auto-fill
+// The resume reader has its own copy of the option vocabulary so it can build
+// the model's response schema. That copy is worthless if it drifts from the
+// frontend: the model would emit values no chip can hold and the matcher would
+// score nothing. Same rule as the checks above.
+console.log("\n=== resume auto-fill vocabulary ===");
+
+const parserOptions = { specialization: SPECIALIZATION_OPTIONS, teachingStyle: TEACHING_STYLE_OPTIONS, idealStudentPace: IDEAL_STUDENT_PACE_OPTIONS };
+for (const [group, options] of Object.entries(parserOptions)) {
+  check(
+    `resume parser ${group} vocabulary == the Create Teacher form`,
+    options.map((option) => option.value).sort(),
+    values(TEACHER_CRITERIA_OPTIONS[group]).sort()
+  );
+}
+check(
+  "resume parser course allowlists == the Create Teacher form",
+  SPECIALIZATION_OPTIONS.map((option) => [option.value, option.courses]),
+  TEACHER_CRITERIA_OPTIONS.specialization.map(([value, , allowedCourses]) => [value, allowedCourses])
+);
+
+check(
+  "specializations are filtered by the selected courses",
+  specializationValuesForCourses(["IELTS"]),
+  ["grammar and writing", "reading and vocabulary", "listening and pronunciation", "exam preparation"]
+);
+check("every specialization is allowed when no course is picked yet", specializationValuesForCourses([]).length, values(TEACHER_CRITERIA_OPTIONS.specialization).length);
+
+console.log("\n=== resume auto-fill normalization ===");
+const parsedProfile = normalizeParsedProfile(
+  {
+    bio: "  Ten years teaching English.\n\nStrong with exam prep.  AI matching profile:\nTeaching style: structured  ",
+    specialization: ["Exam Preparation", "news discussion", "underwater basket weaving", "exam preparation"],
+    teachingStyle: ["Structured", "conversational", "telepathic"],
+    idealStudentPace: "fast-paced",
+    experienceYears: "7.6",
+  },
+  { courseNames: ["IELTS"] }
+);
+check("bio is collapsed to a single line and the profile marker stripped", parsedProfile.bio, "Ten years teaching English. Strong with exam prep.");
+check("invented and out-of-scope values are dropped and duplicates collapsed", parsedProfile.specialization, ["exam preparation"]);
+check("unknown teaching styles are dropped", parsedProfile.teachingStyle, ["structured", "conversational"]);
+check("an option label is accepted as an alias of its value", parsedProfile.idealStudentPace, ["fast"]);
+check("experience years are rounded", parsedProfile.experienceYears, 8);
+check("a missing experience is null, not zero", normalizeParsedProfile({}).experienceYears, null);
+check("garbage input yields empty arrays", normalizeParsedProfile(null).specialization, []);
 
 console.log(`\n${checks - failures}/${checks} checks passed.`);
 if (failures) {
