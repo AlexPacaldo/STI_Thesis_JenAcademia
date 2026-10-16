@@ -49,10 +49,14 @@
   gap: 8px;
 }
 
-/* Chips size to their label instead of stretching to fill a grid column, which
-   is what caused short labels ("IELTS") to sit in wide boxes while long ones
-   ("Conversational English") wrapped onto two lines. */
-.chip {
+/* EVERY chip rule is scoped under `.field`.
+   AdminDashboard.module.css has `.form label { display: block; ... }`, which is
+   class+type specificity and beat a bare `.chip` class. That forced
+   display:block, and `gap` does nothing on a block box - which is why the tick
+   sat flush against the label with no space. Scoping under `.field` gives
+   class+class (0,2,0), which wins. Same reason the input rules below use the
+   `.chip input[type=...]` form against `.form input`. */
+.field .chip {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -73,21 +77,21 @@
   transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
 }
 
-.chip:hover {
+.field .chip:hover {
   border-color: var(--primary, #2f4d3e);
 }
 
 /* Selected: a soft sage wash, not a solid fill. A solid dark pill plus a
    filled dot inside it reads as a heavy blob; the tint keeps the label legible
    and matches the badge/pill treatment in DESIGN_LANGUAGE.md. */
-.chipActive,
-.chipActive:hover {
+.field .chipActive,
+.field .chipActive:hover {
   border-color: var(--accent-sage, #91a79a);
   background: rgba(145, 167, 154, 0.18);
   color: var(--primary, #2f4d3e);
 }
 
-.chip:focus-within {
+.field .chip:focus-within {
   border-color: var(--primary, #2f4d3e);
   box-shadow: 0 0 0 4px rgba(47, 77, 62, 0.14);
 }
@@ -96,10 +100,10 @@
    The selectors are repeated with `.chip` and the attribute selector because
    the page-level `.form input` rule (class + type specificity) sets width:100%
    and min-height:42px, which would otherwise win and stretch this element. */
-.chip .input,
-.chip input[type="checkbox"],
-.chip .input:focus,
-.chip input[type="checkbox"]:focus {
+.field .chip .input,
+.field .chip input[type="checkbox"],
+.field .chip .input:focus,
+.field .chip input[type="checkbox"]:focus {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -117,7 +121,7 @@
 /* The tick. A fixed-size flex item so a long label can never squeeze it, with
    the mark drawn via ::after rather than typed, because the global reset sets
    overflow-wrap:anywhere on every span and would let a glyph break apart. */
-.mark {
+.field .mark {
   flex: 0 0 16px;
   width: 16px;
   min-width: 16px;
@@ -135,7 +139,7 @@
 }
 
 /* Empty ring by default. */
-.mark::after {
+.field .mark::after {
   content: "";
   width: 4px;
   height: 7px;
@@ -146,16 +150,16 @@
   opacity: 0;
 }
 
-.chipActive .mark {
+.field .chipActive .mark {
   border-color: var(--accent-success, #1f9d63);
   background: var(--accent-success, #1f9d63);
 }
 
-.chipActive .mark::after {
+.field .chipActive .mark::after {
   opacity: 1;
 }
 
-.chipText {
+.field .chipText {
   min-width: 0;
   /* Reset the global overflow-wrap:anywhere so a long label breaks at spaces
      rather than mid-word. */
