@@ -6,10 +6,10 @@
  * score can be traced back to a matched field.
  *
  * Design notes:
- *  - The AI-matching attributes (teaching style, teacher strength, best student
- *    pace) are written into the teacher bio by buildTeacherAiBio as a fixed
- *    template. We parse that block back out and compare the vocabularies
- *    EXACTLY, instead of substring-matching a flattened string.
+ *  - The AI-matching attributes (teaching style, best student pace) are written
+ *    into the teacher bio by buildTeacherAiBio as a fixed template. We parse
+ *    that block back out and compare the vocabularies EXACTLY, instead of
+ *    substring-matching a flattened string.
  *  - Free-text bio is only a weak tiebreaker, and it is matched on whole words
  *    against the prose only (never the teacher's name).
  *  - The student's trial notes are NOT scored. `notes` is identical for every

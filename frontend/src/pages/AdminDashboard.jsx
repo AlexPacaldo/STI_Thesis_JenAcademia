@@ -903,8 +903,8 @@ export default function AdminDashboard() {
   }
 
   // Multi-select handler for the teacher's other AI matching attributes
-  // (teaching style, teacher strength, best student pace). These are not
-  // course-scoped, so unlike specialization they are never pruned.
+  // (teaching style, best student pace). These are not course-scoped, so
+  // unlike specialization they are never pruned.
   function toggleTeacherCriteria(field, value) {
     setTForm((prev) => ({
       ...prev,

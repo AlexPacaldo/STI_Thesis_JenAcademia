@@ -780,7 +780,7 @@ CREATE TABLE `teacher_profiles` (
 
 LOCK TABLES `teacher_profiles` WRITE;
 /*!40000 ALTER TABLE `teacher_profiles` DISABLE KEYS */;
-INSERT INTO `teacher_profiles` VALUES (20,67,'AI matching profile:\nTeaching style: conversational\nTeacher strength: energetic and engaging\nBest student pace: balanced','speaking and conversation, grammar and writing, reading and vocabulary, listening and pronunciation, job interview coaching, kids and beginner english',5,NULL,'/uploads/profiles/1779906052478-034f5d24f050b66b.png','2026-05-27 18:14:04','2026-05-27 18:20:52'),(21,68,'AI matching profile:\nTeaching style: conversational\nTeacher strength: strict and focused\nBest student pace: slow','speaking and conversation, grammar and writing, listening and pronunciation, business english, job interview coaching, exam preparation',5,NULL,NULL,'2026-05-27 18:17:11','2026-05-27 18:17:11');
+INSERT INTO `teacher_profiles` VALUES (20,67,'AI matching profile:\nTeaching style: conversational\nBest student pace: balanced','speaking and conversation, grammar and writing, reading and vocabulary, listening and pronunciation, job interview coaching, kids and beginner english',5,NULL,'/uploads/profiles/1779906052478-034f5d24f050b66b.png','2026-05-27 18:14:04','2026-05-27 18:20:52'),(21,68,'AI matching profile:\nTeaching style: conversational\nBest student pace: slow','speaking and conversation, grammar and writing, listening and pronunciation, business english, job interview coaching, exam preparation',5,NULL,NULL,'2026-05-27 18:17:11','2026-05-27 18:17:11');
 /*!40000 ALTER TABLE `teacher_profiles` ENABLE KEYS */;
 UNLOCK TABLES;
 
