@@ -5,15 +5,20 @@
 
 .field {
   margin: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--border-mid, #e5e7eb);
-  border-radius: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
   background: #fff;
   min-width: 0;
 }
 
+/* Legends carry UA default styling (a bordered cut-out box, auto width, float).
+   Reset it so the label renders as a normal block heading. */
 .label {
-  padding: 0 4px;
+  display: block;
+  float: none;
+  width: auto;
+  padding: 0;
   font-weight: 800;
   font-size: 0.92em;
   color: var(--text, #1f2937);
@@ -39,27 +44,30 @@
 }
 
 .chips {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
+/* Chips size to their label instead of stretching to fill a grid column, which
+   is what caused short labels ("IELTS") to sit in wide boxes while long ones
+   ("Conversational English") wrapped onto two lines. */
 .chip {
   position: relative;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
   margin: 0;
-  padding: 9px 10px;
-  min-height: 42px;
-  /* Long labels wrap inside the chip rather than stretching it. */
-  min-width: 0;
+  padding: 7px 14px;
+  min-height: 36px;
+  max-width: 100%;
   border: 1px solid var(--border-mid, #e0e0e0);
-  border-radius: 8px;
+  border-radius: 999px;
   background: #fff;
   color: var(--text, #1f2937);
   font-size: 0.88em;
-  font-weight: 700;
+  font-weight: 600;
+  line-height: 1.35;
   cursor: pointer;
   user-select: none;
   transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
@@ -69,10 +77,13 @@
   border-color: var(--primary, #2f4d3e);
 }
 
+/* Selected: a soft sage wash, not a solid fill. A solid dark pill plus a
+   filled dot inside it reads as a heavy blob; the tint keeps the label legible
+   and matches the badge/pill treatment in DESIGN_LANGUAGE.md. */
 .chipActive,
 .chipActive:hover {
-  border-color: var(--primary, #2f4d3e);
-  background: rgba(47, 77, 62, 0.07);
+  border-color: var(--accent-sage, #91a79a);
+  background: rgba(145, 167, 154, 0.18);
   color: var(--primary, #2f4d3e);
 }
 
@@ -81,10 +92,14 @@
   box-shadow: 0 0 0 4px rgba(47, 77, 62, 0.14);
 }
 
-/* The checkbox stays in the DOM and focusable; only its box is hidden, so
-   :focus-within on the chip gives a visible focus ring for keyboard users. */
-.input,
-.input:focus {
+/* The real checkbox stays in the DOM and focusable, but is visually hidden.
+   The selectors are repeated with `.chip` and the attribute selector because
+   the page-level `.form input` rule (class + type specificity) sets width:100%
+   and min-height:42px, which would otherwise win and stretch this element. */
+.chip .input,
+.chip input[type="checkbox"],
+.chip .input:focus,
+.chip input[type="checkbox"]:focus {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -96,20 +111,20 @@
   pointer-events: none;
   clip-path: inset(50%);
   box-shadow: none;
+  appearance: none;
 }
 
-/* The check box. It is a fixed-size flex item so it can never be squeezed by a
-   long label: explicit flex-basis plus min/max width, and the tick is drawn
-   rather than typed so no font metric or soft-wrap opportunity (the global
-   reset sets overflow-wrap:anywhere on every span) can distort it. */
+/* The tick. A fixed-size flex item so a long label can never squeeze it, with
+   the mark drawn via ::after rather than typed, because the global reset sets
+   overflow-wrap:anywhere on every span and would let a glyph break apart. */
 .mark {
-  flex: 0 0 18px;
-  width: 18px;
-  min-width: 18px;
-  max-width: 18px;
-  height: 18px;
-  border: 1px solid var(--border-strong, rgba(38, 66, 59, 0.18));
-  border-radius: 5px;
+  flex: 0 0 16px;
+  width: 16px;
+  min-width: 16px;
+  max-width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--border-strong, rgba(38, 66, 59, 0.22));
+  border-radius: 50%;
   background: #fff;
   color: #fff;
   display: inline-flex;
@@ -119,20 +134,21 @@
   overflow-wrap: normal;
 }
 
-/* Empty by default, filled only when the chip is selected. */
+/* Empty ring by default. */
 .mark::after {
   content: "";
-  width: 9px;
-  height: 5px;
-  border-left: 2px solid currentColor;
+  width: 4px;
+  height: 7px;
+  margin-top: -2px;
+  border-right: 2px solid currentColor;
   border-bottom: 2px solid currentColor;
-  transform: rotate(-45deg) translate(1px, -1px);
+  transform: rotate(45deg);
   opacity: 0;
 }
 
 .chipActive .mark {
-  border-color: var(--primary, #2f4d3e);
-  background: var(--primary, #2f4d3e);
+  border-color: var(--accent-success, #1f9d63);
+  background: var(--accent-success, #1f9d63);
 }
 
 .chipActive .mark::after {
@@ -145,6 +161,7 @@
      rather than mid-word. */
   overflow-wrap: normal;
   word-break: normal;
+  white-space: nowrap;
 }
 
 .srOnly {
