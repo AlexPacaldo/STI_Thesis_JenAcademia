@@ -11,6 +11,8 @@ import { isSelectedValue } from "../utils/matchingCriteria.js";
  * Uses native checkboxes (visually hidden, not replaced) so keyboard and
  * screen-reader behaviour comes for free. Each chip shows a check when selected.
  */
+export const CUSTOM_OPTION_VALUE = "__custom__";
+
 export default function CriteriaChipField({
   legend,
   hint,
@@ -21,8 +23,12 @@ export default function CriteriaChipField({
   name,
   id,
   prominent = false,
+  allowCustom = false,
+  customValue = "",
+  onCustomChange,
 }) {
   const selectedValues = Array.isArray(selected) ? selected : [];
+  const customSelected = selectedValues.includes(CUSTOM_OPTION_VALUE);
 
   return (
     <fieldset className={styles.field} id={id}>
@@ -30,7 +36,7 @@ export default function CriteriaChipField({
         {legend}
       </legend>
       {hint ? <p className={styles.hint}>{hint}</p> : null}
-      {options.length ? (
+      {options.length || allowCustom ? (
         <div className={styles.chips}>
           {options.map(([value, label]) => {
             const active = isSelectedValue(selectedValues, value);
@@ -53,10 +59,39 @@ export default function CriteriaChipField({
               </label>
             );
           })}
+          {allowCustom ? (
+            <label
+              className={`${styles.chip} ${customSelected ? styles.chipActive : ""}`}
+            >
+              <input
+                type="checkbox"
+                name={name}
+                value={CUSTOM_OPTION_VALUE}
+                checked={customSelected}
+                onChange={() => onToggle(CUSTOM_OPTION_VALUE)}
+                className={styles.input}
+              />
+              <span className={styles.mark} aria-hidden="true" />
+              <span className={styles.chipText}>Others</span>
+              <span className={styles.srOnly}>{customSelected ? ", selected" : ""}</span>
+            </label>
+          ) : null}
         </div>
       ) : (
         <p className={styles.empty}>{emptyMessage}</p>
       )}
+      {allowCustom && customSelected ? (
+        <div className={styles.customInput}>
+          <input
+            type="text"
+            value={customValue}
+            onChange={(e) => onCustomChange?.(e.target.value)}
+            placeholder="Describe it"
+            aria-label={`${legend}: other`}
+            maxLength={60}
+          />
+        </div>
+      ) : null}
     </fieldset>
   );
 }

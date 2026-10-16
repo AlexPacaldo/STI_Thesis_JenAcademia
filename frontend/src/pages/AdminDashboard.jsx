@@ -22,9 +22,10 @@ import {
   STUDENT_CRITERIA_OPTIONS,
   TEACHER_CRITERIA_HINTS,
   TEACHER_CRITERIA_OPTIONS,
+  toCriteriaSlug,
   toggleValue,
 } from "../utils/matchingCriteria.js";
-import CriteriaChipField from "../components/CriteriaChipField.jsx";
+import CriteriaChipField, { CUSTOM_OPTION_VALUE } from "../components/CriteriaChipField.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import ModalPortal from "../utils/ModalPortal.jsx";
 import Calendar from "./Calendar.jsx"; // admin calendar view
@@ -293,7 +294,9 @@ export default function AdminDashboard() {
     specialization: [],
     experienceYears: "",
     teachingStyle: [],
+    teachingStyleOther: "",
     idealStudentPace: [],
+    idealStudentPaceOther: "",
     bio: "",
     courseIds: [],
   });
@@ -776,7 +779,9 @@ export default function AdminDashboard() {
         specialization: [],
         experienceYears: "",
         teachingStyle: [],
+        teachingStyleOther: "",
         idealStudentPace: [],
+        idealStudentPaceOther: "",
         bio: "",
         courseIds: [],
       });
@@ -905,11 +910,27 @@ export default function AdminDashboard() {
   // Multi-select handler for the teacher's other AI matching attributes
   // (teaching style, best student pace). These are not course-scoped, so
   // unlike specialization they are never pruned.
-  function toggleTeacherCriteria(field, value) {
-    setTForm((prev) => ({
-      ...prev,
-      [field]: toggleValue(prev[field], value),
-    }));
+  // Unchecking "Others" discards the typed text so it cannot linger invisibly.
+  function toggleTeacherCriteria(field, otherField, value) {
+    setTForm((prev) => {
+      const next = toggleValue(prev[field], value);
+      const base = { ...prev, [field]: next };
+      if (value === CUSTOM_OPTION_VALUE && !next.includes(CUSTOM_OPTION_VALUE)) {
+        base[otherField] = "";
+      }
+      return base;
+    });
+  }
+
+  function updateTeacherCustomCriteria(field, value) {
+    setTForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  // Merge the free-text "Others" values into the arrays the backend stores, so
+  // the custom entry lands in the same "Teaching style: a, b" bio line.
+  function teacherCriteriaWithCustom(values, otherText) {
+    const custom = toCriteriaSlug(otherText);
+    return custom ? [...values, custom] : values;
   }
 
   function toggleTeacherCourse(courseId) {
@@ -1526,13 +1547,25 @@ export default function AdminDashboard() {
   function handleCreateTeacherSubmit(e) {
     e.preventDefault();
     if (e.currentTarget && !e.currentTarget.reportValidity()) return;
+
+    // Replace the sentinel and the raw text with one clean array, which is what
+    // buildTeacherAiBio comma-joins into the bio.
+    const withoutSentinel = (values) =>
+      (Array.isArray(values) ? values : []).filter((v) => v !== CUSTOM_OPTION_VALUE);
+    const teachingStyle = tForm.teachingStyle.includes(CUSTOM_OPTION_VALUE)
+      ? teacherCriteriaWithCustom(withoutSentinel(tForm.teachingStyle), tForm.teachingStyleOther)
+      : withoutSentinel(tForm.teachingStyle);
+    const idealStudentPace = tForm.idealStudentPace.includes(CUSTOM_OPTION_VALUE)
+      ? teacherCriteriaWithCustom(withoutSentinel(tForm.idealStudentPace), tForm.idealStudentPaceOther)
+      : withoutSentinel(tForm.idealStudentPace);
+
     openAdminConfirm({
       action: "create_teacher",
       title: "Create teacher account?",
       message: "This will create the teacher account with the details you entered.",
       confirmLabel: "Create Teacher",
       tone: "primary",
-      payload: { ...tForm },
+      payload: { ...tForm, teachingStyle, idealStudentPace },
     });
   }
 
@@ -2210,7 +2243,10 @@ export default function AdminDashboard() {
                       hint={TEACHER_CRITERIA_HINTS.teachingStyle}
                       options={TEACHER_CRITERIA_OPTIONS.teachingStyle}
                       selected={tForm.teachingStyle}
-                      onToggle={(value) => toggleTeacherCriteria("teachingStyle", value)}
+                      onToggle={(value) => toggleTeacherCriteria("teachingStyle", "teachingStyleOther", value)}
+                      allowCustom
+                      customValue={tForm.teachingStyleOther}
+                      onCustomChange={(text) => updateTeacherCustomCriteria("teachingStyleOther", text)}
                       name="teacher-teaching-style"
                     />
                     <CriteriaChipField
@@ -2218,7 +2254,10 @@ export default function AdminDashboard() {
                       hint={TEACHER_CRITERIA_HINTS.idealStudentPace}
                       options={TEACHER_CRITERIA_OPTIONS.idealStudentPace}
                       selected={tForm.idealStudentPace}
-                      onToggle={(value) => toggleTeacherCriteria("idealStudentPace", value)}
+                      onToggle={(value) => toggleTeacherCriteria("idealStudentPace", "idealStudentPaceOther", value)}
+                      allowCustom
+                      customValue={tForm.idealStudentPaceOther}
+                      onCustomChange={(text) => updateTeacherCustomCriteria("idealStudentPaceOther", text)}
                       name="student-pace"
                     />
                     <div>

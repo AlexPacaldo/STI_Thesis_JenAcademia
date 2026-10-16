@@ -132,6 +132,19 @@ export const pruneSelectionToCourses = (selected, options, selectedCourseNames) 
 export const isSelectedValue = (selected, value) =>
   (Array.isArray(selected) ? selected : []).some((item) => String(item) === String(value));
 
+/**
+ * Normalise free text typed into an "Others" box into the same slug shape the
+ * fixed vocabulary uses ("Patient and supportive" -> "patient-and-supportive"),
+ * so a custom value is stored and compared consistently.
+ */
+export const toCriteriaSlug = (text) =>
+  String(text || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+
 /** Toggle one value in a multi-select array. */
 export const toggleValue = (selected, value) => {
   const current = Array.isArray(selected) ? selected : [];
