@@ -47,7 +47,7 @@ export default function CriteriaChipField({
                   onChange={() => onToggle(value)}
                   className={styles.input}
                 />
-                <span className={styles.mark} aria-hidden="true">{active ? "✓" : ""}</span>
+                <span className={styles.mark} aria-hidden="true" />
                 <span className={styles.chipText}>{label}</span>
                 <span className={styles.srOnly}>{active ? ", selected" : ""}</span>
               </label>

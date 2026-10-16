@@ -52,6 +52,8 @@
   margin: 0;
   padding: 9px 10px;
   min-height: 42px;
+  /* Long labels wrap inside the chip rather than stretching it. */
+  min-width: 0;
   border: 1px solid var(--border-mid, #e0e0e0);
   border-radius: 8px;
   background: #fff;
@@ -96,18 +98,36 @@
   box-shadow: none;
 }
 
+/* The check box. It is a fixed-size flex item so it can never be squeezed by a
+   long label: explicit flex-basis plus min/max width, and the tick is drawn
+   rather than typed so no font metric or soft-wrap opportunity (the global
+   reset sets overflow-wrap:anywhere on every span) can distort it. */
 .mark {
-  flex: 0 0 auto;
+  flex: 0 0 18px;
   width: 18px;
+  min-width: 18px;
+  max-width: 18px;
   height: 18px;
-  border: 1px solid var(--border-mid, #c8d2cc);
+  border: 1px solid var(--border-strong, rgba(38, 66, 59, 0.18));
   border-radius: 5px;
   background: #fff;
   color: #fff;
-  font-size: 0.7em;
-  font-weight: 900;
-  line-height: 16px;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  overflow-wrap: normal;
+}
+
+/* Empty by default, filled only when the chip is selected. */
+.mark::after {
+  content: "";
+  width: 9px;
+  height: 5px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg) translate(1px, -1px);
+  opacity: 0;
 }
 
 .chipActive .mark {
@@ -115,8 +135,16 @@
   background: var(--primary, #2f4d3e);
 }
 
+.chipActive .mark::after {
+  opacity: 1;
+}
+
 .chipText {
   min-width: 0;
+  /* Reset the global overflow-wrap:anywhere so a long label breaks at spaces
+     rather than mid-word. */
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .srOnly {
