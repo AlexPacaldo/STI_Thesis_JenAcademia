@@ -10,6 +10,7 @@ import mysql from "mysql2/promise";
 import path from "path";
 import { Resend } from "resend";
 import { assessClassEvidence } from "./classEvidence.js";
+import { createDbStore, ensureRateLimitsTable } from "./dbRateLimit.js";
 import { createRateLimiter } from "./rateLimit.js";
 import { deleteRecordingFromDrive, extractDriveFileId, isGoogleDriveConfigured, uploadRecordingToDrive } from "./googleDrive.js";
 import {
@@ -381,11 +382,16 @@ const resumeUpload = multer({
 // its own (see the route below), so the quota is the thing worth bounding.
 // Deliberately generous: a human cannot meaningfully create a teacher's profile
 // faster than this, while a runaway loop or casual probing hits the wall.
+//
+// Counters go through MySQL rather than process memory. The app runs on several
+// Railway replicas, and an in-memory counter gave each replica its own budget,
+// so the real limit was that number multiplied by the replica count.
 const RESUME_PARSE_WINDOW_MS = Math.max(1, Number(process.env.RESUME_PARSE_RATE_WINDOW_MS) || 10 * 60 * 1000);
 const RESUME_PARSE_MAX = Math.max(1, Number(process.env.RESUME_PARSE_RATE_MAX) || 10);
 const limitResumeParsing = createRateLimiter({
   windowMs: RESUME_PARSE_WINDOW_MS,
   max: RESUME_PARSE_MAX,
+  store: createDbStore({ pool }),
   message: "Too many resumes uploaded. Wait a few minutes before trying again.",
 });
 
@@ -1385,6 +1391,10 @@ async function ensureAccountSetupInvitesTable() {
   `);
 }
 
+async function ensureApiRateLimitsTable() {
+  await ensureRateLimitsTable(pool);
+}
+
 async function ensurePasswordResetTokensTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -1684,6 +1694,7 @@ async function prepareDatabase() {
   await ensureUserPasswordChangedColumn();
   await ensureAccountSetupInvitesTable();
   await ensurePasswordResetTokensTable();
+  await ensureApiRateLimitsTable();
   await ensureUserDemographicsColumns();
   await refreshAllProfileCompletion();
   await ensureStudentContractRequestsTable();
