@@ -785,24 +785,6 @@ INSERT INTO `teacher_profiles` VALUES (20,67,'AI matching profile:\nTeaching sty
 UNLOCK TABLES;
 
 --
--- Table structure for table `api_rate_limits`
---
--- Shared rate limit counters (see backend/dbRateLimit.js). Also created at
--- startup by ensureApiRateLimitsTable(), so this entry is only needed for a
--- from-scratch restore of this dump.
-
-DROP TABLE IF EXISTS `api_rate_limits`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `api_rate_limits` (
-  `bucket_key` varchar(191) NOT NULL,
-  `window_start` bigint unsigned NOT NULL,
-  `hit_count` int unsigned NOT NULL DEFAULT '1',
-  PRIMARY KEY (`bucket_key`,`window_start`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
 -- Table structure for table `users`
 --
 
