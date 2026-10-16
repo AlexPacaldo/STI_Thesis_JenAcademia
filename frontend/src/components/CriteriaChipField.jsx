@@ -1,4 +1,5 @@
 import styles from "./CriteriaChipField.module.css";
+import { isSelectedValue } from "../utils/matchingCriteria.js";
 
 /**
  * One multi-select criteria field, rendered as checkbox chips.
@@ -19,18 +20,20 @@ export default function CriteriaChipField({
   emptyMessage,
   name,
   id,
+  prominent = false,
 }) {
   const selectedValues = Array.isArray(selected) ? selected : [];
-  const isSelected = (value) => selectedValues.includes(value);
 
   return (
     <fieldset className={styles.field} id={id}>
-      <legend className={styles.label}>{legend}</legend>
+      <legend className={prominent ? `${styles.label} ${styles.labelProminent}` : styles.label}>
+        {legend}
+      </legend>
       {hint ? <p className={styles.hint}>{hint}</p> : null}
       {options.length ? (
         <div className={styles.chips}>
           {options.map(([value, label]) => {
-            const active = isSelected(value);
+            const active = isSelectedValue(selectedValues, value);
             return (
               <label
                 key={value}

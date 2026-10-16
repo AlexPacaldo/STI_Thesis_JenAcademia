@@ -19,6 +19,12 @@
   color: var(--text, #1f2937);
 }
 
+/* For a field that heads a whole section rather than sitting inside a card, so
+   it reads at the same weight as the surrounding section headings. */
+.labelProminent {
+  font-size: 1.05em;
+}
+
 .hint {
   margin: 2px 0 8px;
   font-size: 0.8em;

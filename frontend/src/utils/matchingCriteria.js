@@ -140,6 +140,14 @@ export const pruneSelectionToCourses = (selected, options, selectedCourseNames) 
     return option ? optionAppliesToCourses(option, selectedCourseNames) : false;
   });
 
+/**
+ * Is `value` in `selected`? Compares as strings on both sides: DB ids arrive as
+ * numbers while the forms store them as strings, and a plain `includes()` would
+ * silently report "3" and 3 as different, leaving no chip highlighted.
+ */
+export const isSelectedValue = (selected, value) =>
+  (Array.isArray(selected) ? selected : []).some((item) => String(item) === String(value));
+
 /** Toggle one value in a multi-select array. */
 export const toggleValue = (selected, value) => {
   const current = Array.isArray(selected) ? selected : [];

@@ -2178,14 +2178,11 @@ export default function AdminDashboard() {
                 </div>
               </div>
               <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
-                <h3 style={{ margin: "0 0 8px 0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>Courses This Teacher Can Teach</h3>
-                <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
-                  Students can only be assigned to this teacher for the selected courses.
-                </p>
                 <CriteriaChipField
-                  legend="Courses this teacher can teach"
+                  legend="Courses This Teacher Can Teach"
                   hint="Students can only be assigned to this teacher for the selected courses."
-                  options={courses.map((course) => [course.course_id, course.course_name])}
+                  prominent
+                  options={courses.map((course) => [String(course.course_id), course.course_name])}
                   selected={tForm.courseIds}
                   onToggle={(courseId) => toggleTeacherCourse(courseId)}
                   emptyMessage={CRITERIA_EMPTY_MESSAGES.none}
