@@ -211,6 +211,34 @@ check(
   true
 );
 
+// ------------------------------------------------------------ global ceiling
+
+console.log("\n=== global ceiling ===");
+
+// The per-client limiter degrades behind an edge, because one browser can land
+// in several address buckets. A key that ignores the request entirely bounds
+// the shared resource directly and does not depend on client identification at
+// all, which is the property that makes it worth keeping.
+let rising = 0;
+const countingStore = {
+  name: "counting",
+  async hit() {
+    rising += 1;
+    return { count: rising, resetAt: 60_000 };
+  },
+};
+const sharedCeiling = createRateLimiter({
+  windowMs: 60_000,
+  max: 1,
+  store: countingStore,
+  keyFn: () => "all-clients",
+});
+
+check("first call passes", (await send(sharedCeiling, "9.9.9.9")).passed, true);
+check("second call is rejected", (await send(sharedCeiling, "9.9.9.9")).passed, false);
+check("a completely different address is still rejected", (await send(sharedCeiling, "8.8.8.8")).passed, false);
+check("and it answers 429", (await send(sharedCeiling, "8.8.8.8")).res.statusCode, 429);
+
 // -------------------------------------------------------------------- misc
 
 console.log("\n=== misc ===");

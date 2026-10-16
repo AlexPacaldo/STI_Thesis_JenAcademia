@@ -430,6 +430,43 @@ const limitResumeParsing = createRateLimiter({
   message: "Too many resumes uploaded. Wait a few minutes before trying again.",
 });
 
+// The per-client cap above is best effort. Railway sits behind an edge, and
+// the address Express unwinds to for a given browser varies between requests,
+// so one client lands in two or more buckets and its real allowance is the
+// per-bucket limit times that count. Measured in production: 9,9,8,8,7,7...
+//
+// Rather than guess at the proxy chain to recover a stable client identity -
+// and rather than trust a client-sendable header, which an attacker can forge
+// to mint unlimited buckets - cap the resource itself. Gemini quota is shared
+// by everyone, so a global ceiling bounds total spend no matter how badly
+// client identification degrades. Generous enough that normal staff use never
+// reaches it.
+const RESUME_PARSE_TOTAL_WINDOW_MS = Math.max(1, Number(process.env.RESUME_PARSE_RATE_TOTAL_WINDOW_MS) || 60 * 60 * 1000);
+const RESUME_PARSE_TOTAL_MAX = Math.max(1, Number(process.env.RESUME_PARSE_RATE_TOTAL_MAX) || 60);
+const limitResumeParsingTotal = createRateLimiter({
+  windowMs: RESUME_PARSE_TOTAL_WINDOW_MS,
+  max: RESUME_PARSE_TOTAL_MAX,
+  store: createDbStore({ pool }),
+  // One shared bucket for every caller, which is the entire point: it is not
+  // derived from the request at all.
+  keyFn: () => "all-clients",
+  message: "Resume uploads are temporarily paused for everyone. Try again shortly.",
+});
+
+// Login has no rate limit at all today, so credentials can be guessed without
+// bound (bcrypt makes each guess slow, not impossible). Keyed by address rather
+// than by the submitted email, since an attacker varies the email to spread
+// attempts. Deliberately high: a whole campus can share one NAT address, so
+// this must not lock out a morning of students signing in together.
+const LOGIN_WINDOW_MS = Math.max(1, Number(process.env.LOGIN_RATE_WINDOW_MS) || 15 * 60 * 1000);
+const LOGIN_MAX = Math.max(1, Number(process.env.LOGIN_RATE_MAX) || 100);
+const limitLoginAttempts = createRateLimiter({
+  windowMs: LOGIN_WINDOW_MS,
+  max: LOGIN_MAX,
+  store: createDbStore({ pool }),
+  message: "Too many sign-in attempts from this network. Wait a few minutes and try again.",
+});
+
 const chatStreamClients = new Map();
 const chatPresenceUsers = new Map();
 const calendarStreamClients = new Map();
@@ -2434,7 +2471,7 @@ app.get("/api/trial/availability", async (req, res) => {
 });
 
 // ---------- (existing) login kept the same ----------
-app.post("/api/login", async (req, res) => {
+app.post("/api/login", limitLoginAttempts, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -3055,7 +3092,7 @@ app.post("/api/admin/recommend-teacher", async (req, res) => {
 // !! above to bound the cost. What it returns is only what Gemini extracts from
 // !! the caller's own upload, so there is no data to steal - the exposure is
 // !! purely resource consumption, which is what the limiter caps.
-app.post("/api/admin/parse-resume", limitResumeParsing, (req, res, next) =>
+app.post("/api/admin/parse-resume", limitResumeParsingTotal, limitResumeParsing, (req, res, next) =>
   // Multer raises filter/size errors in middleware, before the route body runs,
   // and there is no global error handler, so without this wrapper they would
   // surface as Express's default HTML error page.
