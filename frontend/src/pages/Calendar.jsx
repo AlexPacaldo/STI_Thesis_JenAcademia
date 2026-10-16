@@ -4,6 +4,14 @@ import axios from "axios";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
 import { PROFICIENCY_LEVEL_OPTIONS, formatProficiencyLevel } from "../utils/proficiencyLevels.js";
+import {
+  createEmptyCriteria,
+  filterOptionsForCourses,
+  pruneSelectionToCourses,
+  STUDENT_CRITERIA_OPTIONS,
+  toggleValue,
+} from "../utils/matchingCriteria.js";
+import CriteriaChipField from "../components/CriteriaChipField.jsx";
 import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/studentSchedule.module.css";
 import { API_BASE_URL } from "../utils/api.js";
@@ -21,58 +29,6 @@ import {
 
 // API base
 const API = API_BASE_URL;
-
-const AI_CRITERIA_OPTIONS = {
-  learningGoal: [
-    ["school-support", "School Support", ["Online English", "OPIc"]],
-    ["conversation", "Conversation", ["Conversational English", "Travel English", "Online English", "OPIc"]],
-    ["exam-prep", "Exam Preparation", ["IELTS", "TOEIC", "OPIc"]],
-    ["business", "Business English", ["Business English", "Job Interview", "TOEIC"]],
-    ["confidence", "Confidence Building", ["Conversational English", "Travel English", "Online English"]],
-    ["interview-readiness", "Interview Readiness", ["Job Interview", "Business English"]],
-    ["news-discussion", "News Discussion", ["News", "Conversational English"]],
-  ],
-  learningStyle: [
-    ["", "Select Learning Style"],
-    ["structured", "Structured Lessons"],
-    ["conversational", "Conversational Practice"],
-    ["visual", "Visual Activities"],
-    ["interactive", "Interactive Activities"],
-    ["independent", "Independent Practice"],
-  ],
-  personality: [
-    ["", "Select Personality"],
-    ["shy", "Shy / Needs Encouragement"],
-    ["outgoing", "Outgoing"],
-    ["focused", "Focused"],
-    ["energetic", "Energetic"],
-    ["anxious", "Anxious / Needs Patience"],
-  ],
-  focusArea: [
-    ["speaking", "Speaking", ["Conversational English", "Travel English", "Online English", "OPIc", "Job Interview"]],
-    ["grammar", "Grammar", ["Online English", "IELTS", "TOEIC", "Business English"]],
-    ["reading", "Reading", ["IELTS", "TOEIC", "News", "Online English"]],
-    ["writing", "Writing", ["IELTS", "Business English", "Online English", "Job Interview"]],
-    ["listening", "Listening", ["IELTS", "TOEIC", "Conversational English", "OPIc", "News"]],
-    ["vocabulary", "Vocabulary", ["Business English", "Travel English", "News", "TOEIC", "IELTS"]],
-    ["pronunciation", "Pronunciation", ["Conversational English", "OPIc", "Travel English", "Online English"]],
-    ["interview-answers", "Interview Answers", ["Job Interview", "Business English"]],
-  ],
-  pace: [
-    ["", "Select Pace"],
-    ["slow", "Slow and Guided"],
-    ["balanced", "Balanced"],
-    ["fast", "Fast-paced"],
-    ["review-heavy", "Review-heavy"],
-  ],
-};
-
-const optionAppliesToCourses = (option, selectedCourseNames) => {
-  const allowedCourses = option[2] || [];
-  if (!selectedCourseNames.length) return false;
-  if (!allowedCourses.length) return true;
-  return allowedCourses.some((courseName) => selectedCourseNames.includes(courseName));
-};
 
 // Helper to format date as YYYY-MM-DD in local timezone
 const fmtDate = (d) => {
@@ -640,13 +596,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [contractClassCount, setContractClassCount] = useState("10");
   const [contractClassDuration, setContractClassDuration] = useState("50");
   const [contractTrialNotes, setContractTrialNotes] = useState("");
-  const [contractAiCriteria, setContractAiCriteria] = useState({
-    learningGoal: [],
-    learningStyle: "",
-    personality: "",
-    focusArea: [],
-    pace: "",
-  });
+  // Every criterion is multi-select. Matches the Create Student form and the
+  // vocabulary the matcher compares against.
+  const [contractAiCriteria, setContractAiCriteria] = useState(() => createEmptyCriteria());
   const [contractRequestError, setContractRequestError] = useState("");
   const [contractRequests, setContractRequests] = useState([]);
   const [isSubmittingContractRequest, setIsSubmittingContractRequest] = useState(false);
@@ -828,11 +780,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         .trim()
     : "";
   const contractLearningGoalOptions = useMemo(
-    () => AI_CRITERIA_OPTIONS.learningGoal.filter((option) => optionAppliesToCourses(option, selectedContractCourseNames)),
+    () => filterOptionsForCourses(STUDENT_CRITERIA_OPTIONS.learningGoal, selectedContractCourseNames),
     [selectedContractCourseNames]
   );
   const contractFocusAreaOptions = useMemo(
-    () => AI_CRITERIA_OPTIONS.focusArea.filter((option) => optionAppliesToCourses(option, selectedContractCourseNames)),
+    () => filterOptionsForCourses(STUDENT_CRITERIA_OPTIONS.focusArea, selectedContractCourseNames),
     [selectedContractCourseNames]
   );
 
@@ -3514,35 +3466,28 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     const selectedCourseNames = courses
       .filter((course) => String(course.course_id) === String(courseId))
       .map((course) => course.course_name);
-    const filterValues = (key, options) => {
-      const selected = Array.isArray(contractAiCriteria[key]) ? contractAiCriteria[key] : [];
-      return selected.filter((value) => {
-        const option = options.find(([optionValue]) => optionValue === value);
-        return option ? optionAppliesToCourses(option, selectedCourseNames) : false;
-      });
-    };
-
     setContractCourseId(courseId);
+    // Keep only the selections that still apply to the newly chosen course.
     setContractAiCriteria((current) => ({
       ...current,
-      learningGoal: filterValues("learningGoal", AI_CRITERIA_OPTIONS.learningGoal),
-      focusArea: filterValues("focusArea", AI_CRITERIA_OPTIONS.focusArea),
+      learningGoal: pruneSelectionToCourses(
+        current?.learningGoal,
+        STUDENT_CRITERIA_OPTIONS.learningGoal,
+        selectedCourseNames
+      ),
+      focusArea: pruneSelectionToCourses(
+        current?.focusArea,
+        STUDENT_CRITERIA_OPTIONS.focusArea,
+        selectedCourseNames
+      ),
     }));
   };
 
-  const updateContractAiCriterion = (key, value) => {
-    setContractAiCriteria((current) => ({ ...current, [key]: value }));
-  };
-
   const toggleContractAiCriterionValue = (key, value) => {
-    setContractAiCriteria((current) => {
-      const selected = Array.isArray(current[key]) ? current[key] : [];
-      const exists = selected.includes(value);
-      return {
-        ...current,
-        [key]: exists ? selected.filter((item) => item !== value) : [...selected, value],
-      };
-    });
+    setContractAiCriteria((current) => ({
+      ...current,
+      [key]: toggleValue(current?.[key], value),
+    }));
   };
 
   const submitStudentBooking = async () => {
@@ -6177,78 +6122,43 @@ $5padding: 20,
                                 ))}
                               </select>
                             </div>
-                            <div>
-                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Learning Goal</label>
-                              <div style={{ display: "grid", gap: 6 }}>
-                                {contractLearningGoalOptions.length ? contractLearningGoalOptions.map(([value, label]) => (
-                                  <label key={value} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", border: "1px solid #e5e7eb", borderRadius: 8, background: contractAiCriteria.learningGoal.includes(value) ? "#f0fdf4" : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
-                                    <input
-                                      type="checkbox"
-                                      checked={contractAiCriteria.learningGoal.includes(value)}
-                                      onChange={() => toggleContractAiCriterionValue("learningGoal", value)}
-                                      style={{ width: "auto" }}
-                                    />
-                                    <span>{label}</span>
-                                  </label>
-                                )) : (
-                                  <div style={{ color: "#6b7280", fontSize: 12 }}>Select a course to show matching goals.</div>
-                                )}
-                              </div>
-                            </div>
-                            <div>
-                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Learning Style</label>
-                              <select
-                                value={contractAiCriteria.learningStyle}
-                                onChange={(e) => updateContractAiCriterion("learningStyle", e.target.value)}
-                                style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit" }}
-                              >
-                                {AI_CRITERIA_OPTIONS.learningStyle.map(([value, label]) => (
-                                  <option key={value} value={value}>{label}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Student Personality</label>
-                              <select
-                                value={contractAiCriteria.personality}
-                                onChange={(e) => updateContractAiCriterion("personality", e.target.value)}
-                                style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit" }}
-                              >
-                                {AI_CRITERIA_OPTIONS.personality.map(([value, label]) => (
-                                  <option key={value} value={value}>{label}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Focus Area</label>
-                              <div style={{ display: "grid", gap: 6 }}>
-                                {contractFocusAreaOptions.length ? contractFocusAreaOptions.map(([value, label]) => (
-                                  <label key={value} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", border: "1px solid #e5e7eb", borderRadius: 8, background: contractAiCriteria.focusArea.includes(value) ? "#f0fdf4" : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
-                                    <input
-                                      type="checkbox"
-                                      checked={contractAiCriteria.focusArea.includes(value)}
-                                      onChange={() => toggleContractAiCriterionValue("focusArea", value)}
-                                      style={{ width: "auto" }}
-                                    />
-                                    <span>{label}</span>
-                                  </label>
-                                )) : (
-                                  <div style={{ color: "#6b7280", fontSize: 12 }}>Select a course to show matching focus areas.</div>
-                                )}
-                              </div>
-                            </div>
-                            <div>
-                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Learning Pace</label>
-                              <select
-                                value={contractAiCriteria.pace}
-                                onChange={(e) => updateContractAiCriterion("pace", e.target.value)}
-                                style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit" }}
-                              >
-                                {AI_CRITERIA_OPTIONS.pace.map(([value, label]) => (
-                                  <option key={value} value={value}>{label}</option>
-                                ))}
-                              </select>
-                            </div>
+                            <CriteriaChipField
+                              legend="Learning Goal"
+                              options={contractLearningGoalOptions}
+                              selected={contractAiCriteria.learningGoal}
+                              onToggle={(value) => toggleContractAiCriterionValue("learningGoal", value)}
+                              emptyMessage="Select a course to show matching goals."
+                              name="contract-learning-goal"
+                            />
+                            <CriteriaChipField
+                              legend="Focus Area"
+                              options={contractFocusAreaOptions}
+                              selected={contractAiCriteria.focusArea}
+                              onToggle={(value) => toggleContractAiCriterionValue("focusArea", value)}
+                              emptyMessage="Select a course to show matching focus areas."
+                              name="contract-focus-area"
+                            />
+                            <CriteriaChipField
+                              legend="Learning Style"
+                              options={STUDENT_CRITERIA_OPTIONS.learningStyle}
+                              selected={contractAiCriteria.learningStyle}
+                              onToggle={(value) => toggleContractAiCriterionValue("learningStyle", value)}
+                              name="contract-learning-style"
+                            />
+                            <CriteriaChipField
+                              legend="Student Personality"
+                              options={STUDENT_CRITERIA_OPTIONS.personality}
+                              selected={contractAiCriteria.personality}
+                              onToggle={(value) => toggleContractAiCriterionValue("personality", value)}
+                              name="contract-personality"
+                            />
+                            <CriteriaChipField
+                              legend="Learning Pace"
+                              options={STUDENT_CRITERIA_OPTIONS.pace}
+                              selected={contractAiCriteria.pace}
+                              onToggle={(value) => toggleContractAiCriterionValue("pace", value)}
+                              name="contract-pace"
+                            />
                             <div>
                               <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Request Notes</label>
                               <textarea

@@ -3,7 +3,28 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import styles from "../assets/AdminDashboard.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
-import { PROFICIENCY_LEVEL_OPTIONS } from "../utils/proficiencyLevels.js";
+import {
+  computeProficiencyLevel,
+  createEmptyLevelScores,
+  formatComputedLevel,
+  LEVEL_EVALUATION_CRITERIA,
+  LEVEL_SCORE_LABEL_MAX,
+  LEVEL_SCORE_MAX,
+  LEVEL_SCORE_MIN,
+  LEVEL_SCORE_SCALE,
+} from "../utils/proficiencyEvaluation.js";
+import {
+  createEmptyCriteria,
+  CRITERIA_EMPTY_MESSAGES,
+  filterOptionsForCourses,
+  pruneSelectionToCourses,
+  STUDENT_CRITERIA_HINTS,
+  STUDENT_CRITERIA_OPTIONS,
+  TEACHER_CRITERIA_HINTS,
+  TEACHER_CRITERIA_OPTIONS,
+  toggleValue,
+} from "../utils/matchingCriteria.js";
+import CriteriaChipField from "../components/CriteriaChipField.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import ModalPortal from "../utils/ModalPortal.jsx";
 import Calendar from "./Calendar.jsx"; // admin calendar view
@@ -46,95 +67,6 @@ const COUNTRY_OPTIONS = [
   "United States",
   "Vietnam",
 ];
-
-const AI_CRITERIA_OPTIONS = {
-  learningGoal: [
-    ["school-support", "School Support", ["Online English", "OPIc"]],
-    ["conversation", "Conversation", ["Conversational English", "Travel English", "Online English", "OPIc"]],
-    ["exam-prep", "Exam Preparation", ["IELTS", "TOEIC", "OPIc"]],
-    ["business", "Business English", ["Business English", "Job Interview", "TOEIC"]],
-    ["confidence", "Confidence Building", ["Conversational English", "Travel English", "Online English"]],
-    ["interview-readiness", "Interview Readiness", ["Job Interview", "Business English"]],
-    ["news-discussion", "News Discussion", ["News", "Conversational English"]],
-  ],
-  learningStyle: [
-    ["", "Select Learning Style"],
-    ["structured", "Structured Lessons"],
-    ["conversational", "Conversational Practice"],
-    ["visual", "Visual Activities"],
-    ["interactive", "Interactive Activities"],
-    ["independent", "Independent Practice"],
-  ],
-  personality: [
-    ["", "Select Personality"],
-    ["shy", "Shy / Needs Encouragement"],
-    ["outgoing", "Outgoing"],
-    ["focused", "Focused"],
-    ["energetic", "Energetic"],
-    ["anxious", "Anxious / Needs Patience"],
-  ],
-  focusArea: [
-    ["speaking", "Speaking", ["Conversational English", "Travel English", "Online English", "OPIc", "Job Interview"]],
-    ["grammar", "Grammar", ["Online English", "IELTS", "TOEIC", "Business English"]],
-    ["reading", "Reading", ["IELTS", "TOEIC", "News", "Online English"]],
-    ["writing", "Writing", ["IELTS", "Business English", "Online English", "Job Interview"]],
-    ["listening", "Listening", ["IELTS", "TOEIC", "Conversational English", "OPIc", "News"]],
-    ["vocabulary", "Vocabulary", ["Business English", "Travel English", "News", "TOEIC", "IELTS"]],
-    ["pronunciation", "Pronunciation", ["Conversational English", "OPIc", "Travel English", "Online English"]],
-    ["interview-answers", "Interview Answers", ["Job Interview", "Business English"]],
-  ],
-  pace: [
-    ["", "Select Pace"],
-    ["slow", "Slow and Guided"],
-    ["balanced", "Balanced"],
-    ["fast", "Fast-paced"],
-    ["review-heavy", "Review-heavy"],
-  ],
-};
-
-const TEACHER_AI_OPTIONS = {
-  specialization: [
-    ["speaking and conversation", "Speaking and Conversation", ["Conversational English", "Travel English", "Online English", "OPIc"]],
-    ["grammar and writing", "Grammar and Writing", ["Online English", "IELTS", "TOEIC", "Business English"]],
-    ["reading and vocabulary", "Reading and Vocabulary", ["IELTS", "TOEIC", "News", "Online English"]],
-    ["listening and pronunciation", "Listening and Pronunciation", ["IELTS", "TOEIC", "Conversational English", "OPIc", "Travel English"]],
-    ["exam preparation", "Exam Preparation", ["IELTS", "TOEIC", "OPIc"]],
-    ["business english", "Business English", ["Business English", "Job Interview", "TOEIC"]],
-    ["job interview coaching", "Job Interview Coaching", ["Job Interview", "Business English"]],
-    ["news discussion", "News Discussion", ["News", "Conversational English"]],
-    ["kids and novice english", "Kids and Novice English", ["Online English"]],
-  ],
-  teachingStyle: [
-    ["", "Select Teaching Style"],
-    ["structured", "Structured"],
-    ["conversational", "Conversational"],
-    ["visual", "Visual"],
-    ["interactive", "Interactive"],
-    ["independent", "Independent Practice"],
-  ],
-  personalityStrength: [
-    ["", "Select Teacher Strength"],
-    ["patient and supportive", "Patient and Supportive"],
-    ["energetic and engaging", "Energetic and Engaging"],
-    ["calm and encouraging", "Calm and Encouraging"],
-    ["strict and focused", "Strict and Focused"],
-    ["friendly and confidence-building", "Friendly and Confidence-building"],
-  ],
-  idealStudentPace: [
-    ["", "Select Best Pace"],
-    ["slow", "Slow and Guided"],
-    ["balanced", "Balanced"],
-    ["fast", "Fast-paced"],
-    ["review-heavy", "Review-heavy"],
-  ],
-};
-
-const optionAppliesToCourses = (option, selectedCourseNames) => {
-  const allowedCourses = option[2] || [];
-  if (!selectedCourseNames.length) return false;
-  if (!allowedCourses.length) return true;
-  return allowedCourses.some((courseName) => selectedCourseNames.includes(courseName));
-};
 
 // Helper to safely parse date strings
 const parseDate = (dateString) => {
@@ -350,7 +282,8 @@ export default function AdminDashboard() {
   const [teachers, setTeachers] = useState([]);
   const [requests, setRequests] = useState([]); // reschedule requests
 
-  // create-teacher form
+  // create-teacher form. Every AI matching attribute is multi-select so it lines
+  // up with the student criteria the matcher compares it against.
   const [tForm, setTForm] = useState({
     firstName: "",
     lastName: "",
@@ -359,9 +292,9 @@ export default function AdminDashboard() {
     birthDate: "",
     specialization: [],
     experienceYears: "",
-    teachingStyle: "",
-    personalityStrength: "",
-    idealStudentPace: "",
+    teachingStyle: [],
+    personalityStrength: [],
+    idealStudentPace: [],
     bio: "",
     courseIds: [],
   });
@@ -373,19 +306,19 @@ export default function AdminDashboard() {
     country: "",
     birthDate: "",
     trialNotes: "",
-    level: "",
     teacherId: "",
     courseId: "",
     classesAvailed: "",
     classDuration: "50",
-    aiCriteria: {
-      learningGoal: [],
-      learningStyle: "",
-      personality: "",
-      focusArea: [],
-      pace: "",
-    },
+    // The admin scores the 5 level-evaluation criteria; the proficiency level is
+    // derived from them (see computeProficiencyLevel). There is no hand-picked
+    // `level` in state, so the scores stay the single source of truth.
+    levelScores: createEmptyLevelScores(),
+    // Every criterion is multi-select so it mirrors the teacher's matching
+    // profile. See utils/matchingCriteria.js.
+    aiCriteria: createEmptyCriteria(),
   });
+  const [showLevelHelp, setShowLevelHelp] = useState(false);
   const [courses, setCourses] = useState([]);
   const [teacherCourses, setTeacherCourses] = useState([]);
   const [teacherCourseDrafts, setTeacherCourseDrafts] = useState({});
@@ -439,15 +372,30 @@ export default function AdminDashboard() {
   const selectedTeacherCourseNames = courses
     .filter((course) => tForm.courseIds.includes(String(course.course_id)))
     .map((course) => course.course_name);
-  const teacherSpecializationOptions = TEACHER_AI_OPTIONS.specialization
-    .filter((option) => optionAppliesToCourses(option, selectedTeacherCourseNames));
+  const teacherSpecializationOptions = filterOptionsForCourses(
+    TEACHER_CRITERIA_OPTIONS.specialization,
+    selectedTeacherCourseNames
+  );
   const selectedStudentCourseNames = courses
     .filter((course) => String(course.course_id) === String(sForm.courseId))
     .map((course) => course.course_name);
-  const studentLearningGoalOptions = AI_CRITERIA_OPTIONS.learningGoal
-    .filter((option) => optionAppliesToCourses(option, selectedStudentCourseNames));
-  const studentFocusAreaOptions = AI_CRITERIA_OPTIONS.focusArea
-    .filter((option) => optionAppliesToCourses(option, selectedStudentCourseNames));
+  const studentLearningGoalOptions = filterOptionsForCourses(
+    STUDENT_CRITERIA_OPTIONS.learningGoal,
+    selectedStudentCourseNames
+  );
+  const studentFocusAreaOptions = filterOptionsForCourses(
+    STUDENT_CRITERIA_OPTIONS.focusArea,
+    selectedStudentCourseNames
+  );
+  // The level-evaluation scores are the single source of truth for the student's
+  // proficiency level; the level is derived, never stored or picked by hand.
+  const computedLevel = useMemo(
+    () => computeProficiencyLevel(sForm.levelScores),
+    [sForm.levelScores]
+  );
+  const missingLevelCriteria = LEVEL_EVALUATION_CRITERIA.filter(
+    ({ key }) => sForm.levelScores?.[key] == null
+  );
 
   // ---- role gate (admin only) ----
    useEffect(() => {
@@ -828,9 +776,9 @@ export default function AdminDashboard() {
         birthDate: "",
         specialization: [],
         experienceYears: "",
-        teachingStyle: "",
-        personalityStrength: "",
-        idealStudentPace: "",
+        teachingStyle: [],
+        personalityStrength: [],
+        idealStudentPace: [],
         bio: "",
         courseIds: [],
       });
@@ -847,6 +795,8 @@ export default function AdminDashboard() {
   async function createStudent(payloadSource = sForm) {
     setLoading(true);
     try {
+      // `levelScores` travels in the snapshot payload; the backend recomputes the
+      // level from it and ignores anything the client claims the level is.
       const payload = { ...payloadSource, role: "student", password: "student" };
       const response = await axios.post(`${API}/api/admin/users`, payload); // creates student
       if (response.data?.inviteEmailSent) {
@@ -861,20 +811,15 @@ export default function AdminDashboard() {
         country: "",
         birthDate: "",
         trialNotes: "",
-        level: "",
+        levelScores: createEmptyLevelScores(),
         teacherId: "",
         courseId: "",
         classesAvailed: "",
         classDuration: "50",
-        aiCriteria: {
-          learningGoal: [],
-          learningStyle: "",
-          personality: "",
-          focusArea: [],
-          pace: "",
-        },
+        aiCriteria: createEmptyCriteria(),
       });
       setAiRecommendation(null);
+      setShowLevelHelp(false);
       loadUsers();
     } catch (e) {
       console.error(e);
@@ -926,41 +871,47 @@ export default function AdminDashboard() {
     }
   }
 
-  function updateAiCriterion(key, value) {
+  // Every student criterion is multi-select now, so one toggle handler covers
+  // all five. The AI recommendation is invalidated because every criterion feeds
+  // the matcher.
+  function toggleAiCriterionValue(key, value) {
     setSForm((prev) => ({
       ...prev,
       aiCriteria: {
         ...prev.aiCriteria,
-        [key]: value,
+        [key]: toggleValue(prev.aiCriteria?.[key], value),
       },
     }));
     setAiRecommendation(null);
   }
 
-  function toggleAiCriterionValue(key, value) {
+  // Scoring a level-evaluation criterion. The level itself is derived from these
+  // scores via computedLevel, so nothing else has to be updated here. The AI
+  // recommendation is invalidated because the computed level feeds the matcher.
+  function updateLevelScore(key, value) {
     setSForm((prev) => {
-      const selected = Array.isArray(prev.aiCriteria[key]) ? prev.aiCriteria[key] : [];
-      const exists = selected.includes(value);
-      return {
-        ...prev,
-        aiCriteria: {
-          ...prev.aiCriteria,
-          [key]: exists ? selected.filter((item) => item !== value) : [...selected, value],
-        },
-      };
+      const current = prev.levelScores || {};
+      if (current[key] === value) return prev;
+      return { ...prev, levelScores: { ...current, [key]: value } };
     });
     setAiRecommendation(null);
   }
 
   function toggleTeacherSpecialization(value) {
-    setTForm((prev) => {
-      const selected = Array.isArray(prev.specialization) ? prev.specialization : [];
-      const exists = selected.includes(value);
-      return {
-        ...prev,
-        specialization: exists ? selected.filter((item) => item !== value) : [...selected, value],
-      };
-    });
+    setTForm((prev) => ({
+      ...prev,
+      specialization: toggleValue(prev.specialization, value),
+    }));
+  }
+
+  // Multi-select handler for the teacher's other AI matching attributes
+  // (teaching style, teacher strength, best student pace). These are not
+  // course-scoped, so unlike specialization they are never pruned.
+  function toggleTeacherCriteria(field, value) {
+    setTForm((prev) => ({
+      ...prev,
+      [field]: toggleValue(prev[field], value),
+    }));
   }
 
   function toggleTeacherCourse(courseId) {
@@ -976,10 +927,12 @@ export default function AdminDashboard() {
       return {
         ...prev,
         courseIds: nextCourseIds,
-        specialization: prev.specialization.filter((value) => {
-          const option = TEACHER_AI_OPTIONS.specialization.find(([optionValue]) => optionValue === value);
-          return option ? optionAppliesToCourses(option, selectedCourseNames) : false;
-        }),
+        // Keep only the specialisations that still apply to the new course set.
+        specialization: pruneSelectionToCourses(
+          prev.specialization,
+          TEACHER_CRITERIA_OPTIONS.specialization,
+          selectedCourseNames
+        ),
       };
     });
   }
@@ -1037,8 +990,10 @@ export default function AdminDashboard() {
     const hasCriteria = Object.values(sForm.aiCriteria).some((value) => (
       Array.isArray(value) ? value.length > 0 : Boolean(value)
     ));
-    if (!sForm.trialNotes.trim() && !hasCriteria && !sForm.level) {
-      notify("Please add trial notes, choose a proficiency level, or choose matching criteria before analyzing.", "error");
+    // The level is computed from the 5 scores, so it only counts as an input
+    // once every criterion has been scored.
+    if (!sForm.trialNotes.trim() && !hasCriteria && !computedLevel) {
+      notify("Please add trial notes, score the level evaluation, or choose matching criteria before analyzing.", "error");
       return;
     }
 
@@ -1048,7 +1003,7 @@ export default function AdminDashboard() {
         trialNotes: sForm.trialNotes,
         criteria: sForm.aiCriteria,
         courseId: sForm.courseId,
-        proficiencyLevel: sForm.level,
+        proficiencyLevel: computedLevel?.level || "",
         teacherId: sForm.teacherId,
       });
       const teacher = r.data?.teacher;
@@ -1546,22 +1501,25 @@ export default function AdminDashboard() {
     const selectedCourseNames = courses
       .filter((course) => String(course.course_id) === String(courseId))
       .map((course) => course.course_name);
-    const filterValues = (key, options) => {
-      const selected = Array.isArray(sForm.aiCriteria[key]) ? sForm.aiCriteria[key] : [];
-      return selected.filter((value) => {
-        const option = options.find(([optionValue]) => optionValue === value);
-        return option ? optionAppliesToCourses(option, selectedCourseNames) : false;
-      });
-    };
 
     setSForm({
       ...sForm,
       courseId,
       teacherId: currentTeacherCanTeach ? sForm.teacherId : "",
+      // Drop any learning goal / focus area that no longer applies to the new
+      // course, rather than leaving a stale value that cannot be matched.
       aiCriteria: {
         ...sForm.aiCriteria,
-        learningGoal: filterValues("learningGoal", AI_CRITERIA_OPTIONS.learningGoal),
-        focusArea: filterValues("focusArea", AI_CRITERIA_OPTIONS.focusArea),
+        learningGoal: pruneSelectionToCourses(
+          sForm.aiCriteria?.learningGoal,
+          STUDENT_CRITERIA_OPTIONS.learningGoal,
+          selectedCourseNames
+        ),
+        focusArea: pruneSelectionToCourses(
+          sForm.aiCriteria?.focusArea,
+          STUDENT_CRITERIA_OPTIONS.focusArea,
+          selectedCourseNames
+        ),
       },
     });
     setAiRecommendation(null);
@@ -1585,6 +1543,12 @@ export default function AdminDashboard() {
     if (e.currentTarget && !e.currentTarget.reportValidity()) return;
     if (!sForm.courseId) {
       notify("Please select the student's course.", "error");
+      return;
+    }
+    // All 5 level-evaluation criteria are required; the level is computed from
+    // them, so a partial rubric cannot produce a level to store.
+    if (!computedLevel) {
+      notify("Please score all 5 level evaluation criteria.", "error");
       return;
     }
     openAdminConfirm({
@@ -1765,9 +1729,13 @@ export default function AdminDashboard() {
     if (adminConfirm.action === "create_student") {
       const course = courses.find((item) => String(item.course_id) === String(payload.courseId));
       const teacher = teachers.find((item) => String(item.user_id) === String(payload.teacherId));
+      // Recomputed from the snapshot's scores rather than read off the live form,
+      // so the summary matches what will actually be stored.
+      const levelSummary = computeProficiencyLevel(payload.levelScores);
       return [
         `Name: ${payload.firstName || ""} ${payload.lastName || ""}`.trim(),
         `Course: ${course?.course_name || "Not set"}`,
+        `Level: ${levelSummary ? formatComputedLevel(levelSummary.level) : "Not scored"}`,
         `Teacher: ${teacher ? `${teacher.first_name} ${teacher.last_name}` : "Not assigned"}`,
       ];
     }
@@ -2214,92 +2182,71 @@ export default function AdminDashboard() {
                 <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
                   Students can only be assigned to this teacher for the selected courses.
                 </p>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
-                  {courses.map((course) => (
-                    <label
-                      key={course.course_id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "10px 12px",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 10,
-                        background: tForm.courseIds.includes(String(course.course_id)) ? "#f0fdf4" : "#fff",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={tForm.courseIds.includes(String(course.course_id))}
-                        onChange={() => toggleTeacherCourse(course.course_id)}
-                        style={{ width: "auto" }}
-                      />
-                      <span>{course.course_name}</span>
-                    </label>
-                  ))}
-                </div>
+                <CriteriaChipField
+                  legend="Courses this teacher can teach"
+                  hint="Students can only be assigned to this teacher for the selected courses."
+                  options={courses.map((course) => [course.course_id, course.course_name])}
+                  selected={tForm.courseIds}
+                  onToggle={(courseId) => toggleTeacherCourse(courseId)}
+                  emptyMessage={CRITERIA_EMPTY_MESSAGES.none}
+                  name="teacher-course"
+                />
               </div>
               <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
-                <div style={{ display: "flex", alignItems: "center", marginBottom: "8px" }}>
-                  <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>AI Matching Profile</h3>
-                </div>
-                <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
-                  These details help the AI match this teacher with students based on the student's trial notes and selected criteria.
-                </p>
-                <div className={styles.grid2}>
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <label>Specialization</label>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "8px", marginTop: "6px" }}>
-                      {teacherSpecializationOptions.length ? teacherSpecializationOptions.map(([value, label]) => (
-                        <label
-                          key={value}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            padding: "9px 10px",
-                            border: "1px solid #e5e7eb",
-                            borderRadius: 8,
-                            background: tForm.specialization.includes(value) ? "#f0fdf4" : "#fff",
-                            cursor: "pointer",
-                            fontWeight: 600,
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={tForm.specialization.includes(value)}
-                            onChange={() => toggleTeacherSpecialization(value)}
-                            style={{ width: "auto" }}
-                          />
-                          <span>{label}</span>
-                        </label>
-                      )) : (
-                        <p style={{ margin: 0, color: "#777", fontSize: "0.9em" }}>Select at least one course to show matching specializations.</p>
-                      )}
+                <div className={styles.criteriaCard}>
+                  <div className={styles.criteriaCardHead}>
+                    <h3 className={styles.criteriaCardTitle}>AI Matching Profile</h3>
+                  </div>
+                  <p className={styles.criteriaCardIntro}>
+                    These are the details the matcher compares against each student's criteria. Pick everything that applies - the more complete this profile is, the better the match.
+                  </p>
+                  <div className={styles.criteriaGrid}>
+                    <CriteriaChipField
+                      legend="Specialization"
+                      hint={TEACHER_CRITERIA_HINTS.specialization}
+                      options={teacherSpecializationOptions}
+                      selected={tForm.specialization}
+                      onToggle={toggleTeacherSpecialization}
+                      emptyMessage={CRITERIA_EMPTY_MESSAGES.noCourse}
+                      name="teacher-specialization"
+                    />
+                    <CriteriaChipField
+                      legend="Teaching Style"
+                      hint={TEACHER_CRITERIA_HINTS.teachingStyle}
+                      options={TEACHER_CRITERIA_OPTIONS.teachingStyle}
+                      selected={tForm.teachingStyle}
+                      onToggle={(value) => toggleTeacherCriteria("teachingStyle", value)}
+                      name="teacher-teaching-style"
+                    />
+                    <CriteriaChipField
+                      legend="Teacher Strength"
+                      hint={TEACHER_CRITERIA_HINTS.personalityStrength}
+                      options={TEACHER_CRITERIA_OPTIONS.personalityStrength}
+                      selected={tForm.personalityStrength}
+                      onToggle={(value) => toggleTeacherCriteria("personalityStrength", value)}
+                      name="teacher-strength"
+                    />
+                    <CriteriaChipField
+                      legend="Best Student Pace"
+                      hint={TEACHER_CRITERIA_HINTS.idealStudentPace}
+                      options={TEACHER_CRITERIA_OPTIONS.idealStudentPace}
+                      selected={tForm.idealStudentPace}
+                      onToggle={(value) => toggleTeacherCriteria("idealStudentPace", value)}
+                      name="student-pace"
+                    />
+                    <div>
+                      <label htmlFor="teacher-experience-years">Experience Years</label>
+                      <input
+                        id="teacher-experience-years"
+                        type="number"
+                        min="0"
+                        value={tForm.experienceYears}
+                        onChange={(e)=>setTForm({...tForm, experienceYears:e.target.value})}
+                      />
+                      <p className={styles.criteriaFieldHint}>
+                        Weighted against the student's level - higher levels are matched with more experienced teachers.
+                      </p>
                     </div>
-                  </div>
-                  <div>
-                    <label>Experience Years</label>
-                    <input type="number" min="0" value={tForm.experienceYears} onChange={(e)=>setTForm({...tForm, experienceYears:e.target.value})} />
-                  </div>
-                  <div>
-                    <label>Teaching Style</label>
-                    <select value={tForm.teachingStyle} onChange={(e)=>setTForm({...tForm, teachingStyle:e.target.value})}>
-                      {TEACHER_AI_OPTIONS.teachingStyle.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label>Teacher Strength</label>
-                    <select value={tForm.personalityStrength} onChange={(e)=>setTForm({...tForm, personalityStrength:e.target.value})}>
-                      {TEACHER_AI_OPTIONS.personalityStrength.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label>Best Student Pace</label>
-                    <select value={tForm.idealStudentPace} onChange={(e)=>setTForm({...tForm, idealStudentPace:e.target.value})}>
-                      {TEACHER_AI_OPTIONS.idealStudentPace.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                    </select>
                   </div>
                 </div>
                 <div style={{ marginTop: "12px" }}>
@@ -2386,109 +2333,155 @@ export default function AdminDashboard() {
                   <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>Trial Class Assessment</h3>
                 </div>
                 <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
-                  Add trial notes, choose the student's proficiency level, and choose the learning criteria. The AI matcher will prioritize teachers below 2 active students, then choose the least-loaded teacher if everyone already has 2 or more.
+                  Score the student on the 5 level evaluation criteria below - the proficiency level is computed from those scores, so you no longer pick a level by hand. Then add trial notes and choose the learning criteria. The AI matcher will prioritize teachers below 2 active students, then choose the least-loaded teacher if everyone already has 2 or more.
                 </p>
-                <div className={styles.responsiveFormGrid} style={{ marginBottom: "16px" }}>
-                  <div>
-                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Proficiency Level</label>
-                    <select
-                      value={sForm.level}
-                      onChange={(e)=>setSForm({...sForm, level:e.target.value})}
-                      style={{
-                        width: "100%",
-                        padding: "10px",
-                        border: "1px solid #d0d0d0",
-                        borderRadius: "6px",
-                        fontFamily: "inherit",
-                        fontSize: "0.9em",
-                        background: "#fff"
-                      }}
+                <div className={styles.levelEvaluation}>
+                  <div className={styles.levelEvaluationHead}>
+                    <h4 className={styles.levelEvaluationTitle}>Level Evaluation</h4>
+                    <button
+                      type="button"
+                      className={styles.levelHelpToggle}
+                      onClick={() => setShowLevelHelp((open) => !open)}
+                      aria-expanded={showLevelHelp}
+                      aria-controls="level-evaluation-help"
                     >
-                      <option value="">Select Level</option>
-                      {PROFICIENCY_LEVEL_OPTIONS.map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </select>
+                      {showLevelHelp ? "Hide" : "How are levels determined?"}
+                    </button>
                   </div>
-                  <div>
-                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Learning Goal</label>
-                    <div className={styles.choiceGrid}>
-                      {studentLearningGoalOptions.length ? studentLearningGoalOptions.map(([value, label]) => (
-                        <label
-                          key={value}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            padding: "9px 10px",
-                            border: "1px solid #e5e7eb",
-                            borderRadius: 8,
-                            background: sForm.aiCriteria.learningGoal.includes(value) ? "#f0fdf4" : "#fff",
-                            cursor: "pointer",
-                            fontWeight: 600,
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={sForm.aiCriteria.learningGoal.includes(value)}
-                            onChange={() => toggleAiCriterionValue("learningGoal", value)}
-                            style={{ width: "auto" }}
-                          />
-                          <span>{label}</span>
-                        </label>
-                      )) : (
-                        <p style={{ margin: 0, color: "#777", fontSize: "0.9em" }}>Select a course to show matching goals.</p>
-                      )}
-                    </div>
+                  <p className={styles.levelEvaluationIntro}>
+                    Rate each criterion from {LEVEL_SCORE_MIN} (lowest) to {LEVEL_SCORE_LABEL_MAX}.
+                  </p>
+                  <div id="level-evaluation-help" hidden={!showLevelHelp} className={styles.levelHelpPanel}>
+                    <p>Levels are worked out automatically from the five scores, in this order:</p>
+                    <ul>
+                      <li>
+                        <strong>Novice</strong> - any of Reading &amp; Comprehension, Structure,
+                        Sentence / Grammar or Vocabulary is scored 1. Good pronunciation alone
+                        does not lift a student out of Novice.
+                      </li>
+                      <li>
+                        <strong>Advanced</strong> - all five criteria score 4 or higher
+                        <em>and</em> the average is 4.5 or above.
+                      </li>
+                      <li>
+                        <strong>Intermediate High</strong> - all five criteria score 3 or higher
+                        <em>and</em> the average is 3.5 or above. No 2s allowed.
+                      </li>
+                      <li>
+                        <strong>Intermediate Mid</strong> - all five criteria score 3 or higher,
+                        but the average has not reached 3.5 yet.
+                      </li>
+                      <li>
+                        <strong>Intermediate Mid or Low</strong> - when at least one criterion is a
+                        2, the average decides: 2.8 or above is Intermediate Mid, anything lower
+                        is Intermediate Low.
+                      </li>
+                    </ul>
                   </div>
-                  <div>
-                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Learning Style</label>
-                    <select value={sForm.aiCriteria.learningStyle} onChange={(e)=>updateAiCriterion("learningStyle", e.target.value)} style={{ width: "100%", padding: "10px", border: "1px solid #d0d0d0", borderRadius: "6px", fontFamily: "inherit", fontSize: "0.9em", background: "#fff" }}>
-                      {AI_CRITERIA_OPTIONS.learningStyle.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                    </select>
+                  <div className={styles.levelScoreRows}>
+                    {LEVEL_EVALUATION_CRITERIA.map((criterion) => {
+                      const selected = sForm.levelScores?.[criterion.key] ?? null;
+                      return (
+                        <fieldset key={criterion.key} className={styles.levelScoreField}>
+                          <legend className={styles.levelScoreLabel}>{criterion.label}</legend>
+                          <p className={styles.levelScoreHint}>{criterion.hint}</p>
+                          <div className={styles.levelScoreScale}>
+                            {LEVEL_SCORE_SCALE.map((score) => {
+                              const isActive = selected === score;
+                              return (
+                                <label
+                                  key={score}
+                                  className={`${styles.levelScoreOption} ${isActive ? styles.levelScoreOptionActive : ""}`}
+                                >
+                                  <input
+                                    type="radio"
+                                    name={`level-score-${criterion.key}`}
+                                    value={score}
+                                    checked={isActive}
+                                    onChange={() => updateLevelScore(criterion.key, score)}
+                                    className={styles.levelScoreInput}
+                                  />
+                                  <span aria-hidden="true">{score}</span>
+                                  <span className={styles.srOnly}>{`${criterion.label}: ${score} out of ${LEVEL_SCORE_MAX}`}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </fieldset>
+                      );
+                    })}
                   </div>
-                  <div>
-                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Student Personality</label>
-                    <select value={sForm.aiCriteria.personality} onChange={(e)=>updateAiCriterion("personality", e.target.value)} style={{ width: "100%", padding: "10px", border: "1px solid #d0d0d0", borderRadius: "6px", fontFamily: "inherit", fontSize: "0.9em", background: "#fff" }}>
-                      {AI_CRITERIA_OPTIONS.personality.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                    </select>
+                  <div
+                    className={`${styles.levelResult} ${computedLevel ? styles.levelResultReady : ""}`}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <span className={styles.levelResultLabel}>Computed Proficiency Level</span>
+                    {computedLevel ? (
+                      <>
+                        <span className={styles.levelResultBadge}>{formatComputedLevel(computedLevel.level)}</span>
+                        <span className={styles.levelResultReason}>{computedLevel.reason}</span>
+                      </>
+                    ) : (
+                      <span className={styles.levelResultEmpty}>
+                        Score all 5 criteria to see the level
+                        {missingLevelCriteria.length
+                          ? ` - ${missingLevelCriteria.length} still to score`
+                          : ""}
+                      </span>
+                    )}
                   </div>
-                  <div>
-                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Focus Area</label>
-                    <div className={styles.choiceGrid}>
-                      {studentFocusAreaOptions.length ? studentFocusAreaOptions.map(([value, label]) => (
-                        <label
-                          key={value}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            padding: "9px 10px",
-                            border: "1px solid #e5e7eb",
-                            borderRadius: 8,
-                            background: sForm.aiCriteria.focusArea.includes(value) ? "#f0fdf4" : "#fff",
-                            cursor: "pointer",
-                            fontWeight: 600,
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={sForm.aiCriteria.focusArea.includes(value)}
-                            onChange={() => toggleAiCriterionValue("focusArea", value)}
-                            style={{ width: "auto" }}
-                          />
-                          <span>{label}</span>
-                        </label>
-                      )) : (
-                        <p style={{ margin: 0, color: "#777", fontSize: "0.9em" }}>Select a course to show matching focus areas.</p>
-                      )}
-                    </div>
+                </div>
+                <div className={styles.criteriaCard}>
+                  <div className={styles.criteriaCardHead}>
+                    <h4 className={styles.criteriaCardTitle}>Matching Criteria</h4>
                   </div>
-                  <div>
-                    <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Learning Pace</label>
-                    <select value={sForm.aiCriteria.pace} onChange={(e)=>updateAiCriterion("pace", e.target.value)} style={{ width: "100%", padding: "10px", border: "1px solid #d0d0d0", borderRadius: "6px", fontFamily: "inherit", fontSize: "0.9em", background: "#fff" }}>
-                      {AI_CRITERIA_OPTIONS.pace.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                    </select>
+                  <p className={styles.criteriaCardIntro}>
+                    Select everything that applies to this student. Each criterion is compared against the teacher's matching profile, so the more you select the more precise the recommendation.
+                  </p>
+                  <div className={styles.criteriaGrid}>
+                    <CriteriaChipField
+                      legend="Learning Goal"
+                      hint={STUDENT_CRITERIA_HINTS.learningGoal}
+                      options={studentLearningGoalOptions}
+                      selected={sForm.aiCriteria.learningGoal}
+                      onToggle={(value) => toggleAiCriterionValue("learningGoal", value)}
+                      emptyMessage={CRITERIA_EMPTY_MESSAGES.noCourse}
+                      name="student-learning-goal"
+                    />
+                    <CriteriaChipField
+                      legend="Focus Area"
+                      hint={STUDENT_CRITERIA_HINTS.focusArea}
+                      options={studentFocusAreaOptions}
+                      selected={sForm.aiCriteria.focusArea}
+                      onToggle={(value) => toggleAiCriterionValue("focusArea", value)}
+                      emptyMessage={CRITERIA_EMPTY_MESSAGES.noCourse}
+                      name="student-focus-area"
+                    />
+                    <CriteriaChipField
+                      legend="Learning Style"
+                      hint={STUDENT_CRITERIA_HINTS.learningStyle}
+                      options={STUDENT_CRITERIA_OPTIONS.learningStyle}
+                      selected={sForm.aiCriteria.learningStyle}
+                      onToggle={(value) => toggleAiCriterionValue("learningStyle", value)}
+                      name="student-learning-style"
+                    />
+                    <CriteriaChipField
+                      legend="Student Personality"
+                      hint={STUDENT_CRITERIA_HINTS.personality}
+                      options={STUDENT_CRITERIA_OPTIONS.personality}
+                      selected={sForm.aiCriteria.personality}
+                      onToggle={(value) => toggleAiCriterionValue("personality", value)}
+                      name="student-personality"
+                    />
+                    <CriteriaChipField
+                      legend="Learning Pace"
+                      hint={STUDENT_CRITERIA_HINTS.pace}
+                      options={STUDENT_CRITERIA_OPTIONS.pace}
+                      selected={sForm.aiCriteria.pace}
+                      onToggle={(value) => toggleAiCriterionValue("pace", value)}
+                      name="student-pace"
+                    />
                   </div>
                 </div>
                 <div>
@@ -2516,49 +2509,27 @@ export default function AdminDashboard() {
                   <div style={{ marginTop: "12px", textAlign: "center" }}>
                     <button
                       type="button"
+                      className={styles.primary}
                       onClick={analyzeStudentMatch}
                       disabled={aiLoading}
-                      style={{
-                        padding: "10px 20px",
-                        background: aiLoading ? "#555" : "black",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: "8px",
-                        fontSize: "0.95em",
-                        fontWeight: "600",
-                        cursor: "pointer",
-                        transition: "all 0.3s ease",
-                        boxShadow: "0 4px 15px rgba(102, 126, 234, 0.4)",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "8px"
-                      }}
-                      onMouseOver={(e) => {
-                        e.target.style.transform = "translateY(-2px)";
-                        e.target.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
-                      }}
-                      onMouseOut={(e) => {
-                        e.target.style.transform = "translateY(0)";
-                        e.target.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
-                      }}
                     >
-                      <span style={{ fontSize: "1.1em" }}>🤖</span>
                       {aiLoading ? "Analyzing..." : "Analyze with AI"}
                     </button>
                   </div>
                   {aiRecommendation?.teacher && (
-                    <div style={{ marginTop: "12px", padding: "12px", border: "1px solid #e0e0e0", borderRadius: "8px", background: "#fafafa", color: "#333", fontSize: "0.9em" }}>
-                      Recommended teacher: <strong>{aiRecommendation.teacher.first_name} {aiRecommendation.teacher.last_name}</strong>
-                      <span style={{ color: "#666" }}> ({aiRecommendation.teacher.assigned_student_count} active students)</span>
+                    <div className={styles.recommendationCard}>
+                      <div>
+                        Recommended teacher:{" "}
+                        <strong>{aiRecommendation.teacher.first_name} {aiRecommendation.teacher.last_name}</strong>
+                        <span> ({aiRecommendation.teacher.assigned_student_count} active students)</span>
+                      </div>
                       {aiRecommendation.usedLeastLoadedFallback && (
-                        <div style={{ marginTop: "6px", color: "#666" }}>
+                        <div>
                           All teachers are at 2 or more students, so the least-loaded suitable teacher was selected.
                         </div>
                       )}
                       {aiRecommendation.teacher.reasons?.length > 0 && (
-                        <div style={{ marginTop: "6px", color: "#666" }}>
-                          Reason: {aiRecommendation.teacher.reasons.join(", ")}
-                        </div>
+                        <div>Reason: {aiRecommendation.teacher.reasons.join(", ")}</div>
                       )}
                     </div>
                   )}

@@ -11,6 +11,17 @@ import path from "path";
 import { Resend } from "resend";
 import { assessClassEvidence } from "./classEvidence.js";
 import { deleteRecordingFromDrive, extractDriveFileId, isGoogleDriveConfigured, uploadRecordingToDrive } from "./googleDrive.js";
+import {
+  buildLevelEvaluationNotes,
+  computeProficiencyLevel,
+  parseLevelScores,
+} from "./proficiencyEvaluation.js";
+import {
+  overBalanceTeachers,
+  rankTeachers,
+  scoreTeacherForStudent,
+  selectTeacherFromRanking,
+} from "./teacherMatching.js";
 
 dotenv.config();
 
@@ -1709,10 +1720,6 @@ function aiValueText(value) {
   return Array.isArray(value) ? value.join(", ") : String(value || "");
 }
 
-function aiValueIncludes(value, expected) {
-  return Array.isArray(value) ? value.includes(expected) : value === expected;
-}
-
 function parseAiCriteriaJson(value) {
   if (!value) return {};
   if (typeof value === "object") return value;
@@ -1739,10 +1746,20 @@ function buildCriteriaNotes(criteria) {
 }
 
 function buildTeacherAiBio({ bio, teachingStyle, personalityStrength, idealStudentPace }) {
+  // These are now multi-selects on the Create Teacher form, so each attribute
+  // is a comma-joined list. The template is unchanged so bios written by
+  // earlier versions still parse back out (see parseTeacherProfileTags).
+  const tag = (label, value) => {
+    const values = (Array.isArray(value) ? value : [value])
+      .map((item) => String(item == null ? "" : item).trim())
+      .filter(Boolean);
+    return values.length ? `${label}: ${values.join(", ")}` : "";
+  };
+
   const aiTags = [
-    teachingStyle ? `Teaching style: ${teachingStyle}` : "",
-    personalityStrength ? `Teacher strength: ${personalityStrength}` : "",
-    idealStudentPace ? `Best student pace: ${idealStudentPace}` : "",
+    tag("Teaching style", teachingStyle),
+    tag("Teacher strength", personalityStrength),
+    tag("Best student pace", idealStudentPace),
   ].filter(Boolean);
 
   return [bio || "", aiTags.length ? `AI matching profile:\n${aiTags.join("\n")}` : ""]
@@ -1750,71 +1767,9 @@ function buildTeacherAiBio({ bio, teachingStyle, personalityStrength, idealStude
     .join("\n\n");
 }
 
-function scoreTeacherForStudent(teacher, criteria, trialNotes, courseId, proficiencyLevel = "") {
-  const profileText = [
-    teacher.first_name,
-    teacher.last_name,
-    teacher.bio,
-    teacher.specialization,
-  ].filter(Boolean).join(" ").toLowerCase();
-  const notes = String(trialNotes || "").toLowerCase();
-  let score = Number(teacher.experience_years || 0) * 2;
-  const reasons = [];
-
-  if (courseId && Number(teacher.selected_course_match || 0) > 0) {
-    score += 12;
-    reasons.push("matches the selected course");
-  }
-
-  const weightedCriteria = [
-    ["learningGoal", 14],
-    ["focusArea", 12],
-    ["learningStyle", 10],
-    ["personality", 8],
-    ["pace", 8],
-  ];
-
-  for (const [key, weight] of weightedCriteria) {
-    const values = Array.isArray(criteria[key]) ? criteria[key] : [criteria[key]].filter(Boolean);
-    if (!values.length) continue;
-
-    const words = values
-      .flatMap((value) => String(value || "").toLowerCase().split(/[\s-]+/))
-      .filter((word) => word.length > 2);
-    const matched = words.some((word) => profileText.includes(word) || notes.includes(word));
-    if (matched) {
-      score += weight + Math.max(0, values.length - 1) * 2;
-      reasons.push(`${aiCriterionLabels[key].toLowerCase()} fit`);
-    }
-  }
-
-  if (aiValueIncludes(criteria.learningStyle, "structured")) score += profileText.includes("grammar") ? 5 : 0;
-  if (aiValueIncludes(criteria.learningStyle, "conversational")) score += profileText.includes("conversation") || profileText.includes("speaking") ? 5 : 0;
-  if (aiValueIncludes(criteria.focusArea, "speaking")) score += profileText.includes("speaking") || profileText.includes("conversation") ? 5 : 0;
-  if (aiValueIncludes(criteria.focusArea, "grammar")) score += profileText.includes("grammar") ? 5 : 0;
-  if (aiValueIncludes(criteria.personality, "shy")) score += profileText.includes("patient") || profileText.includes("supportive") ? 5 : 0;
-  if (aiValueIncludes(criteria.pace, "slow")) score += profileText.includes("patient") ? 4 : 0;
-
-  const normalizedProficiencyLevel = normalizeProficiencyLevel(proficiencyLevel);
-  if (normalizedProficiencyLevel) {
-    const aliases = PROFICIENCY_LEVEL_ALIASES[normalizedProficiencyLevel] || [normalizedProficiencyLevel];
-    const matched = aliases.some((alias) => profileText.includes(alias) || notes.includes(alias));
-    if (matched) {
-      score += 8;
-      reasons.push(`matches ${formatProficiencyLevel(normalizedProficiencyLevel)} level`);
-    }
-  }
-
-  score -= Number(teacher.assigned_student_count || 0);
-
-  return {
-    ...teacher,
-    score,
-    reasons: reasons.length ? reasons : ["balanced match based on teacher profile and current load"],
-  };
-}
-
-const TEACHER_BALANCE_LIMIT = 2;
+// Scoring and the workload policy now live in ./teacherMatching.js so they can
+// be unit tested. The level vocabulary below is still used by the other
+// assessment endpoints (final class assessment, profile creation).
 
 const PROFICIENCY_LEVELS = new Set([
   "novice-low",
@@ -1825,16 +1780,6 @@ const PROFICIENCY_LEVELS = new Set([
   "intermediate-high",
   "advanced",
 ]);
-
-const PROFICIENCY_LEVEL_ALIASES = {
-  "novice-low": ["novice low", "novice-low", "beginner", "starter", "basic"],
-  "novice-mid": ["novice mid", "novice-mid", "beginner", "basic"],
-  "novice-high": ["novice high", "novice-high", "elementary", "high beginner"],
-  "intermediate-low": ["intermediate low", "intermediate-low", "lower intermediate"],
-  "intermediate-mid": ["intermediate mid", "intermediate-mid", "intermediate", "mid-level"],
-  "intermediate-high": ["intermediate high", "intermediate-high", "upper intermediate", "upper-intermediate"],
-  advanced: ["advanced", "fluent", "proficient", "near-native", "native-like", "high level"],
-};
 
 const PROFICIENCY_LEVEL_LABELS = {
   "novice-low": "Novice Low",
@@ -1884,32 +1829,26 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
     [courseFilter || 0, courseFilter]
   );
 
-  const ranked = teachers
-    .map((teacher) => scoreTeacherForStudent(teacher, normalizedCriteria, trialNotes, courseId, proficiencyLevel))
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return Number(a.assigned_student_count || 0) - Number(b.assigned_student_count || 0);
-    });
+  const ranked = rankTeachers(
+    teachers.map((teacher) =>
+      scoreTeacherForStudent(
+        teacher,
+        normalizedCriteria,
+        trialNotes,
+        courseId,
+        normalizeProficiencyLevel(proficiencyLevel)
+      )
+    )
+  );
 
-  const underBalanceLimit = ranked.filter((teacher) => Number(teacher.assigned_student_count || 0) < TEACHER_BALANCE_LIMIT);
-  const leastLoaded = [...ranked].sort((a, b) => {
-    const loadDiff = Number(a.assigned_student_count || 0) - Number(b.assigned_student_count || 0);
-    if (loadDiff !== 0) return loadDiff;
-    return b.score - a.score;
-  })[0];
-  const preferred = preferredTeacherId
-    ? ranked.find((teacher) => String(teacher.user_id) === String(preferredTeacherId))
-    : null;
-  const assigned = preferred && Number(preferred.assigned_student_count || 0) < TEACHER_BALANCE_LIMIT
-    ? preferred
-    : underBalanceLimit[0] || leastLoaded;
+  const { assigned, usedLeastLoadedFallback } = selectTeacherFromRanking(ranked, preferredTeacherId);
 
   return {
     teacher: assigned || null,
     rankedTeachers: ranked,
     criteria: normalizedCriteria,
-    overBalanceTeachers: ranked.filter((teacher) => Number(teacher.assigned_student_count || 0) >= TEACHER_BALANCE_LIMIT),
-    usedLeastLoadedFallback: underBalanceLimit.length === 0 && Boolean(leastLoaded),
+    overBalanceTeachers: overBalanceTeachers(ranked),
+    usedLeastLoadedFallback,
   };
 }
 
@@ -3038,11 +2977,11 @@ app.post("/api/admin/users", async (req, res) => {
       birth_date,
       role = "teacher",
       classesAvailed,
-      level,
       teacherId,
       trialNotes,
       courseId,
       classDuration,
+      levelScores,
       aiCriteria,
       specialization,
       experienceYears,
@@ -3067,6 +3006,19 @@ app.post("/api/admin/users", async (req, res) => {
 
     if (role === "student" && !courseId) {
       return res.status(400).json({ message: "Please select the student's course" });
+    }
+
+    // The student's proficiency level is computed from the 5 level-evaluation
+    // scores, never taken from the client. Reject rather than defaulting to a
+    // level, so a partial rubric can't be stored as a real assessment.
+    let studentLevelScores = null;
+    let studentLevelEvaluation = null;
+    if (role === "student") {
+      studentLevelScores = parseLevelScores(levelScores);
+      if (!studentLevelScores) {
+        return res.status(400).json({ message: "Please score all level evaluation criteria" });
+      }
+      studentLevelEvaluation = computeProficiencyLevel(studentLevelScores);
     }
 
     const normalizedCountry = String(country || "").trim();
@@ -3142,19 +3094,24 @@ app.post("/api/admin/users", async (req, res) => {
 
     // Create student profile if role is student
     if (role === "student") {
+      // Validated above, so this always resolves. The level feeds both the
+      // teacher matching and the stored profile.
+      const proficiencyLevel = studentLevelEvaluation.level;
       const recommendation = await recommendTeacher({
         criteria: aiCriteria,
         trialNotes,
         courseId,
-        proficiencyLevel: level,
+        proficiencyLevel,
         preferredTeacherId: teacherId,
       });
       const assignedTeacherId = recommendation.teacher?.user_id || null;
-      const proficiencyLevel = normalizeProficiencyLevel(level) || "novice-low";
       const courseIdValue = courseId ? parseInt(courseId, 10) : null;
       const classDurationValue = normalizeClassDuration(classDuration);
       const criteriaNotes = buildCriteriaNotes(recommendation.criteria);
-      const finalTrialNotes = [trialNotes || "", criteriaNotes]
+      // The rubric scores are persisted in the notes rather than a new column,
+      // the same way buildCriteriaNotes records the matching criteria.
+      const levelEvaluationNotes = buildLevelEvaluationNotes(studentLevelScores, studentLevelEvaluation);
+      const finalTrialNotes = [trialNotes || "", criteriaNotes, levelEvaluationNotes]
         .filter((part) => String(part).trim())
         .join("\n\n");
       
@@ -3194,6 +3151,9 @@ app.post("/api/admin/users", async (req, res) => {
         ? `${role.charAt(0).toUpperCase() + role.slice(1)} account created and setup invite prepared`
         : `${role.charAt(0).toUpperCase() + role.slice(1)} account created`,
       userId,
+      // Echoed back so the client can confirm the level the server computed from
+      // the scores rather than the one it predicted.
+      proficiencyLevel: studentLevelEvaluation?.level || null,
       inviteEmailSent: Boolean(inviteEmailResult?.sent),
       inviteEmailSkipped: Boolean(inviteEmailResult?.skipped),
       setupInviteExpiresAt: setupInvite?.expiresAt || null,
