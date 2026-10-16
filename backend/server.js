@@ -1704,7 +1704,6 @@ async function resolveCourseIdByIdOrName(value) {
 const aiCriterionLabels = {
   learningGoal: "Learning goal",
   learningStyle: "Learning style",
-  personality: "Student personality",
   focusArea: "Focus area",
   pace: "Learning pace",
 };
@@ -1745,7 +1744,7 @@ function buildCriteriaNotes(criteria) {
   return lines.length ? `AI matching criteria:\n${lines.join("\n")}` : "";
 }
 
-function buildTeacherAiBio({ bio, teachingStyle, personalityStrength, idealStudentPace }) {
+function buildTeacherAiBio({ bio, teachingStyle, idealStudentPace }) {
   // These are now multi-selects on the Create Teacher form, so each attribute
   // is a comma-joined list. The template is unchanged so bios written by
   // earlier versions still parse back out (see parseTeacherProfileTags).
@@ -1758,7 +1757,6 @@ function buildTeacherAiBio({ bio, teachingStyle, personalityStrength, idealStude
 
   const aiTags = [
     tag("Teaching style", teachingStyle),
-    tag("Teacher strength", personalityStrength),
     tag("Best student pace", idealStudentPace),
   ].filter(Boolean);
 
@@ -2987,7 +2985,6 @@ app.post("/api/admin/users", async (req, res) => {
       experienceYears,
       experience_years,
       teachingStyle,
-      personalityStrength,
       idealStudentPace,
       bio,
       courseIds = [],
@@ -3064,7 +3061,6 @@ app.post("/api/admin/users", async (req, res) => {
       const teacherBio = buildTeacherAiBio({
         bio,
         teachingStyle,
-        personalityStrength,
         idealStudentPace,
       });
       const specializationText = Array.isArray(specialization)

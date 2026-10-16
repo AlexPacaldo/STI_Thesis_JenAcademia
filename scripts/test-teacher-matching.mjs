@@ -15,7 +15,6 @@ import {
   MIN_EXPERIENCE_BY_LEVEL,
   parseSpecialization,
   parseTeacherProfileTags,
-  PERSONALITY_TO_TEACHER_STRENGTH,
   rankTeachers,
   scoreTeacherForStudent,
   selectTeacherFromRanking,
@@ -54,13 +53,12 @@ const teacher = (overrides = {}) => ({
   ...overrides,
 });
 
-const bioWith = (style = [], strength = [], pace = []) =>
+const bioWith = (style = [], pace = []) =>
   [
     "Ten years teaching.",
     "",
     "AI matching profile:",
     style.length ? `Teaching style: ${style.join(", ")}` : "",
-    strength.length ? `Teacher strength: ${strength.join(", ")}` : "",
     pace.length ? `Best student pace: ${pace.join(", ")}` : "",
   ]
     .filter((line) => line !== "")
@@ -79,22 +77,6 @@ check(
   values(STUDENT_CRITERIA_OPTIONS.learningGoal).filter((v) => !LEARNING_GOAL_TO_SPECIALIZATION[v]),
   []
 );
-check(
-  "every student personality has a teacher-strength mapping",
-  values(STUDENT_CRITERIA_OPTIONS.personality).filter((v) => !PERSONALITY_TO_TEACHER_STRENGTH[v]),
-  []
-);
-
-// The mapping tables must not invent teacher strengths that do not exist.
-const knownStrengths = new Set(values(TEACHER_CRITERIA_OPTIONS.personalityStrength));
-check(
-  "personality mappings only reference real teacher strengths",
-  [...new Set(Object.values(PERSONALITY_TO_TEACHER_STRENGTH).flat())].filter(
-    (v) => !knownStrengths.has(v)
-  ),
-  []
-);
-
 const knownSpecializations = new Set(values(TEACHER_CRITERIA_OPTIONS.specialization));
 check(
   "focus area mappings only reference real specializations",
@@ -133,12 +115,20 @@ check(
 // ------------------------------------------------------------------ parsing
 console.log("\n=== parsing ===");
 
-const parsed = parseTeacherProfileTags(bioWith(["structured", "visual"], ["patient and supportive"], ["slow"]));
+const parsed = parseTeacherProfileTags(bioWith(["structured", "visual"], ["slow"]));
 check("parses teaching style", parsed.teachingStyle, ["structured", "visual"]);
-check("parses teacher strength", parsed.teacherStrength, ["patient and supportive"]);
 check("parses best pace", parsed.idealStudentPace, ["slow"]);
 check("recognises the block", parsed.hasProfileBlock, true);
 check("free text excludes the block", parsed.freeText, "Ten years teaching.");
+
+// A bio written before "Teacher strength" was removed must still parse, with
+// the stale tag ignored rather than crashing.
+const stale = parseTeacherProfileTags(
+  "Ten years teaching.\n\nAI matching profile:\nTeaching style: structured\nTeacher strength: patient and supportive\nBest student pace: slow"
+);
+check("stale Teacher strength tag is ignored", stale.teachingStyle, ["structured"]);
+check("stale bio still yields the pace", stale.idealStudentPace, ["slow"]);
+check("stale bio exposes no strength key", stale.teacherStrength, undefined);
 
 const legacy = parseTeacherProfileTags("I focus on conversational practice.");
 check("legacy bio has no block", legacy.hasProfileBlock, false);
@@ -155,14 +145,14 @@ check("parses array specialization", parseSpecialization(["speaking and conversa
 // ------------------------------------------------------------------ scoring
 console.log("\n=== scoring ===");
 
-const baseCriteria = { learningGoal: [], learningStyle: [], personality: [], focusArea: [], pace: [] };
+const baseCriteria = { learningGoal: [], learningStyle: [], focusArea: [], pace: [] };
 const score = (t, c = baseCriteria, course = null, level = "") =>
   scoreTeacherForStudent(t, c, "", course, level).score;
 
 // Exact structural match should beat no match.
 const strong = teacher({
   user_id: 10,
-  bio: bioWith(["structured"], ["patient and supportive"], ["slow"]),
+  bio: bioWith(["structured"], ["slow"]),
   specialization: "grammar and writing",
   experience_years: 6,
   selected_course_match: 1,
@@ -175,7 +165,6 @@ check(
     ...baseCriteria,
     focusArea: ["grammar"],
     learningStyle: ["structured"],
-    personality: ["shy"],
     pace: ["slow"],
   }, 1, "intermediate-high") > score(weak, baseCriteria, 1, "intermediate-high"),
   true
@@ -196,8 +185,8 @@ const withoutNotes = scoreTeacherForStudent(weak, baseCriteria, "", null, "");
 check("trial notes do not affect the score", withNotes.score, withoutNotes.score);
 
 // Proficiency level now gates on experience, in both directions.
-const novice = teacher({ user_id: 13, experience_years: 0, bio: bioWith([], [], []) });
-const seasoned = teacher({ user_id: 14, experience_years: 9, bio: bioWith([], [], []) });
+const novice = teacher({ user_id: 13, experience_years: 0, bio: bioWith([], []) });
+const seasoned = teacher({ user_id: 14, experience_years: 9, bio: bioWith([], []) });
 check(
   "an advanced student favours the experienced teacher",
   score(seasoned, baseCriteria, null, "advanced") > score(novice, baseCriteria, null, "advanced"),
@@ -210,8 +199,8 @@ check(
 );
 
 // Load is penalised.
-const busy = teacher({ user_id: 15, bio: bioWith(["structured"], [], []), assigned_student_count: 3 });
-const idle = teacher({ user_id: 16, bio: bioWith(["structured"], [], []) });
+const busy = teacher({ user_id: 15, bio: bioWith(["structured"], []), assigned_student_count: 3 });
+const idle = teacher({ user_id: 16, bio: bioWith(["structured"], []) });
 check("a loaded teacher scores lower", score(busy, baseCriteria) < score(idle, baseCriteria), true);
 
 // A teacher always has at least one reason.

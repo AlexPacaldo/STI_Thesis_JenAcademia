@@ -293,7 +293,6 @@ export default function AdminDashboard() {
     specialization: [],
     experienceYears: "",
     teachingStyle: [],
-    personalityStrength: [],
     idealStudentPace: [],
     bio: "",
     courseIds: [],
@@ -777,7 +776,6 @@ export default function AdminDashboard() {
         specialization: [],
         experienceYears: "",
         teachingStyle: [],
-        personalityStrength: [],
         idealStudentPace: [],
         bio: "",
         courseIds: [],
@@ -2216,14 +2214,6 @@ export default function AdminDashboard() {
                       name="teacher-teaching-style"
                     />
                     <CriteriaChipField
-                      legend="Teacher Strength"
-                      hint={TEACHER_CRITERIA_HINTS.personalityStrength}
-                      options={TEACHER_CRITERIA_OPTIONS.personalityStrength}
-                      selected={tForm.personalityStrength}
-                      onToggle={(value) => toggleTeacherCriteria("personalityStrength", value)}
-                      name="teacher-strength"
-                    />
-                    <CriteriaChipField
                       legend="Best Student Pace"
                       hint={TEACHER_CRITERIA_HINTS.idealStudentPace}
                       options={TEACHER_CRITERIA_OPTIONS.idealStudentPace}
@@ -2462,14 +2452,6 @@ export default function AdminDashboard() {
                       selected={sForm.aiCriteria.learningStyle}
                       onToggle={(value) => toggleAiCriterionValue("learningStyle", value)}
                       name="student-learning-style"
-                    />
-                    <CriteriaChipField
-                      legend="Student Personality"
-                      hint={STUDENT_CRITERIA_HINTS.personality}
-                      options={STUDENT_CRITERIA_OPTIONS.personality}
-                      selected={sForm.aiCriteria.personality}
-                      onToggle={(value) => toggleAiCriterionValue("personality", value)}
-                      name="student-personality"
                     />
                     <CriteriaChipField
                       legend="Learning Pace"

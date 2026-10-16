@@ -3447,13 +3447,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       setContractRequestOpen(false);
       setContractClassDuration("50");
       setContractTrialNotes("");
-      setContractAiCriteria({
-        learningGoal: [],
-        learningStyle: "",
-        personality: "",
-        focusArea: [],
-        pace: "",
-      });
+      setContractAiCriteria(createEmptyCriteria());
       loadContractRequests();
     } catch (err) {
       setContractRequestError(err?.response?.data?.message || "Unable to send contract request.");
@@ -6144,13 +6138,6 @@ $5padding: 20,
                               selected={contractAiCriteria.learningStyle}
                               onToggle={(value) => toggleContractAiCriterionValue("learningStyle", value)}
                               name="contract-learning-style"
-                            />
-                            <CriteriaChipField
-                              legend="Student Personality"
-                              options={STUDENT_CRITERIA_OPTIONS.personality}
-                              selected={contractAiCriteria.personality}
-                              onToggle={(value) => toggleContractAiCriterionValue("personality", value)}
-                              name="contract-personality"
                             />
                             <CriteriaChipField
                               legend="Learning Pace"

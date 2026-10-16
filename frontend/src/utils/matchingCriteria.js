@@ -8,8 +8,8 @@
  *
  * !! The option VALUES must match the keys used by
  * !! backend/teacherMatching.js (FOCUS_AREA_TO_SPECIALIZATION,
- * !! LEARNING_GOAL_TO_SPECIALIZATION, PERSONALITY_TO_TEACHER_STRENGTH, and the
- * !! exact vocabularies shared by learningStyle/teachingStyle and pace/pace).
+ * !! LEARNING_GOAL_TO_SPECIALIZATION, and the exact vocabularies shared by
+ * !! learningStyle/teachingStyle and pace/pace).
  * !! scripts/test-teacher-matching.mjs asserts they line up.
  *
  * An option is `[value, label]` or `[value, label, allowedCourseNames]`. The
@@ -33,13 +33,6 @@ export const STUDENT_CRITERIA_OPTIONS = {
     ["visual", "Visual Activities"],
     ["interactive", "Interactive Activities"],
     ["independent", "Independent Practice"],
-  ],
-  personality: [
-    ["shy", "Shy / Needs Encouragement"],
-    ["outgoing", "Outgoing"],
-    ["focused", "Focused"],
-    ["energetic", "Energetic"],
-    ["anxious", "Anxious / Needs Patience"],
   ],
   focusArea: [
     ["speaking", "Speaking", ["Conversational English", "Travel English", "Online English", "OPIc", "Job Interview"]],
@@ -80,13 +73,6 @@ export const TEACHER_CRITERIA_OPTIONS = {
     ["interactive", "Interactive"],
     ["independent", "Independent Practice"],
   ],
-  personalityStrength: [
-    ["patient and supportive", "Patient and Supportive"],
-    ["energetic and engaging", "Energetic and Engaging"],
-    ["calm and encouraging", "Calm and Encouraging"],
-    ["strict and focused", "Strict and Focused"],
-    ["friendly and confidence-building", "Friendly and Confidence-building"],
-  ],
   // Identical vocabulary to the student's pace.
   idealStudentPace: [
     ["slow", "Slow and Guided"],
@@ -100,7 +86,6 @@ export const TEACHER_CRITERIA_OPTIONS = {
 export const STUDENT_CRITERIA_HINTS = {
   learningGoal: "What the student is working towards. Scored against the teacher's specialisations.",
   learningStyle: "How the student learns best. Compared directly with the teacher's teaching style.",
-  personality: "How the student behaves in class. Matched against the teacher's strengths.",
   focusArea: "The skills to work on. Matched against the teacher's specialisations.",
   pace: "How fast the student progresses. Compared with the teacher's best student pace.",
 };
@@ -108,7 +93,6 @@ export const STUDENT_CRITERIA_HINTS = {
 export const TEACHER_CRITERIA_HINTS = {
   specialization: "Which subjects and skills this teacher covers. Matched against each student's focus areas and goals.",
   teachingStyle: "How this teacher runs a lesson. Compared with the student's learning style.",
-  personalityStrength: "Where this teacher is strongest. Matched against the student's personality.",
   idealStudentPace: "The student pace this teacher works best with. Compared with the student's pace.",
 };
 
@@ -159,7 +143,6 @@ export const toggleValue = (selected, value) => {
 export const createEmptyCriteria = () => ({
   learningGoal: [],
   learningStyle: [],
-  personality: [],
   focusArea: [],
   pace: [],
 });

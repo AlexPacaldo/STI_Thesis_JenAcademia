@@ -33,7 +33,6 @@ export const SCORE_WEIGHTS = {
   learningGoalMatch: 12,
   focusAreaMatch: 10,
   learningStyleMatch: 10,
-  personalityMatch: 8,
   paceMatch: 8,
   proficiencyFit: 6,
   proficiencyGapPenaltyPerYear: 2,
@@ -68,16 +67,6 @@ export const LEARNING_GOAL_TO_SPECIALIZATION = {
   "news-discussion": ["news discussion"],
 };
 
-// Student personality -> teacher strengths that suit it. Judgement call, kept
-// here so it is easy to review and change.
-export const PERSONALITY_TO_TEACHER_STRENGTH = {
-  shy: ["patient and supportive", "calm and encouraging", "friendly and confidence-building"],
-  anxious: ["patient and supportive", "calm and encouraging"],
-  outgoing: ["energetic and engaging", "friendly and confidence-building"],
-  energetic: ["energetic and engaging"],
-  focused: ["strict and focused", "patient and supportive"],
-};
-
 // Minimum years of experience that suits each stored level. Handles the 7 slugs
 // still present in the database, not just the 5 the app now computes.
 export const MIN_EXPERIENCE_BY_LEVEL = {
@@ -103,9 +92,10 @@ export const LEVEL_LABELS = {
 // The marker buildTeacherAiBio writes before the structured attributes.
 export const TEACHER_PROFILE_BLOCK = "AI matching profile:";
 
+// Lines whose label is not listed here are ignored, so bios written before a
+// tag was removed still parse cleanly.
 const PROFILE_TAG_KEYS = {
   "Teaching style": "teachingStyle",
-  "Teacher strength": "teacherStrength",
   "Best student pace": "idealStudentPace",
 };
 
@@ -126,7 +116,7 @@ function asArray(value) {
  */
 export function parseTeacherProfileTags(bio) {
   const text = String(bio || "");
-  const tags = { teachingStyle: [], teacherStrength: [], idealStudentPace: [] };
+  const tags = { teachingStyle: [], idealStudentPace: [] };
 
   const blockStart = text.indexOf(TEACHER_PROFILE_BLOCK);
   if (blockStart === -1) {
@@ -268,16 +258,6 @@ export function scoreTeacherForStudent(
     reasons.push("teaching style matches");
   }
 
-  const personalityHits = intersectCount(
-    criteria.personality,
-    PERSONALITY_TO_TEACHER_STRENGTH,
-    profile.teacherStrength
-  );
-  if (personalityHits) {
-    score += Math.min(personalityHits, SCORE_WEIGHTS.maxMatchesPerCriterion) * SCORE_WEIGHTS.personalityMatch;
-    reasons.push("teacher strength suits the student's personality");
-  }
-
   const paceHits = exactOverlapCount(criteria.pace, profile.idealStudentPace);
   if (paceHits) {
     score += Math.min(paceHits, SCORE_WEIGHTS.maxMatchesPerCriterion) * SCORE_WEIGHTS.paceMatch;
@@ -305,7 +285,7 @@ export function scoreTeacherForStudent(
   // always dominate. This is the main signal for profiles written before the
   // AI matching block existed.
   let freeTextHits = 0;
-  for (const key of ["learningGoal", "focusArea", "learningStyle", "personality", "pace"]) {
+  for (const key of ["learningGoal", "focusArea", "learningStyle", "pace"]) {
     const values = asArray(criteria[key]);
     if (!values.length) continue;
     if (values.some((value) => freeTextHas(value))) {
