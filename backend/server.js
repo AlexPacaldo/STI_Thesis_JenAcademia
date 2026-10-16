@@ -10,6 +10,7 @@ import mysql from "mysql2/promise";
 import path from "path";
 import { Resend } from "resend";
 import { assessClassEvidence } from "./classEvidence.js";
+import { createRateLimiter } from "./rateLimit.js";
 import { deleteRecordingFromDrive, extractDriveFileId, isGoogleDriveConfigured, uploadRecordingToDrive } from "./googleDrive.js";
 import {
   buildLevelEvaluationNotes,
@@ -79,6 +80,15 @@ const PRIVATE_UPLOAD_ROOT = path.resolve(
 const RECORDING_RETENTION_DAYS = Number(process.env.CLASS_RECORDING_RETENTION_DAYS || 7);
 
 const app = express();
+
+// Railway terminates TLS and forwards over an internal hop, so without this
+// req.ip is the proxy's address rather than the caller's, and every client ends
+// up sharing one rate-limit bucket. It also makes req.protocol report "http",
+// which is what the assignment upload URL at POST /api/assignments is built
+// from. Exactly one hop is trusted because that is how many Railway sits in
+// front of this app; trusting more would let a client forge the header and
+// pick its own bucket.
+app.set("trust proxy", 1);
 app.use(cors({
   origin: [
     "https://jenacademia.vercel.app",
@@ -365,6 +375,18 @@ const resumeUpload = multer({
     }
     cb(new Error("Resume must be a PDF, DOCX, or TXT file"));
   },
+});
+
+// Every accepted resume costs one Gemini call, and the endpoint has no auth of
+// its own (see the route below), so the quota is the thing worth bounding.
+// Deliberately generous: a human cannot meaningfully create a teacher's profile
+// faster than this, while a runaway loop or casual probing hits the wall.
+const RESUME_PARSE_WINDOW_MS = Math.max(1, Number(process.env.RESUME_PARSE_RATE_WINDOW_MS) || 10 * 60 * 1000);
+const RESUME_PARSE_MAX = Math.max(1, Number(process.env.RESUME_PARSE_RATE_MAX) || 10);
+const limitResumeParsing = createRateLimiter({
+  windowMs: RESUME_PARSE_WINDOW_MS,
+  max: RESUME_PARSE_MAX,
+  message: "Too many resumes uploaded. Wait a few minutes before trying again.",
 });
 
 app.use("/uploads", express.static(UPLOAD_ROOT));
@@ -2986,7 +3008,15 @@ app.post("/api/admin/recommend-teacher", async (req, res) => {
 // Read a teacher resume and return the AI Matching Profile it implies. The
 // response is only pre-filled form state: the admin confirms it and the real
 // insert still happens on POST /api/admin/users.
-app.post("/api/admin/parse-resume", (req, res, next) =>
+//
+// !! No authentication. requireAdmin elsewhere trusts an admin_id supplied in
+// !! the request body, which is not bound to any session, so it would not stop
+// !! anyone who read an admin id off another endpoint. Rather than add a check
+// !! that looks like security but is not, this route relies on the rate limit
+// !! above to bound the cost. What it returns is only what Gemini extracts from
+// !! the caller's own upload, so there is no data to steal - the exposure is
+// !! purely resource consumption, which is what the limiter caps.
+app.post("/api/admin/parse-resume", limitResumeParsing, (req, res, next) =>
   // Multer raises filter/size errors in middleware, before the route body runs,
   // and there is no global error handler, so without this wrapper they would
   // surface as Express's default HTML error page.
