@@ -11,6 +11,7 @@
 
 import { clientKey, createMemoryStore, createRateLimiter } from "../backend/rateLimit.js";
 import { createDbStore, ensureRateLimitsTable } from "../backend/dbRateLimit.js";
+import { readFileSync } from "node:fs";
 
 let failures = 0;
 let checks = 0;
@@ -190,6 +191,25 @@ const broken = createRateLimiter({
 check("a store failure lets the request through", (await send(broken, "6.6.6.6")).passed, true);
 check("and says so via a header", (await send(broken, "6.6.6.6")).res.headers["RateLimit-Degraded"], "1");
 check("and does not report a zero remaining", (await send(broken, "6.6.6.6")).res.headers["RateLimit-Remaining"], "1");
+
+// -------------------------------------------------------------------- misc
+
+console.log("\n=== startup ordering ===");
+
+// Regression guard for an outage this actually caused. `pool` is a const, and
+// the limiter is built from it at module scope. Declared above `pool`, that is a
+// temporal dead zone ReferenceError thrown while the module is still evaluating:
+// every replica exits, the service returns 502, and no route or try/catch is
+// ever reached. node --check does not catch it because it is not a syntax error.
+const serverSource = readFileSync(new URL("../backend/server.js", import.meta.url), "utf8");
+const poolDeclaredAt = serverSource.indexOf("export const pool = mysql.createPool");
+const storeBuiltAt = serverSource.indexOf("createDbStore({ pool })");
+check("the pool is declared somewhere in server.js", poolDeclaredAt !== -1, true);
+check(
+  "the shared counter store is built after the pool is declared",
+  storeBuiltAt > poolDeclaredAt && poolDeclaredAt !== -1,
+  true
+);
 
 // -------------------------------------------------------------------- misc
 

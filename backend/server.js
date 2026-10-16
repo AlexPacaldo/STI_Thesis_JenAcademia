@@ -378,22 +378,12 @@ const resumeUpload = multer({
   },
 });
 
-// Every accepted resume costs one Gemini call, and the endpoint has no auth of
-// its own (see the route below), so the quota is the thing worth bounding.
-// Deliberately generous: a human cannot meaningfully create a teacher's profile
-// faster than this, while a runaway loop or casual probing hits the wall.
-const RESUME_PARSE_WINDOW_MS = Math.max(1, Number(process.env.RESUME_PARSE_RATE_WINDOW_MS) || 10 * 60 * 1000);
-const RESUME_PARSE_MAX = Math.max(1, Number(process.env.RESUME_PARSE_RATE_MAX) || 10);
-const limitResumeParsing = createRateLimiter({
-  windowMs: RESUME_PARSE_WINDOW_MS,
-  max: RESUME_PARSE_MAX,
-  // Counters go through MySQL rather than process memory. The app runs on
-  // several Railway replicas, and an in-memory counter gave each replica its
-  // own budget, so the real limit was that number times the replica count.
-  // If this table is unavailable the limiter fails open by design.
-  store: createDbStore({ pool }),
-  message: "Too many resumes uploaded. Wait a few minutes before trying again.",
-});
+// The resume parser rate limiter is declared below, next to the MySQL pool it
+// reads its shared counters from. It cannot live here: `pool` is a const
+// declared further down, so referencing it at module scope up here is a
+// temporal dead zone ReferenceError thrown while the module is still
+// evaluating - which crashes the process at startup, before any route runs and
+// outside the try/catch around the counter table migration.
 
 app.use("/uploads", express.static(UPLOAD_ROOT));
 
@@ -420,6 +410,25 @@ if (String(process.env.DB_SSL || "").toLowerCase() === "true") {
 }
 
 export const pool = mysql.createPool(poolConfig);
+
+// Every accepted resume costs one Gemini call, and the endpoint has no auth of
+// its own (see the route below), so the quota is the thing worth bounding.
+// Deliberately generous: a human cannot meaningfully create a teacher's profile
+// faster than this, while a runaway loop or casual probing hits the wall.
+//
+// Counters go through MySQL rather than process memory. The app runs on
+// several Railway replicas, and an in-memory counter gave each replica its own
+// budget, so the real limit was that number times the replica count. If the
+// table is unavailable the limiter fails open by design.
+// !! Must stay below the `pool` declaration above.
+const RESUME_PARSE_WINDOW_MS = Math.max(1, Number(process.env.RESUME_PARSE_RATE_WINDOW_MS) || 10 * 60 * 1000);
+const RESUME_PARSE_MAX = Math.max(1, Number(process.env.RESUME_PARSE_RATE_MAX) || 10);
+const limitResumeParsing = createRateLimiter({
+  windowMs: RESUME_PARSE_WINDOW_MS,
+  max: RESUME_PARSE_MAX,
+  store: createDbStore({ pool }),
+  message: "Too many resumes uploaded. Wait a few minutes before trying again.",
+});
 
 const chatStreamClients = new Map();
 const chatPresenceUsers = new Map();
