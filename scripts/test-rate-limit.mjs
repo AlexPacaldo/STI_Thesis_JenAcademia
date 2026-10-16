@@ -1,5 +1,5 @@
 /**
- * Runnable check for the per-client rate limiter.
+ * Runnable check for the rate limiter and its counter stores.
  *
  * There is no test framework in this repo, so this is a plain script like
  * scripts/test-teacher-matching.mjs:
@@ -9,7 +9,8 @@
  * either locks a real admin out or lets the limiter be walked straight through.
  */
 
-import { clientKey, createRateLimiter } from "../backend/rateLimit.js";
+import { clientKey, createMemoryStore, createRateLimiter } from "../backend/rateLimit.js";
+import { createDbStore, ensureRateLimitsTable } from "../backend/dbRateLimit.js";
 
 let failures = 0;
 let checks = 0;
@@ -44,24 +45,30 @@ function fakeExchange(ip) {
   return { req: { ip, socket: {} }, res };
 }
 
-function send(limiter, ip) {
+async function send(limiter, ip) {
   const { req, res } = fakeExchange(ip);
   let passed = false;
-  limiter(req, res, () => {
+  await limiter(req, res, () => {
     passed = true;
   });
   return { passed, res };
 }
 
+// ---------------------------------------------------------------- limiting
+
 console.log("=== limiting ===");
 
 const limiter = createRateLimiter({ windowMs: 60_000, max: 3 });
-check("allows requests up to the limit", [1, 2, 3].map((n) => send(limiter, "1.1.1.1").passed), [true, true, true]);
-check("rejects the request past the limit", send(limiter, "1.1.1.1").passed, false);
-check("rejection is a 429 with a message", send(limiter, "1.1.1.1").res.statusCode, 429);
-check("remaining count reaches zero at the limit", send(limiter, "1.1.1.1").res.headers["RateLimit-Remaining"], "0");
-check("rejection still carries RateLimit-Limit", send(limiter, "1.1.1.1").res.headers["RateLimit-Limit"], "3");
-check("a different client has its own bucket", send(limiter, "2.2.2.2").passed, true);
+const firstThree = [];
+for (let i = 0; i < 3; i += 1) firstThree.push((await send(limiter, "1.1.1.1")).passed);
+check("allows requests up to the limit", firstThree, [true, true, true]);
+check("rejects the request past the limit", (await send(limiter, "1.1.1.1")).passed, false);
+check("rejection is a 429 with a message", (await send(limiter, "1.1.1.1")).res.statusCode, 429);
+check("remaining count reaches zero at the limit", (await send(limiter, "1.1.1.1")).res.headers["RateLimit-Remaining"], "0");
+check("rejection still carries RateLimit-Limit", (await send(limiter, "1.1.1.1")).res.headers["RateLimit-Limit"], "3");
+check("a different client has its own bucket", (await send(limiter, "2.2.2.2")).passed, true);
+
+// ------------------------------------------------------------- window expiry
 
 console.log("\n=== window expiry ===");
 
@@ -70,19 +77,121 @@ const realNow = Date.now;
 Date.now = () => clock;
 try {
   const rolling = createRateLimiter({ windowMs: 10_000, max: 2 });
-  check("exhausts the budget", [send(rolling, "3.3.3.3").passed, send(rolling, "3.3.3.3").passed], [true, true]);
-  check("then blocks", send(rolling, "3.3.3.3").passed, false);
+  check(
+    "exhausts the budget",
+    [(await send(rolling, "3.3.3.3")).passed, (await send(rolling, "3.3.3.3")).passed],
+    [true, true]
+  );
+  check("then blocks", (await send(rolling, "3.3.3.3")).passed, false);
 
   clock += 9_000;
-  check("still blocked just before the window closes", send(rolling, "3.3.3.3").passed, false);
+  check("still blocked just before the window closes", (await send(rolling, "3.3.3.3")).passed, false);
 
   clock += 2_000;
-  check("allowed again once the window has passed", send(rolling, "3.3.3.3").passed, true);
-  check("budget restarts, it does not carry over", send(rolling, "3.3.3.3").passed, true);
-  check("and runs out again", send(rolling, "3.3.3.3").passed, false);
+  check("allowed again once the window has passed", (await send(rolling, "3.3.3.3")).passed, true);
+  check("budget restarts, it does not carry over", (await send(rolling, "3.3.3.3")).passed, true);
+  check("and runs out again", (await send(rolling, "3.3.3.3")).passed, false);
 } finally {
   Date.now = realNow;
 }
+
+// ------------------------------------------------------------ shared counter
+
+console.log("\n=== shared (mysql) store ===");
+
+/** Records every statement and returns a canned hit count for the SELECT. */
+function fakePool({ hitCount = 1, failOn = null } = {}) {
+  const statements = [];
+  return {
+    statements,
+    async query(sql, params) {
+      const flat = sql.replace(/\s+/g, " ").trim();
+      statements.push({ sql: flat, params });
+      if (failOn && flat.includes(failOn)) throw new Error("database is down");
+      if (flat.startsWith("SELECT hit_count")) return [[{ hit_count: hitCount }]];
+      return [{ affectedRows: 1 }];
+    },
+  };
+}
+
+const sharedPool = fakePool({ hitCount: 4 });
+const shared = createDbStore({ pool: sharedPool });
+const sharedResult = await shared.hit("1.2.3.4", 60_000, 1_000_000);
+check("returns the count the database reports", sharedResult.count, 4);
+// now=1,000,000 falls in the window running 960,000 -> 1,020,000, because the
+// grid is aligned so every replica buckets the same instant identically.
+check("reset is the end of the aligned window", sharedResult.resetAt, 1_020_000);
+check(
+  "records the hit with an atomic upsert",
+  sharedPool.statements[0].sql.includes("ON DUPLICATE KEY UPDATE hit_count = hit_count + 1"),
+  true
+);
+check("upsert carries the bucket and window", sharedPool.statements[0].params, ["1.2.3.4", 960_000]);
+check("windows align to a fixed grid so replicas agree", sharedPool.statements[0].params[1] % 60_000, 0);
+check("reads the count back", sharedPool.statements[1].sql.startsWith("SELECT hit_count"), true);
+check(
+  "the key is hashed in both statements, so it is never stored raw",
+  sharedPool.statements[0].sql.includes("UNHEX(SHA2(?, 256))") &&
+    sharedPool.statements[1].sql.includes("UNHEX(SHA2(?, 256))"),
+  true
+);
+
+const longKey = "x".repeat(400);
+const hashing = createDbStore({ pool: sharedPool });
+await hashing.hit(longKey, 60_000, 1_000_000);
+check("an over-long key is hashed whole, not truncated", sharedPool.statements.at(-2).params[0], longKey);
+
+// ------------------------------------------------------- counter table shape
+
+console.log("\n=== counter table shape ===");
+
+const tablePool = fakePool();
+await ensureRateLimitsTable(tablePool);
+const ddl = tablePool.statements[0].sql;
+check("migration creates the counter table", ddl.startsWith("CREATE TABLE IF NOT EXISTS api_rate_limits"), true);
+
+// Regression guard. A VARCHAR column inside a composite primary key is measured
+// against the InnoDB index limit - 767 bytes on older configurations, 3072 on
+// DYNAMIC - and utf8mb4 multiplies each character by up to four. That is exactly
+// what failed: the CREATE was rejected during startup and prepareDatabase exits
+// the process, which took every replica offline. Only fixed-width columns.
+const primaryKey = ddl.match(/PRIMARY KEY \(([^)]*)\)/i)?.[1] ?? "";
+const keyColumns = primaryKey.split(",").map((part) => part.trim());
+const columnTypes = keyColumns.map((column) => ddl.match(new RegExp(`\\b${column}\\s+([A-Za-z]+(\\(\\d+\\))?)`, "i"))?.[1]);
+check("primary key columns are located", keyColumns.length, 2);
+check(
+  "no variable-length string column sits in the primary key",
+  columnTypes.filter((type) => /^(VAR)?(CHAR|TEXT)/i.test(type ?? "")),
+  []
+);
+check("the hashed bucket column is a fixed 32 bytes", ddl.includes("BINARY(32)"), true);
+
+// ------------------------------------------------------ housekeeping and failure
+
+console.log("\n=== housekeeping and failure ===");
+
+const cleanupPool = fakePool();
+const cleaning = createDbStore({ pool: cleanupPool, cleanupEvery: 3 });
+for (let i = 0; i < 3; i += 1) await cleaning.hit("5.5.5.5", 60_000, 1_000_000);
+check(
+  "expired windows are swept every N hits",
+  cleanupPool.statements.filter((s) => s.sql.startsWith("DELETE")).length,
+  1
+);
+
+const brokenPool = fakePool({ failOn: "INSERT" });
+// The "store unavailable, allowing request" warning on stderr below is expected
+// output from this case, not a test failure.
+const broken = createRateLimiter({
+  windowMs: 60_000,
+  max: 1,
+  store: createDbStore({ pool: brokenPool }),
+});
+check("a store failure lets the request through", (await send(broken, "6.6.6.6")).passed, true);
+check("and says so via a header", (await send(broken, "6.6.6.6")).res.headers["RateLimit-Degraded"], "1");
+check("and does not report a zero remaining", (await send(broken, "6.6.6.6")).res.headers["RateLimit-Remaining"], "1");
+
+// -------------------------------------------------------------------- misc
 
 console.log("\n=== misc ===");
 
@@ -96,6 +205,7 @@ check("rejects a nonsensical config", (() => {
     return err.message;
   }
 })(), "createRateLimiter needs a positive windowMs and max");
+check("the default store is per-process memory", createMemoryStore().name, "memory");
 
 console.log(`\n${checks - failures}/${checks} checks passed.`);
 if (failures) {

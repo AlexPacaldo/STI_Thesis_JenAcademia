@@ -10,6 +10,7 @@ import mysql from "mysql2/promise";
 import path from "path";
 import { Resend } from "resend";
 import { assessClassEvidence } from "./classEvidence.js";
+import { createDbStore, ensureRateLimitsTable } from "./dbRateLimit.js";
 import { createRateLimiter } from "./rateLimit.js";
 import { deleteRecordingFromDrive, extractDriveFileId, isGoogleDriveConfigured, uploadRecordingToDrive } from "./googleDrive.js";
 import {
@@ -386,6 +387,11 @@ const RESUME_PARSE_MAX = Math.max(1, Number(process.env.RESUME_PARSE_RATE_MAX) |
 const limitResumeParsing = createRateLimiter({
   windowMs: RESUME_PARSE_WINDOW_MS,
   max: RESUME_PARSE_MAX,
+  // Counters go through MySQL rather than process memory. The app runs on
+  // several Railway replicas, and an in-memory counter gave each replica its
+  // own budget, so the real limit was that number times the replica count.
+  // If this table is unavailable the limiter fails open by design.
+  store: createDbStore({ pool }),
   message: "Too many resumes uploaded. Wait a few minutes before trying again.",
 });
 
@@ -1385,6 +1391,29 @@ async function ensureAccountSetupInvitesTable() {
   `);
 }
 
+/**
+ * Counters for the resume rate limiter.
+ *
+ * Never rejects. A missing counter table only means the limiter fails open and
+ * the route behaves as it did before rate limiting existed, which is a far
+ * better outcome than refusing to boot.
+ */
+async function ensureApiRateLimitsTable() {
+  try {
+    await ensureRateLimitsTable(pool);
+  } catch (err) {
+    // Deliberately non-fatal, following the same pattern as
+    // ensurePerformanceIndexes(). prepareDatabaseWithRetry() calls
+    // process.exit(1) for any error that is not a connection-limit problem, so
+    // an optional feature's migration sitting on that path can take every
+    // replica offline. This table backs a rate limit, not data.
+    console.warn(
+      "Could not create api_rate_limits; resume uploads will run without a rate limit:",
+      err.message
+    );
+  }
+}
+
 async function ensurePasswordResetTokensTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -1684,6 +1713,7 @@ async function prepareDatabase() {
   await ensureUserPasswordChangedColumn();
   await ensureAccountSetupInvitesTable();
   await ensurePasswordResetTokensTable();
+  await ensureApiRateLimitsTable();
   await ensureUserDemographicsColumns();
   await refreshAllProfileCompletion();
   await ensureStudentContractRequestsTable();

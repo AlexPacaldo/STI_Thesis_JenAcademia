@@ -785,6 +785,30 @@ INSERT INTO `teacher_profiles` VALUES (20,67,'AI matching profile:\nTeaching sty
 UNLOCK TABLES;
 
 --
+-- Table structure for table `api_rate_limits`
+--
+-- Shared rate limit counters (see backend/dbRateLimit.js). Also created at
+-- startup by ensureApiRateLimitsTable(), which is deliberately non-fatal, so
+-- this entry is only needed for a from-scratch restore of this dump.
+--
+-- bucket_hash is a SHA-256 of the client key, not the key itself. A VARCHAR in
+-- a composite primary key is measured against the InnoDB index limit (767 on
+-- older configurations, 3072 on DYNAMIC) and a utf8mb4 VARCHAR(191) exceeded
+-- it, which failed the CREATE at startup. BINARY(32) is a fixed 32 bytes
+-- regardless of collation, so no key-length limit can apply.
+
+DROP TABLE IF EXISTS `api_rate_limits`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `api_rate_limits` (
+  `bucket_hash` binary(32) NOT NULL,
+  `window_start` bigint unsigned NOT NULL,
+  `hit_count` int unsigned NOT NULL DEFAULT '1',
+  PRIMARY KEY (`bucket_hash`,`window_start`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `users`
 --
 
