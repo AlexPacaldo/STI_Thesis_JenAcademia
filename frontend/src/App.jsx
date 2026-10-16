@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar'
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useNotification } from "./components/NotificationContainer.jsx";
 import { clearStoredUser, readStoredUser } from "./utils/sessionUser.js";
+import { clearSessionToken } from "./utils/apiAuth.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "./utils/storageKeys.js";
 import { API_BASE_URL } from "./utils/api.js";
 
@@ -125,6 +126,9 @@ function App() {
 
   function clearSession() {
     clearStoredUser();
+    // The bearer token is the credential; leaving it behind after sign-out would
+    // keep admin access alive until it expired on its own.
+    clearSessionToken();
     localStorage.removeItem(STORAGE_KEYS.lastActivityAt);
     localStorage.removeItem(LEGACY_STORAGE_KEYS.lastActivityAt);
     window.dispatchEvent(new Event("userLoggedOut"));

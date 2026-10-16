@@ -12,6 +12,7 @@ import { Resend } from "resend";
 import { assessClassEvidence } from "./classEvidence.js";
 import { createDbStore, ensureRateLimitsTable } from "./dbRateLimit.js";
 import { createRateLimiter } from "./rateLimit.js";
+import { readBearerToken, signSessionToken, verifySessionToken } from "./sessionToken.js";
 import { deleteRecordingFromDrive, extractDriveFileId, isGoogleDriveConfigured, uploadRecordingToDrive } from "./googleDrive.js";
 import {
   buildLevelEvaluationNotes,
@@ -111,6 +112,24 @@ const ENCRYPTION_KEY = crypto.scryptSync(String(ENCRYPTION_SECRET), "jen-academi
 
 if (!process.env.CHAT_ENCRYPTION_KEY && !process.env.ENCRYPTION_KEY && !process.env.JWT_SECRET) {
   console.warn("CHAT_ENCRYPTION_KEY is not set; using DB_PASSWORD as the chat encryption secret.");
+}
+
+// Signing key for session tokens. Preferred over reusing the chat secret so the
+// two can be rotated independently.
+const SESSION_SECRET =
+  process.env.SESSION_SECRET ||
+  process.env.ENCRYPTION_SECRET ||
+  process.env.CHAT_ENCRYPTION_KEY ||
+  process.env.ENCRYPTION_KEY ||
+  process.env.JWT_SECRET ||
+  DB_PASSWORD;
+const SESSION_TTL_MS = Math.max(60_000, Number(process.env.SESSION_TTL_MS) || 12 * 60 * 60 * 1000);
+
+if (!process.env.SESSION_SECRET) {
+  console.warn(
+    "SESSION_SECRET is not set; falling back to another secret for signing session tokens. " +
+      "Set SESSION_SECRET to a long random value so tokens cannot be forged by anyone who can read the source."
+  );
 }
 
 function encryptNullableText(value) {
@@ -410,6 +429,60 @@ if (String(process.env.DB_SSL || "").toLowerCase() === "true") {
 }
 
 export const pool = mysql.createPool(poolConfig);
+
+/**
+ * Require a signed session token, and then corroborate it against the database.
+ *
+ * The signature proves the server issued the token. The database check is what
+ * makes revocation real: a token stays cryptographically valid until it expires,
+ * so without re-reading the account an archived or suspended user would keep
+ * their access until the token aged out.
+ *
+ * Replaces the previous arrangement on admin routes, where the caller stated an
+ * admin_id in the request body and requireAdmin believed it.
+ */
+//! Must stay below the `pool` declaration above.
+async function requireAdminSession(req, res, next) {
+  const token = readBearerToken(req);
+  if (!token) {
+    return res.status(401).json({ message: "Sign in to continue" });
+  }
+
+  const claims = verifySessionToken(token, { secret: SESSION_SECRET });
+  if (!claims) {
+    return res.status(401).json({ message: "Your session has expired. Please sign in again" });
+  }
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT user_id, first_name, last_name, role, status
+       FROM users
+       WHERE user_id = ?
+       LIMIT 1`,
+      [claims.sub]
+    );
+
+    const account = rows[0];
+    if (!account || account.status !== "active") {
+      return res.status(401).json({ message: "This account is no longer active" });
+    }
+    if (account.role !== "admin") {
+      return res.status(403).json({ message: "Administrator access is required" });
+    }
+
+    // Verified from the database, not from the token payload.
+    req.session = {
+      userId: account.user_id,
+      role: account.role,
+      firstName: account.first_name,
+      lastName: account.last_name,
+    };
+    next();
+  } catch (err) {
+    console.error("requireAdminSession error:", err);
+    res.status(500).json({ message: "Could not verify your session" });
+  }
+}
 
 // Every accepted resume costs one Gemini call, and the endpoint has no auth of
 // its own (see the route below), so the quota is the thing worth bounding.
@@ -2523,8 +2596,23 @@ app.post("/api/login", limitLoginAttempts, async (req, res) => {
       [user.user_id]
     );
 
+    // Issued here so protected routes have something real to check. Wrapped
+    // because failing to sign must never turn a valid password into a failed
+    // sign-in: without a token the account can still browse, it just cannot
+    // reach admin actions.
+    let sessionToken = null;
+    try {
+      sessionToken = signSessionToken(
+        { userId: user.user_id, role: user.role },
+        { secret: SESSION_SECRET, ttlMs: SESSION_TTL_MS }
+      );
+    } catch (err) {
+      console.error("Could not issue a session token at login:", err);
+    }
+
     res.json({
       message: "Login successful",
+      token: sessionToken,
       user: {
         id: user.user_id,
         firstName: user.first_name,
@@ -3057,7 +3145,7 @@ app.put("/api/users/:id/password", async (req, res) => {
 
 //ADMIN
 
-app.post("/api/admin/recommend-teacher", async (req, res) => {
+app.post("/api/admin/recommend-teacher", requireAdminSession, async (req, res) => {
   try {
     const { criteria, trialNotes, courseId, proficiencyLevel, teacherId } = req.body || {};
     const recommendation = await recommendTeacher({
@@ -3085,14 +3173,12 @@ app.post("/api/admin/recommend-teacher", async (req, res) => {
 // response is only pre-filled form state: the admin confirms it and the real
 // insert still happens on POST /api/admin/users.
 //
-// !! No authentication. requireAdmin elsewhere trusts an admin_id supplied in
-// !! the request body, which is not bound to any session, so it would not stop
-// !! anyone who read an admin id off another endpoint. Rather than add a check
-// !! that looks like security but is not, this route relies on the rate limit
-// !! above to bound the cost. What it returns is only what Gemini extracts from
-// !! the caller's own upload, so there is no data to steal - the exposure is
-// !! purely resource consumption, which is what the limiter caps.
-app.post("/api/admin/parse-resume", limitResumeParsingTotal, limitResumeParsing, (req, res, next) =>
+// Requires a signed admin session (see requireAdminSession) and is bounded by
+// the rate limiters above. Note that requireAdmin, used by the book and lesson
+// routes, still trusts an admin_id supplied in the request body and is not
+// session based; migrating those routes onto requireAdminSession is still
+// outstanding.
+app.post("/api/admin/parse-resume", requireAdminSession, limitResumeParsingTotal, limitResumeParsing, (req, res, next) =>
   // Multer raises filter/size errors in middleware, before the route body runs,
   // and there is no global error handler, so without this wrapper they would
   // surface as Express's default HTML error page.
@@ -3158,7 +3244,7 @@ function clampSpecialization(value) {
 }
 
 //Create Teacher Account
-app.post("/api/admin/users", async (req, res) => {
+app.post("/api/admin/users", requireAdminSession, async (req, res) => {
   try {
     const {
       firstName,

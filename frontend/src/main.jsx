@@ -3,7 +3,12 @@ import ReactDOM from "react-dom/client";
 import { createBrowserRouter, Navigate, RouterProvider} from "react-router-dom";
 import App from "./App.jsx";
 import { NotificationProvider } from "./components/NotificationContainer.jsx";
+import { installAuthInterceptor } from "./utils/apiAuth.js";
 import "./index.css";
+
+// Installed before the first render so no request can leave without the bearer
+// token the admin routes now require.
+installAuthInterceptor();
 
 const Homepage = lazy(() => import("./pages/homepage.jsx"));
 const Register = lazy(() => import("./pages/register.jsx"));

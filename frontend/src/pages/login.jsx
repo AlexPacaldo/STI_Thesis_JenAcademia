@@ -4,6 +4,7 @@ import Girl from "../assets/img/homepage/Girl.png";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { Link } from "react-router-dom";
 import { writeStoredUser } from "../utils/sessionUser.js";
+import { storeSessionToken } from "../utils/apiAuth.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, writeNamespacedStorageValue } from "../utils/storageKeys.js";
 import { API_BASE_URL } from "../utils/api.js";
 
@@ -55,6 +56,10 @@ export default function Login() {
         stayLoggedIn: stayLoggedIn,
       };
       writeStoredUser(userToStore);
+      // The admin routes now require this credential. Stored separately from
+      // the cached user object so signing out can drop the credential without
+      // having to reason about presentation state.
+      storeSessionToken(data.token);
       writeNamespacedStorageValue(
         STORAGE_KEYS.lastActivityAt,
         Date.now(),
