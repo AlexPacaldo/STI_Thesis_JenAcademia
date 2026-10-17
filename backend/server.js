@@ -2407,8 +2407,11 @@ app.get("/api/teacher-courses", async (_req, res) => {
   }
 });
 
-app.get("/api/dashboard/:role/:user_id", async (req, res) => {
+app.get("/api/dashboard/:role/:user_id", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { role, user_id } = req.params;
     const scheduledDate = req.query.scheduled_date;
 
@@ -3113,8 +3116,11 @@ app.post("/api/account-setup/:token", async (req, res) => {
 
 
 //ACCOUNT
-app.get("/api/users/:id", async (req, res) => {
+app.get("/api/users/:id", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     await refreshProfileCompletion(req.params.id);
     await autoMarkPastClassesAsNoShow(pool);
     const [rows] = await pool.query(
@@ -3208,8 +3214,11 @@ app.get("/api/users/:id", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-app.put("/api/users/:id", async (req, res) => {
+app.put("/api/users/:id", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { firstName, lastName, email, contact, country, birthDate, timezone } = req.body;
     const normalizedBirthDate = birthDate ? String(birthDate).slice(0, 10) : null;
     const normalizedCountry = String(country || "").trim();
@@ -3250,8 +3259,11 @@ app.put("/api/users/:id", async (req, res) => {
   }
 });
 
-app.post("/api/users/:id/profile-picture", profileUpload.single("profile_picture"), async (req, res) => {
+app.post("/api/users/:id/profile-picture", profileUpload.single("profile_picture"), requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     if (!req.file) {
       return res.status(400).json({ message: "Please choose an image to upload" });
     }
@@ -3295,8 +3307,11 @@ app.post("/api/users/:id/profile-picture", profileUpload.single("profile_picture
   }
 });
 
-app.put("/api/users/:id/password", async (req, res) => {
+app.put("/api/users/:id/password", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { current, next } = req.body;
     const userId = req.params.id;
 
@@ -3630,7 +3645,7 @@ app.post("/api/admin/users", requireAdminSession, async (req, res) => {
 // ==================== ADMIN ENDPOINTS ====================
 
 // Get users with optional role and status filtering
-app.get("/api/admin/users", async (req, res) => {
+app.get("/api/admin/users", requireAdminSession, async (req, res) => {
   try {
     const { role, status } = req.query;
     let query = `
@@ -3678,7 +3693,7 @@ app.get("/api/admin/users", async (req, res) => {
   }
 });
 
-app.get("/api/admin/users/:userId/account", async (req, res) => {
+app.get("/api/admin/users/:userId/account", requireAdminSession, async (req, res) => {
   try {
     const { userId } = req.params;
     await refreshProfileCompletion(userId);
@@ -3739,7 +3754,7 @@ app.get("/api/admin/users/:userId/account", async (req, res) => {
   }
 });
 
-app.post("/api/admin/students/:studentId/setup-invite", async (req, res) => {
+app.post("/api/admin/students/:studentId/setup-invite", requireAdminSession, async (req, res) => {
   const connection = await pool.getConnection();
 
   try {
@@ -3867,7 +3882,7 @@ app.post("/api/admin/users/:userId/setup-invite", requireAdminSession, async (re
   }
 });
 
-app.put("/api/admin/students/:studentId/email", async (req, res) => {
+app.put("/api/admin/students/:studentId/email", requireAdminSession, async (req, res) => {
   const connection = await pool.getConnection();
 
   try {
@@ -4023,7 +4038,7 @@ app.put("/api/admin/users/:userId/email", requireAdminSession, async (req, res) 
   }
 });
 
-app.get("/api/admin/student-contracts", async (_req, res) => {
+app.get("/api/admin/student-contracts", requireAdminSession, async (_req, res) => {
   try {
     await expireDepletedPackages();
 
@@ -4243,8 +4258,11 @@ app.post("/api/student/contract-requests", async (req, res) => {
   }
 });
 
-app.get("/api/student/contract-requests/:student_id", async (req, res) => {
+app.get("/api/student/contract-requests/:student_id", requireSession, async (req, res) => {
   try {
+    if (!(await sessionMayReadStudent(req, req.params.student_id))) {
+      return res.status(403).json({ message: "You can only view your own records." });
+    }
     const { student_id } = req.params;
     const [rows] = await pool.query(
       `SELECT r.*, c.course_name
@@ -4263,7 +4281,7 @@ app.get("/api/student/contract-requests/:student_id", async (req, res) => {
   }
 });
 
-app.get("/api/admin/contract-requests", async (_req, res) => {
+app.get("/api/admin/contract-requests", requireAdminSession, async (_req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT r.*, c.course_name,
@@ -6081,8 +6099,11 @@ app.post("/api/calendar/class", async (req, res) => {
 });
 
 // Get student class package
-app.get("/api/calendar/student-package/:student_id", async (req, res) => {
+app.get("/api/calendar/student-package/:student_id", requireSession, async (req, res) => {
   try {
+    if (!(await sessionMayReadStudent(req, req.params.student_id))) {
+      return res.status(403).json({ message: "You can only view your own records." });
+    }
     const { student_id } = req.params;
     await expireDepletedPackages();
 
@@ -6494,8 +6515,11 @@ app.post("/api/calendar/reschedule-request", async (req, res) => {
 });
 
 // Get booked dates and times for a user (teacher or student)
-app.get("/api/calendar/booked-dates/:user_id", async (req, res) => {
+app.get("/api/calendar/booked-dates/:user_id", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { user_id } = req.params;
     await autoMarkPastClassesAsNoShow(pool);
     const [bookedDates] = await pool.query(
@@ -6529,8 +6553,11 @@ app.get("/api/calendar/booked-dates/:user_id", async (req, res) => {
 });
 
 // Get reschedule requests for a user (that they need to approve/reject)
-app.get("/api/calendar/my-reschedule-requests/:user_id", async (req, res) => {
+app.get("/api/calendar/my-reschedule-requests/:user_id", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { user_id } = req.params;
     const [requests] = await pool.query(
       `SELECT rr.*, c.class_id, c.class_name,
@@ -7332,8 +7359,11 @@ app.put("/api/video-sessions/:session_id", async (req, res) => {
 });
 
 // Get all video sessions for a user
-app.get("/api/video-sessions/user/:user_id", async (req, res) => {
+app.get("/api/video-sessions/user/:user_id", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { user_id } = req.params;
 
     const [rows] = await pool.query(
@@ -7385,8 +7415,11 @@ app.get("/api/chats/stream/:user_id", async (req, res) => {
   }
 });
 
-app.get("/api/chats/unread-count/:user_id", async (req, res) => {
+app.get("/api/chats/unread-count/:user_id", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { user_id } = req.params;
     const [rows] = await pool.query(
       `SELECT COUNT(*) AS unread_count
@@ -7402,8 +7435,11 @@ app.get("/api/chats/unread-count/:user_id", async (req, res) => {
   }
 });
 
-app.get("/api/chats/conversations/:user_id", async (req, res) => {
+app.get("/api/chats/conversations/:user_id", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { user_id } = req.params;
     const conversations = await getChatConversationsForUser(user_id);
     res.json({ conversations });
@@ -7413,8 +7449,11 @@ app.get("/api/chats/conversations/:user_id", async (req, res) => {
   }
 });
 
-app.get("/api/chats/conversations/:user_id/:other_user_id/messages", async (req, res) => {
+app.get("/api/chats/conversations/:user_id/:other_user_id/messages", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { user_id, other_user_id } = req.params;
     const messages = await getChatThread(user_id, other_user_id);
     res.json({ messages });
@@ -7424,8 +7463,11 @@ app.get("/api/chats/conversations/:user_id/:other_user_id/messages", async (req,
   }
 });
 
-app.put("/api/chats/conversations/:user_id/:other_user_id/read", async (req, res) => {
+app.put("/api/chats/conversations/:user_id/:other_user_id/read", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { user_id, other_user_id } = req.params;
     const readAt = new Date();
     await pool.query(
@@ -7553,8 +7595,11 @@ app.post("/api/chats/messages", async (req, res) => {
 // ==================== NOTIFICATIONS (System-wide) ====================
 
 // Get all unread notifications for a user
-app.get("/api/notifications/unread/:user_id", async (req, res) => {
+app.get("/api/notifications/unread/:user_id", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { user_id } = req.params;
 
     const [rows] = await pool.query(
@@ -7571,8 +7616,11 @@ app.get("/api/notifications/unread/:user_id", async (req, res) => {
 });
 
 // Get all notifications for a user (paginated)
-app.get("/api/notifications/:user_id", async (req, res) => {
+app.get("/api/notifications/:user_id", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { user_id } = req.params;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
@@ -7651,8 +7699,11 @@ app.put("/api/notifications/:notification_id/read", async (req, res) => {
 });
 
 // Mark all notifications as read for a user
-app.put("/api/users/:user_id/notifications/read-all", async (req, res) => {
+app.put("/api/users/:user_id/notifications/read-all", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { user_id } = req.params;
 
     await pool.query(
@@ -7687,8 +7738,11 @@ app.delete("/api/notifications/:notification_id", async (req, res) => {
 });
 
 // Delete all notifications for a user
-app.delete("/api/notifications/user/:user_id", async (req, res) => {
+app.delete("/api/notifications/user/:user_id", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { user_id } = req.params;
 
     await pool.query(
@@ -7704,8 +7758,11 @@ app.delete("/api/notifications/user/:user_id", async (req, res) => {
 });
 
 // Get user notification preferences
-app.get("/api/notification-preferences/:user_id", async (req, res) => {
+app.get("/api/notification-preferences/:user_id", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { user_id } = req.params;
 
     const [rows] = await pool.query(
@@ -7734,8 +7791,11 @@ app.get("/api/notification-preferences/:user_id", async (req, res) => {
 });
 
 // Update user notification preferences
-app.put("/api/notification-preferences/:user_id", async (req, res) => {
+app.put("/api/notification-preferences/:user_id", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.params.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { user_id } = req.params;
     const { class_reminders, assignment_notifications, remark_notifications, reschedule_notifications, enrollment_notifications, email_on_notification, do_not_disturb_start, do_not_disturb_end } = req.body;
 
@@ -7757,8 +7817,11 @@ app.put("/api/notification-preferences/:user_id", async (req, res) => {
 // ==================== STUDENT PROFILE ENDPOINTS ====================
 
 // Get student profile with package info
-app.get("/api/student/profile/:student_id", async (req, res) => {
+app.get("/api/student/profile/:student_id", requireSession, async (req, res) => {
   try {
+    if (!(await sessionMayReadStudent(req, req.params.student_id))) {
+      return res.status(403).json({ message: "You can only view your own records." });
+    }
     const { student_id } = req.params;
     await autoMarkPastClassesAsNoShow(pool);
 
@@ -7841,8 +7904,11 @@ app.get("/api/student/profile/:student_id", async (req, res) => {
   }
 });
 
-app.get("/api/student/assigned-teacher/:student_id", async (req, res) => {
+app.get("/api/student/assigned-teacher/:student_id", requireSession, async (req, res) => {
   try {
+    if (!(await sessionMayReadStudent(req, req.params.student_id))) {
+      return res.status(403).json({ message: "You can only view your own records." });
+    }
     const { student_id } = req.params;
     const [rows] = await pool.query(
       `SELECT sp.assigned_teacher_id, t.first_name, t.last_name
@@ -8290,7 +8356,7 @@ app.get("/api/courses", async (req, res) => {
   }
 });
 
-app.post("/api/admin/student-profile", async (req, res) => {
+app.post("/api/admin/student-profile", requireAdminSession, async (req, res) => {
   try {
     const { user_id, proficiency_level, assigned_teacher_id, course_id, trial_notes } = req.body;
 
@@ -8312,9 +8378,12 @@ app.post("/api/admin/student-profile", async (req, res) => {
   }
 });
 
-app.put("/api/student/package/:student_id/use-class", async (req, res) => {
+app.put("/api/student/package/:student_id/use-class", requireSession, async (req, res) => {
   const connection = await pool.getConnection();
   try {
+    if (!(await sessionMayReadStudent(req, req.params.student_id))) {
+      return res.status(403).json({ message: "You can only view your own records." });
+    }
     const { student_id } = req.params;
 
     await connection.beginTransaction();

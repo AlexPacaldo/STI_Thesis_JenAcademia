@@ -8,6 +8,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useNotification } from "./components/NotificationContainer.jsx";
 import { clearStoredUser, readStoredUser } from "./utils/sessionUser.js";
 import { clearSessionToken } from "./utils/apiAuth.js";
+import { apiFetch } from "./utils/apiAuth.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "./utils/storageKeys.js";
 import { API_BASE_URL } from "./utils/api.js";
 
@@ -189,7 +190,7 @@ function App() {
       async function checkAccountStatus() {
         if (!currentUserId) return;
         try {
-          const response = await fetch(`${API_BASE_URL}/api/users/${currentUserId}`);
+          const response = await apiFetch(`${API_BASE_URL}/api/users/${currentUserId}`);
           if (!response.ok) {
             if (response.status === 404) {
               clearSession();
