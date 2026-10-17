@@ -9213,21 +9213,15 @@ async function isBookDistributedToTeacher(bookId, teacherId) {
  * them, or touch their lessons.
  *
  * !! STILL NOT AUTHENTICATED. This trusts an admin_id supplied in the request,
- * !! which proves nothing: any caller can pass an admin's id. Routes guarded by
- * !! requireAdminSession do not rely on it, but the ones below still do:
+ * !! which proves nothing: any caller can pass an admin's id.
  * !!
- * !!   - PUT    /api/books/:book_id            (edit book)
- * !!   - the lesson authoring routes under /api/lessons
- * !!   - the book/lesson read path via validateBookReadAccess
- * !!
- * !! They are excluded on purpose, not overlooked. booksContent.jsx issues
- * !! those calls with fetch(), not axios, so the global auth interceptor never
- * !! attaches a token to them and guarding the route would 401 the book library
- * !! for admins. Patching window.fetch to inject the header globally is worse:
- * !! the same file fetches external file URLs, which would leak the token to
- * !! third parties. The fix is to give those specific fetch calls an explicit
- * !! Authorization header, then move these routes onto requireAdminSession.
- * !! Never treat a route using this function as protected.
+ * !! Every admin-only WRITE now sits behind requireAdminSession, including book
+ * !! editing and lesson authoring, which booksContent.jsx reaches through
+ * !! apiFetch rather than axios. The one remaining caller is the book/lesson
+ * !! READ path via validateBookReadAccess, which is left alone on purpose: it
+ * !! also serves teachers and students, so migrating it means deciding how a
+ * !! read should be authorised by role, which is a larger change than adding a
+ * !! header to a request. Do not treat a route using this function as protected.
  *
  * @param {Object} res - Express response object
  * @param {number} adminId - The admin ID making the request
@@ -9792,7 +9786,7 @@ app.put("/api/books/:book_id/teachers", requireAdminSession, async (req, res) =>
 
 // UPDATE book
 // SECURITY: admin only. Teachers are read-only on books.
-app.put("/api/books/:book_id", bookCoverUpload.single("cover"), async (req, res) => {
+app.put("/api/books/:book_id", bookCoverUpload.single("cover"), requireAdminSession, async (req, res) => {
   try {
     const { book_id } = req.params;
     const { title, description, author } = req.body;
@@ -10022,7 +10016,7 @@ app.get("/api/lessons/:lesson_id", async (req, res) => {
 
 // CREATE new lesson (with file upload)
 // SECURITY: admin only. Lessons ship with the book, so teachers are read-only.
-app.post("/api/lessons", lessonUpload.single("file"), async (req, res) => {
+app.post("/api/lessons", lessonUpload.single("file"), requireAdminSession, async (req, res) => {
   try {
     const { book_id, title, content, is_published } = req.body;
     const admin_id = getAdminIdFromRequest(req);
@@ -10093,7 +10087,7 @@ app.post("/api/lessons", lessonUpload.single("file"), async (req, res) => {
 
 // UPDATE lesson (with optional file replacement)
 // SECURITY: admin only
-app.put("/api/lessons/:lesson_id", lessonUpload.single("file"), async (req, res) => {
+app.put("/api/lessons/:lesson_id", lessonUpload.single("file"), requireAdminSession, async (req, res) => {
   try {
     const { lesson_id } = req.params;
     const { lesson_number, title, content, order_number, is_published } = req.body;
@@ -10139,7 +10133,7 @@ app.put("/api/lessons/:lesson_id", lessonUpload.single("file"), async (req, res)
 
 // DELETE lesson
 // SECURITY: admin only
-app.delete("/api/lessons/:lesson_id", async (req, res) => {
+app.delete("/api/lessons/:lesson_id", requireAdminSession, async (req, res) => {
   try {
     const { lesson_id } = req.params;
     const admin_id = getAdminIdFromRequest(req);
@@ -10444,7 +10438,7 @@ app.get("/api/teacher/books", async (req, res) => {
 // SECURITY: admin only. Unlike /api/books this also returns archived books and
 // works without a status filter defaulting to 'active', because the admin is
 // the one who recycles and restores.
-app.get("/api/admin/books", async (req, res) => {
+app.get("/api/admin/books", requireAdminSession, async (req, res) => {
   try {
     const admin_id = getAdminIdFromRequest(req);
 

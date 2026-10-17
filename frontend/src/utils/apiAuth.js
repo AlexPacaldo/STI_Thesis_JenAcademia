@@ -1,4 +1,5 @@
 import axios from "axios";
+import { API_BASE_URL } from "./api.js";
 
 /**
  * Session token storage and the axios hook that presents it.
@@ -71,4 +72,27 @@ export function installAuthInterceptor({ onUnauthorized } = {}) {
       return Promise.reject(error);
     }
   );
+}
+
+/**
+ * fetch() with the session token attached, for the call sites that use fetch
+ * directly and so bypass the axios interceptor.
+ *
+ * The token is only attached when the target is this API. That restriction is
+ * the point: a blanket patch of window.fetch would attach the credential to
+ * every URL the app loads, and booksContent.jsx fetches external file URLs, so
+ * the token would leak to third parties.
+ *
+ * Content-Type is deliberately left alone so a FormData body keeps the
+ * multipart boundary that fetch generates for it.
+ */
+export async function apiFetch(url, options = {}) {
+  const target = String(url);
+  const headers = new Headers(options.headers || {});
+  const token = readSessionToken();
+  const isOwnApi = target.startsWith(API_BASE_URL) || target.startsWith("/api/");
+
+  if (token && isOwnApi) headers.set("Authorization", `Bearer ${token}`);
+
+  return fetch(target, { ...options, headers });
 }

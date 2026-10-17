@@ -7,6 +7,7 @@ import styles from "../assets/booksContent.module.css";
 import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { API_BASE_URL } from "../utils/api.js";
+import { apiFetch } from "../utils/apiAuth.js";
 import { compressFileIfImage } from "../utils/imageCompression.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
@@ -751,7 +752,7 @@ export default function BooksContent({ mode = "student" }) {
         formData.append("admin_id", String(adminId));
       }
 
-      const response = await fetch(`${API_BASE}/api/lessons`, {
+      const response = await apiFetch(`${API_BASE}/api/lessons`, {
         method: "POST",
         body: formData,
       });
@@ -783,7 +784,7 @@ export default function BooksContent({ mode = "student" }) {
     }
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_BASE}/api/lessons/${lesson.lesson_id}?admin_id=${encodeURIComponent(adminId)}`,
         { method: "DELETE" }
       );
@@ -1144,7 +1145,7 @@ export default function BooksContent({ mode = "student" }) {
                       fd.append("admin_id", String(adminId));
                     }
 
-                    const res = await fetch(`${API_BASE}/api/books/${book.book_id}`, {
+                    const res = await apiFetch(`${API_BASE}/api/books/${book.book_id}`, {
                       method: "PUT",
                       body: fd,
                     });
