@@ -7,6 +7,7 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
 import { formatTimezoneLabel, getTimezoneOptions, getUserTimezone } from "../utils/timezone.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { compressFileIfImage } from "../utils/imageCompression.js";
 import ModalPortal from "../utils/ModalPortal.jsx";
 
@@ -52,11 +53,6 @@ const COUNTRY_TIMEZONES = {
 };
 const TIMEZONE_OPTIONS = getTimezoneOptions();
 
-function absoluteUrl(url) {
-  if (!url) return "";
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API}${url}`;
-}
 
 function mapUser(u = {}) {
   return {
@@ -199,7 +195,6 @@ export default function Account() {
 
   const details = user?.roleDetails || {};
   const fullName = `${form.firstName || ""} ${form.lastName || ""}`.trim() || "Account";
-  const avatarSrc = useMemo(() => absoluteUrl(user?.profileImageUrl) || pfp, [user?.profileImageUrl]);
   const age = calculateAge(form.birthDate);
   const completionItems = useMemo(() => ([
     { label: "Profile picture", complete: Boolean(user?.profileImageUrl) },
@@ -759,7 +754,12 @@ export default function Account() {
               onClick={() => setAvatarMenuOpen((open) => !open)}
               aria-label="Open profile picture options"
             >
-              <img className={styles.avatar} src={avatarSrc} alt={`${fullName} profile`} />
+              <AuthenticatedImage
+            className={styles.avatar}
+            src={user?.profileImageUrl}
+            alt={`${fullName} profile`}
+            fallback={<img className={styles.avatar} src={pfp} alt={`${fullName} profile`} />}
+          />
               <span className={styles.avatarEditMark}>+</span>
             </button>
             {avatarMenuOpen && (
@@ -1062,7 +1062,11 @@ export default function Account() {
                 <button type="button" className={styles.closeBtn} onClick={() => setPreviewOpen(false)}>x</button>
               </div>
               <div className={styles.previewBody}>
-                <img src={avatarSrc} alt={`${fullName} profile preview`} />
+                <AuthenticatedImage
+                  src={user?.profileImageUrl}
+                  alt={`${fullName} profile preview`}
+                  fallback={<img src={pfp} alt={`${fullName} profile preview`} />}
+                />
               </div>
             </section>
           </div>

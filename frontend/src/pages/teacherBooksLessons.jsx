@@ -10,20 +10,11 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { apiFetch } from "../utils/apiAuth.js";
 
 const API_BASE = API_BASE_URL;
 
-function absoluteUrl(url) {
-  if (!url) return "";
-  const cleaned = String(url).replace(/\\/g, "/");
-  if (/^https?:\/\//i.test(cleaned)) return cleaned;
-  // uploads paths arrive both with and without a leading slash; a bare concat
-  // produces "localhost:3001uploads/..." with no separator, which 404s.
-  if (cleaned.startsWith("/uploads/")) return `${API_BASE}${cleaned}`;
-  if (cleaned.startsWith("uploads/")) return `${API_BASE}/${cleaned}`;
-  return cleaned;
-}
 
 export default function TeacherBooksLessons() {
   const { notify } = useNotification() || {};
@@ -96,9 +87,9 @@ export default function TeacherBooksLessons() {
             {books.map((book) => (
               <div key={book.book_id} className={styles.LessonsCard}>
                 {book.cover_url && !coverErrors[book.book_id] ? (
-                  <img
+                  <AuthenticatedImage
                     className={styles.bookCover}
-                    src={absoluteUrl(book.cover_url)}
+                    src={book.cover_url}
                     alt=""
                     onError={() =>
                       setCoverErrors((prev) => ({ ...prev, [book.book_id]: true }))

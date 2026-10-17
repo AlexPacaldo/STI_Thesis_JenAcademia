@@ -6,6 +6,7 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { apiFetch } from "../utils/apiAuth.js";
 
 const API_BASE = API_BASE_URL;
@@ -99,9 +100,9 @@ export default function StudentBooksLessons() {
             {books.map((book) => (
               <div key={book.book_id} className={styles.LessonsCard}>
                 {book.cover_url ? (
-                  <img
+                  <AuthenticatedImage
                     className={styles.bookCover}
-                    src={`${API_BASE}${book.cover_url.startsWith("/") ? "" : "/"}${book.cover_url}`}
+                    src={book.cover_url}
                     alt=""
                   />
                 ) : (

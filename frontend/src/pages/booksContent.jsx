@@ -27,10 +27,6 @@ const isLessonCompleted = (item) => {
   return Boolean(item?.is_completed) || getProgressPercentage(item) >= 100;
 };
 
-const getAssetUrl = (url) => {
-  if (!url) return "";
-  return String(url).startsWith("http") ? url : `${API_BASE}${url}`;
-};
 
 const getFileExtension = (fileName) => {
   const cleaned = String(fileName || "").split("?")[0].split("#")[0];
@@ -839,7 +835,7 @@ export default function BooksContent({ mode = "student" }) {
         <div className={styles.TopContent}>
           <div className={styles.Teacher}>
             {book.cover_url ? (
-              <img src={`${API_BASE}${book.cover_url}`} alt="Book cover" className={styles.bookCoverImg} />
+              <AuthenticatedImage src={book.cover_url} alt="Book cover" className={styles.bookCoverImg} />
             ) : (
               <img src={teacherPic} alt="Teacher" />
             )}
@@ -941,7 +937,7 @@ export default function BooksContent({ mode = "student" }) {
                         <td>
                           <div className={styles.studentCell}>
                             {student.profileImageUrl ? (
-                              <img src={getAssetUrl(student.profileImageUrl)} alt={student.name} />
+                              <AuthenticatedImage src={student.profileImageUrl} alt={student.name} />
                             ) : (
                               <div className={styles.studentInitial}>
                                 {(student.name || "S").slice(0, 1).toUpperCase()}

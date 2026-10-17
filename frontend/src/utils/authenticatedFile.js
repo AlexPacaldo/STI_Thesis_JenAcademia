@@ -21,12 +21,20 @@ import { API_BASE_URL } from "./api.js";
  * forced on every avatar in the app.
  */
 
-/** Turn a stored path into an absolute URL, leaving real URLs alone. */
+/**
+ * Turn a stored path into an absolute URL, leaving real URLs alone.
+ *
+ * Stored paths are not consistent: they turn up with and without a leading
+ * slash, and with Windows separators. Every page had its own helper for this,
+ * most of them getting it subtly wrong, so the normalisation lives here once.
+ */
 export function absoluteUploadUrl(path) {
   if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;
-  if (path.startsWith("/uploads/")) return `${API_BASE_URL}${path}`;
-  return path;
+  const cleaned = String(path).replace(/\\/g, "/");
+  if (/^https?:\/\//i.test(cleaned)) return cleaned;
+  if (cleaned.startsWith("/uploads/")) return `${API_BASE_URL}${cleaned}`;
+  if (cleaned.startsWith("uploads/")) return `${API_BASE_URL}/${cleaned}`;
+  return cleaned;
 }
 
 /**
@@ -36,11 +44,17 @@ export function absoluteUploadUrl(path) {
  * URL on another host - is handed straight back, so it keeps normal browser
  * caching and costs no request. This is what lets callers pass a src without
  * first checking whether it happens to be protected.
+ *
+ * An absolute URL only counts when it is one of ours: a third-party host with
+ * "/uploads/" in its path must not be pulled through the session.
  */
 export function isStoredUpload(path) {
   if (!path) return false;
-  if (/^https?:\/\//i.test(path)) return path.startsWith(`${API_BASE_URL}/uploads/`);
-  return path.startsWith("/uploads/");
+  const cleaned = String(path).replace(/\\/g, "/");
+  if (/^https?:\/\//i.test(cleaned)) {
+    return cleaned.startsWith(API_BASE_URL) && cleaned.includes("/uploads/");
+  }
+  return cleaned.startsWith("/uploads/") || cleaned.startsWith("uploads/");
 }
 
 async function fetchObjectUrl(path) {
