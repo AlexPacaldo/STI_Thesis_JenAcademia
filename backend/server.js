@@ -650,8 +650,38 @@ async function sessionMayReadAssignment(req, assignmentId) {
   );
 }
 
+/**
+ * Middleware form of sessionMayActOnClass.
+ *
+ * Most class routes are plain async handlers, but some - the recording upload
+ * among them - wrap a multer middleware and take (req, res, next) instead, and
+ * a guard inlined after a try block does not fit those.
+ */
+function requireClassAccess() {
+  return async (req, res, next) => {
+    if (!(await sessionMayActOnClass(req, req.params.class_id))) {
+      return res.status(403).json({ message: "You can only act on your own classes." });
+    }
+    next();
+  };
+}
+
+/**
+ * May this session run a query scoped to one of these people?
+ *
+ * The calendar list endpoints take a student_id or teacher_id in the query and
+ * return that person's classes joined with the other party's details, so
+ * offering someone else's id reads their schedule.
+ */
+function sessionMayQueryAs(req, ids) {
+  if (req.session?.role === "admin") return true;
+  const userId = req.session?.userId;
+  if (userId === undefined || userId === null) return false;
+  return ids.some((id) => id !== undefined && id !== null && String(id) === String(userId));
+}
+
 /** Same shape for the remarks on a class: its own teacher, its own student, or an admin. */
-async function sessionMayReadClassRemarks(req, classId) {
+async function sessionMayActOnClass(req, classId) {
   const session = req.session || {};
   if (session.role === "admin") return true;
 
@@ -4841,7 +4871,7 @@ async function getClassVerification(connection, classId) {
   return rows.length ? decryptFields(rows[0], ["summary"]) : null;
 }
 
-app.get("/api/calendar/classes/:class_id/verification", async (req, res) => {
+app.get("/api/calendar/classes/:class_id/verification", requireSession, requireClassAccess(), async (req, res) => {
   try {
     const { class_id } = req.params;
     const verification = await getClassVerification(pool, class_id);
@@ -4852,7 +4882,7 @@ app.get("/api/calendar/classes/:class_id/verification", async (req, res) => {
   }
 });
 
-app.get("/api/calendar/classes/:class_id/classroom", async (req, res) => {
+app.get("/api/calendar/classes/:class_id/classroom", requireSession, requireClassAccess(), async (req, res) => {
   try {
     const { class_id } = req.params;
     const { user_id } = req.query;
@@ -4926,7 +4956,7 @@ app.get("/api/calendar/classes/:class_id/classroom", async (req, res) => {
   }
 });
 
-app.post("/api/calendar/classes/:class_id/start", async (req, res) => {
+app.post("/api/calendar/classes/:class_id/start", requireSession, requireClassAccess(), async (req, res) => {
   try {
     const { class_id } = req.params;
     const { teacher_id, recording_consent, evidence_mode } = req.body;
@@ -5002,7 +5032,7 @@ app.post("/api/calendar/classes/:class_id/start", async (req, res) => {
   }
 });
 
-app.post("/api/calendar/classes/:class_id/join", async (req, res) => {
+app.post("/api/calendar/classes/:class_id/join", requireSession, requireClassAccess(), async (req, res) => {
   try {
     const { class_id } = req.params;
     const { student_id, recording_consent } = req.body;
@@ -5084,7 +5114,7 @@ app.post("/api/calendar/classes/:class_id/join", async (req, res) => {
   }
 });
 
-app.post("/api/calendar/classes/:class_id/recording", (req, res, next) => {
+app.post("/api/calendar/classes/:class_id/recording", requireSession, requireClassAccess(), (req, res, next) => {
   classRecordingUpload.single("recording")(req, res, (error) => {
     if (!error) return next();
     if (error.code === "LIMIT_FILE_SIZE") {
@@ -5221,7 +5251,7 @@ app.post("/api/calendar/classes/:class_id/recording", (req, res, next) => {
   }
 });
 
-app.get("/api/calendar/classes/:class_id/recording", async (req, res) => {
+app.get("/api/calendar/classes/:class_id/recording", requireSession, requireClassAccess(), async (req, res) => {
   try {
     await cleanupExpiredClassRecordings(pool);
 
@@ -5296,7 +5326,7 @@ app.get("/api/calendar/classes/:class_id/recording", async (req, res) => {
   }
 });
 
-app.post("/api/calendar/classes/:class_id/recording-start", async (req, res) => {
+app.post("/api/calendar/classes/:class_id/recording-start", requireSession, requireClassAccess(), async (req, res) => {
   try {
     const [result] = await pool.query(`UPDATE class_attendance_logs cal JOIN classes c ON c.class_id = cal.class_id
       SET cal.recording_started_at = NOW(), cal.evidence_mode = COALESCE(cal.evidence_mode, 'recording')
@@ -5308,7 +5338,7 @@ app.post("/api/calendar/classes/:class_id/recording-start", async (req, res) => 
   } catch (error) { res.status(500).json({ message: "Unable to start recording." }); }
 });
 
-app.post("/api/calendar/classes/:class_id/start-proof", classProofUpload.single("proof_image"), async (req, res) => {
+app.post("/api/calendar/classes/:class_id/start-proof", classProofUpload.single("proof_image"), requireSession, requireClassAccess(), async (req, res) => {
   try {
     const log = await getClassVerification(pool, req.params.class_id);
     if (!req.file || !log || String(log.teacher_id) !== String(req.body.teacher_id) || !log.student_joined_at || log.teacher_ended_at || log.evidence_mode !== 'screenshots' || log.start_proof_url) {
@@ -5320,7 +5350,7 @@ app.post("/api/calendar/classes/:class_id/start-proof", classProofUpload.single(
   } catch (error) { res.status(500).json({ message: "Unable to upload start screenshot." }); }
 });
 
-app.delete("/api/calendar/classes/:class_id/start-proof", async (req, res) => {
+app.delete("/api/calendar/classes/:class_id/start-proof", requireSession, requireClassAccess(), async (req, res) => {
   try {
     const log = await getClassVerification(pool, req.params.class_id);
     if (!log || String(log.teacher_id) !== String(req.body.teacher_id) || log.teacher_ended_at || log.evidence_mode !== 'screenshots' || !log.start_proof_url) {
@@ -5341,7 +5371,7 @@ app.delete("/api/calendar/classes/:class_id/start-proof", async (req, res) => {
   }
 });
 
-app.post("/api/calendar/classes/:class_id/end", classProofUpload.single("proof_image"), async (req, res) => {
+app.post("/api/calendar/classes/:class_id/end", classProofUpload.single("proof_image"), requireSession, requireClassAccess(), async (req, res) => {
   try {
     const { class_id } = req.params;
     const { teacher_id, summary, review_reason } = req.body;
@@ -5449,7 +5479,7 @@ app.post("/api/calendar/classes/:class_id/end", classProofUpload.single("proof_i
   }
 });
 
-app.get("/api/admin/class-verifications", async (req, res) => {
+app.get("/api/admin/class-verifications", requireAdminSession, async (req, res) => {
   try {
     const { status = "all", from, to, limit = 200 } = req.query;
     const params = [];
@@ -6126,7 +6156,7 @@ app.get("/api/calendar/student-package/:student_id", requireSession, async (req,
   }
 });
 
-app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
+app.put("/api/calendar/classes/:class_id/complete", requireSession, requireClassAccess(), async (req, res) => {
   const connection = await pool.getConnection();
 
   try {
@@ -6303,7 +6333,7 @@ app.put("/api/calendar/classes/:class_id/complete", async (req, res) => {
   }
 });
 
-app.put("/api/calendar/classes/:class_id/no-show", async (req, res) => {
+app.put("/api/calendar/classes/:class_id/no-show", requireSession, requireClassAccess(), async (req, res) => {
   const connection = await pool.getConnection();
 
   try {
@@ -6593,8 +6623,11 @@ app.get("/api/calendar/my-reschedule-requests/:user_id", requireSession, async (
 });
 
 // Approve a reschedule request (from user, not just admin)
-app.post("/api/calendar/reschedule-requests/:id/approve", async (req, res) => {
+app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.body?.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { id } = req.params;
     const { user_id } = req.body;
 
@@ -6774,8 +6807,11 @@ app.post("/api/calendar/reschedule-requests/:id/approve", async (req, res) => {
 });
 
 // Reject a reschedule request (from user, not just admin)
-app.post("/api/calendar/reschedule-requests/:id/reject", async (req, res) => {
+app.post("/api/calendar/reschedule-requests/:id/reject", requireSession, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.body?.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
     const { id } = req.params;
     const { user_id } = req.body;
 
@@ -6841,7 +6877,7 @@ app.post("/api/calendar/reschedule-requests/:id/reject", async (req, res) => {
 });
 
 // --- admin management of reschedule requests ---
-app.get("/api/admin/reschedule-requests", async (req, res) => {
+app.get("/api/admin/reschedule-requests", requireAdminSession, async (req, res) => {
   try {
     // optionally filter by status via query param
     const { status } = req.query;
@@ -7307,7 +7343,7 @@ app.post("/api/video-sessions", async (req, res) => {
 });
 
 // Get video session by class ID
-app.get("/api/video-sessions/:class_id", async (req, res) => {
+app.get("/api/video-sessions/:class_id", requireSession, requireClassAccess(), async (req, res) => {
   try {
     const { class_id } = req.params;
 
