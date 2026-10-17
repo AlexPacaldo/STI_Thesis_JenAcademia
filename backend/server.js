@@ -470,6 +470,40 @@ const resumeUpload = multer({
 // evaluating - which crashes the process at startup, before any route runs and
 // outside the try/catch around the counter table migration.
 
+// Static files: profile photos, assignment submissions, class proof screenshots,
+// lesson PDFs and book covers.
+//
+// !! KNOWN, ACCEPTED: this is deliberately unauthenticated, unlike every API
+// !! route. Do not "fix" it without reading this first, because the obvious
+// !! approaches both fail here.
+//!
+// !! Why it is acceptable: filenames are a millisecond timestamp plus 8 bytes of
+// !! random hex (e.g. 1787813275699-99fd97aece8809f8.webp), so nothing is
+//! browsable or guessable. The only exposure is a URL leaking through a shared
+//! link or a screenshot, after which the file is readable by anyone. Every API
+//! route that returns one of these paths requires a session, so the URLs are not
+//! handed out to anonymous callers.
+//!
+// !! Why a requireSession in front of the static handler does not work: these
+//! URLs are rendered as <img src> and used as <a href> downloads, and neither
+//! can send an Authorization header. The guard would 401 every avatar and every
+//! file in the app.
+//!
+// !! Tried and reverted (d5be64a): a session cookie scoped to Path=/uploads.
+// !! The frontend is on jenacademia.vercel.app and the API on railway.app, so
+//! an <img> request is cross-site and SameSite=Lax is not sent on it - every
+//! image 401'd. SameSite=None would fix that but lets any site the user visits
+//! make authenticated requests, which is a worse trade than the risk above.
+//!
+// !! The clean fix, deliberately not done blind: fetch each file through
+//! apiFetch (which already sends the header) and render from a blob: URL. That
+//! is fully secure, but it touches the 8 duplicated upload-URL helpers and
+//! about 19 <img src> sites, and there is no way to confirm avatars still render
+//! without looking at the app. Do it with someone able to see the screen.
+//!
+// !! Practical hardening when that happens, in order of value: stop storing
+//! !! uploaded filenames in the client response at all for course content under
+//! !! lessons/ and books/, and serve those through the authenticated path.
 app.use("/uploads", express.static(UPLOAD_ROOT));
 
 app.get("/healthz", (_req, res) => {
