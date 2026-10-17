@@ -401,8 +401,8 @@ export default function BooksContent({ mode = "student" }) {
           apiFetch(`${API_BASE}/api/books/${bookId}${accessQuery}`),
           apiFetch(`${API_BASE}/api/lessons?${lessonQuery.toString()}`),
           isAdminView || isTeacherView
-            ? fetch(`${API_BASE}/api/teacher/book/${bookId}/progress?${progressQuery.toString()}`)
-            : fetch(`${API_BASE}/api/lesson-progress?student_id=${studentId}&book_id=${bookId}`),
+            ? apiFetch(`${API_BASE}/api/teacher/book/${bookId}/progress?${progressQuery.toString()}`)
+            : apiFetch(`${API_BASE}/api/lesson-progress?student_id=${studentId}&book_id=${bookId}`),
         ]);
 
         if (bookResponse.status === 403 || lessonsResponse.status === 403) {
@@ -455,7 +455,7 @@ export default function BooksContent({ mode = "student" }) {
         setProgressLoading(true);
         setProgressError("");
 
-        const response = await fetch(`${API_BASE}/api/teacher/book/${bookId}/progress?${staffQueryParams.toString()}`);
+        const response = await apiFetch(`${API_BASE}/api/teacher/book/${bookId}/progress?${staffQueryParams.toString()}`);
         if (!response.ok) throw new Error("Failed to fetch student progress");
 
         const data = await response.json();
@@ -638,7 +638,7 @@ export default function BooksContent({ mode = "student" }) {
 
       setCompletingLessonId(completedLesson.lesson_id);
 
-      const response = await fetch(`${API_BASE}/api/lesson-progress`, {
+      const response = await apiFetch(`${API_BASE}/api/lesson-progress`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

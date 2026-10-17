@@ -29,7 +29,7 @@ export default function TeacherBooksDropbox() {
 
   const fetchBooks = async () => {
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_BASE_URL}/api/teacher/books?teacher_id=${teacherId}`
       );
       if (!response.ok) throw new Error("Failed to fetch books");

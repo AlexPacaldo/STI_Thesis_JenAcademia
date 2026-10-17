@@ -573,6 +573,25 @@ function sessionIdentity(req) {
   };
 }
 
+/**
+ * Whose lesson progress this request is about.
+ *
+ * A student is pinned to their own id and the supplied one is ignored, so
+ * editing student_id in the URL or body cannot expose another student's record.
+ * Staff keep the oversight they have everywhere else, so for a teacher or admin
+ * the supplied id still applies - see the note on the progress routes that this
+ * is deliberately not narrowed further to a teacher's own students.
+ */
+function progressStudentId(req) {
+  const identity = sessionIdentity(req);
+  return (
+    identity.studentId ||
+    req.query.student_id ||
+    req.body?.student_id ||
+    null
+  );
+}
+
 // Every accepted resume costs one Gemini call, and the endpoint has no auth of
 // its own (see the route below), so the quota is the thing worth bounding.
 // Deliberately generous: a human cannot meaningfully create a teacher's profile
@@ -9518,11 +9537,10 @@ app.get("/api/books/:book_id", requireSession, async (req, res) => {
 // GET teacher-facing student progress for a book
 // SECURITY: readable by the admin, and by any teacher the book was distributed
 // to. Progress is read-only for teachers, so no write gate is involved.
-app.get("/api/teacher/book/:bookId/progress", async (req, res) => {
+app.get("/api/teacher/book/:bookId/progress", requireSession, async (req, res) => {
   try {
     const { bookId } = req.params;
-    const teacher_id = getTeacherIdFromRequest(req);
-    const admin_id = getAdminIdFromRequest(req);
+    const { adminId: admin_id, teacherId: teacher_id } = sessionIdentity(req);
 
     if (!admin_id && !teacher_id) {
       return res.status(401).json({ message: "Unauthorized: teacher_id or admin_id is required" });
@@ -10215,9 +10233,10 @@ app.delete("/api/lessons/:lesson_id", requireAdminSession, async (req, res) => {
 // ===== LESSON PROGRESS ENDPOINTS =====
 
 // GET student's lesson progress
-app.get("/api/lesson-progress", async (req, res) => {
+app.get("/api/lesson-progress", requireSession, async (req, res) => {
   try {
-    const { student_id, book_id } = req.query;
+    const { book_id } = req.query;
+    const student_id = progressStudentId(req);
 
     if (!student_id) {
       return res.status(400).json({ message: "student_id is required" });
@@ -10353,9 +10372,12 @@ async function refreshStudentBookProgress(studentId, lessonId) {
 }
 
 // Save manual lesson completion for one student/lesson
-app.post("/api/lesson-progress", async (req, res) => {
+app.post("/api/lesson-progress", requireSession, async (req, res) => {
   try {
-    const { student_id, lesson_id, is_completed, progress_percentage, time_spent_minutes } = req.body;
+    const { lesson_id, is_completed, progress_percentage, time_spent_minutes } = req.body;
+    // Ignores any student_id in the body for a student session, so a forged id
+    // cannot mark somebody else's lessons complete.
+    const student_id = progressStudentId(req);
 
     if (!student_id || !lesson_id) {
       return res.status(400).json({ message: "Missing required fields" });
@@ -10430,9 +10452,9 @@ app.post("/api/lesson-progress", async (req, res) => {
 
 // GET teacher's books with lesson stats
 // SECURITY: Only returns books owned by the requesting teacher
-app.get("/api/teacher/books", async (req, res) => {
+app.get("/api/teacher/books", requireSession, async (req, res) => {
   try {
-    const teacher_id = getTeacherIdFromRequest(req);
+    const { adminId: admin_id, teacherId: teacher_id } = sessionIdentity(req);
     // Defaults to 'active' so existing callers keep seeing only live books.
     // 'archived' powers the recycle bin; 'all' returns both.
     const { status = "active" } = req.query;
