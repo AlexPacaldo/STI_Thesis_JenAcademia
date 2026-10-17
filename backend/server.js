@@ -2541,8 +2541,10 @@ async function loadTeacherAvailability(teacherIds, preference, db) {
 // measuring what the AI changed costs no extra query. It exists only to report
 // whether the suggestions moved the pick - the returned teacher always comes
 // from criteria.
-async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = null, courseName = "", proficiencyLevel = "", preferredTeacherId = null, baselineCriteria = null, preferredSchedule = null, honourPreferredTeacher = false, db = pool }) {
-  const normalizedCriteria = normalizeCriteria(criteria);
+async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNotes = "", courseId = null, courseName = "", proficiencyLevel = "", preferredTeacherId = null, baselineCriteria = null, preferredSchedule = null, honourPreferredTeacher = false, db = pool }) {
+  // What the admin actually typed, available immediately. The insights only ever
+  // add to it, so this is a sound basis for ranking before they have arrived.
+  const baseCriteria = normalizeCriteria(criteria);
   const level = normalizeProficiencyLevel(proficiencyLevel);
   const courseFilter = courseId ? parseInt(courseId, 10) : null;
   // Every ACTIVE teacher is a candidate. There is deliberately no
@@ -2592,25 +2594,50 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
       }))
     );
 
-  // The rules always run first. They are the fallback if the advisor is
-  // unavailable, and they are also what decides the shortlist it sees, so there is
-  // never a moment where we have no ordering at all.
+  // Both model calls are now in flight at the same time instead of one after the
+  // other, so one click costs one round trip's latency rather than two.
+  //
+  // This is only sound because the candidate pool does not depend on the
+  // criteria. Eligibility is fixed by role, status and course, so the insights
+  // can change the ORDER teachers come back in but never WHICH ones are
+  // eligible. The advisor therefore ranks the same complete pool that the rules
+  // will, and its answer stays applicable to whatever order they produce.
+  //
+  // It reads the admin's own criteria and the trial notes themselves, which is
+  // the material the insights are extracted from in the first place, so it is
+  // not working from less than the rules are - it is working from the same notes
+  // by a different route.
+  //
+  // The catch is because a dangling rejected promise would surface as an
+  // unhandled rejection rather than as a failed request. adviseTeacherRanking
+  // does not throw; this keeps that true even if it ever did.
+  const advisorPromise = adviseTeacherRanking({
+    criteria: baseCriteria,
+    trialNotes,
+    courseName,
+    scored: scoreWith(baseCriteria),
+    availability,
+    preferredLabel: preference
+      ? `${preference.days.join(", ")} ${preference.start}-${preference.end}`
+      : "",
+  }).catch(() => ({ ok: false, reason: "unavailable" }));
+
+  // The one edge that genuinely has to wait. The inferred criteria change the
+  // rules' scores, so the rules cannot run until the notes have been read. If
+  // that call is the slow one, the advisor has simply finished and is waiting.
+  const insights = insightsPromise ? await insightsPromise : null;
+  const normalizedCriteria = insights
+    ? normalizeCriteria(mergeInsights(criteria, insights.added))
+    : baseCriteria;
+
+  // The rules ordering: the fallback if the advisor is unavailable, and the list
+  // the advisor's answer is applied to.
   let ranked = scoreWith(normalizedCriteria);
 
   // The advisor reorders that list. It cannot add, drop or qualify anyone: the
   // pool is already fixed above, and availability and workload are applied to
   // its answer below.
-  const preferredLabel = preference
-    ? `${preference.days.join(", ")} ${preference.start}-${preference.end}`
-    : "";
-  const advisor = await adviseTeacherRanking({
-    criteria: normalizedCriteria,
-    trialNotes,
-    courseName,
-    scored: ranked,
-    availability,
-    preferredLabel,
-  });
+  const advisor = await advisorPromise;
   if (advisor.ok) {
     ranked = applyAdvisorOrder(ranked, advisor.order);
   }
@@ -3859,13 +3886,15 @@ app.post("/api/admin/recommend-teacher", requireAdminSession, limitMatchInsights
   try {
     const { criteria, trialNotes, courseId, courseName, proficiencyLevel, teacherId, preferredSchedule } = req.body || {};
 
-    // Read the trial notes for extra criteria. This never blocks: a Gemini
-    // failure costs the suggestions and nothing else, because the rules are
-    // still doing the ranking.
-    const insights = await deriveMatchInsights({ trialNotes, criteria });
+    // Read the trial notes for extra criteria, and pass the promise down rather
+    // than the answer. recommendTeacher ranks the teachers alongside this call
+    // instead of after it, so a Gemini failure here costs the suggestions and
+    // nothing else - the rules are still doing the ranking either way.
+    const insightsPromise = deriveMatchInsights({ trialNotes, criteria });
 
     const recommendation = await recommendTeacher({
-      criteria: mergeInsights(criteria, insights.added),
+      criteria,
+      insightsPromise,
       baselineCriteria: criteria,
       trialNotes,
       courseId,
@@ -3876,6 +3905,10 @@ app.post("/api/admin/recommend-teacher", requireAdminSession, limitMatchInsights
       // The admin's explicit pick wins over the balance limit, and the UI warns.
       honourPreferredTeacher: Boolean(teacherId),
     });
+
+    // recommendTeacher awaited this to apply the insights, so it has already
+    // settled and reading it here costs no further round trip.
+    const insights = await insightsPromise;
 
     const applied = Object.keys(insights.added || {}).length > 0;
     const pickedId = recommendation.teacher ? String(recommendation.teacher.user_id) : null;

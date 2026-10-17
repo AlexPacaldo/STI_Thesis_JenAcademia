@@ -194,6 +194,72 @@ const reordered = applyAdvisorOrder(rankTeachers(pool), ["3", "1", "2"]);
 check("a working advisor keeps every teacher", reordered.length, 3);
 check("a working advisor cannot drop the last teacher", reordered.some((t) => t.user_id === 2), true);
 
+/* ---------------------------------------- the overlap is sound, not just fast */
+
+// Reading the notes and ranking the teachers now happen at the same time. That is
+// only correct because the candidate pool does not depend on the criteria:
+// eligibility is fixed by role, status and course, so the insights can change
+// the ORDER the rules return but never WHICH teachers are eligible.
+//
+// If that ever stops being true - a criteria-based pool filter, say - the
+// advisor would be ranking one set of teachers and its answer would be applied to
+// a different one. So it is pinned here.
+const serverSource = await (await import("node:fs/promises")).readFile(
+  new URL("../backend/server.js", import.meta.url),
+  "utf8"
+);
+
+ok(
+  "the advisor and the rules score from one shared pool",
+  serverSource.includes("scored: scoreWith(baseCriteria)") &&
+    serverSource.includes("let ranked = scoreWith(normalizedCriteria)") &&
+    /const scoreWith = \(activeCriteria\) =>\s*rankTeachers\(\s*teachers\.map/.test(serverSource)
+);
+
+// And the overlap has to be real overlap, not sequential work that looks
+// concurrent: the advisor has to be started before the insights are awaited.
+ok(
+  "the advisor starts before the insights are awaited",
+  serverSource.indexOf("const advisorPromise = adviseTeacherRanking(") <
+    serverSource.indexOf("const insights = insightsPromise ? await insightsPromise : null;")
+);
+
+// The insights must still reach the RULES. The advisor not seeing them is fine -
+// it reads the same notes - but the scorer needs them, or its scores change.
+ok(
+  "the rules still receive the inferred criteria",
+  serverSource.includes("normalizeCriteria(mergeInsights(criteria, insights.added))")
+);
+
+// Behaviourally: an advisor order produced against one rules ordering must still
+// be applicable to a different one over the same teachers.
+const baseRules = rankTeachers([
+  { user_id: 1, score: 30, assigned_student_count: 4 },
+  { user_id: 2, score: 10, assigned_student_count: 0 },
+  { user_id: 3, score: 20, assigned_student_count: 1 },
+]);
+const mergedRules = rankTeachers([
+  { user_id: 1, score: 5, assigned_student_count: 4 },
+  { user_id: 2, score: 40, assigned_student_count: 0 },
+  { user_id: 3, score: 20, assigned_student_count: 1 },
+]);
+
+ok("the two criteria sets really do order differently", ids(baseRules) !== ids(mergedRules), true);
+ok("but over the same teachers", [...ids(baseRules)].sort(), [...ids(mergedRules)].sort());
+
+// The advisor ranked the base ordering; that answer is applied to the merged one.
+const advisorSaw = applyAdvisorOrder(baseRules, ["3", "2", "1"]);
+check(
+  "an order produced against one ordering applies to the other",
+  ids(applyAdvisorOrder(mergedRules, ids(advisorSaw))),
+  [3, 2, 1]
+);
+check(
+  "and it never changes who is eligible",
+  [...ids(applyAdvisorOrder(mergedRules, ids(advisorSaw)))].sort(),
+  [1, 2, 3]
+);
+
 /* ------------------------------------------------------- the circuit breaker */
 
 resetAdvisorCircuit();
