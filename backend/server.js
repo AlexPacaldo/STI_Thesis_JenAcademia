@@ -62,13 +62,23 @@ function parseMysqlUrl(url) {
 const mysqlUrlConfig = parseMysqlUrl(mysqlUrl);
 const DB_HOST = process.env.DB_HOST || process.env.MYSQLHOST || mysqlUrlConfig.host || "localhost";
 const DB_USER = process.env.DB_USER || process.env.MYSQLUSER || mysqlUrlConfig.user || "root";
-// !! The fallback below is a credential that is also in this repository's
-// !! history. Anything reading the source can connect to a database left using
-// !! it, so it is only ever a last resort for local development and the start-up
-// !! check below says so loudly. Rotate the real password, and set DB_PASSWORD.
-const HARDCODED_DB_PASSWORD = "LORAKLANG0405++";
-const DB_PASSWORD =
-  process.env.DB_PASSWORD || process.env.MYSQLPASSWORD || mysqlUrlConfig.password || HARDCODED_DB_PASSWORD;
+const DB_PASSWORD = process.env.DB_PASSWORD || process.env.MYSQLPASSWORD || mysqlUrlConfig.password || "";
+
+// Required, with no fallback. This used to fall back to a real credential that
+// was committed to this repository, which meant anyone reading the source could
+// connect to a database still left using it - and, because it was also the last
+// resort for the chat and session secrets below, a missing configuration looked
+// like a working one. Failing here is deliberate: a clear refusal at start-up
+// beats an "access denied for user" from the driver twenty lines later.
+//
+// Note that removing it from the source does not remove it from the git
+// history. The old password should still be rotated at the database.
+if (!DB_PASSWORD) {
+  throw new Error(
+    "DB_PASSWORD is not set. Set DB_PASSWORD, MYSQLPASSWORD, or put a password in " +
+      "MYSQL_URL / DATABASE_URL (for example ${{MySQL.MYSQL_URL}} in Railway)."
+  );
+}
 const DB_NAME = process.env.DB_NAME || process.env.MYSQLDATABASE || mysqlUrlConfig.database || "jen_academia";
 const DB_PORT = Number(process.env.DB_PORT || process.env.MYSQLPORT || mysqlUrlConfig.port || 3306);
 const requestedConnectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 5);
@@ -172,13 +182,6 @@ if (!process.env.CHAT_ENCRYPTION_KEY && !process.env.ENCRYPTION_KEY && !process.
   console.warn("CHAT_ENCRYPTION_KEY is not set; using DB_PASSWORD as the chat encryption secret.");
 }
 
-if (DB_PASSWORD === HARDCODED_DB_PASSWORD) {
-  console.warn(
-    "DB_PASSWORD is not configured, so the backend is falling back to a password that " +
-      "is committed to this repository. Set DB_PASSWORD, and rotate the database password " +
-      "if this database is reachable from anywhere but your machine."
-  );
-}
 
 // Signing key for session tokens. Preferred over reusing the chat secret so the
 // two can be rotated independently.
