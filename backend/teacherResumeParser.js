@@ -282,8 +282,41 @@ export function normalizeBirthDate(raw) {
  * Anything outside the vocabulary is dropped rather than passed through, so a
  * hallucinated tag can never reach the matcher.
  */
-export function normalizeParsedProfile(raw, { courseNames = [] } = {}) {
+/**
+ * Keep only courses the form can actually show, matched case-insensitively.
+ *
+ * The valid names come from the caller's own course list rather than a copy
+ * held here, because courses live in the database and change. Anything the
+ * parser invents, or that has since been renamed, is dropped instead of
+ * reaching a chip the admin never sees.
+ */
+function normalizeCourseNames(raw, availableCourseNames) {
+  const byLowerName = new Map();
+  for (const name of availableCourseNames || []) {
+    const cleaned = String(name || "").trim();
+    if (cleaned) byLowerName.set(cleaned.toLowerCase(), cleaned);
+  }
+  if (!byLowerName.size) return [];
+
+  const items = Array.isArray(raw) ? raw : String(raw || "").split(",");
+  const seen = new Set();
+  for (const item of items) {
+    const hit = byLowerName.get(String(item == null ? "" : item).trim().toLowerCase());
+    if (hit) seen.add(hit);
+  }
+  return [...seen];
+}
+
+export function normalizeParsedProfile(raw, { courseNames = [], availableCourseNames = [] } = {}) {
   const source = raw && typeof raw === "object" ? raw : {};
+  const courses = normalizeCourseNames(source.courses, availableCourseNames);
+
+  // A specialisation has to fit a course this teacher can actually teach, and
+  // the parsed courses count towards that. With the resume card at the top of
+  // the form the admin has usually not ticked anything yet, so filtering on the
+  // ticked courses alone would drop every suggestion.
+  const effectiveCourses = [...new Set([...(courseNames || []), ...courses])];
+
   return {
     // Identity first, then the matching profile. All of these are optional:
     // a resume often gives a name and nothing else, and every one of them is
@@ -293,10 +326,11 @@ export function normalizeParsedProfile(raw, { courseNames = [] } = {}) {
     email: normalizeEmail(source.email),
     country: normalizeCountry(source.country),
     birthday: normalizeBirthDate(source.birthday),
+    courses,
     bio: normalizeBio(source.bio),
     specialization: normalizeValues(
       source.specialization,
-      SPECIALIZATION_OPTIONS.filter((option) => specializationValuesForCourses(courseNames).includes(option.value))
+      SPECIALIZATION_OPTIONS.filter((option) => specializationValuesForCourses(effectiveCourses).includes(option.value))
     ),
     teachingStyle: normalizeValues(source.teachingStyle, TEACHING_STYLE_OPTIONS),
     idealStudentPace: normalizeValues(source.idealStudentPace, IDEAL_STUDENT_PACE_OPTIONS),
@@ -321,9 +355,10 @@ export function parseResumeCourseNames(value) {
 
 /* ------------------------------------------------------------------ prompt */
 
-function buildResponseSchema(courseNames) {
+function buildResponseSchema(courseNames, availableCourseNames = []) {
   const specialization = specializationValuesForCourses(courseNames);
   const enumOf = (values) => (values.length ? values : SPECIALIZATION_VALUES);
+  const teachable = (availableCourseNames || []).map((name) => String(name || "").trim()).filter(Boolean);
   return {
     type: "OBJECT",
     properties: {
@@ -380,6 +415,15 @@ function buildResponseSchema(courseNames) {
         description:
           "Date of birth as YYYY-MM-DD, only when the resume states a full date. Null when absent or partial.",
       },
+      courses: {
+        type: "ARRAY",
+        description: teachable.length
+          ? `Which of these courses this teacher is qualified to teach: ${teachable.join(", ")}. Empty if the resume supports none of them.`
+          : "Which courses this teacher can teach. Empty if the resume supports none.",
+        // Only constrained when the caller told us what exists. Courses live in
+        // the database, so an enum built from a hardcoded copy here would drift.
+        items: teachable.length ? { type: "STRING", enum: teachable } : { type: "STRING" },
+      },
     },
     required: [
       "bio",
@@ -392,19 +436,28 @@ function buildResponseSchema(courseNames) {
       "email",
       "country",
       "birthday",
+      "courses",
     ],
   };
 }
 
-function buildTaskPrompt(courseNames) {
+function buildTaskPrompt(courseNames, availableCourseNames = []) {
   const courses = courseNames.length
     ? courseNames.join(", ")
     : "none selected yet, so any specialization may be suggested";
+  const teachable = (availableCourseNames || []).map((name) => String(name || "").trim()).filter(Boolean);
   return [
     "Extract the English-teaching profile from the attached resume.",
     "",
     `Courses this teacher will be allowed to teach: ${courses}.`,
     "Only suggest a specialization that fits one of those courses.",
+    ...(teachable.length
+      ? [
+          "",
+          `Courses this academy offers: ${teachable.join(", ")}.`,
+          "Choose from that list for the `courses` field - never invent a course, and never leave out one the resume clearly supports.",
+        ]
+      : []),
     "",
     "Rules:",
     "- Use only the exact option strings listed in the response schema. Do not invent new ones.",
@@ -489,15 +542,15 @@ function parseResponseJson(text) {
   }
 }
 
-async function callGemini({ documentParts, courseNames }) {
+async function callGemini({ documentParts, courseNames, availableCourseNames = [] }) {
   const apiKey = geminiApiKey();
   const payload = {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents: [{ role: "user", parts: [...documentParts, { text: buildTaskPrompt(courseNames) }] }],
+    contents: [{ role: "user", parts: [...documentParts, { text: buildTaskPrompt(courseNames, availableCourseNames) }] }],
     generationConfig: {
       temperature: 0.2,
       responseMimeType: "application/json",
-      responseSchema: buildResponseSchema(courseNames),
+      responseSchema: buildResponseSchema(courseNames, availableCourseNames),
     },
   };
 
@@ -561,7 +614,7 @@ async function callGemini({ documentParts, courseNames }) {
  * Read a resume and return a validated teacher profile. The caller is
  * responsible for having checked isResumeParserConfigured().
  */
-export async function parseTeacherResume({ file, courseNames = [] }) {
+export async function parseTeacherResume({ file, courseNames = [], availableCourseNames = [] }) {
   if (!file || !file.buffer) {
     throw new Error("Please choose a resume to upload");
   }
@@ -570,8 +623,18 @@ export async function parseTeacherResume({ file, courseNames = [] }) {
   }
 
   const selectedCourses = courseNames.map((name) => String(name || "").trim()).filter(Boolean);
+  // What the academy actually offers. Courses live in the database, so the
+  // parser is told rather than holding its own copy that would go stale.
+  const teachableCourses = availableCourseNames.map((name) => String(name || "").trim()).filter(Boolean);
   const documentParts = await buildDocumentParts(file);
-  const parsed = await callGemini({ documentParts, courseNames: selectedCourses });
+  const parsed = await callGemini({
+    documentParts,
+    courseNames: selectedCourses,
+    availableCourseNames: teachableCourses,
+  });
 
-  return normalizeParsedProfile(parsed, { courseNames: selectedCourses });
+  return normalizeParsedProfile(parsed, {
+    courseNames: selectedCourses,
+    availableCourseNames: teachableCourses,
+  });
 }

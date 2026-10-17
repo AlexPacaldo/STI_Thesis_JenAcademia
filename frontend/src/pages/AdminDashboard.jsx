@@ -68,13 +68,31 @@ const RESUME_ACCEPTED = /\.(pdf|docx|txt)$/i;
  * keeps re-uploading a corrected CV safe on a form that is already part filled
  * in, and leaves every value editable before the teacher is created.
  */
-function mergeResumeIntoTeacherForm(form, parsed) {
+function mergeResumeIntoTeacherForm(form, parsed, availableCourses = []) {
   const union = (current, incoming) => [...new Set([...(current || []), ...(incoming || [])])];
   const isBlank = (value) => !String(value ?? "").trim();
   const years = parsed.experienceYears;
 
+  // The parser answers with course names; the chips store ids. Resolved against
+  // the live course list rather than a fixed mapping, so a renamed or newly
+  // added course still lands. An unrecognised name is dropped rather than added
+  // as a phantom id, which the create endpoint would reject.
+  const resumeCourseIds = (parsed.courses || [])
+    .map((name) => {
+      const match = availableCourses.find(
+        (course) => String(course?.course_name || "").trim().toLowerCase() === String(name).trim().toLowerCase()
+      );
+      return match ? String(match.course_id) : null;
+    })
+    .filter(Boolean);
+
   return {
     ...form,
+    // Courses union rather than fill-only. These are a multi-select, so adding
+    // what the resume supports is the analogue of leaving existing picks alone,
+    // and adding a course can only widen the specialization chips, never prune
+    // a chosen specialization out from under the admin.
+    courseIds: union(form.courseIds, resumeCourseIds),
     // Identity fields fill only when blank, exactly like bio: re-uploading a
     // corrected CV must never overwrite something the admin already typed.
     // `birthday` on the wire is `birthDate` on the form, and it arrives already
@@ -114,6 +132,7 @@ function describeResumeFill(parsed) {
   if (parsed.firstName || parsed.lastName) {
     parts.push(parsed.firstName && parsed.lastName ? "name" : "part of the name");
   }
+  if (parsed.courses?.length) parts.push(pluralize(parsed.courses.length, "course"));
   if (parsed.email) parts.push("email");
   if (parsed.country) parts.push(`country (${parsed.country})`);
   if (parsed.birthday) parts.push("birthday");
@@ -451,6 +470,10 @@ export default function AdminDashboard() {
   const selectedTeacherCourseNames = courses
     .filter((course) => tForm.courseIds.includes(String(course.course_id)))
     .map((course) => course.course_name);
+  // Sent with every resume upload so the parser can pick which courses this
+  // teacher can teach. Read from here rather than duplicated in the backend,
+  // where it would go stale as soon as a course was renamed or added.
+  const allCourseNames = courses.map((course) => course.course_name);
   const teacherSpecializationOptions = filterOptionsForCourses(
     TEACHER_CRITERIA_OPTIONS.specialization,
     selectedTeacherCourseNames
@@ -1068,10 +1091,14 @@ export default function AdminDashboard() {
       // suggest a specialization whose chip is not on screen, which would then
       // be dropped silently on save.
       formData.append("courseNames", JSON.stringify(selectedTeacherCourseNames));
+      // Every course the academy offers, so the parser can choose which ones this
+      // teacher can teach. It is told the real list rather than keeping its own
+      // copy, because courses live in the database and get renamed and added to.
+      formData.append("availableCourseNames", JSON.stringify(allCourseNames));
 
       const response = await axios.post(`${API}/api/admin/parse-resume`, formData);
       const parsed = response.data || {};
-      setTForm((prev) => mergeResumeIntoTeacherForm(prev, parsed));
+      setTForm((prev) => mergeResumeIntoTeacherForm(prev, parsed, courses));
       notify(describeResumeFill(parsed), "success");
     } catch (e) {
       console.error(e);
@@ -2314,6 +2341,34 @@ export default function AdminDashboard() {
               <h2>Create Teacher Account</h2>
             </div>
             <form className={styles.form} onSubmit={handleCreateTeacherSubmit}>
+              <div className={styles.criteriaCard}>
+                <div className={styles.criteriaCardHead}>
+                  <h3 className={styles.criteriaCardTitle}>Auto-fill From Resume</h3>
+                </div>
+                <p className={styles.criteriaCardIntro}>
+                  Start here. Upload the teacher&apos;s CV and it fills in everything below -
+                  first name, last name, email, country and birthday if they are printed on it,
+                  which courses this teacher can teach, and the AI matching profile: bio,
+                  specialization, teaching style, best student pace and experience years. Only
+                  blank fields are filled, so anything already typed is left alone, and any
+                  course it picks is added to the ones you have already ticked. Everything it
+                  fills in stays editable, and the file itself is not stored.
+                </p>
+                <div className={styles.resumeRow}>
+                  <input
+                    ref={resumeInputRef}
+                    id="teacher-resume"
+                    type="file"
+                    className={styles.resumeInput}
+                    accept=".pdf,.docx,.txt"
+                    onChange={(e) => handleResumeSelected(e.target.files?.[0])}
+                    disabled={resumeParsing || loading}
+                  />
+                  {resumeParsing && (
+                    <span className={styles.resumeStatus}>Reading {resumeFileName}...</span>
+                  )}
+                </div>
+              </div>
               <div className={styles.grid2}>
                 <div>
                   <label>First Name</label>
@@ -2354,33 +2409,6 @@ export default function AdminDashboard() {
                 />
               </div>
               <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
-                <div className={styles.criteriaCard}>
-                  <div className={styles.criteriaCardHead}>
-                    <h3 className={styles.criteriaCardTitle}>Auto-fill From Resume</h3>
-                  </div>
-                  <p className={styles.criteriaCardIntro}>
-                    Upload the teacher&apos;s CV and it reads the file and fills in the matching
-                    profile below - bio, specialization, teaching style, best student pace and
-                    experience years - along with any first name, last name, email, country and
-                    birthday printed on it. Only blank fields are filled, so anything already
-                    typed is left alone. Tick the courses first so the specializations fit.
-                    Everything it fills in stays editable, and the file itself is not stored.
-                  </p>
-                  <div className={styles.resumeRow}>
-                    <input
-                      ref={resumeInputRef}
-                      id="teacher-resume"
-                      type="file"
-                      className={styles.resumeInput}
-                      accept=".pdf,.docx,.txt"
-                      onChange={(e) => handleResumeSelected(e.target.files?.[0])}
-                      disabled={resumeParsing || loading}
-                    />
-                    {resumeParsing && (
-                      <span className={styles.resumeStatus}>Reading {resumeFileName}...</span>
-                    )}
-                  </div>
-                </div>
                 <div className={styles.criteriaCard}>
                   <div className={styles.criteriaCardHead}>
                     <h3 className={styles.criteriaCardTitle}>AI Matching Profile</h3>

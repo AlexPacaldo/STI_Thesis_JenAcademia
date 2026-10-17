@@ -3658,6 +3658,11 @@ app.post("/api/admin/parse-resume", requireAdminSession, limitResumeParsingTotal
       // needs to know which ones are selected or it will suggest chips that
       // are not on screen and would be dropped on save.
       courseNames: parseResumeCourseNames(req.body?.courseNames),
+      // Every course the academy offers, so the parser can pick which ones this
+      // teacher can teach. Courses live in the database rather than in the
+      // parser, so the client sends the current list and anything outside it is
+      // dropped on the way back out.
+      availableCourseNames: parseResumeCourseNames(req.body?.availableCourseNames),
     });
 
     res.json(profile);

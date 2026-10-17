@@ -142,6 +142,84 @@ check("no birthday", empty.birthday, null);
 check("bio still normalised", normalizeParsedProfile({ bio: "Teaches adults.  " }).bio, "Teaches adults.");
 check("profile fields still there", normalizeParsedProfile({ experienceYears: 7 }).experienceYears, 7);
 
+/* ------------------------------------------------------------------ courses */
+
+// Courses live in the database, so the parser is told the list rather than
+// holding a copy. Anything outside it cannot be shown on a chip.
+const CATALOGUE = ["Business English", "Conversational English", "IELTS", "News", "OPIc"];
+
+check(
+  "valid courses kept",
+  normalizeParsedProfile({ courses: ["IELTS", "News"] }, { availableCourseNames: CATALOGUE }).courses,
+  ["IELTS", "News"]
+);
+check(
+  "course case-insensitive",
+  normalizeParsedProfile({ courses: ["ielts"] }, { availableCourseNames: CATALOGUE }).courses,
+  ["IELTS"]
+);
+check(
+  "course whitespace tolerated",
+  normalizeParsedProfile({ courses: ["  News  "] }, { availableCourseNames: CATALOGUE }).courses,
+  ["News"]
+);
+check(
+  "invented course dropped",
+  normalizeParsedProfile({ courses: ["IELTS", "Underwater Basket Weaving"] }, { availableCourseNames: CATALOGUE }).courses,
+  ["IELTS"]
+);
+check(
+  "no catalogue means no courses",
+  normalizeParsedProfile({ courses: ["IELTS"] }).courses,
+  []
+);
+check(
+  "missing courses field",
+  normalizeParsedProfile({}, { availableCourseNames: CATALOGUE }).courses,
+  []
+);
+check(
+  "comma string accepted",
+  normalizeParsedProfile({ courses: "IELTS, News" }, { availableCourseNames: CATALOGUE }).courses,
+  ["IELTS", "News"]
+);
+
+// The specialisation filter used to depend only on courses the admin had
+// already ticked. With the resume card at the top of the form, nothing is
+// ticked yet - so the parsed courses have to count, or every suggestion is
+// filtered away and the admin gets nothing.
+const parsedOnlyCourses = normalizeParsedProfile(
+  { specialization: ["exam preparation", "business english"] },
+  { courseNames: [], availableCourseNames: CATALOGUE }
+);
+check(
+  "specialization kept from parsed courses alone",
+  parsedOnlyCourses.specialization,
+  ["exam preparation", "business english"]
+);
+
+// Once courses ARE known, a specialization that fits none of them is dropped.
+check(
+  "mismatched specialization dropped",
+  normalizeParsedProfile(
+    { courses: ["Business English"], specialization: ["news discussion", "exam preparation", "business english"] },
+    { availableCourseNames: CATALOGUE }
+  ).specialization,
+  ["business english"]
+);
+
+// Deliberate fallback, and the reason the case above needed a course to lean on:
+// with nothing known about the courses at all, every specialization stays
+// available rather than the admin getting an empty chip list to start from.
+check(
+  "no courses known keeps every specialization",
+  normalizeParsedProfile(
+    { specialization: ["news discussion", "exam preparation"] },
+    { availableCourseNames: CATALOGUE }
+  ).specialization,
+  ["news discussion", "exam preparation"]
+);
+
 console.log(`${passed}/${passed + failures.length} checks passed.`);
 if (failures.length) {
   console.error("\nFAILED:");
