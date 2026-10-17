@@ -48,7 +48,7 @@ const geminiApiKey = () =>
 // models/models%2Fgemini-2.5-flash:generateContent, which Gemini answers with
 // 404 - a failure indistinguishable from a retired model name unless you
 // already suspect the prefix.
-export function normaliseModelId(value) {
+export function normalizeModelId(value) {
   return String(value || "")
     .trim()
     .replace(/^models\//i, "")
@@ -63,7 +63,7 @@ export function normaliseModelId(value) {
 // configured model was right.
 const GEMINI_FALLBACK_MODEL = "gemini-flash-latest";
 
-const geminiModel = () => normaliseModelId(process.env.GEMINI_MODEL) || "gemini-2.5-flash";
+const geminiModel = () => normalizeModelId(process.env.GEMINI_MODEL) || "gemini-2.5-flash";
 
 export function isResumeParserConfigured() {
   return Boolean(geminiApiKey());
@@ -115,6 +115,33 @@ export const IDEAL_STUDENT_PACE_OPTIONS = [
 export const SPECIALIZATION_VALUES = SPECIALIZATION_OPTIONS.map((option) => option.value);
 export const TEACHING_STYLE_VALUES = TEACHING_STYLE_OPTIONS.map((option) => option.value);
 export const IDEAL_STUDENT_PACE_VALUES = IDEAL_STUDENT_PACE_OPTIONS.map((option) => option.value);
+
+/**
+ * The country values the create-teacher form offers.
+ *
+ * !! A contract again: the form's <select> is required and only accepts these
+ * !! exact strings, so a parsed country outside this list would leave the select
+ * !! on "Select Country" and block the save. Mirrored from COUNTRY_OPTIONS in
+ * !! frontend/src/pages/AdminDashboard.jsx; scripts/test-resume-parser.mjs
+ * !! asserts the two line up, so editing one without the other fails a test.
+ */
+export const COUNTRY_OPTIONS = [
+  "Australia",
+  "Canada",
+  "China",
+  "India",
+  "Indonesia",
+  "Japan",
+  "Malaysia",
+  "Philippines",
+  "Singapore",
+  "South Korea",
+  "Thailand",
+  "United Arab Emirates",
+  "United Kingdom",
+  "United States",
+  "Vietnam",
+];
 
 /**
  * The specializations that apply to the chosen courses. With nothing chosen
@@ -177,6 +204,79 @@ function normalizeExperienceYears(raw) {
   return Math.min(Math.round(years), MAX_EXPERIENCE_YEARS);
 }
 
+/* ------------------------------------------------------- identity fields */
+
+// A CV header is often a whole line ("MARIA SANTOS | ENGLISH TEACHER"), and a
+// model asked for a first name sometimes returns it. Letters from any script
+// plus the separators real names use, so a line containing a digit, pipe, @ or
+// slash is rejected rather than pasted into a text input.
+const NAME_PATTERN = /^[\p{L}\p{M}][\p{L}\p{M}'’. -]*$/u;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
+const MAX_NAME_CHARS = 60;
+const MAX_EMAIL_CHARS = 254;
+// A date of birth outside this band is a typo, and one that the resume does not
+// actually state is not something to guess at, so neither is filled in.
+const MIN_TEACHER_AGE = 18;
+const MAX_TEACHER_AGE = 100;
+
+function normalizeName(raw) {
+  const text = String(raw == null ? "" : raw).replace(/\s+/g, " ").trim().slice(0, MAX_NAME_CHARS);
+  if (!text) return "";
+  if (!NAME_PATTERN.test(text)) return "";
+  // Four words is already a stretch for one name field; beyond that it is a
+  // heading that happened to pass the character check.
+  if (text.split(" ").length > 4) return "";
+  return text;
+}
+
+function normalizeEmail(raw) {
+  const text = String(raw == null ? "" : raw).trim().toLowerCase().slice(0, MAX_EMAIL_CHARS);
+  if (!text || !EMAIL_PATTERN.test(text)) return "";
+  return text;
+}
+
+/** Only ever returns a value the create-teacher <select> will actually accept. */
+export function normalizeCountry(raw) {
+  const text = String(raw == null ? "" : raw).trim();
+  if (!text) return null;
+  const match = COUNTRY_OPTIONS.find((option) => option.toLowerCase() === text.toLowerCase());
+  return match || null;
+}
+
+/**
+ * A full ISO date, or nothing.
+ *
+ * PUT /api/users/:id rejects anything that is not /^\d{4}-\d{2}-\d{2}$/, and it
+ * stores the first ten characters, so the parser emits exactly that shape and
+ * never a partial or a locale-formatted date.
+ */
+export function normalizeBirthDate(raw) {
+  const text = String(raw == null ? "" : raw).trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+
+  const [year, month, day] = text.split("-").map(Number);
+  const asDate = new Date(Date.UTC(year, month - 1, day));
+  // Round-trip: Date.UTC happily rolls 2025-02-31 over into March, so compare
+  // the parts back instead of trusting the constructor.
+  if (
+    asDate.getUTCFullYear() !== year ||
+    asDate.getUTCMonth() !== month - 1 ||
+    asDate.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  if (asDate > new Date()) return null;
+
+  const now = new Date();
+  let age = now.getUTCFullYear() - year;
+  const birthdayNotYet = now.getUTCMonth() + 1 < month ||
+    (now.getUTCMonth() + 1 === month && now.getUTCDate() < day);
+  if (birthdayNotYet) age -= 1;
+  if (age < MIN_TEACHER_AGE || age > MAX_TEACHER_AGE) return null;
+
+  return text;
+}
+
 /**
  * Turn whatever came back from the model into values that are safe to store.
  * Anything outside the vocabulary is dropped rather than passed through, so a
@@ -185,6 +285,14 @@ function normalizeExperienceYears(raw) {
 export function normalizeParsedProfile(raw, { courseNames = [] } = {}) {
   const source = raw && typeof raw === "object" ? raw : {};
   return {
+    // Identity first, then the matching profile. All of these are optional:
+    // a resume often gives a name and nothing else, and every one of them is
+    // dropped rather than guessed at.
+    firstName: normalizeName(source.firstName),
+    lastName: normalizeName(source.lastName),
+    email: normalizeEmail(source.email),
+    country: normalizeCountry(source.country),
+    birthday: normalizeBirthDate(source.birthday),
     bio: normalizeBio(source.bio),
     specialization: normalizeValues(
       source.specialization,
@@ -245,8 +353,46 @@ function buildResponseSchema(courseNames) {
         description:
           "Total years of English-teaching experience as a whole number. Null when the resume does not state it - never estimate.",
       },
+      firstName: {
+        type: "STRING",
+        nullable: true,
+        description: "The teacher's given name only, not a full name line. Null when absent.",
+      },
+      lastName: {
+        type: "STRING",
+        nullable: true,
+        description: "The teacher's family name only. Null when absent.",
+      },
+      email: {
+        type: "STRING",
+        nullable: true,
+        description:
+          "A contact email address exactly as written on the resume. Null when the resume shows none - never construct one.",
+      },
+      country: {
+        type: "STRING",
+        nullable: true,
+        description: `Where the teacher is based, as one of: ${COUNTRY_OPTIONS.join(", ")}. Null when the resume does not say.`,
+      },
+      birthday: {
+        type: "STRING",
+        nullable: true,
+        description:
+          "Date of birth as YYYY-MM-DD, only when the resume states a full date. Null when absent or partial.",
+      },
     },
-    required: ["bio", "specialization", "teachingStyle", "idealStudentPace", "experienceYears"],
+    required: [
+      "bio",
+      "specialization",
+      "teachingStyle",
+      "idealStudentPace",
+      "experienceYears",
+      "firstName",
+      "lastName",
+      "email",
+      "country",
+      "birthday",
+    ],
   };
 }
 
@@ -266,7 +412,11 @@ function buildTaskPrompt(courseNames) {
     "- experienceYears counts completed years teaching English, not years studying it or age. Null if unstated.",
     "- bio must be plain prose: no bullet points, no headings, no contact details, no mention of this task or of AI.",
     "- Describe the teacher, do not copy sentences out of the resume.",
-    "- If the document is unreadable or is not a teaching resume, return empty arrays, a null experienceYears, and a bio saying so in one sentence.",
+    "- firstName and lastName are the teacher's own names. Return only the given name and only the family name - never a full header line, never a title like 'Teacher'.",
+    "- email is only an address that appears on the resume. Never build, guess or complete one. Null when there is none.",
+    `- country must be one of: ${COUNTRY_OPTIONS.join(", ")}. Pick the closest match for where the teacher lives or works; null when the resume does not say.`,
+    "- birthday is YYYY-MM-DD and only when a full date of birth is written. Null for 'circa', an age, or a partial date.",
+    "- If the document is unreadable or is not a teaching resume, return empty arrays, null for every optional field, and a bio saying so in one sentence.",
   ].join("\n");
 }
 

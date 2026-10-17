@@ -75,6 +75,16 @@ function mergeResumeIntoTeacherForm(form, parsed) {
 
   return {
     ...form,
+    // Identity fields fill only when blank, exactly like bio: re-uploading a
+    // corrected CV must never overwrite something the admin already typed.
+    // `birthday` on the wire is `birthDate` on the form, and it arrives already
+    // shaped YYYY-MM-DD, which is what the date input and PUT /api/users/:id
+    // both expect. Country is likewise already one of the select's options.
+    firstName: isBlank(form.firstName) ? parsed.firstName || "" : form.firstName,
+    lastName: isBlank(form.lastName) ? parsed.lastName || "" : form.lastName,
+    email: isBlank(form.email) ? parsed.email || "" : form.email,
+    country: isBlank(form.country) ? parsed.country || "" : form.country,
+    birthDate: isBlank(form.birthDate) ? parsed.birthday || "" : form.birthDate,
     specialization: union(form.specialization, parsed.specialization),
     teachingStyle: union(form.teachingStyle, parsed.teachingStyle),
     idealStudentPace: union(form.idealStudentPace, parsed.idealStudentPace),
@@ -99,6 +109,14 @@ function describeResumeFill(parsed) {
   if (parsed.experienceYears !== null && parsed.experienceYears !== undefined) {
     parts.push(`${parsed.experienceYears} year${parsed.experienceYears === 1 ? "" : "s"} experience`);
   }
+  // Identity fields are named explicitly so the admin can see that a name came
+  // out of the CV rather than off their keyboard, and which ones were skipped.
+  if (parsed.firstName || parsed.lastName) {
+    parts.push(parsed.firstName && parsed.lastName ? "name" : "part of the name");
+  }
+  if (parsed.email) parts.push("email");
+  if (parsed.country) parts.push(`country (${parsed.country})`);
+  if (parsed.birthday) parts.push("birthday");
 
   return parts.length
     ? `Filled from resume: ${parts.join(", ")}. Review it before saving.`
@@ -2343,8 +2361,10 @@ export default function AdminDashboard() {
                   <p className={styles.criteriaCardIntro}>
                     Upload the teacher&apos;s CV and it reads the file and fills in the matching
                     profile below - bio, specialization, teaching style, best student pace and
-                    experience years. Tick the courses first so the specializations fit. Everything
-                    it fills in stays editable, and the file itself is not stored.
+                    experience years - along with any first name, last name, email, country and
+                    birthday printed on it. Only blank fields are filled, so anything already
+                    typed is left alone. Tick the courses first so the specializations fit.
+                    Everything it fills in stays editable, and the file itself is not stored.
                   </p>
                   <div className={styles.resumeRow}>
                     <input
