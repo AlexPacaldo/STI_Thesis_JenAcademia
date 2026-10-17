@@ -492,7 +492,26 @@ const resumeUpload = multer({
 //
 // See requireSessionForUpload below for why this was not simply requireSession,
 // and frontend/src/utils/authenticatedFile.js for the client half.
-app.use("/uploads", requireSessionForUpload, express.static(UPLOAD_ROOT));
+// A blob: URL is not reused across page loads, so every avatar on a page is a
+// fresh request where a plain <img src> would have come from the browser's
+// cache. Caching privately for a few minutes puts that back.
+//
+// Safe because these files are immutable in practice: an upload is written to a
+// new timestamp-plus-random filename, so replacing a profile picture yields a
+// new URL rather than new bytes at the old one. Anything that must take effect
+// promptly - an archived account - is handled by invalidating the session memo
+// below, not by the cache lifetime.
+//
+// private, not public: express.static would send `public, max-age`, which
+// invites a shared cache to store a file only reachable with a session.
+const UPLOAD_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+
+app.use("/uploads", requireSessionForUpload, express.static(UPLOAD_ROOT, {
+  maxAge: UPLOAD_CACHE_MAX_AGE_MS,
+  setHeaders(res) {
+    res.setHeader("Cache-Control", `private, max-age=${Math.floor(UPLOAD_CACHE_MAX_AGE_MS / 1000)}`);
+  },
+}));
 
 app.get("/healthz", (_req, res) => {
   res.json({ ok: true });
@@ -622,7 +641,10 @@ async function requireSessionForUpload(req, res, next) {
   }
 
   const now = Date.now();
-  const cached = uploadSessionCache.get(claims.sub);
+  // String key throughout: invalidation below is driven by a route param, which
+  // arrives as a string even though claims.sub is numeric.
+  const userKey = String(claims.sub);
+  const cached = uploadSessionCache.get(userKey);
   if (cached && cached.expiresAt > now) {
     if (!cached.active) {
       return res.status(401).json({ message: "This account is no longer active" });
@@ -643,7 +665,7 @@ async function requireSessionForUpload(req, res, next) {
 
     // Replace rather than accumulate, so a long-lived process cannot grow this
     // without bound.
-    uploadSessionCache.set(claims.sub, { active, expiresAt: now + UPLOAD_SESSION_CACHE_MS });
+    uploadSessionCache.set(userKey, { active, expiresAt: now + UPLOAD_SESSION_CACHE_MS });
 
     if (!active) {
       return res.status(401).json({ message: "This account is no longer active" });
@@ -4676,6 +4698,12 @@ app.put("/api/users/:userId/status", requireAdminSession, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    // The only route that changes a user's status, and so the only place this
+    // memo can go stale. Without it an archived account kept file access for up
+    // to a minute; with it, the next request re-reads the account and is
+    // refused.
+    uploadSessionCache.delete(String(userId));
+
     res.json({ message: `User status updated to ${status}` });
   } catch (err) {
     console.error(err);
@@ -5083,11 +5111,24 @@ app.get("/api/calendar/classes/:class_id/verification", requireSession, requireC
 app.get("/api/calendar/classes/:class_id/classroom", requireSession, requireClassAccess(), async (req, res) => {
   try {
     const { class_id } = req.params;
-    const { user_id } = req.query;
-
-    if (!class_id || !user_id) {
-      return res.status(400).json({ message: "Missing class_id or user_id" });
+    if (!class_id) {
+      return res.status(400).json({ message: "Missing class_id" });
     }
+
+    // The caller's id comes from the verified session, not the query string.
+    //
+    // This was read from req.query and used both to load the `users` row that
+    // decides access and to derive isModerator below. sessionMayActOnClass only
+    // requires being a participant, so any student in the class could pass
+    // their teacher's id and be handed a Jitsi JWT with isModerator: true,
+    // minted from the teacher's own row - their name, their email, and
+    // moderator rights in the teacher's live classroom. Only the classroom
+    // handler was affected: the recording handler reads the same field but
+    // derives nothing but participant status from it.
+    //
+    // Both callers already sent the caller's own id, so this changes no
+    // legitimate behaviour.
+    const userId = req.session.userId;
 
     const [rows] = await pool.query(
       `SELECT c.class_id,
@@ -5122,12 +5163,12 @@ app.get("/api/calendar/classes/:class_id/classroom", requireSession, requireClas
     const classInfo = decryptFields(rows[0], ["class_link"]);
     const [userRows] = await pool.query(
       "SELECT user_id, first_name, last_name, email, role, status, profile_completed FROM users WHERE user_id = ? LIMIT 1",
-      [user_id]
+      [userId]
     );
     const user = userRows[0];
     const isParticipant =
-      String(classInfo.teacher_id) === String(user_id) ||
-      String(classInfo.student_id) === String(user_id);
+      String(classInfo.teacher_id) === String(userId) ||
+      String(classInfo.student_id) === String(userId);
     const isAdmin = user?.role === "admin";
 
     if (!user || user.status !== "active" || (!isAdmin && !user.profile_completed) || (!isParticipant && !isAdmin)) {
@@ -5138,7 +5179,7 @@ app.get("/api/calendar/classes/:class_id/classroom", requireSession, requireClas
     const jitsiJwt = createJitsiJwtForClass({
       classInfo,
       user,
-      isModerator: isAdmin || String(classInfo.teacher_id) === String(user_id),
+      isModerator: isAdmin || String(classInfo.teacher_id) === String(userId),
     });
 
     res.json({
@@ -5454,11 +5495,16 @@ app.get("/api/calendar/classes/:class_id/recording", requireSession, requireClas
     await cleanupExpiredClassRecordings(pool);
 
     const { class_id } = req.params;
-    const { user_id } = req.query;
-
-    if (!class_id || !user_id) {
-      return res.status(400).json({ message: "Missing class_id or user_id" });
+    if (!class_id) {
+      return res.status(400).json({ message: "Missing class_id" });
     }
+
+    // From the verified session, not the query string. requireClassAccess had
+    // already stopped anyone who was not a participant, so this was reading
+    // someone else's account to decide this caller's access rather than being
+    // exploitable - see the note on the classroom handler above, where the same
+    // pattern was worse.
+    const userId = req.session.userId;
 
     const [rows] = await pool.query(
       `SELECT c.teacher_id,
@@ -5474,7 +5520,7 @@ app.get("/api/calendar/classes/:class_id/recording", requireSession, requireClas
        JOIN users u ON u.user_id = ?
        WHERE c.class_id = ?
        LIMIT 1`,
-      [user_id, class_id]
+      [userId, class_id]
     );
 
     if (!rows.length) {
@@ -5483,8 +5529,8 @@ app.get("/api/calendar/classes/:class_id/recording", requireSession, requireClas
 
     const row = rows[0];
     const isParticipant =
-      String(row.teacher_id) === String(user_id) ||
-      String(row.student_id) === String(user_id);
+      String(row.teacher_id) === String(userId) ||
+      String(row.student_id) === String(userId);
     const isAdmin = row.role === "admin";
 
     if (row.status !== "active" || (!isAdmin && !row.profile_completed) || (!isAdmin && !isParticipant)) {
@@ -5588,9 +5634,11 @@ app.get("/api/calendar/classes/:class_id/recording-link", requireSession, requir
       });
     }
 
+    // No user_id: the handler above now reads the session, so passing one would
+    // only suggest to a reader that it is still load-bearing.
     return res.json({
       kind: "local",
-      url: `/api/calendar/classes/${encodeURIComponent(class_id)}/recording?user_id=${encodeURIComponent(req.session.userId)}`,
+      url: `/api/calendar/classes/${encodeURIComponent(class_id)}/recording`,
     });
   } catch (err) {
     console.error("GET /api/calendar/classes/:class_id/recording-link error:", err);

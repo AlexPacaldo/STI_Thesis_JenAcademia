@@ -2832,9 +2832,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
   const openSelectedClassMeeting = async (meetingTab) => {
     try {
-      const response = await axios.get(`${API}/api/calendar/classes/${selectedClass.id}/classroom`, {
-        params: { user_id: localUserId },
-      });
+      const response = await axios.get(`${API}/api/calendar/classes/${selectedClass.id}/classroom`);
       const url = new URL(response.data?.class?.class_link);
       if (!["https:", "http:"].includes(url.protocol)) throw new Error("Invalid meeting link");
       url.searchParams.delete("embed");
@@ -3841,24 +3839,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     />
                   </div>
                 )}
-                {selectedClassVerification?.__unused_start_proof_ui && (selectedClassVerification?.start_proof_url ? (
-                  <button
-                    type="button"
-                    className={styles.evidenceViewBtn}
-                    onClick={() => openAuthenticatedFile(selectedClassVerification.start_proof_url)}
-                  >
-                    View start screenshot
-                  </button>
-                ) : (
-                  <label onPaste={event => {
-                    const item = Array.from(event.clipboardData?.items || []).find(item => item.type.startsWith("image/"));
-                    if (item && selectedClassStudentConfirmed && !isUploadingStartProof) { event.preventDefault(); uploadStartProof(item.getAsFile()); }
-                  }} tabIndex={0}>
-                    Start screenshot (upload within 5 minutes of student confirmation)
-                    <input type="file" accept="image/png,image/jpeg,image/webp" disabled={!selectedClassStudentConfirmed || isUploadingStartProof} onChange={event => uploadStartProof(event.target.files?.[0])} style={{ width: "100%" }} />
-                    <small>{isUploadingStartProof ? "Uploading..." : "Choose File or focus here and paste with Ctrl+V. Join the meeting first and wait for the student."}</small>
-                  </label>
-                ))}
+
                 {shouldRemindEndScreenshot && <div role="alert" className={styles.verificationAlert}>Capture the end screenshot before leaving the meeting.</div>}
               </div>
             )}

@@ -71,9 +71,7 @@ export default function Classroom() {
     if (!classId || !userId) return;
     setLoading(true);
     try {
-      const response = await axios.get(`${API}/api/calendar/classes/${classId}/classroom`, {
-        params: { user_id: userId },
-      });
+      const response = await axios.get(`${API}/api/calendar/classes/${classId}/classroom`);
       setClassInfo(response.data?.class || null);
       setJitsiJwt(response.data?.jitsi_jwt || "");
       const loadedVerification = response.data?.verification || null;
