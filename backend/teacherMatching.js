@@ -470,6 +470,111 @@ export function overBalanceTeachers(ranked) {
   return ranked.filter((t) => Number(t.assigned_student_count || 0) >= TEACHER_BALANCE_LIMIT);
 }
 
+/* ------------------------------------------------------- teaching children */
+
+// A teacher may declare they will not teach children. That is a constraint on who
+// they can be assigned, not a preference to weigh against other criteria: it sits
+// alongside course eligibility and availability, and is applied outside the AI
+// for the same reason.
+//
+// The cutoff is 12: a 13-year-old is a teenager, not a child. Conflating the two
+// would quietly stop teenagers being taught by the teachers best placed for them,
+// which is a different and much worse failure than the one this prevents.
+export const CHILD_MAX_AGE = 12;
+
+/**
+ * Age in whole years from a birth date, or null if it cannot be read.
+ *
+ * Deliberately tolerant: the column is free text and encrypted at rest, so it can
+ * hold whatever a staff member typed into a form. Anything unreadable is null
+ * rather than a guess.
+ */
+export function ageFromBirthDate(birthDate, today = new Date()) {
+  const text = String(birthDate || "").trim();
+  if (!text) return null;
+
+  const match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!year || month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  // Reject a date that cannot exist rather than letting Date roll it into a
+  // plausible wrong answer - 31 February would silently become 3 March.
+  const born = new Date(Date.UTC(year, month - 1, day));
+  if (born.getUTCMonth() !== month - 1 || born.getUTCDate() !== day) return null;
+
+  const now = today instanceof Date ? today : new Date(today);
+  if (Number.isNaN(now.getTime())) return null;
+
+  let age = now.getUTCFullYear() - year;
+  const hadBirthday =
+    now.getUTCMonth() > month - 1 ||
+    (now.getUTCMonth() === month - 1 && now.getUTCDate() >= day);
+  if (!hadBirthday) age -= 1;
+
+  // A birth date in the future is bad data, not a negative age.
+  return age >= 0 ? age : null;
+}
+
+/**
+ * Is this student a child?
+ *
+ * An unreadable or absent birth date is NOT treated as a child. A gap in the data
+ * is not evidence about the student, and inferring one would exclude teachers on
+ * the strength of a field nobody filled in - the one mistake here that later data
+ * cannot undo. The gap is reported instead, so the admin knows the rule did not
+ * apply.
+ */
+export function isChildAge(birthDate, today = new Date()) {
+  const age = ageFromBirthDate(birthDate, today);
+  return age !== null && age <= CHILD_MAX_AGE;
+}
+
+/** Did the teacher explicitly opt out? Anything else - including absent - means in. */
+function optedOutOfChildren(teacher) {
+  const value = teacher?.teaches_children;
+  // MySQL hands back a TINYINT as a number, but a driver configured to return
+  // strings would say "0", and a hand-built test row might say false.
+  return value === 0 || value === "0" || value === false;
+}
+
+/**
+ * Will this teacher teach children?
+ *
+ * Exported because the caller needs to answer the same question about the teacher
+ * it actually picked, in order to report a conflict. Deriving it twice from the
+ * same definition is how the check and the ordering drift apart.
+ */
+export function teacherWillTeachChildren(teacher) {
+  return !optedOutOfChildren(teacher);
+}
+
+/**
+ * Stable partition: teachers who will teach children first.
+ *
+ * Applied like the availability constraint - after whatever produced the order,
+ * never inside the score, so the weights still mean what they say.
+ *
+ * If everyone has opted out, the order is simply preserved and the caller is
+ * expected to report the conflict rather than pretend the rule was satisfied.
+ *
+ * @param {Array} ranked  ordered teachers
+ * @param {boolean} studentIsChild  when false this is a no-op
+ */
+export function preferTeachesChildren(ranked, studentIsChild = false) {
+  if (!studentIsChild) return [...ranked];
+
+  const willTeach = [];
+  const willNot = [];
+  for (const teacher of ranked) {
+    (optedOutOfChildren(teacher) ? willNot : willTeach).push(teacher);
+  }
+  return [...willTeach, ...willNot];
+}
+
 /* ------------------------------------------------------------- availability */
 
 /**

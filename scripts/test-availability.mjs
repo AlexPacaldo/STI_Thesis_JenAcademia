@@ -15,6 +15,11 @@ import {
   selectTeacherFromRanking,
   preferAvailable,
   applyAdvisorOrder,
+  preferTeachesChildren,
+  teacherWillTeachChildren,
+  ageFromBirthDate,
+  isChildAge,
+  CHILD_MAX_AGE,
   TEACHER_BALANCE_LIMIT,
   toMinutes,
   weekdayOf,
@@ -319,6 +324,109 @@ check("but still returns one", selectTeacherFromRanking(allFull, null).assigned 
 // An unknown preferred id cannot be honoured - it is not in the pool.
 const unknownPick = selectTeacherFromRanking(rankedForOverride, "999", { honourPreferred: true });
 check("an unknown teacher id falls back to the automatic pick", unknownPick.assigned.user_id, 11);
+
+/* ------------------------------------------------------- teaching children */
+
+// A fixed "today" so age maths cannot drift with the wall clock.
+const TODAY = new Date(Date.UTC(2026, 5, 15)); // 15 June 2026
+
+function yearsAgoBirth(age) {
+  return `${TODAY.getUTCFullYear() - age}-01-15`;
+}
+
+check("an absent birth date has no age", ageFromBirthDate("", TODAY), null);
+check("unparseable text has no age", ageFromBirthDate("sometime in 2019", TODAY), null);
+check("garbage has no age", ageFromBirthDate("!!!", TODAY), null);
+
+// 31 February must not roll over into 3 March and produce a plausible wrong age.
+check("an impossible date is rejected", ageFromBirthDate("2020-02-31", TODAY), null);
+check("month 13 is rejected", ageFromBirthDate("2020-13-01", TODAY), null);
+check("a future birth date is rejected", ageFromBirthDate("2030-01-01", TODAY), null);
+
+// Birthday boundaries: the whole point of the cutoff is being right on the day.
+check("the day before the birthday is a year younger", ageFromBirthDate("2014-06-16", TODAY), 11);
+check("on the birthday the age turns", ageFromBirthDate("2014-06-15", TODAY), 12);
+check("the day after is settled", ageFromBirthDate("2014-06-14", TODAY), 12);
+check("a plain year works", ageFromBirthDate(yearsAgoBirth(10), TODAY), 10);
+
+// The cutoff itself.
+check("the cutoff is 12", CHILD_MAX_AGE, 12);
+check("a 10-year-old is a child", isChildAge(yearsAgoBirth(10), TODAY), true);
+check("a 12-year-old is a child", isChildAge(yearsAgoBirth(12), TODAY), true);
+check("a 13-year-old is not a child", isChildAge(yearsAgoBirth(13), TODAY), false);
+check("an adult is not a child", isChildAge(yearsAgoBirth(30), TODAY), false);
+
+// The one that matters most. A missing field is not evidence about the student,
+// and inferring one would exclude teachers on the strength of nobody typing a
+// date - the only mistake here that correcting the data later cannot undo.
+check("an unknown birthday is NOT a child", isChildAge("", TODAY), false);
+check("an unreadable birthday is NOT a child", isChildAge("unknown", TODAY), false);
+check("an impossible birthday is NOT a child", isChildAge("2020-02-31", TODAY), false);
+
+// --- the ordering constraint ---------------------------------------------
+
+const willTeach = { user_id: 1, first_name: "Yes", last_name: "Tutor", teaches_children: 1 };
+const willNot = { user_id: 2, first_name: "No", last_name: "Tutor", teaches_children: 0 };
+
+check("a teacher who will teach children reads as willing", teacherWillTeachChildren(willTeach), true);
+check("a teacher who opted out reads as unwilling", teacherWillTeachChildren(willNot), false);
+// Absent means nobody has said otherwise, so they stay in the running.
+check("an absent column means willing", teacherWillTeachChildren({ user_id: 3 }), true);
+check("a null column means willing", teacherWillTeachChildren({ user_id: 3, teaches_children: null }), true);
+// A driver returning strings rather than TINYINTs must not silently flip this.
+check("the string zero is still an opt-out", teacherWillTeachChildren({ user_id: 4, teaches_children: "0" }), false);
+check("the string one is still willing", teacherWillTeachChildren({ user_id: 4, teaches_children: "1" }), true);
+
+// For an adult the constraint does not exist at all.
+check(
+  "an adult leaves the order completely alone",
+  preferTeachesChildren([willNot, willTeach], false).map((t) => t.user_id),
+  [2, 1]
+);
+
+// For a child, teachers who decline go last - not filtered out, because the rule
+// is applied like availability: if everyone declines, the closest one is still
+// returned and the caller reports the conflict.
+check(
+  "a child puts willing teachers first",
+  preferTeachesChildren([willNot, willTeach], true).map((t) => t.user_id),
+  [1, 2]
+);
+check(
+  "the partition is stable",
+  preferTeachesChildren(
+    [
+      { user_id: 5, teaches_children: 0 },
+      { user_id: 6, teaches_children: 1 },
+      { user_id: 7, teaches_children: 0 },
+    ],
+    true
+  ).map((t) => t.user_id),
+  [6, 5, 7]
+);
+
+// If nobody will teach children the order still stands - the point is that the
+// caller can then say so, rather than the rule silently producing an empty list.
+check(
+  "if everyone declines, the order is preserved",
+  preferTeachesChildren([willNot, { ...willNot, user_id: 8 }], true).map((t) => t.user_id),
+  [2, 8]
+);
+check("it never returns fewer teachers", preferTeachesChildren([willNot, willTeach], true).length, 2);
+
+// The constraint outranks the AI, exactly like availability. A model that puts a
+// declining teacher first does not get to keep them there.
+const advisorIgnored = applyAdvisorOrder([willTeach, willNot], ["2", "1"]);
+check(
+  "the advisor can put a declining teacher first",
+  advisorIgnored[0].user_id,
+  2
+);
+check(
+  "but the rule still moves them back",
+  preferTeachesChildren(advisorIgnored, true).map((t) => t.user_id),
+  [1, 2]
+);
 
 console.log(`${passed}/${passed + failures.length} checks passed.`);
 if (failures.length) {

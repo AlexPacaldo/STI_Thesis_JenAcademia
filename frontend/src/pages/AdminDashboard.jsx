@@ -438,6 +438,9 @@ export default function AdminDashboard() {
     idealStudentPaceOther: "",
     bio: "",
     courseIds: [],
+    // Opt-out. Defaults to on, so leaving the box alone means this teacher
+    // teaches everyone - the safe reading of a field nobody ticked.
+    teachesChildren: true,
   });
   // Resume auto-fill. The parsed profile is a draft for the fields above; nothing
   // is submitted until the admin saves the teacher.
@@ -933,6 +936,7 @@ export default function AdminDashboard() {
         idealStudentPaceOther: "",
         bio: "",
         courseIds: [],
+        teachesChildren: true,
       });
       setResumeFileName("");
       loadUsers();
@@ -1230,6 +1234,9 @@ export default function AdminDashboard() {
         proficiencyLevel: computedLevel?.level || "",
         teacherId: sForm.teacherId,
         preferredSchedule: sForm.preferredSchedule,
+        // Plain text, and only used to decide whether the student is a child. The
+        // server decides what counts, so the cutoff lives in one place.
+        studentBirthDate: sForm.birthDate || "",
       });
       const teacher = r.data?.teacher;
       if (!teacher) {
@@ -1811,10 +1818,14 @@ export default function AdminDashboard() {
 
   // Load and availability for the teacher the admin picked, so the confirm dialog
   // can warn without blocking. Only ever warns; never prevents creation.
-  async function checkTeacherFit(teacherId, preferredSchedule) {
+  async function checkTeacherFit(teacherId, preferredSchedule, studentBirthDate) {
     if (!teacherId) return null;
     try {
-      const response = await axios.post(`${API}/api/admin/teacher-fit-check`, { teacherId, preferredSchedule });
+      const response = await axios.post(`${API}/api/admin/teacher-fit-check`, {
+        teacherId,
+        preferredSchedule,
+        studentBirthDate,
+      });
       return response.data || null;
     } catch (err) {
       // A failed check must not stop the admin creating the student.
@@ -1836,8 +1847,13 @@ export default function AdminDashboard() {
       notify("Please score all 5 level evaluation criteria.", "error");
       return;
     }
-    const teacherFit = await checkTeacherFit(sForm.teacherId, sForm.preferredSchedule);
+    const teacherFit = await checkTeacherFit(sForm.teacherId, sForm.preferredSchedule, sForm.birthDate);
     const warnings = [];
+    if (teacherFit?.childAgeConflict) {
+      warnings.push(
+        `${teacherFit.name || "This teacher"} has said they will not teach children, and this student is under 13. They will still be assigned.`
+      );
+    }
     if (teacherFit?.atOrOverLimit) {
       warnings.push(
         `${teacherFit.name || "This teacher"} already has ${teacherFit.assignedStudentCount} active students (recommended limit is ${teacherFit.balanceLimit}). They will still be assigned.`
@@ -2590,6 +2606,28 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div style={{ marginTop: "12px" }}>
+                  <label
+                    htmlFor="teacher-does-not-teach-children"
+                    style={{ display: "flex", alignItems: "flex-start", gap: "8px", cursor: "pointer" }}
+                  >
+                    <input
+                      id="teacher-does-not-teach-children"
+                      type="checkbox"
+                      checked={tForm.teachesChildren === false}
+                      onChange={(e) => setTForm({ ...tForm, teachesChildren: !e.target.checked })}
+                      style={{ marginTop: "3px" }}
+                    />
+                    <span>
+                      This teacher will not teach children (under 13)
+                      <p className={styles.criteriaFieldHint}>
+                        Ticking this keeps them out of the running for younger students. It is a rule,
+                        not a preference: they will not be recommended for a child even if the match is
+                        otherwise good. Leave it unticked and they can teach any age.
+                      </p>
+                    </span>
+                  </label>
+                </div>
+                <div style={{ marginTop: "12px" }}>
                   <label htmlFor="teacher-bio">Teacher Bio / Notes</label>
                   <textarea
                     id="teacher-bio"
@@ -2982,6 +3020,29 @@ export default function AdminDashboard() {
                       {aiRecommendation.teacher.reasons?.length > 0 && (
                         <div style={{ marginTop: "6px", fontSize: "0.85em", color: "#666" }}>
                           Rule scores: {aiRecommendation.teacher.reasons.join(", ")}
+                        </div>
+                      )}
+                      {aiRecommendation.childAgeConflict && (
+                        <div
+                          style={{
+                            marginTop: "6px",
+                            padding: "6px 8px",
+                            borderRadius: "4px",
+                            background: "#fdecea",
+                            color: "#8a2f2f",
+                          }}
+                        >
+                          <strong>This teacher does not teach children.</strong>{" "}
+                          {aiRecommendation.childAgeReason ||
+                            "They have said they will not teach children, and no other available teacher will."}
+                          {aiRecommendation.studentAgeGroup === "child" &&
+                            " You can still assign them - it is a warning, not a block."}
+                        </div>
+                      )}
+                      {aiRecommendation.studentAgeGroup === "unknown" && (
+                        <div style={{ marginTop: "6px", color: "#666" }}>
+                          The student has no birthday on file, so teachers who decline to teach children
+                          could not be ruled out.
                         </div>
                       )}
                       {aiRecommendation.preferredScheduleEvaluated && (

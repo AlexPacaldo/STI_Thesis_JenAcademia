@@ -30,6 +30,11 @@ import {
   preferAvailable,
   applyAdvisorOrder,
   assessMatchStrength,
+  preferTeachesChildren,
+  teacherWillTeachChildren,
+  isChildAge,
+  ageFromBirthDate,
+  CHILD_MAX_AGE,
 } from "./teacherMatching.js";
 import { adviseTeacherRanking, isTeacherAdvisorConfigured } from "./teacherAdvisor.js";
 import {
@@ -2019,6 +2024,24 @@ async function ensureUserDemographicsColumns() {
   await pool.query("ALTER TABLE users MODIFY COLUMN contact_number TEXT DEFAULT NULL");
 }
 
+/**
+ * Add teacher_profiles.teaches_children, in the same guarded style as
+ * ensureUserDemographicsColumns - no migration file, no separate deploy step.
+ *
+ * DEFAULT 1 on purpose: the column is opt-out, not opt-in. Adding it cannot
+ * retroactively rule any existing teacher out of teaching children, which is the
+ * only safe default - the alternative would silently change who can be assigned
+ * to every child already on the books.
+ */
+async function ensureTeacherProfileColumns() {
+  if (!(await columnExists("teacher_profiles", "teaches_children"))) {
+    await pool.query(
+      `ALTER TABLE teacher_profiles
+       ADD COLUMN teaches_children TINYINT(1) NOT NULL DEFAULT 1 AFTER experience_years`
+    );
+  }
+}
+
 async function refreshProfileCompletion(userId) {
   await pool.query(
     `UPDATE users
@@ -2288,6 +2311,7 @@ async function prepareDatabase() {
   await ensurePasswordResetTokensTable();
   await ensureApiRateLimitsTable();
   await ensureUserDemographicsColumns();
+  await ensureTeacherProfileColumns();
   await refreshAllProfileCompletion();
   await ensureStudentContractRequestsTable();
   await ensureStudentClassPackageDurationColumn();
@@ -2542,7 +2566,7 @@ async function loadTeacherAvailability(teacherIds, preference, db) {
 // measuring what the AI changed costs no extra query. It exists only to report
 // whether the suggestions moved the pick - the returned teacher always comes
 // from criteria.
-async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNotes = "", courseId = null, courseName = "", proficiencyLevel = "", preferredTeacherId = null, baselineCriteria = null, preferredSchedule = null, honourPreferredTeacher = false, db = pool }) {
+async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNotes = "", courseId = null, courseName = "", proficiencyLevel = "", studentBirthDate = null, preferredTeacherId = null, baselineCriteria = null, preferredSchedule = null, honourPreferredTeacher = false, db = pool }) {
   // What the admin actually typed, available immediately. The insights only ever
   // add to it, so this is a sound basis for ranking before they have arrived.
   const baseCriteria = normalizeCriteria(criteria);
@@ -2564,7 +2588,7 @@ async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNo
   // Ranking on the available evidence is what "closest match" has to mean.
   const [teachers] = await db.query(
     `SELECT u.user_id, u.first_name, u.last_name, u.email, u.profile_completed,
-            tp.bio, tp.specialization, tp.experience_years,
+            tp.bio, tp.specialization, tp.experience_years, tp.teaches_children,
             COUNT(student.user_id) AS assigned_student_count,
             MAX(CASE WHEN selected_tc.course_id IS NOT NULL THEN 1 ELSE 0 END) AS selected_course_match
      FROM users u
@@ -2574,7 +2598,7 @@ async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNo
      LEFT JOIN users student ON student.user_id = sp.user_id AND student.status = 'active' AND student.profile_completed = TRUE
      WHERE u.role = 'teacher' AND u.status = 'active'
        AND (? IS NULL OR selected_tc.course_id IS NOT NULL)
-     GROUP BY u.user_id, u.first_name, u.last_name, u.email, u.profile_completed, tp.bio, tp.specialization, tp.experience_years
+     GROUP BY u.user_id, u.first_name, u.last_name, u.email, u.profile_completed, tp.bio, tp.specialization, tp.experience_years, tp.teaches_children
      ORDER BY u.first_name ASC, u.last_name ASC`,
     [courseFilter || 0, courseFilter]
   );
@@ -2643,10 +2667,23 @@ async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNo
     ranked = applyAdvisorOrder(ranked, advisor.order);
   }
 
-  // Availability last: a constraint, applied to whatever ordering we ended up
-  // with, so neither the scorer nor the model can place someone unavailable
-  // ahead of someone who can teach the slot.
+  // Availability: a constraint, applied to whatever ordering we ended up with, so
+  // neither the scorer nor the model can place someone unavailable ahead of
+  // someone who can teach the slot.
   ranked = preferAvailable(ranked, availability);
+
+  // Then the same idea for age. A teacher who has said they will not teach
+  // children is not a weaker match for a child, they are not a candidate - which
+  // is why this partitions the order rather than costing points.
+  //
+  // An unknown birth date does NOT make the student a child. A missing field is
+  // not evidence, and inferring one would exclude teachers on the strength of
+  // data nobody entered. It is reported as unknown instead, so the admin can see
+  // the rule did not apply rather than assuming it did.
+  const studentAge = ageFromBirthDate(studentBirthDate);
+  const studentAgeKnown = studentAge !== null;
+  const studentIsChild = studentAgeKnown && studentAge <= CHILD_MAX_AGE;
+  ranked = preferTeachesChildren(ranked, studentIsChild);
 
   const { assigned, usedLeastLoadedFallback, preferredHonouredOverLimit } = selectTeacherFromRanking(
     ranked,
@@ -2666,6 +2703,10 @@ async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNo
     availabilityReason: "",
     preferredHonouredOverLimit: false,
     matchStrength: { level: "unknown", matched: 0, total: 0, ratio: 0 },
+    studentAgeKnown,
+    studentAgeGroup: !studentAgeKnown ? "unknown" : studentIsChild ? "child" : "adult",
+    childAgeConflict: false,
+    childAgeReason: "",
   };
 
   // Reported either way, and always here rather than at each return: a rules-only
@@ -2731,6 +2772,17 @@ async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNo
       criterionMatched: assigned.criterionMatched,
       criterionTotal: assigned.criterionTotal,
     });
+
+    // The constraint is applied, not enforced absolutely: if every candidate has
+    // opted out of children we still return the closest one, because refusing to
+    // recommend leaves the admin with nothing. But it is never presented as a
+    // clean pick - that is what this flag is for.
+    result.childAgeConflict = Boolean(studentIsChild && !teacherWillTeachChildren(assigned));
+    if (result.childAgeConflict) {
+      result.childAgeReason =
+        `${assigned.first_name || "This teacher"} ${assigned.last_name || ""}`.trim() +
+        " has said they will not teach children, and no other available teacher will";
+    }
   }
 
   return result;
@@ -3141,6 +3193,52 @@ app.get("/api/dashboard/:role/:user_id", requireSession, async (req, res) => {
   } catch (err) {
     console.error("GET /api/dashboard/:role/:user_id error:", err);
     res.status(500).json({ message: "Error fetching dashboard data" });
+  }
+});
+
+// Whether a teacher will teach children is set when the admin creates them, but
+// it has to be correctable afterwards: teachers change their minds, and some
+// join already set. Without this the only way to change it is a database edit.
+app.patch("/api/admin/teachers/:teacherId/teaches-children", requireAdminSession, async (req, res) => {
+  try {
+    const teacherId = parseInt(req.params.teacherId, 10);
+    if (!teacherId) {
+      return res.status(400).json({ message: "Invalid teacher selected" });
+    }
+
+    // Tri-state on the wire. An absent value means "I did not mean to change
+    // this", which is different from false, and is rejected rather than guessed
+    // at - silently defaulting would flip a teacher's stated preference.
+    const raw = req.body?.teachesChildren;
+    if (typeof raw !== "boolean") {
+      return res.status(400).json({ message: "teachesChildren must be true or false" });
+    }
+
+    const [[teacher]] = await pool.query(
+      "SELECT user_id FROM users WHERE user_id = ? AND role = 'teacher' LIMIT 1",
+      [teacherId]
+    );
+    if (!teacher) {
+      return res.status(404).json({ message: "Teacher not found" });
+    }
+
+    // A teacher row should exist, but an admin-created teacher might predate it.
+    const [result] = await pool.query(
+      `UPDATE teacher_profiles SET teaches_children = ? WHERE user_id = ?`,
+      [raw ? 1 : 0, teacherId]
+    );
+
+    if (!result.affectedRows) {
+      await pool.query(
+        `INSERT INTO teacher_profiles (user_id, teaches_children) VALUES (?, ?)`,
+        [teacherId, raw ? 1 : 0]
+      );
+    }
+
+    res.json({ teacherId: String(teacherId), teachesChildren: raw });
+  } catch (err) {
+    console.error("PATCH /api/admin/teachers/:teacherId/teaches-children error:", err);
+    res.status(500).json({ message: "Could not update that preference" });
   }
 });
 
@@ -3663,7 +3761,7 @@ app.get("/api/users/:id", requireSession, async (req, res) => {
       roleDetails = decryptFields(studentRows[0] || {}, ["trial_notes"]);
     } else if (u.role === "teacher") {
       const [teacherRows] = await pool.query(
-        `SELECT tp.bio, tp.specialization, tp.experience_years, tp.hourly_rate,
+        `SELECT tp.bio, tp.specialization, tp.experience_years, tp.hourly_rate, tp.teaches_children,
                 COUNT(DISTINCT student.user_id) AS active_students,
                 GROUP_CONCAT(DISTINCT c.course_name ORDER BY c.course_name SEPARATOR ', ') AS courses
          FROM users u
@@ -3880,6 +3978,8 @@ app.post("/api/admin/teacher-fit-check", requireAdminSession, async (req, res) =
     }
 
     const assignedStudentCount = Number(teacher.assigned_student_count || 0);
+    const fitStudentIsChild = isChildAge(req.body?.studentBirthDate);
+    const fitStudentAgeKnown = ageFromBirthDate(req.body?.studentBirthDate) !== null;
     const preference = normalizePreferredSchedule(preferredSchedule);
     const availability = preference
       ? (await loadTeacherAvailability([id], preference, pool)).get(String(id)) || null
@@ -3895,6 +3995,10 @@ app.post("/api/admin/teacher-fit-check", requireAdminSession, async (req, res) =
       available: availability ? availability.available : null,
       availabilityReason: availability?.reason || "",
       matchingDates: availability?.matchingDates || [],
+      willTeachChildren: teacherWillTeachChildren(teacher),
+      studentIsChild: fitStudentIsChild,
+      studentAgeKnown: fitStudentAgeKnown,
+      childAgeConflict: fitStudentIsChild && !teacherWillTeachChildren(teacher),
     });
   } catch (err) {
     console.error("POST /api/admin/teacher-fit-check error:", err);
@@ -3904,7 +4008,7 @@ app.post("/api/admin/teacher-fit-check", requireAdminSession, async (req, res) =
 
 app.post("/api/admin/recommend-teacher", requireAdminSession, limitMatchInsights, async (req, res) => {
   try {
-    const { criteria, trialNotes, courseId, courseName, proficiencyLevel, teacherId, preferredSchedule } = req.body || {};
+    const { criteria, trialNotes, courseId, courseName, proficiencyLevel, teacherId, preferredSchedule, studentBirthDate } = req.body || {};
 
     // Read the trial notes for extra criteria, and pass the promise down rather
     // than the answer. recommendTeacher ranks the teachers alongside this call
@@ -3920,6 +4024,7 @@ app.post("/api/admin/recommend-teacher", requireAdminSession, limitMatchInsights
       courseId,
       courseName,
       proficiencyLevel,
+      studentBirthDate,
       preferredTeacherId: teacherId,
       preferredSchedule,
       // The admin's explicit pick wins over the balance limit, and the UI warns.
@@ -3971,6 +4076,10 @@ app.post("/api/admin/recommend-teacher", requireAdminSession, limitMatchInsights
       availabilityReason: recommendation.availabilityReason || "",
       preferredHonouredOverLimit: recommendation.preferredHonouredOverLimit,
       matchStrength: recommendation.matchStrength,
+      studentAgeKnown: recommendation.studentAgeKnown,
+      studentAgeGroup: recommendation.studentAgeGroup,
+      childAgeConflict: recommendation.childAgeConflict,
+      childAgeReason: recommendation.childAgeReason,
       advisor: recommendation.advisor,
     });
   } catch (err) {
@@ -4164,13 +4273,17 @@ app.post("/api/admin/users", requireAdminSession, async (req, res) => {
       const specializationText = clampSpecialization(specialization);
 
       await pool.query(
-        `INSERT INTO teacher_profiles (user_id, bio, specialization, experience_years)
-         VALUES (?, ?, ?, ?)`,
+        `INSERT INTO teacher_profiles (user_id, bio, specialization, experience_years, teaches_children)
+         VALUES (?, ?, ?, ?, ?)`,
         [
           userId,
           teacherBio || "",
           specializationText || null,
           Number.isFinite(parsedExperienceYears) ? parsedExperienceYears : null,
+          // Opt-out, defaulting to teaching everyone. Only an explicit false or 0
+          // restricts, so a missing or malformed field can never exclude a
+          // teacher by accident.
+          teachesChildren === false || teachesChildren === 0 || teachesChildren === "0" ? 0 : 1,
         ]
       );
 
