@@ -178,6 +178,31 @@ const INSIGHT_REASON_LABELS = {
   unavailable: "the AI could not be reached",
 };
 
+// Preferred class schedule for the student. Optional throughout: with any part
+// missing the backend skips the availability check entirely and matching behaves
+// exactly as it did before. Days are JS getDay indices, 0 = Sunday, which is what
+// weekdayOf() on the backend expects.
+const WEEKDAY_CHOICES = [
+  ["1", "Mon"], ["2", "Tue"], ["3", "Wed"], ["4", "Thu"],
+  ["5", "Fri"], ["6", "Sat"], ["0", "Sun"],
+];
+
+function createEmptyPreferredSchedule() {
+  return { days: [], start: "", end: "" };
+}
+
+function hasPreferredSchedule(schedule) {
+  return Boolean(schedule && schedule.days?.length && schedule.start && schedule.end);
+}
+
+function describePreferredSchedule(schedule) {
+  if (!hasPreferredSchedule(schedule)) return "";
+  const days = (schedule.days || [])
+    .map((day) => WEEKDAY_CHOICES.find((choice) => choice[0] === String(day))?.[1] || day)
+    .join(", ");
+  return `${days} ${schedule.start}-${schedule.end}`;
+}
+
 function criteriaLabelFor(field, value) {
   const option = (STUDENT_CRITERIA_OPTIONS?.[field] || []).find((entry) => entry[0] === value);
   return option ? option[1] : value;
@@ -438,6 +463,7 @@ export default function AdminDashboard() {
     // Every criterion is multi-select so it mirrors the teacher's matching
     // profile. See utils/matchingCriteria.js.
     aiCriteria: createEmptyCriteria(),
+    preferredSchedule: createEmptyPreferredSchedule(),
   });
   const [showLevelHelp, setShowLevelHelp] = useState(false);
   const [courses, setCourses] = useState([]);
@@ -944,6 +970,7 @@ export default function AdminDashboard() {
         classesAvailed: "",
         classDuration: "50",
         aiCriteria: createEmptyCriteria(),
+        preferredSchedule: createEmptyPreferredSchedule(),
       });
       setAiRecommendation(null);
       setShowLevelHelp(false);
@@ -1201,6 +1228,7 @@ export default function AdminDashboard() {
         courseId: sForm.courseId,
         proficiencyLevel: computedLevel?.level || "",
         teacherId: sForm.teacherId,
+        preferredSchedule: sForm.preferredSchedule,
       });
       const teacher = r.data?.teacher;
       if (!teacher) {
@@ -1780,7 +1808,21 @@ export default function AdminDashboard() {
     });
   }
 
-  function handleCreateStudentSubmit(e) {
+  // Load and availability for the teacher the admin picked, so the confirm dialog
+  // can warn without blocking. Only ever warns; never prevents creation.
+  async function checkTeacherFit(teacherId, preferredSchedule) {
+    if (!teacherId) return null;
+    try {
+      const response = await axios.post(`${API}/api/admin/teacher-fit-check`, { teacherId, preferredSchedule });
+      return response.data || null;
+    } catch (err) {
+      // A failed check must not stop the admin creating the student.
+      console.error(err);
+      return null;
+    }
+  }
+
+  async function handleCreateStudentSubmit(e) {
     e.preventDefault();
     if (e.currentTarget && !e.currentTarget.reportValidity()) return;
     if (!sForm.courseId) {
@@ -1793,12 +1835,28 @@ export default function AdminDashboard() {
       notify("Please score all 5 level evaluation criteria.", "error");
       return;
     }
+    const teacherFit = await checkTeacherFit(sForm.teacherId, sForm.preferredSchedule);
+    const warnings = [];
+    if (teacherFit?.atOrOverLimit) {
+      warnings.push(
+        `${teacherFit.name || "This teacher"} already has ${teacherFit.assignedStudentCount} active students (recommended limit is ${teacherFit.balanceLimit}). They will still be assigned.`
+      );
+    }
+    if (teacherFit?.availabilityEvaluated && teacherFit.available === false) {
+      warnings.push(
+        `Not available at the preferred time (${describePreferredSchedule(sForm.preferredSchedule)})${
+          teacherFit.availabilityReason ? ` - ${teacherFit.availabilityReason}` : ""
+        }. Check the schedule.`
+      );
+    }
+
     openAdminConfirm({
       action: "create_student",
       title: "Create student account?",
       message: "This will create the student account with the details you entered.",
       confirmLabel: "Create Student",
       tone: "primary",
+      warnings,
       payload: { ...sForm },
     });
   }
@@ -1974,12 +2032,21 @@ export default function AdminDashboard() {
       // Recomputed from the snapshot's scores rather than read off the live form,
       // so the summary matches what will actually be stored.
       const levelSummary = computeProficiencyLevel(payload.levelScores);
-      return [
+      const lines = [
         `Name: ${payload.firstName || ""} ${payload.lastName || ""}`.trim(),
         `Course: ${course?.course_name || "Not set"}`,
         `Level: ${levelSummary ? formatComputedLevel(levelSummary.level) : "Not scored"}`,
         `Teacher: ${teacher ? `${teacher.first_name} ${teacher.last_name}` : "Not assigned"}`,
       ];
+      if (hasPreferredSchedule(payload.preferredSchedule)) {
+        lines.push(`Preferred: ${describePreferredSchedule(payload.preferredSchedule)}`);
+      }
+      // Non-blocking: the admin assigns teachers personally, so a full schedule
+      // is a heads-up, not a veto.
+      for (const warning of adminConfirm.warnings || []) {
+        lines.push(`Warning: ${warning}`);
+      }
+      return lines;
     }
     if (adminConfirm.action === "save_teacher_courses") {
       return [
@@ -2750,6 +2817,73 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div>
+                  <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>
+                    Preferred Class Schedule <span style={{ fontWeight: "400", color: "#666" }}>(optional)</span>
+                  </label>
+                  <p style={{ margin: "0 0 8px 0", fontSize: "0.85em", color: "#666", lineHeight: "1.5" }}>
+                    Teachers set their own availability, so this lets the match prefer someone who can
+                    actually take the class. Leave it blank to match on teaching fit alone.
+                  </p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px" }}>
+                    {WEEKDAY_CHOICES.map(([value, label]) => {
+                      const active = sForm.preferredSchedule.days.includes(value);
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => {
+                            const days = active
+                              ? sForm.preferredSchedule.days.filter((day) => day !== value)
+                              : [...sForm.preferredSchedule.days, value];
+                            setSForm({
+                              ...sForm,
+                              preferredSchedule: { ...sForm.preferredSchedule, days },
+                            });
+                            setAiRecommendation(null);
+                          }}
+                          style={{
+                            padding: "5px 12px",
+                            borderRadius: "999px",
+                            border: `1px solid ${active ? "#26423b" : "#d0d0d0"}`,
+                            background: active ? "#26423b" : "#fff",
+                            color: active ? "#fff" : "#333",
+                            cursor: "pointer",
+                            fontSize: "0.85em",
+                          }}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                    <label style={{ fontSize: "0.85em", color: "#555" }}>From</label>
+                    <input
+                      type="time"
+                      value={sForm.preferredSchedule.start}
+                      onChange={(e) => {
+                        setSForm({
+                          ...sForm,
+                          preferredSchedule: { ...sForm.preferredSchedule, start: e.target.value },
+                        });
+                        setAiRecommendation(null);
+                      }}
+                    />
+                    <label style={{ fontSize: "0.85em", color: "#555" }}>To</label>
+                    <input
+                      type="time"
+                      value={sForm.preferredSchedule.end}
+                      onChange={(e) => {
+                        setSForm({
+                          ...sForm,
+                          preferredSchedule: { ...sForm.preferredSchedule, end: e.target.value },
+                        });
+                        setAiRecommendation(null);
+                      }}
+                    />
+                  </div>
+                </div>
+                <div>
                   <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Trial Class Notes</label>
                   <textarea
                     value={sForm.trialNotes}
@@ -2795,6 +2929,28 @@ export default function AdminDashboard() {
                       )}
                       {aiRecommendation.teacher.reasons?.length > 0 && (
                         <div>Reason: {aiRecommendation.teacher.reasons.join(", ")}</div>
+                      )}
+                      {aiRecommendation.preferredScheduleEvaluated && (
+                        <div
+                          style={{
+                            marginTop: "6px",
+                            color: aiRecommendation.availabilityConflict ? "#8a3e2e" : "#26423b",
+                          }}
+                        >
+                          {aiRecommendation.availabilityConflict
+                            ? `Not available at the preferred time (${describePreferredSchedule(sForm.preferredSchedule)})${
+                                aiRecommendation.availabilityReason
+                                  ? ` - ${aiRecommendation.availabilityReason}`
+                                  : ""
+                              }. Check the schedule.`
+                            : "Available at the student's preferred time."}
+                        </div>
+                      )}
+                      {aiRecommendation.preferredHonouredOverLimit && (
+                        <div style={{ marginTop: "6px", color: "#8a3e2e" }}>
+                          You chose this teacher, so the assignment limit was not applied. It is still
+                          recommended only when nobody under the limit fits.
+                        </div>
                       )}
                       {aiRecommendation.teacher.profile_completed === false && (
                         <div style={{ marginTop: "6px" }}>

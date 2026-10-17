@@ -378,6 +378,36 @@ const atLimitPick = selectTeacherFromRanking(rankTeachers(allAtLimit), null);
 check("every teacher over the limit still yields one", atLimitPick.assigned !== null, true);
 check("and it reports the least-loaded fallback", atLimitPick.usedLeastLoadedFallback, true);
 
+// --- the import list in server.js must match what this module exports ------
+//
+// This catches the bug of adding a symbol to the import list that does not
+// exist (a ReferenceError on the first call) or using one that was never
+// imported. Both are invisible to `node --check`, which only parses.
+{
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const { dirname, join } = await import("node:path");
+  const here = dirname(fileURLToPath(import.meta.url));
+  const serverSource = readFileSync(join(here, "../backend/server.js"), "utf8");
+  // [^{}]* so the match cannot run past its own closing brace into an earlier
+  // import block, which is what a lazy [\s\S]*? did.
+  const block = serverSource.match(/import \{([^{}]*)\} from "\.\/teacherMatching\.js";/);
+  check("teacherMatching import block found in server.js", Boolean(block), true);
+  if (block) {
+    const imported = block[1].split(",").map((s) => s.trim()).filter(Boolean);
+    const exportedHere = Object.keys(await import("../backend/teacherMatching.js"));
+    for (const name of imported) {
+      check(`server.js imports an exported symbol: ${name}`, exportedHere.includes(name), true);
+    }
+    // The reverse direction matters more: TEACHER_BALANCE_LIMIT was used by the
+    // new fit-check route while only existing in this module, which parses fine
+    // and throws at runtime.
+    for (const name of ["TEACHER_BALANCE_LIMIT", "evaluateAvailability", "AVAILABILITY_HORIZON_DAYS"]) {
+      check(`server.js imports the symbol it needs: ${name}`, imported.includes(name), true);
+    }
+  }
+}
+
 console.log(`\n${checks - failures}/${checks} checks passed.`);
 if (failures) {
   console.error(`${failures} check(s) FAILED.`);

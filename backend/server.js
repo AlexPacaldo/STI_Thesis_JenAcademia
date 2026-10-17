@@ -24,6 +24,9 @@ import {
   rankTeachers,
   scoreTeacherForStudent,
   selectTeacherFromRanking,
+  evaluateAvailability,
+  AVAILABILITY_HORIZON_DAYS,
+  TEACHER_BALANCE_LIMIT,
 } from "./teacherMatching.js";
 import {
   isResumeParserConfigured,
@@ -2447,11 +2450,95 @@ function normalizeProficiencyLevel(value) {
   return PROFICIENCY_LEVELS.has(normalized) ? normalized : "";
 }
 
+// ISO date N days from today, in UTC so the value cannot drift with the
+// server's timezone. A one-day skew is immaterial here: the window spans three
+// weeks precisely so every weekday occurs several times inside it.
+function isoDateFromToday(offsetDays) {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offsetDays))
+    .toISOString()
+    .slice(0, 10);
+}
+
+/**
+ * The student's preferred slot, or null when they did not give one.
+ *
+ * Null is the important part: without it the matcher behaves exactly as it did
+ * before availability existed - no queries, no flags, no UI line.
+ */
+function normalizePreferredSchedule(raw) {
+  const days = Array.isArray(raw?.days) ? raw.days.filter((d) => d !== null && d !== "") : [];
+  const start = String(raw?.start ?? "").trim();
+  const end = String(raw?.end ?? "").trim();
+  if (!days.length || !start || !end) return null;
+  return { days, start, end };
+}
+
+/**
+ * Is each candidate free during the preferred slot?
+ *
+ * Reads the same teacher_availability table the Calendar reads, plus scheduled
+ * classes for collisions. Two queries, only when a preference exists. Availability
+ * is per DATE rather than a repeating weekly pattern, so a preference for
+ * "Tuesdays, 18:00" is resolved by finding real upcoming dates on that weekday.
+ */
+async function loadTeacherAvailability(teacherIds, preference, db) {
+  const ids = teacherIds.map((id) => parseInt(id, 10)).filter(Number.isFinite);
+  const result = new Map();
+  if (!ids.length) return result;
+
+  const endOffset = AVAILABILITY_HORIZON_DAYS - 1;
+  const startDate = isoDateFromToday(0);
+  const endDate = isoDateFromToday(endOffset);
+  const dates = Array.from({ length: AVAILABILITY_HORIZON_DAYS }, (_, i) => isoDateFromToday(i));
+  const placeholders = ids.map(() => "?").join(", ");
+
+  const [availabilityRows] = await db.query(
+    `SELECT teacher_id,
+            DATE_FORMAT(available_date, '%Y-%m-%d') AS available_date,
+            status,
+            TIME_FORMAT(start_time, '%H:%i') AS start_time,
+            TIME_FORMAT(end_time, '%H:%i') AS end_time,
+            TIME_FORMAT(break_start, '%H:%i') AS break_start,
+            TIME_FORMAT(break_end, '%H:%i') AS break_end
+     FROM teacher_availability
+     WHERE teacher_id IN (${placeholders})
+       AND available_date BETWEEN ? AND ?`,
+    [...ids, startDate, endDate]
+  );
+
+  const [bookingRows] = await db.query(
+    `SELECT teacher_id,
+            DATE_FORMAT(scheduled_date, '%Y-%m-%d') AS date,
+            TIME_FORMAT(start_time, '%H:%i') AS start_time,
+            TIME_FORMAT(end_time, '%H:%i') AS end_time
+     FROM classes
+     WHERE status = 'scheduled'
+       AND teacher_id IN (${placeholders})
+       AND scheduled_date BETWEEN ? AND ?`,
+    [...ids, startDate, endDate]
+  );
+
+  const buckets = new Map(ids.map((id) => [String(id), { rows: [], bookings: [] }]));
+  for (const row of availabilityRows) buckets.get(String(row.teacher_id))?.rows.push(row);
+  for (const row of bookingRows) buckets.get(String(row.teacher_id))?.bookings.push(row);
+
+  for (const [key, bucket] of buckets) {
+    result.set(key, evaluateAvailability({
+      rows: bucket.rows,
+      bookings: bucket.bookings,
+      dates,
+      ...preference,
+    }));
+  }
+  return result;
+}
+
 // baselineCriteria scores a second criteria set from the SAME loaded rows, so
 // measuring what the AI changed costs no extra query. It exists only to report
 // whether the suggestions moved the pick - the returned teacher always comes
 // from criteria.
-async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = null, proficiencyLevel = "", preferredTeacherId = null, baselineCriteria = null, db = pool }) {
+async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = null, proficiencyLevel = "", preferredTeacherId = null, baselineCriteria = null, preferredSchedule = null, honourPreferredTeacher = false, db = pool }) {
   const normalizedCriteria = normalizeCriteria(criteria);
   const level = normalizeProficiencyLevel(proficiencyLevel);
   const courseFilter = courseId ? parseInt(courseId, 10) : null;
@@ -2486,14 +2573,29 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
     [courseFilter || 0, courseFilter]
   );
 
+  // Availability is only read when the admin gave a preferred slot. Without one
+  // this stays null and rankTeachers behaves exactly as it always has.
+  const preference = normalizePreferredSchedule(preferredSchedule);
+  const availability = preference
+    ? await loadTeacherAvailability(teachers.map((teacher) => teacher.user_id), preference, db)
+    : null;
+
   const scoreWith = (activeCriteria) =>
     rankTeachers(
-      teachers.map((teacher) => scoreTeacherForStudent(teacher, activeCriteria, trialNotes, courseId, level))
+      teachers.map((teacher) => ({
+        ...scoreTeacherForStudent(teacher, activeCriteria, trialNotes, courseId, level),
+        availability: availability ? availability.get(String(teacher.user_id)) || null : null,
+      })),
+      availability
     );
 
   const ranked = scoreWith(normalizedCriteria);
 
-  const { assigned, usedLeastLoadedFallback } = selectTeacherFromRanking(ranked, preferredTeacherId);
+  const { assigned, usedLeastLoadedFallback, preferredHonouredOverLimit } = selectTeacherFromRanking(
+    ranked,
+    preferredTeacherId,
+    { honourPreferred: honourPreferredTeacher }
+  );
 
   const result = {
     teacher: assigned || null,
@@ -2502,6 +2604,10 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
     overBalanceTeachers: overBalanceTeachers(ranked),
     usedLeastLoadedFallback,
     noTeacherReason: "",
+    preferredScheduleEvaluated: false,
+    availabilityConflict: false,
+    availabilityReason: "",
+    preferredHonouredOverLimit: false,
   };
 
   if (!ranked.length) {
@@ -2519,6 +2625,14 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
       .assigned;
     result.baselineTeacherId = baselinePick ? String(baselinePick.user_id) : null;
   }
+
+  // The recommendation is still made even when nobody is free then, but the
+  // caller is told, so an unavailable pick is never presented as a clean one.
+  const assignedAvailability = assigned && availability ? availability.get(String(assigned.user_id)) : null;
+  result.preferredScheduleEvaluated = Boolean(preference);
+  result.availabilityConflict = Boolean(assignedAvailability?.evaluated && !assignedAvailability.available);
+  result.availabilityReason = result.availabilityConflict ? assignedAvailability.reason : "";
+  result.preferredHonouredOverLimit = Boolean(preferredHonouredOverLimit);
 
   return result;
 }
@@ -3640,9 +3754,58 @@ app.put("/api/users/:id/password", requireSession, async (req, res) => {
 
 //ADMIN
 
+// Load and availability for one teacher, for the create-student confirm dialog.
+app.post("/api/admin/teacher-fit-check", requireAdminSession, async (req, res) => {
+  try {
+    const { teacherId, preferredSchedule } = req.body || {};
+    const id = parseInt(teacherId, 10);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ message: "Missing teacher_id" });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT u.user_id,
+              u.first_name,
+              u.last_name,
+              COUNT(sp.student_id) AS assigned_student_count
+       FROM users u
+       LEFT JOIN student_profiles sp ON sp.assigned_teacher_id = u.user_id
+       WHERE u.user_id = ? AND u.role = 'teacher' AND u.status = 'active'
+       GROUP BY u.user_id, u.first_name, u.last_name
+       LIMIT 1`,
+      [id]
+    );
+    const teacher = rows[0];
+    if (!teacher) {
+      return res.status(404).json({ message: "Teacher not found" });
+    }
+
+    const assignedStudentCount = Number(teacher.assigned_student_count || 0);
+    const preference = normalizePreferredSchedule(preferredSchedule);
+    const availability = preference
+      ? (await loadTeacherAvailability([id], preference, pool)).get(String(id)) || null
+      : null;
+
+    res.json({
+      teacherId: String(teacher.user_id),
+      name: `${teacher.first_name || ""} ${teacher.last_name || ""}`.trim(),
+      assignedStudentCount,
+      atOrOverLimit: assignedStudentCount >= TEACHER_BALANCE_LIMIT,
+      balanceLimit: TEACHER_BALANCE_LIMIT,
+      availabilityEvaluated: Boolean(availability?.evaluated),
+      available: availability ? availability.available : null,
+      availabilityReason: availability?.reason || "",
+      matchingDates: availability?.matchingDates || [],
+    });
+  } catch (err) {
+    console.error("POST /api/admin/teacher-fit-check error:", err);
+    res.status(500).json({ message: "Could not check that teacher" });
+  }
+});
+
 app.post("/api/admin/recommend-teacher", requireAdminSession, limitMatchInsights, async (req, res) => {
   try {
-    const { criteria, trialNotes, courseId, proficiencyLevel, teacherId } = req.body || {};
+    const { criteria, trialNotes, courseId, proficiencyLevel, teacherId, preferredSchedule } = req.body || {};
 
     // Read the trial notes for extra criteria. This never blocks: a Gemini
     // failure costs the suggestions and nothing else, because the rules are
@@ -3656,6 +3819,9 @@ app.post("/api/admin/recommend-teacher", requireAdminSession, limitMatchInsights
       courseId,
       proficiencyLevel,
       preferredTeacherId: teacherId,
+      preferredSchedule,
+      // The admin's explicit pick wins over the balance limit, and the UI warns.
+      honourPreferredTeacher: Boolean(teacherId),
     });
 
     const applied = Object.keys(insights.added || {}).length > 0;
@@ -3694,6 +3860,10 @@ app.post("/api/admin/recommend-teacher", requireAdminSession, limitMatchInsights
       criteria: recommendation.criteria,
       aiInsights,
       noTeacherReason: recommendation.noTeacherReason || "",
+      preferredScheduleEvaluated: recommendation.preferredScheduleEvaluated,
+      availabilityConflict: recommendation.availabilityConflict,
+      availabilityReason: recommendation.availabilityReason || "",
+      preferredHonouredOverLimit: recommendation.preferredHonouredOverLimit,
     });
   } catch (err) {
     console.error("POST /api/admin/recommend-teacher error:", err);
@@ -3807,6 +3977,7 @@ app.post("/api/admin/users", requireAdminSession, async (req, res) => {
       idealStudentPace,
       bio,
       courseIds = [],
+      preferredSchedule,
     } = req.body;
 
     const [exist] = await pool.query("SELECT user_id FROM users WHERE email = ?", [email]);
@@ -3916,6 +4087,16 @@ app.post("/api/admin/users", requireAdminSession, async (req, res) => {
         courseId,
         proficiencyLevel,
         preferredTeacherId: teacherId,
+        preferredSchedule,
+        // The admin assigns teachers personally, so an explicit choice is honoured
+        // even at or over the balance limit. TEACHER_BALANCE_LIMIT still governs
+        // the automatic match and the least-loaded fallback; exceeding it here is
+        // surfaced as a warning, not blocked.
+        //
+        // The contract-request approval path passes a preferredTeacherId too, but
+        // there it is the student's CURRENTLY assigned teacher rather than a fresh
+        // human choice, so it deliberately does not set this flag.
+        honourPreferredTeacher: Boolean(teacherId),
       });
       const assignedTeacherId = recommendation.teacher?.user_id || null;
       const courseIdValue = courseId ? parseInt(courseId, 10) : null;

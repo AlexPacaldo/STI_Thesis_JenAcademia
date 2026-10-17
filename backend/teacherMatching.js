@@ -313,8 +313,20 @@ export function scoreTeacherForStudent(
 }
 
 /** Sort by score, then by lighter load. */
-export function rankTeachers(scored) {
+export function rankTeachers(scored, availability = null) {
   return [...scored].sort((a, b) => {
+    // Availability is a scheduling preference, not a teaching-quality signal, so
+    // it partitions rather than scores. Teachers who can actually take the
+    // requested slot come first; inside each group the existing score order is
+    // untouched, so the weights in SCORE_WEIGHTS mean what they say.
+    //
+    // Passed as null (or omitted) this is byte-identical to the previous
+    // behaviour, which matters: without a preferred schedule nothing changes.
+    if (availability) {
+      const aFree = availability.get(String(a.user_id))?.available;
+      const bFree = availability.get(String(b.user_id))?.available;
+      if (aFree !== bFree) return aFree ? -1 : 1;
+    }
     if (b.score !== a.score) return b.score - a.score;
     return Number(a.assigned_student_count || 0) - Number(b.assigned_student_count || 0);
   });
@@ -324,7 +336,7 @@ export function rankTeachers(scored) {
  * Apply the workload policy: prefer a manual pick if it is still under the
  * limit, otherwise the best-scoring teacher who is, otherwise the least loaded.
  */
-export function selectTeacherFromRanking(ranked, preferredTeacherId = null) {
+export function selectTeacherFromRanking(ranked, preferredTeacherId = null, { honourPreferred = false } = {}) {
   const loadOf = (teacher) => Number(teacher.assigned_student_count || 0);
 
   const underBalanceLimit = ranked.filter((t) => loadOf(t) < TEACHER_BALANCE_LIMIT);
@@ -334,19 +346,189 @@ export function selectTeacherFromRanking(ranked, preferredTeacherId = null) {
     ? ranked.find((t) => String(t.user_id) === String(preferredTeacherId))
     : null;
 
+  // The admin assigns teachers personally because they know their teachers. When
+  // honourPreferred is set, an explicit pick wins outright - even at or over the
+  // balance limit - and the caller surfaces a warning instead of blocking.
+  //
+  // The flag defaults to false on purpose. The contract-request approval flow also
+  // passes a preferredTeacherId, but that one is the student's CURRENTLY assigned
+  // teacher, not a fresh human choice; honouring it there would silently pin the
+  // old teacher and ignore the new contract criteria. Automatic recommendations -
+  // this one and the least-loaded fallback - still respect the limit.
   const assigned =
-    preferred && loadOf(preferred) < TEACHER_BALANCE_LIMIT
+    honourPreferred && preferred
       ? preferred
-      : underBalanceLimit[0] || leastLoaded || null;
+      : preferred && loadOf(preferred) < TEACHER_BALANCE_LIMIT
+        ? preferred
+        : underBalanceLimit[0] || leastLoaded || null;
 
   return {
     assigned,
     leastLoaded,
     underBalanceLimit,
     usedLeastLoadedFallback: underBalanceLimit.length === 0 && Boolean(leastLoaded),
+    // Reported so the caller can warn without re-querying the count.
+    preferredHonouredOverLimit: Boolean(
+      honourPreferred && preferred && loadOf(preferred) >= TEACHER_BALANCE_LIMIT
+    ),
   };
 }
 
 export function overBalanceTeachers(ranked) {
   return ranked.filter((t) => Number(t.assigned_student_count || 0) >= TEACHER_BALANCE_LIMIT);
+}
+
+/* ------------------------------------------------------------- availability */
+
+/**
+ * Can this teacher take the student's preferred slot?
+ *
+ * Availability is stored per DATE in teacher_availability (available_date,
+ * status, start_time/end_time, break_start/break_end), not as a repeating
+ * weekly pattern - the same shape the Calendar already reads. So a preference of
+ * "Tuesdays and Thursdays, 18:00-19:00" is resolved by looking ahead over real
+ * dates that fall on those weekdays and asking whether any of them works. No
+ * second availability system, and no migration.
+ *
+ * Pure on purpose: the caller supplies the rows and the dates, so this is
+ * testable without a database.
+ */
+export const AVAILABILITY_HORIZON_DAYS = 21;
+
+const WEEKDAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+/** "1", "mon", "Monday" -> 1 (JS getDay, Sunday = 0). Unknown values dropped. */
+export function normalizePreferredDays(days) {
+  const wanted = new Set();
+  for (const raw of Array.isArray(days) ? days : [days]) {
+    const text = String(raw == null ? "" : raw).trim().toLowerCase();
+    if (!text) continue;
+    if (/^[0-6]$/.test(text)) {
+      wanted.add(Number(text));
+      continue;
+    }
+    const exact = WEEKDAY_NAMES.indexOf(text);
+    if (exact >= 0) {
+      wanted.add(exact);
+      continue;
+    }
+    // Abbreviations, because "thu" is what people type and what a chip label
+    // often is. Only unambiguous prefixes of 3+ characters are accepted.
+    if (text.length >= 3) {
+      const byPrefix = WEEKDAY_NAMES
+        .map((name, index) => (name.startsWith(text) ? index : -1))
+        .filter((index) => index >= 0);
+      if (byPrefix.length === 1) wanted.add(byPrefix[0]);
+    }
+  }
+  return wanted;
+}
+
+/** "18:30", "18:30:00" -> minutes since midnight. Unparseable -> null. */
+export function toMinutes(value) {
+  if (value == null || value === "") return null;
+  const match = String(value).match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 24 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+/** Day of week for "YYYY-MM-DD", via UTC so the timezone cannot shift it. */
+export function weekdayOf(dateString) {
+  const match = String(dateString || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))).getUTCDay();
+}
+
+/** Half-open overlap: touching endpoints do not count as overlapping. */
+function overlaps(aStart, aEnd, bStart, bEnd) {
+  if (aStart === null || aEnd === null || bStart === null || bEnd === null) return false;
+  return aStart < bEnd && aEnd > bStart;
+}
+
+/**
+ * @param {object} input
+ * @param {Array} input.rows       this teacher's teacher_availability rows
+ * @param {Array} input.bookings   this teacher's scheduled classes, { date, start_time, end_time }
+ * @param {string[]} input.dates   candidate "YYYY-MM-DD" dates in the look-ahead window
+ * @param {Array} input.days       preferred weekdays (0-6, or names)
+ * @param {string} input.start     preferred window start
+ * @param {string} input.end       preferred window end
+ * @returns {{evaluated: boolean, available: boolean|null, matchingDates: string[], reason: string}}
+ */
+export function evaluateAvailability({ rows = [], bookings = [], dates = [], days = [], start = null, end = null }) {
+  const wanted = normalizePreferredDays(days);
+  const startMin = toMinutes(start);
+  const endMin = toMinutes(end);
+
+  // No preference, or an incomplete one: nothing to check, and the caller must
+  // behave exactly as it did before this feature existed.
+  if (!wanted.size || startMin === null || endMin === null || endMin <= startMin) {
+    return { evaluated: false, available: null, matchingDates: [], reason: "" };
+  }
+
+  const rowsByDate = new Map();
+  for (const row of rows) {
+    const date = String(row.available_date || "").slice(0, 10);
+    if (!date) continue;
+    rowsByDate.set(date, row);
+  }
+
+  const matchingDates = [];
+  const reasons = new Set();
+
+  for (const date of dates) {
+    const weekday = weekdayOf(date);
+    if (weekday === null || !wanted.has(weekday)) continue;
+
+    const row = rowsByDate.get(date);
+    if (!row) {
+      reasons.add("they have not marked that day available");
+      continue;
+    }
+    if (row.status !== "available") {
+      reasons.add("they marked that day unavailable");
+      continue;
+    }
+
+    const slotStart = toMinutes(row.start_time);
+    const slotEnd = toMinutes(row.end_time);
+    // Unset times mean the whole day, which is how the Calendar treats them.
+    const coversWindow =
+      (slotStart === null && slotEnd === null) ||
+      (slotStart !== null && slotEnd !== null && startMin >= slotStart && endMin <= slotEnd);
+    if (!coversWindow) {
+      reasons.add("their available hours do not cover that time");
+      continue;
+    }
+
+    if (
+      overlaps(startMin, endMin, toMinutes(row.break_start), toMinutes(row.break_end))
+    ) {
+      reasons.add("that time falls in their break");
+      continue;
+    }
+
+    const booked = bookings.some((booking) => {
+      if (String(booking.date || "").slice(0, 10) !== date) return false;
+      return overlaps(startMin, endMin, toMinutes(booking.start_time), toMinutes(booking.end_time));
+    });
+    if (booked) {
+      reasons.add("they already have a class booked then");
+      continue;
+    }
+
+    matchingDates.push(date);
+  }
+
+  return {
+    evaluated: true,
+    available: matchingDates.length > 0,
+    matchingDates,
+    // First reason only: the admin needs one sentence, not a set of every way it
+    // could have worked.
+    reason: matchingDates.length ? "" : [...reasons][0] || "they have no availability set for those days",
+  };
 }
