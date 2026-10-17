@@ -5,6 +5,7 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { addLocalNotification } from "../utils/localNotificationStore.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { apiFetch } from "../utils/apiAuth.js";
 
 const API = API_BASE_URL;
 
@@ -246,9 +247,9 @@ export default function AssignTask() {
     setIsLoading(true);
 
     Promise.all([
-      fetch(`${API}/api/teacher/${currentTeacherId}/students`).then((res) => res.json()),
-      fetch(`${API}/api/teacher/${currentTeacherId}/assignments`).then((res) => res.json()),
-      fetch(`${API}/api/teacher/${currentTeacherId}/submissions`).then((res) => res.json()),
+      apiFetch(`${API}/api/teacher/${currentTeacherId}/students`).then((res) => res.json()),
+      apiFetch(`${API}/api/teacher/${currentTeacherId}/assignments`).then((res) => res.json()),
+      apiFetch(`${API}/api/teacher/${currentTeacherId}/submissions`).then((res) => res.json()),
     ])
       .then(([studentsData, assignmentsData, submissionsData]) => {
         if (ignore) return;

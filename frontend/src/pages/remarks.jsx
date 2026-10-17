@@ -5,6 +5,7 @@ import styles from "../assets/remarks.module.css";
 import { getStoredUserTimezone } from "../utils/timezone.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { apiFetch } from "../utils/apiAuth.js";
 
 const API = API_BASE_URL;
 
@@ -110,7 +111,7 @@ export default function Remarks() {
       return;
     }
 
-    fetch(`${API_BASE_URL}/api/student/${studentId}/remarks`)
+    apiFetch(`${API_BASE_URL}/api/student/${studentId}/remarks`)
       .then(async (res) => {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));

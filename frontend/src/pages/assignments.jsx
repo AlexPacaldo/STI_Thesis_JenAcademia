@@ -5,6 +5,7 @@ import styles from "../assets/assignments.module.css";
 import { getStoredUserTimezone } from "../utils/timezone.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { apiFetch } from "../utils/apiAuth.js";
 
 const API = API_BASE_URL;
 
@@ -83,7 +84,7 @@ export default function Assignments() {
     setIsLoading(true);
     setError("");
 
-    fetch(`${API}/api/student/${currentStudentId}/assignments`)
+    apiFetch(`${API}/api/student/${currentStudentId}/assignments`)
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok) {

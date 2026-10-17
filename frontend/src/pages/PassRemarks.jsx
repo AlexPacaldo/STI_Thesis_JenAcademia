@@ -5,6 +5,7 @@ import styles from "../assets/teacherSchedule.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { apiFetch } from "../utils/apiAuth.js";
 
 const API = API_BASE_URL;
 
@@ -81,7 +82,7 @@ export default function PassRemarks() {
     }
 
     setTeacherId(currentUserId);
-    fetch(`${API}/api/teacher/${currentUserId}/students`)
+    apiFetch(`${API}/api/teacher/${currentUserId}/students`)
       .then(async (res) => {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -109,7 +110,7 @@ export default function PassRemarks() {
     try {
       const params = new URLSearchParams({ status: filter });
       if (studentId) params.set("student_id", String(studentId));
-      const res = await fetch(`${API}/api/teacher/${teacherId}/remarks?${params.toString()}`);
+      const res = await apiFetch(`${API}/api/teacher/${teacherId}/remarks?${params.toString()}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || "Failed to load remark history.");
       setHistory(data.remarks || []);
@@ -220,7 +221,7 @@ export default function PassRemarks() {
     }
 
     try {
-      const classRes = await fetch(
+      const classRes = await apiFetch(
         `${API}/api/teacher/${teacherId}/student/${selectedStudentId}/latest-class`
       );
       if (!classRes.ok) {

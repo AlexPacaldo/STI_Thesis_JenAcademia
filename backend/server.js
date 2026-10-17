@@ -592,6 +592,38 @@ function progressStudentId(req) {
   );
 }
 
+/**
+ * May this session act as the teacher named in a path?
+ *
+ * An admin may act for anyone. Everyone else may only act as themselves, which
+ * is what stops one teacher reading another's student list, assignments and
+ * submissions by editing a user id into the URL.
+ */
+function sessionMayActFor(req, claimedId) {
+  if (req.session?.role === "admin") return true;
+  if (claimedId === undefined || claimedId === null || claimedId === "") return false;
+  return String(req.session?.userId) === String(claimedId);
+}
+
+/**
+ * May this session read this student's data?
+ *
+ * The student themselves, an admin, or the teacher they are actually assigned
+ * to. The assigned-teacher case matters: staff legitimately open a student's
+ * page, and denying it would break that workflow, so this checks the real
+ * relationship instead of blanket-allowing every teacher.
+ */
+async function sessionMayReadStudent(req, studentId) {
+  const session = req.session || {};
+  if (session.role === "admin") return true;
+  if (String(session.userId) === String(studentId)) return true;
+  if (session.role === "teacher") {
+    const profile = await getStudentProfile(studentId);
+    return String(profile?.assigned_teacher_id || "") === String(session.userId);
+  }
+  return false;
+}
+
 // Every accepted resume costs one Gemini call, and the endpoint has no auth of
 // its own (see the route below), so the quota is the thing worth bounding.
 // Deliberately generous: a human cannot meaningfully create a teacher's profile
@@ -5682,9 +5714,12 @@ const [result] = await pool.query(
   }
 });
 
-app.get("/api/student/:student_id/class-history", async (req, res) => {
+app.get("/api/student/:student_id/class-history", requireSession, async (req, res) => {
   try {
     const { student_id } = req.params;
+    if (!(await sessionMayReadStudent(req, student_id))) {
+      return res.status(403).json({ message: "You can only view your own records." });
+    }
     const parsedLimit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 100));
 
     const [rows] = await pool.query(
@@ -5733,9 +5768,12 @@ app.get("/api/student/:student_id/class-history", async (req, res) => {
   }
 });
 
-app.get("/api/teacher/:teacher_id/class-history", async (req, res) => {
+app.get("/api/teacher/:teacher_id/class-history", requireSession, async (req, res) => {
   try {
     const { teacher_id } = req.params;
+    if (!sessionMayActFor(req, teacher_id)) {
+      return res.status(403).json({ message: "You can only view your own students' data." });
+    }
     const parsedLimit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 100));
 
     const [rows] = await pool.query(
@@ -6873,9 +6911,12 @@ app.post("/api/calendar/remarks", async (req, res) => {
 });
 
 // Get all remarks for a student
-app.get("/api/student/:student_id/remarks", async (req, res) => {
+app.get("/api/student/:student_id/remarks", requireSession, async (req, res) => {
   try {
     const { student_id } = req.params;
+    if (!(await sessionMayReadStudent(req, student_id))) {
+      return res.status(403).json({ message: "You can only view your own records." });
+    }
 
     const [rows] = await pool.query(
       `SELECT cr.*, c.class_name, c.scheduled_date, c.start_time, c.end_time,
@@ -6929,9 +6970,12 @@ async function findTeacherOwnedRemark(remarkId, teacherId) {
 
 // Get remarks a teacher has written, newest first.
 // ?status=active|archived|all (default all) and optional ?student_id=
-app.get("/api/teacher/:teacher_id/remarks", async (req, res) => {
+app.get("/api/teacher/:teacher_id/remarks", requireSession, async (req, res) => {
   try {
     const { teacher_id } = req.params;
+    if (!sessionMayActFor(req, teacher_id)) {
+      return res.status(403).json({ message: "You can only view your own students' data." });
+    }
     const { status = "all", student_id: studentId } = req.query;
 
     const clauses = ["cr.teacher_id = ?"];
@@ -7758,9 +7802,12 @@ app.get("/api/student/assigned-teacher/:student_id", async (req, res) => {
 });
 
 // Get all students assigned to a teacher
-app.get("/api/teacher/:teacher_id/students", async (req, res) => {
+app.get("/api/teacher/:teacher_id/students", requireSession, async (req, res) => {
   try {
     const { teacher_id } = req.params;
+    if (!sessionMayActFor(req, teacher_id)) {
+      return res.status(403).json({ message: "You can only view your own students' data." });
+    }
 
     const [rows] = await pool.query(
       `SELECT u.user_id, u.first_name, u.last_name, u.email, u.contact_number AS contact,
@@ -7822,9 +7869,12 @@ app.get("/api/teacher/:teacher_id/students", async (req, res) => {
 
 // ==================== ASSIGNMENTS ====================
 
-app.get("/api/teacher/:teacher_id/assignments", async (req, res) => {
+app.get("/api/teacher/:teacher_id/assignments", requireSession, async (req, res) => {
   try {
     const { teacher_id } = req.params;
+    if (!sessionMayActFor(req, teacher_id)) {
+      return res.status(403).json({ message: "You can only view your own students' data." });
+    }
     const [rows] = await pool.query(
       `${assignmentSelect}
        WHERE a.teacher_id = ?
@@ -7839,9 +7889,12 @@ app.get("/api/teacher/:teacher_id/assignments", async (req, res) => {
   }
 });
 
-app.get("/api/teacher/:teacher_id/submissions", async (req, res) => {
+app.get("/api/teacher/:teacher_id/submissions", requireSession, async (req, res) => {
   try {
     const { teacher_id } = req.params;
+    if (!sessionMayActFor(req, teacher_id)) {
+      return res.status(403).json({ message: "You can only view your own students' data." });
+    }
     const [rows] = await pool.query(
       `${submissionSelect}
        WHERE a.teacher_id = ?
@@ -7856,9 +7909,12 @@ app.get("/api/teacher/:teacher_id/submissions", async (req, res) => {
   }
 });
 
-app.get("/api/student/:student_id/assignments", async (req, res) => {
+app.get("/api/student/:student_id/assignments", requireSession, async (req, res) => {
   try {
     const { student_id } = req.params;
+    if (!(await sessionMayReadStudent(req, student_id))) {
+      return res.status(403).json({ message: "You can only view your own records." });
+    }
     const [rows] = await pool.query(
       `${assignmentSelect}
        WHERE a.student_id = ?
@@ -8115,9 +8171,12 @@ app.post("/api/assignments/:assignment_id/submissions", submissionUploader, asyn
 });
 
 // Get latest class for a teacher and student pair
-app.get("/api/teacher/:teacher_id/student/:student_id/latest-class", async (req, res) => {
+app.get("/api/teacher/:teacher_id/student/:student_id/latest-class", requireSession, async (req, res) => {
   try {
     const { teacher_id, student_id } = req.params;
+    if (!sessionMayActFor(req, teacher_id) || !(await sessionMayReadStudent(req, student_id))) {
+      return res.status(403).json({ message: "You can only view your own students' data." });
+    }
     const [rows] = await pool.query(
       `SELECT class_id, class_name, scheduled_date, start_time, end_time, status
        FROM classes
