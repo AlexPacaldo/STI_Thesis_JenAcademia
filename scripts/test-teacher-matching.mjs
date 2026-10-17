@@ -18,6 +18,7 @@ import {
   rankTeachers,
   scoreTeacherForStudent,
   selectTeacherFromRanking,
+  assessMatchStrength,
   TEACHER_BALANCE_LIMIT,
 } from "../backend/teacherMatching.js";
 import {
@@ -407,6 +408,83 @@ check("and it reports the least-loaded fallback", atLimitPick.usedLeastLoadedFal
     }
   }
 }
+
+
+/* --------------------------------- how good a match is this, honestly */
+
+/**
+ * The rule: if there is no perfect teacher, find the closest possible one - and
+ * say that is what happened, rather than presenting the closest available as
+ * though it were the right one.
+ *
+ * Selection already did that part. This covers the telling.
+ */
+
+// Coverage counts only what the admin actually asked for. An unstated criterion
+// is not a miss.
+const nobody = teacher({ user_id: 90, specialization: "business english" });
+const scoredNobody = scoreTeacherForStudent(nobody, baseCriteria, "", null, "");
+check("no criteria set means nothing to miss", scoredNobody.criterionTotal, 0);
+check("so nothing is counted as matched", scoredNobody.criterionMatched, 0);
+
+const partialCriteria = {
+  learningGoal: ["exam-prep"],
+  focusArea: ["grammar"],
+  learningStyle: ["structured"],
+  pace: ["slow"],
+};
+const partialTeacher = teacher({
+  user_id: 91,
+  specialization: "exam preparation",
+  bio: bioWith(["structured"], []),
+});
+const partialScore = scoreTeacherForStudent(partialTeacher, partialCriteria, "", null, "");
+check("only stated criteria are counted", partialScore.criterionTotal, 4);
+check("the ones that matched are counted", partialScore.criterionMatched, 2);
+
+// A form with one criterion must not look worse than a form with four, so the
+// denominator is always the stated criteria and nothing else.
+const oneOnly = scoreTeacherForStudent(
+  teacher({ user_id: 92, specialization: "exam preparation" }),
+  { learningGoal: ["exam-prep"] },
+  "",
+  null,
+  ""
+);
+check("a single-criterion form counts as one", oneOnly.criterionTotal, 1);
+check("and it matched", oneOnly.criterionMatched, 1);
+
+// --- the verdicts ---------------------------------------------------------
+
+check("nothing stated is unknown, not weak", assessMatchStrength({ criterionMatched: 0, criterionTotal: 0 }).level, "unknown");
+check("all covered is strong", assessMatchStrength({ criterionMatched: 4, criterionTotal: 4 }).level, "strong");
+check("half covered is partial", assessMatchStrength({ criterionMatched: 2, criterionTotal: 4 }).level, "partial");
+check("under half is weak", assessMatchStrength({ criterionMatched: 1, criterionTotal: 4 }).level, "weak");
+check("none covered is weak", assessMatchStrength({ criterionMatched: 0, criterionTotal: 3 }).level, "weak");
+check("one of one is strong", assessMatchStrength({ criterionMatched: 1, criterionTotal: 1 }).level, "strong");
+check("zero of one is weak", assessMatchStrength({ criterionMatched: 0, criterionTotal: 1 }).level, "weak");
+
+// The counts travel with the verdict, so the card can state them.
+const verdict = assessMatchStrength({ criterionMatched: 1, criterionTotal: 4 });
+check("the verdict carries what matched", verdict.matched, 1);
+check("the verdict carries what was asked", verdict.total, 4);
+
+// Missing or junk input must not throw or invent a judgement.
+check("no argument at all is unknown", assessMatchStrength().level, "unknown");
+check("a negative count does not go below zero", assessMatchStrength({ criterionMatched: -3, criterionTotal: 4 }).matched, 0);
+
+// The empty-reasons fallback must not read as a compliment. It used to say
+// "balanced match based on teacher profile and current load", which described a
+// teacher who matched nothing the admin asked for.
+check(
+  "the no-match reason is not flattering",
+  /none of the stated criteria matched/i.test(
+    scoreTeacherForStudent(nobody, partialCriteria, "", null, "").reasons.join(" ")
+  ),
+  true
+);
+
+
 
 console.log(`\n${checks - failures}/${checks} checks passed.`);
 if (failures) {

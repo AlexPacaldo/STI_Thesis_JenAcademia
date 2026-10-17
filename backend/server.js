@@ -29,6 +29,7 @@ import {
   TEACHER_BALANCE_LIMIT,
   preferAvailable,
   applyAdvisorOrder,
+  assessMatchStrength,
 } from "./teacherMatching.js";
 import { adviseTeacherRanking, isTeacherAdvisorConfigured } from "./teacherAdvisor.js";
 import {
@@ -2664,6 +2665,7 @@ async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNo
     availabilityConflict: false,
     availabilityReason: "",
     preferredHonouredOverLimit: false,
+    matchStrength: { level: "unknown", matched: 0, total: 0, ratio: 0 },
   };
 
   // Reported either way, and always here rather than at each return: a rules-only
@@ -2712,6 +2714,24 @@ async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNo
   result.availabilityConflict = Boolean(assignedAvailability?.evaluated && !assignedAvailability.available);
   result.availabilityReason = result.availabilityConflict ? assignedAvailability.reason : "";
   result.preferredHonouredOverLimit = Boolean(preferredHonouredOverLimit);
+
+  // How well the teacher we actually picked covers what the admin asked for.
+  //
+  // This is the "closest possible" rule made visible. Selection has always
+  // taken the closest available teacher - the best-ranked one under the load
+  // limit, or the least loaded if there is nobody under it - so the behaviour
+  // was never wrong. What was missing is that the admin could not tell a good
+  // match from a compromise, because the score behind it also counts experience
+  // and workload. Reported on coverage instead, which is the honest measure.
+  //
+  // Read off the assigned teacher rather than the rules' first choice, so it
+  // stays true after the advisor reorders and after availability moves someone.
+  if (assigned) {
+    result.matchStrength = assessMatchStrength({
+      criterionMatched: assigned.criterionMatched,
+      criterionTotal: assigned.criterionTotal,
+    });
+  }
 
   return result;
 }
@@ -3950,6 +3970,7 @@ app.post("/api/admin/recommend-teacher", requireAdminSession, limitMatchInsights
       availabilityConflict: recommendation.availabilityConflict,
       availabilityReason: recommendation.availabilityReason || "",
       preferredHonouredOverLimit: recommendation.preferredHonouredOverLimit,
+      matchStrength: recommendation.matchStrength,
       advisor: recommendation.advisor,
     });
   } catch (err) {

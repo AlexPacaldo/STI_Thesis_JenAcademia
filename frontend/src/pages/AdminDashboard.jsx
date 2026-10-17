@@ -2923,6 +2923,34 @@ export default function AdminDashboard() {
                         <strong>{aiRecommendation.teacher.first_name} {aiRecommendation.teacher.last_name}</strong>
                         <span> ({aiRecommendation.teacher.assigned_student_count} active students)</span>
                       </div>
+                      {aiRecommendation.matchStrength?.level === "weak" && (
+                        <div
+                          style={{
+                            marginTop: "6px",
+                            padding: "6px 8px",
+                            borderRadius: "4px",
+                            background: "#fdf3e7",
+                            color: "#8a5a1f",
+                          }}
+                        >
+                          <strong>Closest available, not a strong match.</strong>{" "}
+                          {aiRecommendation.matchStrength.matched} of the{" "}
+                          {aiRecommendation.matchStrength.total} criteria you set are covered by this
+                          teacher. Nobody here fits better — check the alternatives, or widen the
+                          criteria.
+                        </div>
+                      )}
+                      {aiRecommendation.matchStrength?.level === "partial" && (
+                        <div style={{ marginTop: "6px", color: "#8a5a1f" }}>
+                          Partial match — {aiRecommendation.matchStrength.matched} of{" "}
+                          {aiRecommendation.matchStrength.total} criteria covered.
+                        </div>
+                      )}
+                      {aiRecommendation.matchStrength?.level === "strong" && (
+                        <div style={{ marginTop: "6px", color: "#26423b" }}>
+                          Strong match — all {aiRecommendation.matchStrength.total} criteria covered.
+                        </div>
+                      )}
                       {aiRecommendation.usedLeastLoadedFallback && (
                         <div>
                           All teachers are at 2 or more students, so the least-loaded suitable teacher was selected.

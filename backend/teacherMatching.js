@@ -232,11 +232,26 @@ export function scoreTeacherForStudent(
   }
 
   // --- structured matches -------------------------------------------------
+  //
+  // Alongside the score, record WHICH of the admin's stated criteria this teacher
+  // actually satisfied. The score alone cannot answer "is this a good match",
+  // because it is also made up of experience and workload and the load penalty -
+  // a teacher can score well on those while matching none of what was asked for.
+  //
+  // Only criteria the admin actually set are counted. An unstated criterion is
+  // not a miss; scoring against it would make every thin form look like a bad
+  // match.
+  const criterionMatches = {};
+  const markCriterion = (key, hit) => {
+    if (asArray(criteria[key]).length) criterionMatches[key] = Boolean(hit);
+  };
+
   const goalHits = intersectCount(
     criteria.learningGoal,
     LEARNING_GOAL_TO_SPECIALIZATION,
     specialization
   );
+  markCriterion("learningGoal", goalHits);
   if (goalHits) {
     score += Math.min(goalHits, SCORE_WEIGHTS.maxMatchesPerCriterion) * SCORE_WEIGHTS.learningGoalMatch;
     reasons.push("specialisation matches the learning goal");
@@ -247,18 +262,21 @@ export function scoreTeacherForStudent(
     FOCUS_AREA_TO_SPECIALIZATION,
     specialization
   );
+  markCriterion("focusArea", focusHits);
   if (focusHits) {
     score += Math.min(focusHits, SCORE_WEIGHTS.maxMatchesPerCriterion) * SCORE_WEIGHTS.focusAreaMatch;
     reasons.push("specialisation matches the focus areas");
   }
 
   const styleHits = exactOverlapCount(criteria.learningStyle, profile.teachingStyle);
+  markCriterion("learningStyle", styleHits);
   if (styleHits) {
     score += Math.min(styleHits, SCORE_WEIGHTS.maxMatchesPerCriterion) * SCORE_WEIGHTS.learningStyleMatch;
     reasons.push("teaching style matches");
   }
 
   const paceHits = exactOverlapCount(criteria.pace, profile.idealStudentPace);
+  markCriterion("pace", paceHits);
   if (paceHits) {
     score += Math.min(paceHits, SCORE_WEIGHTS.maxMatchesPerCriterion) * SCORE_WEIGHTS.paceMatch;
     reasons.push("best student pace matches");
@@ -306,10 +324,46 @@ export function scoreTeacherForStudent(
   return {
     ...teacher,
     score,
+    // Coverage of what the admin actually asked for, so "closest available" can
+    // be told apart from "good match". See assessMatchStrength.
+    criterionTotal: Object.keys(criterionMatches).length,
+    criterionMatched: Object.values(criterionMatches).filter(Boolean).length,
+    criterionMatches,
     reasons: reasons.length ? reasons.slice(0, SCORE_WEIGHTS.maxReasons) : [
-      "balanced match based on teacher profile and current load",
+      // Honest rather than reassuring. Nothing matched, and saying "balanced
+      // match" here made a teacher who satisfied none of the stated criteria
+      // read like a well-rounded one.
+      "none of the stated criteria matched — ranked on profile and workload",
     ],
   };
+}
+
+/**
+ * How good a match this is, for the card.
+ *
+ * The rule being implemented: if there is no perfect teacher, find the closest
+ * possible one - and SAY that is what happened, rather than presenting the
+ * closest available as though it were the right one.
+ *
+ * Judged on coverage of the criteria the admin actually set, not on the raw
+ * score. The score also carries experience and a load penalty, so a heavily
+ * loaded teacher who matches nothing can outscore one who matches most of it,
+ * and a percentage of the score would report that as a good match.
+ *
+ * @returns {{level: string, matched: number, total: number, ratio: number}}
+ *   level is "strong", "partial", "weak" or "unknown".
+ */
+export function assessMatchStrength({ criterionMatched = 0, criterionTotal = 0 } = {}) {
+  const total = Math.max(0, Number(criterionTotal) || 0);
+  const matched = Math.max(0, Number(criterionMatched) || 0);
+
+  // Nothing was asked, so there is nothing to have missed. Saying "weak" here
+  // would be inventing a judgement out of an empty form.
+  if (!total) return { level: "unknown", matched: 0, total: 0, ratio: 0 };
+
+  const ratio = matched / total;
+  const level = matched === total ? "strong" : ratio >= 0.5 ? "partial" : "weak";
+  return { level, matched, total, ratio };
 }
 
 /** Sort by score, then by lighter load. The rules-only ordering. */
