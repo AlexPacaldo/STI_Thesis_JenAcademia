@@ -22,8 +22,30 @@
  * cost of considerably more bookkeeping.
  */
 
-/** Read a client address, falling back when Express cannot determine one. */
-export const clientKey = (req) => req.ip || req.socket?.remoteAddress || "unknown";
+/**
+ * Read a client address for bucketing.
+ *
+ * `CF-Connecting-IP` is preferred when present. Cloudflare, which fronts
+ * Railway, sets it to the real client and replaces anything the client sent, so
+ * unlike a forwarded header it cannot be forged to mint extra buckets.
+ *
+ * `req.ip` is the fallback, and it is why this function is not simply `req.ip`.
+ * Measured in production, req.ip resolved to two different addresses across
+ * consecutive requests from one browser, because Express unwinds to an
+ * intermediate hop and the edge's address varies. That client landed in two
+ * buckets, so its real allowance was the per-bucket limit doubled.
+ *
+ * The leftmost X-Forwarded-For entry is deliberately NOT used: clients can set
+ * that themselves, which would hand an attacker a fresh bucket per request.
+ */
+export const clientKey = (req) => {
+  // Trim before testing, not after: a whitespace-only header is truthy in
+  // JavaScript, so checking first would return an empty bucket key and quietly
+  // merge every such caller into one bucket.
+  const connectingIp = String(req?.headers?.["cf-connecting-ip"] || "").trim();
+  if (connectingIp) return connectingIp;
+  return req?.ip || req?.socket?.remoteAddress || "unknown";
+};
 
 /**
  * Per-process counters. Correct for a single instance; see the note above.

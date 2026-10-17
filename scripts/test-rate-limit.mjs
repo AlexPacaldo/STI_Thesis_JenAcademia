@@ -245,6 +245,15 @@ console.log("\n=== misc ===");
 
 check("clientKey falls back to the socket address", clientKey({ socket: { remoteAddress: "4.4.4.4" } }), "4.4.4.4");
 check("clientKey tolerates a missing address", clientKey({ socket: {} }), "unknown");
+
+// The whole reason clientKey is not simply req.ip. Behind Cloudflare, req.ip
+// varies between requests from one browser, which splits that client across
+// several buckets and multiplies its allowance. CF-Connecting-IP is set by the
+// edge and replaced if the client sends its own, so it is stable and unforgeable.
+check("prefers the edge-provided client address", clientKey({ ip: "10.0.0.1", headers: { "cf-connecting-ip": "203.0.113.9" } }), "203.0.113.9");
+check("uses req.ip when the edge header is absent", clientKey({ ip: "10.0.0.1", headers: {} }), "10.0.0.1");
+check("ignores an empty edge header", clientKey({ ip: "10.0.0.1", headers: { "cf-connecting-ip": "  " } }), "10.0.0.1");
+check("never reads a client-supplied forwarded header", clientKey({ ip: "10.0.0.1", headers: { "x-forwarded-for": "9.9.9.9" } }), "10.0.0.1");
 check("rejects a nonsensical config", (() => {
   try {
     createRateLimiter({ windowMs: 0, max: 5 });
