@@ -132,7 +132,7 @@ export default function PassRemarks() {
     if (!teacherId) return false;
     setBusyId(remarkId);
     try {
-      const res = await fetch(`${API}/api/teacher/remarks/${remarkId}${action}`, {
+      const res = await apiFetch(`${API}/api/teacher/remarks/${remarkId}${action}`, {
         method: action ? "PATCH" : "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ teacher_id: teacherId }),
@@ -177,7 +177,7 @@ export default function PassRemarks() {
 
     setBusyId(remark.remark_id);
     try {
-      const res = await fetch(`${API}/api/teacher/remarks/${remark.remark_id}`, {
+      const res = await apiFetch(`${API}/api/teacher/remarks/${remark.remark_id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ teacher_id: teacherId, remarks: text }),
@@ -236,7 +236,7 @@ export default function PassRemarks() {
         return;
       }
 
-      const submitRes = await fetch(`${API}/api/calendar/remarks`, {
+      const submitRes = await apiFetch(`${API}/api/calendar/remarks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -588,6 +588,7 @@ function progressStudentId(req) {
     identity.studentId ||
     req.query.student_id ||
     req.body?.student_id ||
+    req.body?.studentId ||
     null
   );
 }
@@ -622,6 +623,49 @@ async function sessionMayReadStudent(req, studentId) {
     return String(profile?.assigned_teacher_id || "") === String(session.userId);
   }
   return false;
+}
+
+/**
+ * May this session reach this assignment?
+ *
+ * An assignment belongs to exactly one teacher and one student, so either of
+ * them may read it, and an admin may read any. Verified by looking the row up
+ * rather than trusting an id in the request, which is the whole point: the
+ * assignment id is the only thing the caller supplies here.
+ */
+async function sessionMayReadAssignment(req, assignmentId) {
+  const session = req.session || {};
+  if (session.role === "admin") return true;
+
+  const [rows] = await pool.query(
+    "SELECT teacher_id, student_id FROM assignments WHERE assignment_id = ? LIMIT 1",
+    [assignmentId]
+  );
+  const assignment = rows[0];
+  if (!assignment) return false;
+
+  return (
+    String(assignment.teacher_id) === String(session.userId) ||
+    String(assignment.student_id) === String(session.userId)
+  );
+}
+
+/** Same shape for the remarks on a class: its own teacher, its own student, or an admin. */
+async function sessionMayReadClassRemarks(req, classId) {
+  const session = req.session || {};
+  if (session.role === "admin") return true;
+
+  const [rows] = await pool.query(
+    "SELECT teacher_id, student_id FROM classes WHERE class_id = ? LIMIT 1",
+    [classId]
+  );
+  const klass = rows[0];
+  if (!klass) return false;
+
+  return (
+    String(klass.teacher_id) === String(session.userId) ||
+    String(klass.student_id) === String(session.userId)
+  );
 }
 
 // Every accepted resume costs one Gemini call, and the endpoint has no auth of
@@ -6822,9 +6866,13 @@ app.delete("/api/admin/reschedule-requests", requireAdminSession, async (req, re
 // Approval/rejection now happens through user notifications and the dedicated endpoints.
 
 // Submit class remarks
-app.post("/api/calendar/remarks", async (req, res) => {
+app.post("/api/calendar/remarks", requireSession, async (req, res) => {
   try {
     const { class_id, teacher_id, student_id, remarks, rating } = req.body;
+
+    if (!sessionMayActFor(req, teacher_id)) {
+      return res.status(403).json({ message: "You can only file remarks as yourself." });
+    }
 
     if (!class_id || !teacher_id || !student_id || !remarks) {
       return res.status(400).json({ message: "Missing required fields" });
@@ -7037,10 +7085,14 @@ app.get("/api/teacher/:teacher_id/remarks", requireSession, async (req, res) => 
 });
 
 // Edit the text of a remark the teacher owns
-app.patch("/api/teacher/remarks/:remark_id", async (req, res) => {
+app.patch("/api/teacher/remarks/:remark_id", requireSession, async (req, res) => {
   try {
     const { remark_id } = req.params;
     const { teacher_id, remarks } = req.body;
+
+    if (!sessionMayActFor(req, teacher_id)) {
+      return res.status(403).json({ message: "You can only edit your own remarks." });
+    }
 
     if (!teacher_id) {
       return res.status(400).json({ message: "Missing teacher id" });
@@ -7073,10 +7125,14 @@ app.patch("/api/teacher/remarks/:remark_id", async (req, res) => {
 });
 
 // Soft-delete: hides the remark from the student but keeps it restorable
-app.patch("/api/teacher/remarks/:remark_id/archive", async (req, res) => {
+app.patch("/api/teacher/remarks/:remark_id/archive", requireSession, async (req, res) => {
   try {
     const { remark_id } = req.params;
     const { teacher_id } = req.body;
+
+    if (!sessionMayActFor(req, teacher_id)) {
+      return res.status(403).json({ message: "You can only archive your own remarks." });
+    }
 
     if (!teacher_id) {
       return res.status(400).json({ message: "Missing teacher id" });
@@ -7106,10 +7162,14 @@ app.patch("/api/teacher/remarks/:remark_id/archive", async (req, res) => {
 });
 
 // Undo an archive
-app.patch("/api/teacher/remarks/:remark_id/restore", async (req, res) => {
+app.patch("/api/teacher/remarks/:remark_id/restore", requireSession, async (req, res) => {
   try {
     const { remark_id } = req.params;
     const { teacher_id } = req.body;
+
+    if (!sessionMayActFor(req, teacher_id)) {
+      return res.status(403).json({ message: "You can only restore your own remarks." });
+    }
 
     if (!teacher_id) {
       return res.status(400).json({ message: "Missing teacher id" });
@@ -7140,10 +7200,14 @@ app.patch("/api/teacher/remarks/:remark_id/restore", async (req, res) => {
 
 // Permanent delete. Guarded so it can only ever remove an already-archived
 // remark - an accidental DELETE on an active one would be unrecoverable.
-app.delete("/api/teacher/remarks/:remark_id", async (req, res) => {
+app.delete("/api/teacher/remarks/:remark_id", requireSession, async (req, res) => {
   try {
     const { remark_id } = req.params;
     const { teacher_id } = req.body || {};
+
+    if (!sessionMayActFor(req, teacher_id)) {
+      return res.status(403).json({ message: "You can only delete your own remarks." });
+    }
 
     if (!teacher_id) {
       return res.status(400).json({ message: "Missing teacher id" });
@@ -7171,9 +7235,13 @@ app.delete("/api/teacher/remarks/:remark_id", async (req, res) => {
 });
 
 // Get class remarks
-app.get("/api/calendar/remarks/:class_id", async (req, res) => {
+app.get("/api/calendar/remarks/:class_id", requireSession, async (req, res) => {
   try {
     const { class_id } = req.params;
+
+    if (!(await sessionMayReadClassRemarks(req, class_id))) {
+      return res.status(403).json({ message: "You can only view remarks for your own classes." });
+    }
 
     const [rows] = await pool.query(
       `SELECT * FROM class_remarks WHERE class_id = ?`,
@@ -7929,9 +7997,13 @@ app.get("/api/student/:student_id/assignments", requireSession, async (req, res)
   }
 });
 
-app.get("/api/assignments/:assignment_id", async (req, res) => {
+app.get("/api/assignments/:assignment_id", requireSession, async (req, res) => {
   try {
     const { assignment_id } = req.params;
+
+    if (!(await sessionMayReadAssignment(req, assignment_id))) {
+      return res.status(403).json({ message: "You can only view your own assignments." });
+    }
     const [rows] = await pool.query(
       `${assignmentSelect}
        WHERE a.assignment_id = ?
@@ -7950,7 +8022,7 @@ app.get("/api/assignments/:assignment_id", async (req, res) => {
   }
 });
 
-app.post("/api/assignments", async (req, res) => {
+app.post("/api/assignments", requireSession, async (req, res) => {
   try {
     const {
       teacherId,
@@ -7968,6 +8040,9 @@ app.post("/api/assignments", async (req, res) => {
     } = req.body;
     const resolvedTeacherId = teacherId ?? teacher_id;
     const resolvedStudentId = studentId ?? student_id;
+    if (!sessionMayActFor(req, resolvedTeacherId)) {
+      return res.status(403).json({ message: "You can only create assignments as yourself." });
+    }
     const assignmentTitle = (title || name || "").trim();
     const assignmentInstructions = (instructions || "").trim();
     const { dueDate, dueTime } = splitAssignmentDue(due);
@@ -8059,13 +8134,15 @@ const submissionUploader = (req, res, next) => {
   }
 };
 
-app.post("/api/assignments/:assignment_id/submissions", submissionUploader, async (req, res) => {
+app.post("/api/assignments/:assignment_id/submissions", requireSession, submissionUploader, async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {
     const { assignment_id } = req.params;
     const { studentId, student_id, submissionText, comments, fileUrl, file_url } = req.body || {};
-    const resolvedStudentId = studentId ?? student_id;
+    // A student is pinned to their own id; staff keep the ability to record on
+    // someone's behalf. Ignores a forged studentId in the body.
+    const resolvedStudentId = sessionIdentity(req).studentId ?? studentId ?? student_id;
     const text = (submissionText ?? comments ?? "").trim();
     const uploadedFile = req.file ? `${req.protocol}://${req.get("host")}/uploads/assignments/${encodeURIComponent(req.file.filename)}` : null;
     const finalFileUrl = uploadedFile ?? fileUrl ?? file_url ?? null;

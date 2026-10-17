@@ -190,7 +190,7 @@ export default function AssignTask() {
 
   const createAssignment = async () => {
     try {
-      const res = await fetch(`${API}/api/assignments`, {
+      const res = await apiFetch(`${API}/api/assignments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

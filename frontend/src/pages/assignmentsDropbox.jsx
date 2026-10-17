@@ -7,6 +7,7 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { getStoredUserTimezone } from "../utils/timezone.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { apiFetch } from "../utils/apiAuth.js";
 import { compressFileIfImage } from "../utils/imageCompression.js";
 
 const API = API_BASE_URL;
@@ -217,7 +218,7 @@ export default function AssignmentsDropbox() {
     setShowSubmission(false);
     setShowResubmissionEditor(false);
 
-    fetch(`${API}/api/assignments/${assignmentId}`)
+    apiFetch(`${API}/api/assignments/${assignmentId}`)
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok) {
@@ -326,7 +327,7 @@ export default function AssignmentsDropbox() {
         formData.append("file", uploadFile, uploadFile.name);
       }
 
-      const res = await fetch(`${API}/api/assignments/${selectedAssignment.id}/submissions`, {
+      const res = await apiFetch(`${API}/api/assignments/${selectedAssignment.id}/submissions`, {
         method: "POST",
         body: formData,
       });
