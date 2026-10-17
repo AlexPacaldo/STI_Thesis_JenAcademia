@@ -32,6 +32,7 @@ import {
   parseTeacherResume,
   RESUME_MIME_TYPES,
 } from "./teacherResumeParser.js";
+import { deriveMatchInsights, mergeInsights } from "./matchInsights.js";
 
 dotenv.config();
 
@@ -967,6 +968,18 @@ const limitResumeParsingTotal = createRateLimiter({
 // this must not lock out a morning of students signing in together.
 const LOGIN_WINDOW_MS = Math.max(1, Number(process.env.LOGIN_RATE_WINDOW_MS) || 15 * 60 * 1000);
 const LOGIN_MAX = Math.max(1, Number(process.env.LOGIN_RATE_MAX) || 100);
+// The trial-notes insights call. Rate limited for the same reason the resume one
+// is: every accepted request costs a Gemini call, and the ceiling is the only
+// thing that actually bounds the spend.
+const INSIGHT_RATE_WINDOW_MS = Math.max(1, Number(process.env.MATCH_INSIGHT_RATE_WINDOW_MS) || 10 * 60 * 1000);
+const INSIGHT_RATE_MAX = Math.max(1, Number(process.env.MATCH_INSIGHT_RATE_MAX) || 40);
+const limitMatchInsights = createRateLimiter({
+  windowMs: INSIGHT_RATE_WINDOW_MS,
+  max: INSIGHT_RATE_MAX,
+  store: createDbStore({ pool }),
+  message: "Too many AI insights requested. Wait a few minutes before trying again.",
+});
+
 const limitLoginAttempts = createRateLimiter({
   windowMs: LOGIN_WINDOW_MS,
   max: LOGIN_MAX,
@@ -2434,8 +2447,13 @@ function normalizeProficiencyLevel(value) {
   return PROFICIENCY_LEVELS.has(normalized) ? normalized : "";
 }
 
-async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = null, proficiencyLevel = "", preferredTeacherId = null, db = pool }) {
+// baselineCriteria scores a second criteria set from the SAME loaded rows, so
+// measuring what the AI changed costs no extra query. It exists only to report
+// whether the suggestions moved the pick - the returned teacher always comes
+// from criteria.
+async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = null, proficiencyLevel = "", preferredTeacherId = null, baselineCriteria = null, db = pool }) {
   const normalizedCriteria = normalizeCriteria(criteria);
+  const level = normalizeProficiencyLevel(proficiencyLevel);
   const courseFilter = courseId ? parseInt(courseId, 10) : null;
   const [teachers] = await db.query(
     `SELECT u.user_id, u.first_name, u.last_name, u.email,
@@ -2454,27 +2472,30 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
     [courseFilter || 0, courseFilter]
   );
 
-  const ranked = rankTeachers(
-    teachers.map((teacher) =>
-      scoreTeacherForStudent(
-        teacher,
-        normalizedCriteria,
-        trialNotes,
-        courseId,
-        normalizeProficiencyLevel(proficiencyLevel)
-      )
-    )
-  );
+  const scoreWith = (activeCriteria) =>
+    rankTeachers(
+      teachers.map((teacher) => scoreTeacherForStudent(teacher, activeCriteria, trialNotes, courseId, level))
+    );
+
+  const ranked = scoreWith(normalizedCriteria);
 
   const { assigned, usedLeastLoadedFallback } = selectTeacherFromRanking(ranked, preferredTeacherId);
 
-  return {
+  const result = {
     teacher: assigned || null,
     rankedTeachers: ranked,
     criteria: normalizedCriteria,
     overBalanceTeachers: overBalanceTeachers(ranked),
     usedLeastLoadedFallback,
   };
+
+  if (baselineCriteria) {
+    const baselinePick = selectTeacherFromRanking(scoreWith(normalizeCriteria(baselineCriteria)), preferredTeacherId)
+      .assigned;
+    result.baselineTeacherId = baselinePick ? String(baselinePick.user_id) : null;
+  }
+
+  return result;
 }
 
 function packageStatusFromUsage(status, totalClasses, classesUsed) {
@@ -3594,16 +3615,51 @@ app.put("/api/users/:id/password", requireSession, async (req, res) => {
 
 //ADMIN
 
-app.post("/api/admin/recommend-teacher", requireAdminSession, async (req, res) => {
+app.post("/api/admin/recommend-teacher", requireAdminSession, limitMatchInsights, async (req, res) => {
   try {
     const { criteria, trialNotes, courseId, proficiencyLevel, teacherId } = req.body || {};
+
+    // Read the trial notes for extra criteria. This never blocks: a Gemini
+    // failure costs the suggestions and nothing else, because the rules are
+    // still doing the ranking.
+    const insights = await deriveMatchInsights({ trialNotes, criteria });
+
     const recommendation = await recommendTeacher({
-      criteria,
+      criteria: mergeInsights(criteria, insights.added),
+      baselineCriteria: criteria,
       trialNotes,
       courseId,
       proficiencyLevel,
       preferredTeacherId: teacherId,
     });
+
+    const applied = Object.keys(insights.added || {}).length > 0;
+    const pickedId = recommendation.teacher ? String(recommendation.teacher.user_id) : null;
+    const aiInsights = {
+      applied,
+      // Reported even when nothing was added, so the admin can tell a quiet AI
+      // apart from a broken one instead of reading silence as no signal.
+      unavailable: Boolean(insights.unavailable),
+      reason: insights.reason || "",
+      added: insights.added || {},
+      changedTopPick:
+        applied && Boolean(recommendation.baselineTeacherId) && pickedId !== recommendation.baselineTeacherId,
+    };
+
+    // Logged so that over real trials we can see whether the suggestions help or
+    // only add noise. That evidence is what any later decision about letting the
+    // model rank at all would rest on.
+    if (applied) {
+      console.log(
+        "[match-insights]",
+        JSON.stringify({
+          added: insights.added,
+          topPick: pickedId,
+          rulesOnlyPick: recommendation.baselineTeacherId || null,
+          changedTopPick: aiInsights.changedTopPick,
+        })
+      );
+    }
 
     res.json({
       teacher: recommendation.teacher,
@@ -3611,6 +3667,7 @@ app.post("/api/admin/recommend-teacher", requireAdminSession, async (req, res) =
       overBalanceTeachers: recommendation.overBalanceTeachers,
       usedLeastLoadedFallback: recommendation.usedLeastLoadedFallback,
       criteria: recommendation.criteria,
+      aiInsights,
     });
   } catch (err) {
     console.error("POST /api/admin/recommend-teacher error:", err);

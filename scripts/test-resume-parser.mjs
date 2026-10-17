@@ -14,8 +14,10 @@ import {
   normalizeBirthDate,
   normalizeCountry,
   normalizeParsedProfile,
-  normalizeModelId,
 } from "../backend/teacherResumeParser.js";
+// normalizeModelId now lives in the shared Gemini client, with the resume
+// parser and the trial-notes insights feature as its two callers.
+import { normalizeModelId } from "../backend/geminiClient.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");

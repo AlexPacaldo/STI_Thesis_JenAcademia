@@ -18,9 +18,7 @@
  */
 
 import mammoth from "mammoth";
-
-const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-const REQUEST_TIMEOUT_MS = 60_000;
+import { isGeminiConfigured, requestGeminiJson } from "./geminiClient.js";
 
 // Inline request data (base64 PDF included) is capped by the Gemini API, so the
 // upload limit has to stay well under it: 8 MB becomes roughly 11 MB base64.
@@ -36,37 +34,11 @@ export const RESUME_MIME_TYPES = {
 
 /* ------------------------------------------------------------------ config */
 
-// Read lazily rather than at module scope: server.js imports this module before
-// it calls dotenv.config(), so a top-level read would miss anything that only
-// exists in the .env file.
-const geminiApiKey = () =>
-  String(process.env.GOOGLE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "").trim();
-
-// Google's docs write the model both bare (gemini-2.5-flash) and prefixed
-// (models/gemini-2.5-flash), and this value is interpolated straight into the
-// request path. A GEMINI_MODEL of models/gemini-2.5-flash therefore produced
-// models/models%2Fgemini-2.5-flash:generateContent, which Gemini answers with
-// 404 - a failure indistinguishable from a retired model name unless you
-// already suspect the prefix.
-export function normalizeModelId(value) {
-  return String(value || "")
-    .trim()
-    .replace(/^models\//i, "")
-    .replace(/:generateContent$/i, "")
-    .trim();
-}
-
-// Retried once if the configured model 404s. A versioned name gets retired; the
-// rolling alias keeps pointing at the current flash model, so a stale setting
-// heals itself instead of failing every upload until someone edits it. A 404
-// costs nothing - no generation happens - so the retry is free when the
-// configured model was right.
-const GEMINI_FALLBACK_MODEL = "gemini-flash-latest";
-
-const geminiModel = () => normalizeModelId(process.env.GEMINI_MODEL) || "gemini-2.5-flash";
-
+// The key, the model id and the retry-on-404 behaviour all live in
+// geminiClient.js, shared with the trial-notes insights feature. They used to be
+// here alone and were copied verbatim when that second feature arrived.
 export function isResumeParserConfigured() {
-  return Boolean(geminiApiKey());
+  return isGeminiConfigured();
 }
 
 /* -------------------------------------------------------------- vocabulary */
@@ -543,7 +515,6 @@ function parseResponseJson(text) {
 }
 
 async function callGemini({ documentParts, courseNames, availableCourseNames = [] }) {
-  const apiKey = geminiApiKey();
   const payload = {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
     contents: [{ role: "user", parts: [...documentParts, { text: buildTaskPrompt(courseNames, availableCourseNames) }] }],
@@ -554,60 +525,14 @@ async function callGemini({ documentParts, courseNames, availableCourseNames = [
     },
   };
 
-  const configured = geminiModel();
-  const candidates =
-    configured === GEMINI_FALLBACK_MODEL ? [configured] : [configured, GEMINI_FALLBACK_MODEL];
+  const response = await requestGeminiJson({
+    payload,
+    timeoutMs: 60_000,
+    timeoutMessage: "Reading the resume took too long. Try again with a smaller file.",
+    label: "Gemini resume parse",
+  });
 
-  let lastStatus = 0;
-  let lastDetail = "";
-
-  for (const model of candidates) {
-    const url = `${GEMINI_API_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-    let response;
-    try {
-      response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        body: JSON.stringify(payload),
-      });
-    } catch (err) {
-      if (err?.name === "TimeoutError") {
-        throw new Error("Reading the resume took too long. Try again with a smaller file.");
-      }
-      throw new Error(`Could not reach Gemini: ${err.message}`);
-    }
-
-    if (response.ok) {
-      return parseResponseJson(extractResponseText(await response.json()));
-    }
-
-    try {
-      lastDetail = (await response.json())?.error?.message || "";
-    } catch {
-      lastDetail = "";
-    }
-    lastStatus = response.status;
-    // The model name is in this line deliberately. A 404 on the configured
-    // model is the failure most easily misread from the status alone.
-    console.error("Gemini resume parse failed:", response.status, model, lastDetail);
-
-    if (response.status === 400 && /api key/i.test(lastDetail)) {
-      throw new Error("Gemini rejected the API key. Check GOOGLE_GEMINI_API_KEY on the backend.");
-    }
-    if (response.status === 429) {
-      throw new Error("Gemini rate limit reached. Try again in a moment.");
-    }
-    // Anything else - a 404 above all - is worth one more try on the alias.
-  }
-
-  // Gemini's own wording is appended, because the bare status is ambiguous: a
-  // 404 covers both "no such model" and "unsupported for this API version",
-  // and only the detail tells them apart.
-  throw new Error(
-    `Gemini could not read this resume (${lastStatus})${lastDetail ? `: ${lastDetail}` : ""}`
-  );
+  return parseResponseJson(extractResponseText(response));
 }
 
 /**

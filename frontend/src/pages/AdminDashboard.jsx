@@ -160,6 +160,29 @@ const COUNTRY_OPTIONS = [
   "Vietnam",
 ];
 
+// Presentation for the trial-notes AI suggestions. The backend returns the same
+// slugs the chips store, so both the field and the value are looked up here
+// rather than showing the admin a raw vocabulary word.
+const INSIGHT_FIELD_LABELS = {
+  learningGoal: "Learning goal",
+  focusArea: "Focus area",
+  learningStyle: "Learning style",
+  pace: "Pace",
+};
+
+const INSIGHT_REASON_LABELS = {
+  "not-configured": "AI is not configured on the server",
+  "bad-key": "the AI rejected the API key",
+  "rate-limited": "the AI rate limit was reached",
+  "timed-out": "the AI took too long",
+  unavailable: "the AI could not be reached",
+};
+
+function criteriaLabelFor(field, value) {
+  const option = (STUDENT_CRITERIA_OPTIONS?.[field] || []).find((entry) => entry[0] === value);
+  return option ? option[1] : value;
+}
+
 // Helper to safely parse date strings
 const parseDate = (dateString) => {
   if (!dateString) return null;
@@ -987,6 +1010,27 @@ export default function AdminDashboard() {
       },
     }));
     setAiRecommendation(null);
+  }
+
+  // Tick the criteria the AI inferred from the trial notes.
+  //
+  // Union, not toggle: applying a value that is already ticked would untick it.
+  // Deliberately does NOT clear the recommendation, unlike every other criteria
+  // edit - these exact values are what the ranking already used, so applying
+  // them makes the form match the result rather than invalidating it.
+  function applyMatchInsights() {
+    const added = aiRecommendation?.aiInsights?.added || {};
+    const fields = Object.keys(added);
+    if (!fields.length) return;
+
+    setSForm((prev) => ({
+      ...prev,
+      aiCriteria: fields.reduce((criteria, field) => ({
+        ...criteria,
+        [field]: [...new Set([...(criteria?.[field] || []), ...(added[field] || [])])],
+      }), prev.aiCriteria || {}),
+    }));
+    notify("AI suggestions added to the matching criteria.", "success");
   }
 
   // Scoring a level-evaluation criterion. The level itself is derived from these
@@ -2737,6 +2781,47 @@ export default function AdminDashboard() {
                       )}
                       {aiRecommendation.teacher.reasons?.length > 0 && (
                         <div>Reason: {aiRecommendation.teacher.reasons.join(", ")}</div>
+                      )}
+                      {aiRecommendation.aiInsights?.applied && (
+                        <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid #e0e0e0" }}>
+                          <div>AI read the trial notes and added:</div>
+                          <ul style={{ margin: "6px 0", paddingLeft: "18px" }}>
+                            {Object.entries(aiRecommendation.aiInsights.added).map(([field, values]) => (
+                              <li key={field}>
+                                <strong>{INSIGHT_FIELD_LABELS[field] || field}</strong>:{" "}
+                                {values.map((value) => criteriaLabelFor(field, value)).join(", ")}
+                              </li>
+                            ))}
+                          </ul>
+                          {aiRecommendation.aiInsights.changedTopPick && (
+                            <div>This changed which teacher is recommended - worth a look.</div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={applyMatchInsights}
+                            style={{
+                              marginTop: "6px",
+                              padding: "6px 12px",
+                              border: "1px solid #ccc",
+                              borderRadius: "6px",
+                              background: "#fff",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Add these to the criteria
+                          </button>
+                        </div>
+                      )}
+                      {aiRecommendation.aiInsights?.unavailable && (
+                        <div style={{ marginTop: "10px" }}>
+                          AI unavailable ({INSIGHT_REASON_LABELS[aiRecommendation.aiInsights.reason] || "unknown reason"}).
+                          Ranked on your criteria only.
+                        </div>
+                      )}
+                      {aiRecommendation.aiInsights && !aiRecommendation.aiInsights.applied && !aiRecommendation.aiInsights.unavailable && (
+                        <div style={{ marginTop: "10px" }}>
+                          AI found nothing extra in the notes beyond the criteria you set.
+                        </div>
                       )}
                     </div>
                   )}
