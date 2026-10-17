@@ -79,6 +79,59 @@ const PRIVATE_UPLOAD_ROOT = path.resolve(
   process.env.PRIVATE_UPLOAD_ROOT ||
     path.join(process.cwd(), "private-uploads")
 );
+const VOLUME_MOUNT_PATH = process.env.RAILWAY_VOLUME_MOUNT_PATH || "";
+
+/** Is `child` the same as, or inside, `parent`? */
+function isInsidePath(child, parent) {
+  const relative = path.relative(parent, child);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+/**
+ * Say plainly at start-up whether uploads will survive a deploy.
+ *
+ * Railway mounts a volume at RAILWAY_VOLUME_MOUNT_PATH and wipes everything else
+ * on redeploy. UPLOAD_ROOT is set explicitly, so if it points anywhere else - a
+ * typo, or a leftover from local development - profile pictures and assignment
+ * files disappear silently on the next deploy. Nothing else in the app reveals
+ * that, which is why it is reported here and on the service console.
+ */
+function reportUploadPersistence() {
+  console.log(`Uploads directory: ${UPLOAD_ROOT}`);
+  console.log(`Private uploads:   ${PRIVATE_UPLOAD_ROOT}`);
+
+  if (!VOLUME_MOUNT_PATH) {
+    console.warn(
+      "RAILWAY_VOLUME_MOUNT_PATH is not set, so no volume is attached to this " +
+        "service. Everything under the uploads directory is container-local and " +
+        "will be lost on the next deploy."
+    );
+    return;
+  }
+
+  const mount = path.resolve(VOLUME_MOUNT_PATH);
+  console.log(`Volume mounted at: ${mount}`);
+
+  if (!isInsidePath(UPLOAD_ROOT, mount)) {
+    console.warn(
+      `UPLOAD_ROOT (${UPLOAD_ROOT}) is NOT inside the volume mount (${mount}). ` +
+        "Uploads are going to the container's ephemeral disk and will be lost on " +
+        "the next deploy. Either set UPLOAD_ROOT to a path inside the mount, or " +
+        "mount the volume at that path."
+    );
+  } else {
+    console.log("Uploads are persisted on the volume.");
+  }
+
+  if (!isInsidePath(PRIVATE_UPLOAD_ROOT, mount)) {
+    console.warn(
+      `PRIVATE_UPLOAD_ROOT (${PRIVATE_UPLOAD_ROOT}) is NOT inside the volume mount ` +
+        `(${mount}); locally cached class recordings are container-local. The Drive ` +
+        "copy is unaffected, so this only means a redeploy drops the local copies."
+    );
+  }
+}
+
 const RECORDING_RETENTION_DAYS = Number(process.env.CLASS_RECORDING_RETENTION_DAYS || 7);
 
 const app = express();
@@ -10428,7 +10481,7 @@ app.get("/api/admin/books", async (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`🚀 API listening on http://localhost:${PORT}`));
-console.log(`Uploads directory: ${UPLOAD_ROOT}`);
+reportUploadPersistence();
 
 const runClassStatusSweep = async () => {
   try {
