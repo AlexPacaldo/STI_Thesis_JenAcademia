@@ -1012,26 +1012,6 @@ export default function AdminDashboard() {
     setAiRecommendation(null);
   }
 
-  // Tick the criteria the AI inferred from the trial notes.
-  //
-  // Union, not toggle: applying a value that is already ticked would untick it.
-  // Deliberately does NOT clear the recommendation, unlike every other criteria
-  // edit - these exact values are what the ranking already used, so applying
-  // them makes the form match the result rather than invalidating it.
-  function applyMatchInsights() {
-    const added = aiRecommendation?.aiInsights?.added || {};
-    const fields = Object.keys(added);
-    if (!fields.length) return;
-
-    setSForm((prev) => ({
-      ...prev,
-      aiCriteria: fields.reduce((criteria, field) => ({
-        ...criteria,
-        [field]: [...new Set([...(criteria?.[field] || []), ...(added[field] || [])])],
-      }), prev.aiCriteria || {}),
-    }));
-    notify("AI suggestions added to the matching criteria.", "success");
-  }
 
   // Scoring a level-evaluation criterion. The level itself is derived from these
   // scores via computedLevel, so nothing else has to be updated here. The AI
@@ -1244,9 +1224,27 @@ export default function AdminDashboard() {
         return;
       }
 
+      // The AI's suggestions were merged into the criteria before scoring, so the
+      // ranking above is the product of them. Tick them here as well: the form
+      // then shows exactly what produced the recommendation, and what gets saved
+      // with the student explains it later.
+      //
+      // The admin still owns this. Unticking goes through the normal chip handler,
+      // which clears the recommendation so it has to be run again - which is the
+      // honest outcome, since the criteria no longer match what was scored.
+      const suggested = r.data?.aiInsights?.added || {};
+      const suggestedFields = Object.keys(suggested);
+
       setSForm((prev) => ({
         ...prev,
         teacherId: teacher.user_id,
+        aiCriteria: suggestedFields.reduce(
+          (criteria, field) => ({
+            ...criteria,
+            [field]: [...new Set([...(criteria?.[field] || []), ...(suggested[field] || [])])],
+          }),
+          prev.aiCriteria || {}
+        ),
       }));
       setAiRecommendation(r.data);
       notify(`AI matched ${teacher.first_name} ${teacher.last_name}.`, "success");
@@ -2806,7 +2804,10 @@ export default function AdminDashboard() {
                       )}
                       {aiRecommendation.aiInsights?.applied && (
                         <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid #e0e0e0" }}>
-                          <div>AI read the trial notes and added:</div>
+                          <div>
+                            AI read the trial notes and ticked these for you. Untick any you disagree
+                            with - that clears the recommendation so you can run it again.
+                          </div>
                           <ul style={{ margin: "6px 0", paddingLeft: "18px" }}>
                             {Object.entries(aiRecommendation.aiInsights.added).map(([field, values]) => (
                               <li key={field}>
@@ -2818,20 +2819,7 @@ export default function AdminDashboard() {
                           {aiRecommendation.aiInsights.changedTopPick && (
                             <div>This changed which teacher is recommended - worth a look.</div>
                           )}
-                          <button
-                            type="button"
-                            onClick={applyMatchInsights}
-                            style={{
-                              marginTop: "6px",
-                              padding: "6px 12px",
-                              border: "1px solid #ccc",
-                              borderRadius: "6px",
-                              background: "#fff",
-                              cursor: "pointer",
-                            }}
-                          >
-                            Add these to the criteria
-                          </button>
+
                         </div>
                       )}
                       {aiRecommendation.aiInsights?.unavailable && (
