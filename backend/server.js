@@ -2448,7 +2448,7 @@ app.get("/api/dashboard/:role/:user_id", async (req, res) => {
   }
 });
 
-app.put("/api/admin/teachers/:teacherId/courses", async (req, res) => {
+app.put("/api/admin/teachers/:teacherId/courses", requireAdminSession, async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const teacherId = parseInt(req.params.teacherId, 10);
@@ -3619,7 +3619,7 @@ app.post("/api/admin/students/:studentId/setup-invite", async (req, res) => {
   }
 });
 
-app.post("/api/admin/users/:userId/setup-invite", async (req, res) => {
+app.post("/api/admin/users/:userId/setup-invite", requireAdminSession, async (req, res) => {
   const connection = await pool.getConnection();
 
   try {
@@ -3761,7 +3761,7 @@ app.put("/api/admin/students/:studentId/email", async (req, res) => {
   }
 });
 
-app.put("/api/admin/users/:userId/email", async (req, res) => {
+app.put("/api/admin/users/:userId/email", requireAdminSession, async (req, res) => {
   const connection = await pool.getConnection();
 
   try {
@@ -3872,7 +3872,7 @@ app.get("/api/admin/student-contracts", async (_req, res) => {
   }
 });
 
-app.put("/api/admin/student-contracts/:student_id", async (req, res) => {
+app.put("/api/admin/student-contracts/:student_id", requireAdminSession, async (req, res) => {
   const connection = await pool.getConnection();
 
   try {
@@ -4097,7 +4097,7 @@ app.get("/api/admin/contract-requests", async (_req, res) => {
   }
 });
 
-app.put("/api/admin/contract-requests/:request_id", async (req, res) => {
+app.put("/api/admin/contract-requests/:request_id", requireAdminSession, async (req, res) => {
   const connection = await pool.getConnection();
 
   try {
@@ -4229,7 +4229,7 @@ app.put("/api/admin/contract-requests/:request_id", async (req, res) => {
 });
 
 // Update user status (active, suspended, archived)
-app.put("/api/users/:userId/status", async (req, res) => {
+app.put("/api/users/:userId/status", requireAdminSession, async (req, res) => {
   try {
     const { userId } = req.params;
     const { status } = req.body;
@@ -5321,7 +5321,7 @@ app.get("/api/admin/class-verifications", async (req, res) => {
   }
 });
 
-app.delete("/api/admin/class-verifications/:class_id", async (req, res) => {
+app.delete("/api/admin/class-verifications/:class_id", requireAdminSession, async (req, res) => {
   try {
     const { class_id } = req.params;
     const [rows] = await pool.query(
@@ -5348,7 +5348,7 @@ if (!["verified", "incomplete"].includes(rows[0].verification_status)) {
   }
 });
 
-app.put("/api/admin/class-verifications/:class_id/approve", async (req, res) => {
+app.put("/api/admin/class-verifications/:class_id/approve", requireAdminSession, async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const { class_id } = req.params;
@@ -5454,7 +5454,7 @@ app.put("/api/admin/class-verifications/:class_id/approve", async (req, res) => 
   }
 });
 
-app.put("/api/admin/class-verifications/:class_id/incomplete", async (req, res) => {
+app.put("/api/admin/class-verifications/:class_id/incomplete", requireAdminSession, async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const { class_id } = req.params;
@@ -5548,7 +5548,7 @@ app.put("/api/admin/class-verifications/:class_id/incomplete", async (req, res) 
   }
 });
 
-app.delete("/api/admin/class-verifications", async (req, res) => {
+app.delete("/api/admin/class-verifications", requireAdminSession, async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT proof_url, start_proof_url, recording_url
@@ -6651,7 +6651,7 @@ app.get("/api/admin/reschedule-requests", async (req, res) => {
   }
 });
 
-app.delete("/api/admin/reschedule-requests/:id", async (req, res) => {
+app.delete("/api/admin/reschedule-requests/:id", requireAdminSession, async (req, res) => {
   try {
     const { id } = req.params;
     await pool.query("DELETE FROM reschedule_requests WHERE request_id = ?", [id]);
@@ -6662,7 +6662,7 @@ app.delete("/api/admin/reschedule-requests/:id", async (req, res) => {
   }
 });
 
-app.delete("/api/admin/reschedule-requests", async (req, res) => {
+app.delete("/api/admin/reschedule-requests", requireAdminSession, async (req, res) => {
   try {
     await pool.query("DELETE FROM reschedule_requests");
     res.json({ message: "All requests deleted" });
@@ -9158,6 +9158,24 @@ async function isBookDistributedToTeacher(bookId, teacherId) {
 /**
  * Gate for every book/lesson write. Only an admin may author books, distribute
  * them, or touch their lessons.
+ *
+ * !! STILL NOT AUTHENTICATED. This trusts an admin_id supplied in the request,
+ * !! which proves nothing: any caller can pass an admin's id. Routes guarded by
+ * !! requireAdminSession do not rely on it, but the ones below still do:
+ * !!
+ * !!   - PUT    /api/books/:book_id            (edit book)
+ * !!   - the lesson authoring routes under /api/lessons
+ * !!   - the book/lesson read path via validateBookReadAccess
+ * !!
+ * !! They are excluded on purpose, not overlooked. booksContent.jsx issues
+ * !! those calls with fetch(), not axios, so the global auth interceptor never
+ * !! attaches a token to them and guarding the route would 401 the book library
+ * !! for admins. Patching window.fetch to inject the header globally is worse:
+ * !! the same file fetches external file URLs, which would leak the token to
+ * !! third parties. The fix is to give those specific fetch calls an explicit
+ * !! Authorization header, then move these routes onto requireAdminSession.
+ * !! Never treat a route using this function as protected.
+ *
  * @param {Object} res - Express response object
  * @param {number} adminId - The admin ID making the request
  * @param {number|null} bookId - When given, also asserts the book exists
@@ -9593,7 +9611,7 @@ async function notifyBookDistribution(bookId, bookTitle, courseId, teacherIds, {
 // CREATE new book
 // SECURITY: admin only. Books belong to the library, and the admin decides which
 // teachers receive them.
-app.post("/api/books", bookCoverUpload.single("cover"), async (req, res) => {
+app.post("/api/books", bookCoverUpload.single("cover"), requireAdminSession, async (req, res) => {
   try {
     const { title, description, course_id, author } = req.body;
     const admin_id = getAdminIdFromRequest(req);
@@ -9665,7 +9683,7 @@ app.post("/api/books", bookCoverUpload.single("cover"), async (req, res) => {
 // Distribute (or redistribute) a book to teachers
 // SECURITY: admin only. Replaces the current set outright, so removing a
 // teacher immediately revokes their access.
-app.put("/api/books/:book_id/teachers", async (req, res) => {
+app.put("/api/books/:book_id/teachers", requireAdminSession, async (req, res) => {
   try {
     const { book_id } = req.params;
     const admin_id = getAdminIdFromRequest(req);
@@ -9792,7 +9810,7 @@ app.put("/api/books/:book_id", bookCoverUpload.single("cover"), async (req, res)
 
 // Archive a book without deleting lessons or progress
 // SECURITY: admin only
-app.put("/api/books/:book_id/archive", async (req, res) => {
+app.put("/api/books/:book_id/archive", requireAdminSession, async (req, res) => {
   try {
     const { book_id } = req.params;
     const admin_id = getAdminIdFromRequest(req);
@@ -9834,7 +9852,7 @@ app.put("/api/books/:book_id/archive", async (req, res) => {
 // Restore a previously archived book. Archiving is a soft delete, so this is
 // the only way back - without it an archived book is unreachable from the UI.
 // SECURITY: admin only
-app.put("/api/books/:book_id/restore", async (req, res) => {
+app.put("/api/books/:book_id/restore", requireAdminSession, async (req, res) => {
   try {
     const { book_id } = req.params;
     const admin_id = getAdminIdFromRequest(req);
