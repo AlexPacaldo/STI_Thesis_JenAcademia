@@ -4,11 +4,8 @@ import { createBrowserRouter, Navigate, RouterProvider} from "react-router-dom";
 import App from "./App.jsx";
 import { NotificationProvider } from "./components/NotificationContainer.jsx";
 import { installAuthInterceptor } from "./utils/apiAuth.js";
+import { clearStoredUser } from "./utils/sessionUser.js";
 import "./index.css";
-
-// Installed before the first render so no request can leave without the bearer
-// token the admin routes now require.
-installAuthInterceptor();
 
 const Homepage = lazy(() => import("./pages/homepage.jsx"));
 const Register = lazy(() => import("./pages/register.jsx"));
@@ -85,6 +82,22 @@ const router = createBrowserRouter([
     ],
   },
 ]);
+
+// Installed before the first render so no request can leave without the bearer
+// token the protected routes now require.
+//
+// On a 401 the token has already been dropped by the interceptor; this clears
+// the cached user and sends them to sign in again, instead of leaving them on a
+// page whose every request will keep failing. The login route is excluded
+// because it answers 401 for a wrong password, which is not an expired session
+// - redirecting there would log the user out in the middle of signing in.
+installAuthInterceptor({
+  onUnauthorized: () => {
+    if (window.location.pathname === "/login") return;
+    clearStoredUser();
+    router.navigate("/login");
+  },
+});
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
