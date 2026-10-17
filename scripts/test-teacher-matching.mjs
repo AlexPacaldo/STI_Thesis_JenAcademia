@@ -311,6 +311,73 @@ check("experience years are rounded", parsedProfile.experienceYears, 8);
 check("a missing experience is null, not zero", normalizeParsedProfile({}).experienceYears, null);
 check("garbage input yields empty arrays", normalizeParsedProfile(null).specialization, []);
 
+// --- the matcher must always return somebody -----------------------------
+//
+// The admin's requirement: recommend the closest match, not only a perfect one.
+// The bug this guards against is the candidate pool being filtered down to
+// nothing, which surfaced as "No teacher found for this student" however many
+// teachers existed. Selection itself has to make a pick from anything it is
+// given; only an empty pool may yield nothing.
+
+const thinTeacher = {
+  user_id: 1,
+  first_name: "Thin",
+  last_name: "Profile",
+  bio: "",
+  specialization: [],
+  experience_years: null,
+  assigned_student_count: 0,
+  selected_course_match: 1,
+};
+const wellMatchedTeacher = {
+  user_id: 2,
+  first_name: "Good",
+  last_name: "Match",
+  bio: "Teaches exam preparation for IELTS.",
+  specialization: ["exam preparation"],
+  experience_years: 8,
+  assigned_student_count: 0,
+  selected_course_match: 1,
+};
+
+const rankedBoth = rankTeachers([
+  scoreTeacherForStudent(thinTeacher, { learningGoal: ["exam-prep"] }, "", 1, "intermediate-mid"),
+  scoreTeacherForStudent(wellMatchedTeacher, { learningGoal: ["exam-prep"] }, "", 1, "intermediate-mid"),
+]);
+check("a better-documented teacher outranks a thin one", rankedBoth[0].user_id, 2);
+
+const thinOnly = rankTeachers([
+  scoreTeacherForStudent(thinTeacher, { learningGoal: ["exam-prep"] }, "", 1, "intermediate-mid"),
+]);
+check("a thin profile is still ranked, not discarded", thinOnly.length, 1);
+
+// The guarantee: one teacher in, one teacher out.
+check(
+  "a single candidate is still selected",
+  selectTeacherFromRanking(thinOnly, null).assigned?.user_id,
+  1
+);
+check(
+  "selection prefers a strong match when both exist",
+  selectTeacherFromRanking(rankedBoth, null).assigned?.user_id,
+  2
+);
+
+// Nobody is over the balance limit here, so this is not the least-loaded path.
+check("the least-loaded fallback is not reported", selectTeacherFromRanking(thinOnly, null).usedLeastLoadedFallback, false);
+
+// Only an empty pool may return nothing - that is the case the route now
+// distinguishes into "no teachers" and "none for this course".
+const emptyPick = selectTeacherFromRanking([], null);
+check("an empty pool selects nobody", emptyPick.assigned, null);
+check("an empty pool reports no fallback", emptyPick.usedLeastLoadedFallback, false);
+
+// Even when every teacher is at the balance limit, one is still returned.
+const allAtLimit = [0, 1, 2].map((n) => ({ ...thinTeacher, user_id: 10 + n, assigned_student_count: TEACHER_BALANCE_LIMIT }));
+const atLimitPick = selectTeacherFromRanking(rankTeachers(allAtLimit), null);
+check("every teacher over the limit still yields one", atLimitPick.assigned !== null, true);
+check("and it reports the least-loaded fallback", atLimitPick.usedLeastLoadedFallback, true);
+
 console.log(`\n${checks - failures}/${checks} checks passed.`);
 if (failures) {
   console.error(`${failures} check(s) FAILED.`);

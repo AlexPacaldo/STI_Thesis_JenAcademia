@@ -2455,8 +2455,22 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
   const normalizedCriteria = normalizeCriteria(criteria);
   const level = normalizeProficiencyLevel(proficiencyLevel);
   const courseFilter = courseId ? parseInt(courseId, 10) : null;
+  // Every ACTIVE teacher is a candidate. There is deliberately no
+  // profile_completed filter here.
+  //
+  // !! That flag means the user finished their own onboarding: name, contact,
+  // !! timezone and a profile photo. POST /api/admin/users sets it to false on
+  // !! purpose, so the teacher completes their own profile later. Filtering on it
+  // !! therefore excluded every admin-created teacher from matching, and the
+  // !! symptom was "No teacher found for this student" however many teachers
+  // !! existed. It is an onboarding flag, not a statement that a teacher is
+  // !! usable - and an unusable teacher is already excluded by status.
+  //
+  // A thin profile is not a reason to hide someone: it just means fewer matching
+  // fields, so the score is lower and they rank below better-documented teachers.
+  // Ranking on the available evidence is what "closest match" has to mean.
   const [teachers] = await db.query(
-    `SELECT u.user_id, u.first_name, u.last_name, u.email,
+    `SELECT u.user_id, u.first_name, u.last_name, u.email, u.profile_completed,
             tp.bio, tp.specialization, tp.experience_years,
             COUNT(student.user_id) AS assigned_student_count,
             MAX(CASE WHEN selected_tc.course_id IS NOT NULL THEN 1 ELSE 0 END) AS selected_course_match
@@ -2465,9 +2479,9 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
      LEFT JOIN teacher_courses selected_tc ON selected_tc.teacher_id = u.user_id AND selected_tc.course_id = ?
      LEFT JOIN student_profiles sp ON sp.assigned_teacher_id = u.user_id
      LEFT JOIN users student ON student.user_id = sp.user_id AND student.status = 'active' AND student.profile_completed = TRUE
-     WHERE u.role = 'teacher' AND u.status = 'active' AND u.profile_completed = TRUE
+     WHERE u.role = 'teacher' AND u.status = 'active'
        AND (? IS NULL OR selected_tc.course_id IS NOT NULL)
-     GROUP BY u.user_id, u.first_name, u.last_name, u.email, tp.bio, tp.specialization, tp.experience_years
+     GROUP BY u.user_id, u.first_name, u.last_name, u.email, u.profile_completed, tp.bio, tp.specialization, tp.experience_years
      ORDER BY u.first_name ASC, u.last_name ASC`,
     [courseFilter || 0, courseFilter]
   );
@@ -2487,7 +2501,18 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
     criteria: normalizedCriteria,
     overBalanceTeachers: overBalanceTeachers(ranked),
     usedLeastLoadedFallback,
+    noTeacherReason: "",
   };
+
+  if (!ranked.length) {
+    // An empty pool has two very different causes and the admin needs to be told
+    // which, because the action is different: create a teacher, or assign one to
+    // this course. One query, only when the pool was empty.
+    const [[pool]] = await db.query(
+      `SELECT COUNT(*) AS total FROM users WHERE role = 'teacher' AND status = 'active'`
+    );
+    result.noTeacherReason = Number(pool?.total) === 0 ? "no-teachers" : "no-teacher-for-course";
+  }
 
   if (baselineCriteria) {
     const baselinePick = selectTeacherFromRanking(scoreWith(normalizeCriteria(baselineCriteria)), preferredTeacherId)
@@ -3668,6 +3693,7 @@ app.post("/api/admin/recommend-teacher", requireAdminSession, limitMatchInsights
       usedLeastLoadedFallback: recommendation.usedLeastLoadedFallback,
       criteria: recommendation.criteria,
       aiInsights,
+      noTeacherReason: recommendation.noTeacherReason || "",
     });
   } catch (err) {
     console.error("POST /api/admin/recommend-teacher error:", err);

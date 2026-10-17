@@ -1224,7 +1224,23 @@ export default function AdminDashboard() {
       });
       const teacher = r.data?.teacher;
       if (!teacher) {
-        notify("No teacher found for this student.", "error");
+        // An empty candidate pool has two causes with two different fixes, and a
+        // single message covering both left the admin guessing. The backend says
+        // which it was rather than making them infer it from the form.
+        const reason = r.data?.noTeacherReason;
+        if (reason === "no-teachers") {
+          notify("There are no active teachers yet. Create one first, then analyze again.", "error");
+        } else if (reason === "no-teacher-for-course") {
+          const courseName =
+            courses.find((course) => String(course.course_id) === String(sForm.courseId))?.course_name ||
+            "this course";
+          notify(
+            `No teacher is assigned to ${courseName} yet. Assign one under Teacher Courses, or pick another course.`,
+            "error"
+          );
+        } else {
+          notify("No teacher found for this student.", "error");
+        }
         return;
       }
 
@@ -2781,6 +2797,12 @@ export default function AdminDashboard() {
                       )}
                       {aiRecommendation.teacher.reasons?.length > 0 && (
                         <div>Reason: {aiRecommendation.teacher.reasons.join(", ")}</div>
+                      )}
+                      {aiRecommendation.teacher.profile_completed === false && (
+                        <div style={{ marginTop: "6px" }}>
+                          This teacher has not completed their profile yet, so this is the closest of the
+                          available teachers rather than a strong match.
+                        </div>
                       )}
                       {aiRecommendation.aiInsights?.applied && (
                         <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid #e0e0e0" }}>
