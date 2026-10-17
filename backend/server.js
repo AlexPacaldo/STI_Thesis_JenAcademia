@@ -495,15 +495,17 @@ export const pool = mysql.createPool(poolConfig);
  * admin_id in the request body and requireAdmin believed it.
  */
 //! Must stay below the `pool` declaration above.
-async function requireAdminSession(req, res, next) {
+async function authenticateSession(req, res) {
   const token = readBearerToken(req);
   if (!token) {
-    return res.status(401).json({ message: "Sign in to continue" });
+    res.status(401).json({ message: "Sign in to continue" });
+    return null;
   }
 
   const claims = verifySessionToken(token, { secret: SESSION_SECRET });
   if (!claims) {
-    return res.status(401).json({ message: "Your session has expired. Please sign in again" });
+    res.status(401).json({ message: "Your session has expired. Please sign in again" });
+    return null;
   }
 
   try {
@@ -517,10 +519,8 @@ async function requireAdminSession(req, res, next) {
 
     const account = rows[0];
     if (!account || account.status !== "active") {
-      return res.status(401).json({ message: "This account is no longer active" });
-    }
-    if (account.role !== "admin") {
-      return res.status(403).json({ message: "Administrator access is required" });
+      res.status(401).json({ message: "This account is no longer active" });
+      return null;
     }
 
     // Verified from the database, not from the token payload.
@@ -530,11 +530,47 @@ async function requireAdminSession(req, res, next) {
       firstName: account.first_name,
       lastName: account.last_name,
     };
-    next();
+    return req.session;
   } catch (err) {
-    console.error("requireAdminSession error:", err);
+    console.error("authenticateSession error:", err);
     res.status(500).json({ message: "Could not verify your session" });
+    return null;
   }
+}
+
+/** Any signed-in account, whatever its role. */
+async function requireSession(req, res, next) {
+  if (!(await authenticateSession(req, res))) return;
+  next();
+}
+
+async function requireAdminSession(req, res, next) {
+  const session = await authenticateSession(req, res);
+  if (!session) return;
+
+  if (session.role !== "admin") {
+    return res.status(403).json({ message: "Administrator access is required" });
+  }
+  next();
+}
+
+/**
+ * The caller's identity, taken from the verified session rather than from a
+ * query string the caller chose.
+ *
+ * The read routes used to read student_id / teacher_id / admin_id straight out of
+ * req.query, so any caller could claim to be anybody by editing the URL. The
+ * authorization branches themselves are unchanged: these are deliberately named
+ * like the query params they replace, so each route reads exactly as before.
+ */
+function sessionIdentity(req) {
+  const role = req.session?.role || "";
+  const userId = req.session?.userId || null;
+  return {
+    adminId: role === "admin" ? userId : null,
+    teacherId: role === "teacher" ? userId : null,
+    studentId: role === "student" ? userId : null,
+  };
 }
 
 // Every accepted resume costs one Gemini call, and the endpoint has no auth of
@@ -9385,9 +9421,10 @@ const bookListSelectFields = `SELECT b.*, c.course_name,
 
 // GET all books (admin: whole library; teacher: distributed to them; student:
 // distributed to their assigned teacher)
-app.get("/api/books", async (req, res) => {
+app.get("/api/books", requireSession, async (req, res) => {
   try {
-    const { course_id, teacher_id, student_id, admin_id, status = "active" } = req.query;
+    const { course_id, status = "active" } = req.query;
+    const { adminId: admin_id, teacherId: teacher_id, studentId: student_id } = sessionIdentity(req);
 
     let query = bookListSelectFields;
     const params = [];
@@ -9447,10 +9484,10 @@ app.get("/api/books", async (req, res) => {
 // GET single book with lesson count
 // SECURITY: The admin can read any book; a teacher only books distributed to
 // them; a student only books distributed to their assigned teacher.
-app.get("/api/books/:book_id", async (req, res) => {
+app.get("/api/books/:book_id", requireSession, async (req, res) => {
   try {
     const { book_id } = req.params;
-    const { student_id, teacher_id, admin_id } = req.query;
+    const { adminId: admin_id, teacherId: teacher_id, studentId: student_id } = sessionIdentity(req);
 
     if (student_id) {
       if (!(await canStudentAccessBook(student_id, book_id))) {
@@ -9939,9 +9976,10 @@ app.put("/api/books/:book_id/restore", requireAdminSession, async (req, res) => 
 
 // GET all lessons for a book
 // SECURITY: readable by the admin and by teachers the book was distributed to.
-app.get("/api/lessons", async (req, res) => {
+app.get("/api/lessons", requireSession, async (req, res) => {
   try {
-    const { book_id, student_id, teacher_id, admin_id } = req.query;
+    const { book_id } = req.query;
+    const { adminId: admin_id, teacherId: teacher_id, studentId: student_id } = sessionIdentity(req);
 
     if (!book_id) {
       return res.status(400).json({ message: "book_id is required" });
@@ -9971,10 +10009,10 @@ app.get("/api/lessons", async (req, res) => {
 
 // GET single lesson with progress info
 // SECURITY: readable by the admin and by teachers the book was distributed to.
-app.get("/api/lessons/:lesson_id", async (req, res) => {
+app.get("/api/lessons/:lesson_id", requireSession, async (req, res) => {
   try {
     const { lesson_id } = req.params;
-    const { student_id, teacher_id, admin_id } = req.query;
+    const { adminId: admin_id, teacherId: teacher_id, studentId: student_id } = sessionIdentity(req);
 
     const [lessons] = await pool.query(
       "SELECT * FROM lessons WHERE lesson_id = ?",

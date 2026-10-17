@@ -398,8 +398,8 @@ export default function BooksContent({ mode = "student" }) {
         const progressQuery = new URLSearchParams(staffQueryParams);
 
         const [bookResponse, lessonsResponse, progressResponse] = await Promise.all([
-          fetch(`${API_BASE}/api/books/${bookId}${accessQuery}`),
-          fetch(`${API_BASE}/api/lessons?${lessonQuery.toString()}`),
+          apiFetch(`${API_BASE}/api/books/${bookId}${accessQuery}`),
+          apiFetch(`${API_BASE}/api/lessons?${lessonQuery.toString()}`),
           isAdminView || isTeacherView
             ? fetch(`${API_BASE}/api/teacher/book/${bookId}/progress?${progressQuery.toString()}`)
             : fetch(`${API_BASE}/api/lesson-progress?student_id=${studentId}&book_id=${bookId}`),
@@ -721,7 +721,7 @@ export default function BooksContent({ mode = "student" }) {
     const lessonQuery = new URLSearchParams({ book_id: bookId });
     staffQueryParams.forEach((value, key) => lessonQuery.set(key, value));
 
-    const lessonsResponse = await fetch(`${API_BASE}/api/lessons?${lessonQuery.toString()}`);
+    const lessonsResponse = await apiFetch(`${API_BASE}/api/lessons?${lessonQuery.toString()}`);
     if (!lessonsResponse.ok) return;
 
     const lessonsData = await lessonsResponse.json();
@@ -1158,7 +1158,7 @@ export default function BooksContent({ mode = "student" }) {
                     // reload book
                     const bookQuery = new URLSearchParams(staffQueryParams);
                     const bk = await (
-                      await fetch(`${API_BASE}/api/books/${bookId}?${bookQuery.toString()}`)
+                      await apiFetch(`${API_BASE}/api/books/${bookId}?${bookQuery.toString()}`)
                     ).json();
                     setBook(bk.book);
                   } catch (err) {

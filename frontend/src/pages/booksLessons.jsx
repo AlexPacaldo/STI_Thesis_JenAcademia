@@ -6,6 +6,7 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { apiFetch } from "../utils/apiAuth.js";
 
 const API_BASE = API_BASE_URL;
 
@@ -43,7 +44,7 @@ export default function StudentBooksLessons() {
       const bookParams = new URLSearchParams({ course_id: courseId });
       if (studentId) bookParams.set("student_id", studentId);
 
-      const response = await fetch(`${API_BASE}/api/books?${bookParams.toString()}`);
+      const response = await apiFetch(`${API_BASE}/api/books?${bookParams.toString()}`);
       if (!response.ok) throw new Error("Failed to fetch books");
 
       const data = await response.json();
