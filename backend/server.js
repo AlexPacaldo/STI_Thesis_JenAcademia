@@ -659,7 +659,7 @@ async function sessionMayReadAssignment(req, assignmentId) {
  */
 function requireClassAccess() {
   return async (req, res, next) => {
-    if (!(await sessionMayActOnClass(req, req.params.class_id))) {
+    if (!(await sessionMayActOnClass(req, req.params.class_id ?? req.body?.class_id))) {
       return res.status(403).json({ message: "You can only act on your own classes." });
     }
     next();
@@ -673,6 +673,90 @@ function requireClassAccess() {
  * return that person's classes joined with the other party's details, so
  * offering someone else's id reads their schedule.
  */
+/** Middleware: the body must identify the caller, or the caller is an admin. */
+function requireBodyIdentity(field) {
+  return (req, res, next) => {
+    if (!sessionMayActFor(req, req.body?.[field])) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
+    next();
+  };
+}
+
+/**
+ * Middleware: the query must be scoped to the caller.
+ *
+ * The calendar lists return a person's classes joined with the other party's
+ * name, email and image, so passing someone else's id reads their schedule.
+ */
+function requireQueryScope(...names) {
+  return (req, res, next) => {
+    if (!sessionMayQueryAs(req, names.map((name) => req.query[name]))) {
+      return res.status(403).json({ message: "You can only view your own schedule." });
+    }
+    next();
+  };
+}
+
+/** Does this notification belong to the caller? */
+async function sessionMayActOnNotification(req, notificationId) {
+  const session = req.session || {};
+  if (session.role === "admin") return true;
+  const [rows] = await pool.query(
+    "SELECT user_id FROM notifications WHERE notification_id = ? LIMIT 1",
+    [notificationId]
+  );
+  return rows.length > 0 && String(rows[0].user_id) === String(session.userId);
+}
+
+/** Does this availability record belong to the caller? */
+async function sessionMayActOnAvailability(req, availabilityId) {
+  const session = req.session || {};
+  if (session.role === "admin") return true;
+  const [rows] = await pool.query(
+    "SELECT teacher_id FROM teacher_availability WHERE availability_id = ? LIMIT 1",
+    [availabilityId]
+  );
+  return rows.length > 0 && String(rows[0].teacher_id) === String(session.userId);
+}
+
+/** A video session belongs to a class, so resolve it and check class access. */
+async function sessionMayActOnVideoSession(req, videoSessionId) {
+  const [rows] = await pool.query(
+    "SELECT class_id FROM video_sessions WHERE session_id = ? LIMIT 1",
+    [videoSessionId]
+  );
+  if (!rows.length) return false;
+  return sessionMayActOnClass(req, rows[0].class_id);
+}
+
+function requireNotificationOwnership() {
+  return async (req, res, next) => {
+    if (!(await sessionMayActOnNotification(req, req.params.notification_id))) {
+      return res.status(403).json({ message: "You can only act on your own notifications." });
+    }
+    next();
+  };
+}
+
+function requireAvailabilityOwnership() {
+  return async (req, res, next) => {
+    if (!(await sessionMayActOnAvailability(req, req.params.availability_id))) {
+      return res.status(403).json({ message: "You can only change your own availability." });
+    }
+    next();
+  };
+}
+
+function requireVideoSessionOwnership() {
+  return async (req, res, next) => {
+    if (!(await sessionMayActOnVideoSession(req, req.params.session_id))) {
+      return res.status(403).json({ message: "You can only change your own video sessions." });
+    }
+    next();
+  };
+}
+
 function sessionMayQueryAs(req, ids) {
   if (req.session?.role === "admin") return true;
   const userId = req.session?.userId;
@@ -2421,7 +2505,7 @@ app.get("/api/courses", async (_req, res) => {
   res.json({ courses: rows });
 });
 
-app.get("/api/teacher-courses", async (_req, res) => {
+app.get("/api/teacher-courses", requireAdminSession, async (_req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT tc.teacher_id, tc.course_id, c.course_name
@@ -4177,7 +4261,7 @@ app.put("/api/admin/student-contracts/:student_id", requireAdminSession, async (
   }
 });
 
-app.post("/api/student/contract-requests", async (req, res) => {
+app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("student_id"), async (req, res) => {
   try {
     const { student_id, course_id, requested_classes, class_duration, trial_notes, ai_criteria } = req.body;
     const parsedStudentId = parseInt(student_id, 10);
@@ -4520,7 +4604,7 @@ app.get("/api/calendar/stream/:user_id", (req, res) => {
 });
 
 // Get teacher availability for a month
-app.get("/api/calendar/teacher-availability", async (req, res) => {
+app.get("/api/calendar/teacher-availability", requireSession, requireQueryScope("teacher_id"), async (req, res) => {
   try {
     const { teacher_id, year, month } = req.query;
     
@@ -4569,7 +4653,7 @@ app.get("/api/calendar/teacher-availability", async (req, res) => {
 });
 
 // Set teacher availability for a date
-app.post("/api/calendar/teacher-availability", async (req, res) => {
+app.post("/api/calendar/teacher-availability", requireSession, requireBodyIdentity("teacher_id"), async (req, res) => {
   try {
     const { teacher_id, available_date, status } = req.body;
     
@@ -4607,7 +4691,7 @@ app.post("/api/calendar/teacher-availability", async (req, res) => {
 });
 
 // Get all classes for a specific date
-app.get("/api/calendar/classes-by-date", async (req, res) => {
+app.get("/api/calendar/classes-by-date", requireSession, requireQueryScope("student_id", "teacher_id"), async (req, res) => {
   try {
     const { scheduled_date, student_id, teacher_id } = req.query;
     await autoMarkPastClassesAsNoShow(pool);
@@ -4670,7 +4754,7 @@ app.get("/api/calendar/classes-by-date", async (req, res) => {
 });
 
 // Get all classes for a month, grouped by scheduled_date
-app.get("/api/calendar/classes-by-month", async (req, res) => {
+app.get("/api/calendar/classes-by-month", requireSession, requireQueryScope("student_id", "teacher_id"), async (req, res) => {
   try {
     const { year, month, student_id, teacher_id } = req.query;
 
@@ -4763,7 +4847,7 @@ app.get("/api/calendar/classes-by-month", async (req, res) => {
 });
 
 // Get upcoming classes for a teacher or student
-app.get("/api/calendar/upcoming-classes", async (req, res) => {
+app.get("/api/calendar/upcoming-classes", requireSession, requireQueryScope("teacher_id", "student_id"), async (req, res) => {
   try {
     const { teacher_id, student_id, limit = 10 } = req.query;
     if (!teacher_id && !student_id) {
@@ -5915,7 +5999,7 @@ app.get("/api/teacher/:teacher_id/class-history", requireSession, async (req, re
 });
 
 // Create a new class
-app.post("/api/calendar/class", async (req, res) => {
+app.post("/api/calendar/class", requireSession, requireBodyIdentity("teacher_id"), async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const { class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, class_link } = req.body;
@@ -6423,7 +6507,7 @@ app.put("/api/calendar/classes/:class_id/no-show", requireSession, requireClassA
 });
 
 // Request class reschedule
-app.post("/api/calendar/reschedule-request", async (req, res) => {
+app.post("/api/calendar/reschedule-request", requireSession, requireBodyIdentity("requested_by_id"), async (req, res) => {
   try {
     const { class_id, requested_by_id, requested_date, requested_time, reason } = req.body;
     const requestedDateKey = normalizeDateKey(requested_date);
@@ -7321,7 +7405,7 @@ app.get("/api/calendar/remarks/:class_id", requireSession, async (req, res) => {
 // ==================== VIDEO SESSIONS (MS TEAMS) ====================
 
 // Create a video session with Teams meeting link
-app.post("/api/video-sessions", async (req, res) => {
+app.post("/api/video-sessions", requireSession, requireClassAccess(), async (req, res) => {
   try {
     const { class_id, teacher_id, student_id, teams_meeting_link } = req.body;
 
@@ -7364,7 +7448,7 @@ app.get("/api/video-sessions/:class_id", requireSession, requireClassAccess(), a
 });
 
 // Update Teams meeting link for a session
-app.put("/api/video-sessions/:session_id", async (req, res) => {
+app.put("/api/video-sessions/:session_id", requireSession, requireVideoSessionOwnership(), async (req, res) => {
   try {
     const { session_id } = req.params;
     const { teams_meeting_link, status } = req.body;
@@ -7544,7 +7628,7 @@ app.put("/api/chats/conversations/:user_id/:other_user_id/read", requireSession,
   }
 });
 
-app.post("/api/chats/messages", async (req, res) => {
+app.post("/api/chats/messages", requireSession, requireBodyIdentity("sender_id"), async (req, res) => {
   try {
     const { sender_id, recipient_id, subject = null, content } = req.body;
 
@@ -7694,7 +7778,7 @@ app.get("/api/notifications/:user_id", requireSession, async (req, res) => {
 });
 
 // Create a new notification (system endpoint)
-app.post("/api/notifications", async (req, res) => {
+app.post("/api/notifications", requireSession, async (req, res) => {
   try {
     const { user_id, type, title, message, related_id, related_type, action_url } = req.body;
 
@@ -7716,7 +7800,7 @@ app.post("/api/notifications", async (req, res) => {
 });
 
 // Mark notification as read
-app.put("/api/notifications/:notification_id/read", async (req, res) => {
+app.put("/api/notifications/:notification_id/read", requireSession, requireNotificationOwnership(), async (req, res) => {
   try {
     const { notification_id } = req.params;
 
@@ -7757,7 +7841,7 @@ app.put("/api/users/:user_id/notifications/read-all", requireSession, async (req
 });
 
 // Delete a notification
-app.delete("/api/notifications/:notification_id", async (req, res) => {
+app.delete("/api/notifications/:notification_id", requireSession, requireNotificationOwnership(), async (req, res) => {
   try {
     const { notification_id } = req.params;
 
@@ -8468,7 +8552,7 @@ app.put("/api/student/package/:student_id/use-class", requireSession, async (req
 });
 
 // Get teacher availability records for a specific month
-app.get("/api/calendar/teacher-availability-records", async (req, res) => {
+app.get("/api/calendar/teacher-availability-records", requireSession, requireQueryScope("teacher_id"), async (req, res) => {
   try {
     const { teacher_id, year, month } = req.query;
 
@@ -8521,7 +8605,7 @@ app.get("/api/calendar/teacher-availability-records", async (req, res) => {
 });
 
 // Get teacher availability record for a specific date
-app.get("/api/calendar/teacher-availability-record", async (req, res) => {
+app.get("/api/calendar/teacher-availability-record", requireSession, requireQueryScope("teacher_id"), async (req, res) => {
   try {
     const { teacher_id, available_date } = req.query;
     if (!teacher_id || !available_date) {
@@ -8559,7 +8643,7 @@ app.get("/api/calendar/teacher-availability-record", async (req, res) => {
 });
 
 // Set teacher availability with validation
-app.post("/api/calendar/set-availability", async (req, res) => {
+app.post("/api/calendar/set-availability", requireSession, requireBodyIdentity("teacher_id"), async (req, res) => {
   try {
     const { teacher_id, available_date, status, start_time, end_time, break_start, break_end } = req.body;
 
@@ -8756,7 +8840,7 @@ app.post("/api/calendar/set-availability", async (req, res) => {
 });
 
 // Set teacher availability for selected weekdays in a visible month.
-app.post("/api/calendar/set-availability-bulk", async (req, res) => {
+app.post("/api/calendar/set-availability-bulk", requireSession, requireBodyIdentity("teacher_id"), async (req, res) => {
   try {
     const { teacher_id, year, month, weekdays, status, start_time, end_time, break_start, break_end } = req.body;
 
@@ -8948,7 +9032,7 @@ app.post("/api/calendar/set-availability-bulk", async (req, res) => {
 });
 
 // Delete teacher availability record
-app.delete("/api/calendar/availability/:availability_id", async (req, res) => {
+app.delete("/api/calendar/availability/:availability_id", requireSession, requireAvailabilityOwnership(), async (req, res) => {
   try {
     const { availability_id } = req.params;
     const [availabilityRows] = await pool.query(
