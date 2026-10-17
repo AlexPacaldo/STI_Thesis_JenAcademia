@@ -6,6 +6,11 @@ import { addLocalNotification } from "../utils/localNotificationStore.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { apiFetch } from "../utils/apiAuth.js";
+import {
+  downloadAuthenticatedFile,
+  openAuthenticatedFile,
+  useAuthenticatedFileUrl,
+} from "../utils/authenticatedFile.js";
 
 const API = API_BASE_URL;
 
@@ -93,11 +98,25 @@ function getSubmissionFileName(url) {
   return decodeURIComponent(String(url).split("/").pop() || "Submitted file");
 }
 
-function renderSubmissionPreview(url) {
-  const fileUrl = normalizeFileUrl(url);
-  if (!fileUrl) return null;
+// Rendered through the session token rather than a plain URL: these are
+// <img>/<video>/<iframe> sources, which cannot send an Authorization header.
+// The file is fetched with the header and handed over as a blob: URL.
+function SubmissionPreview({ url }) {
+  const { url: fileUrl, error, loading } = useAuthenticatedFileUrl(url);
+  if (!url) return null;
 
-  const ext = fileUrl.split(".").pop().split("?")[0].toLowerCase();
+  if (loading) {
+    return <p className={styles.fileName}>Loading file…</p>;
+  }
+  if (error) {
+    return (
+      <p className={styles.unsupportedPreview}>
+        This file could not be loaded. Use Open file or Download.
+      </p>
+    );
+  }
+
+  const ext = String(url).split(".").pop().split("?")[0].toLowerCase();
   if (["mp3", "wav", "ogg", "m4a"].includes(ext)) {
     return <audio controls src={fileUrl} className={styles.filePlayer} />;
   }
@@ -123,23 +142,22 @@ function renderSubmissionPreview(url) {
   );
 }
 
-function renderSubmissionFile(url) {
-  const fileUrl = normalizeFileUrl(url);
-  if (!fileUrl) return null;
+function SubmissionFile({ url }) {
+  if (!url) return null;
 
   return (
     <div className={styles.submissionFilePreview}>
       <span className={styles.submissionLabel}>Submitted file</span>
-      <p className={styles.fileName}>{getSubmissionFileName(fileUrl)}</p>
+      <p className={styles.fileName}>{getSubmissionFileName(url)}</p>
       <div className={styles.fileActions}>
-        <a href={fileUrl} target="_blank" rel="noreferrer">
+        <button type="button" onClick={() => openAuthenticatedFile(url)}>
           Open file
-        </a>
-        <a href={fileUrl} download>
+        </button>
+        <button type="button" onClick={() => downloadAuthenticatedFile(url)}>
           Download
-        </a>
+        </button>
       </div>
-      {renderSubmissionPreview(fileUrl)}
+      <SubmissionPreview url={url} />
     </div>
   );
 }
@@ -559,7 +577,7 @@ export default function AssignTask() {
                               {item.fileUrl ? (
                                 <div className={styles.submissionBlock}>
                                   <span className={styles.submissionLabel}>Attachment</span>
-                                  {renderSubmissionFile(item.fileUrl)}
+                                  {<SubmissionFile url={item.fileUrl} />}
                                 </div>
                               ) : null}
                             </div>

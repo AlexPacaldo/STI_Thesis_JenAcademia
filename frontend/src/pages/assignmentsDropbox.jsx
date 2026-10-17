@@ -8,6 +8,10 @@ import { readStoredUser } from "../utils/sessionUser.js";
 import { getStoredUserTimezone } from "../utils/timezone.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { apiFetch } from "../utils/apiAuth.js";
+import {
+  openAuthenticatedFile,
+  useAuthenticatedFileUrl,
+} from "../utils/authenticatedFile.js";
 import { compressFileIfImage } from "../utils/imageCompression.js";
 
 const API = API_BASE_URL;
@@ -46,15 +50,26 @@ function getFileExtension(url) {
 
 // Renders the submitted media inline instead of only offering a download link,
 // so a student can review their own work without leaving the page.
-function SubmissionPreview({ fileUrl }) {
+function SubmissionPreview({ fileUrl, storedPath }) {
+  // Fetched with the session token and handed over as a blob: URL: these are
+  // <img>/<video>/<audio> sources, which cannot send an Authorization header.
+  const { url: blobUrl, error, loading } = useAuthenticatedFileUrl(storedPath ?? fileUrl);
   const ext = getFileExtension(fileUrl);
   const fileName = getFileName(fileUrl);
 
+  if (loading) return <p className={styles.fileInfo}>Loading file…</p>;
+  if (error) {
+    return <p className={styles.fileInfo}>This file could not be loaded.</p>;
+  }
+
   if (VIDEO_EXTENSIONS.includes(ext)) {
     return (
-      <video className={styles.previewMedia} controls preload="metadata" src={fileUrl}>
+      <video className={styles.previewMedia} controls preload="metadata" src={blobUrl}>
         Your browser cannot play this video.{" "}
-        <a href={fileUrl} target="_blank" rel="noreferrer">Open it instead</a>.
+        <button type="button" onClick={() => openAuthenticatedFile(storedPath ?? fileUrl)}>
+          Open it instead
+        </button>
+        .
       </video>
     );
   }
@@ -63,7 +78,7 @@ function SubmissionPreview({ fileUrl }) {
     return (
       <img
         className={styles.previewImage}
-        src={fileUrl}
+        src={blobUrl}
         alt={fileName}
         loading="lazy"
       />
@@ -71,7 +86,7 @@ function SubmissionPreview({ fileUrl }) {
   }
 
   if (AUDIO_EXTENSIONS.includes(ext)) {
-    return <audio className={styles.previewMedia} controls preload="metadata" src={fileUrl} />;
+    return <audio className={styles.previewMedia} controls preload="metadata" src={blobUrl} />;
   }
 
   if (ext === "pdf") {
@@ -475,16 +490,16 @@ export default function AssignmentsDropbox() {
                       <div className={styles.submittedFile}>
                         <div className={styles.submittedFileHeader}>
                           <span>File</span>
-                          <a
-                            href={submittedFileUrl}
-                            target="_blank"
-                            rel="noreferrer"
+                          <button
+                            type="button"
+                            className={styles.textBtn}
+                            onClick={() => openAuthenticatedFile(selectedAssignment?.fileUrl)}
                             title={getFileName(submittedFileUrl)}
                           >
                             {getFileName(submittedFileUrl)}
-                          </a>
+                          </button>
                         </div>
-                        <SubmissionPreview fileUrl={submittedFileUrl} />
+                        <SubmissionPreview fileUrl={submittedFileUrl} storedPath={selectedAssignment?.fileUrl} />
                       </div>
                     ) : null}
                   </section>
@@ -552,7 +567,14 @@ export default function AssignmentsDropbox() {
                       <p className={styles.fileInfo}>Attached: {selectedFile.name}</p>
                     ) : selectedAssignment?.fileUrl ? (
                       <p className={styles.fileInfo}>
-                        Current file: <a href={selectedAssignment.fileUrl} target="_blank" rel="noreferrer">{selectedAssignment.fileUrl.split("/").pop()}</a>
+                        Current file:{" "}
+                        <button
+                          type="button"
+                          className={styles.textBtn}
+                          onClick={() => openAuthenticatedFile(selectedAssignment.fileUrl)}
+                        >
+                          {selectedAssignment.fileUrl.split("/").pop()}
+                        </button>
                       </p>
                     ) : null}
                     <div className={styles.editorActions}>
