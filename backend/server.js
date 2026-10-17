@@ -5524,6 +5524,80 @@ app.get("/api/calendar/classes/:class_id/recording", requireSession, requireClas
   }
 });
 
+/**
+ * Where a class recording actually lives, so the client can open it.
+ *
+ * !! Why this exists: the route above streams local files and redirects Drive
+ * !! ones, but both sit behind requireSession, and neither <a href> nor
+ * !! <video src> can send an Authorization header. The three "View Recording"
+ * !! links were therefore dead - they 401'd before ever reaching the redirect,
+ * !! so a Drive recording did not work either, contrary to what the 302 in that
+ * !! handler suggests. Fetching the Drive URL with fetch() is not an option
+ * !! either: it is a cross-origin hop, so the response cannot be read.
+ *
+ * So this answers the only question the client actually has - Drive or local -
+ * and keeps every access check in front of it:
+ *
+ *   drive -> the client navigates straight to Drive, exactly as the 302 did.
+ *   local -> the client fetches /recording with the header and renders it from
+ *            a blob: URL. That buffers the whole file in memory, which for a
+ *            recording near the 500 MB cap is not free. A short-lived token in
+ *            the query string would let <video src> stream instead, but that
+ *            widens where the session token can leak (logs, history, referrer),
+ *            so it is not done here.
+ *
+ * Note the user_id the local URL carries is taken from the session, not the
+ * query. The handler above still trusts a caller-supplied user_id for its own
+ * lookup, which is harmless only because requireClassAccess has already
+ * established the caller may act on this class.
+ */
+app.get("/api/calendar/classes/:class_id/recording-link", requireSession, requireClassAccess(), async (req, res) => {
+  try {
+    await cleanupExpiredClassRecordings(pool);
+
+    const { class_id } = req.params;
+
+    const [rows] = await pool.query(
+      `SELECT cal.recording_url, cal.recording_expires_at
+       FROM classes c
+       LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
+       WHERE c.class_id = ?
+       LIMIT 1`,
+      [class_id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Recording not found" });
+    }
+
+    const row = rows[0];
+    if (!row.recording_url) {
+      return res.status(404).json({ message: "No recording is available for this class" });
+    }
+
+    if (row.recording_expires_at && new Date(row.recording_expires_at).getTime() <= Date.now()) {
+      return res.status(404).json({ message: "This recording has expired" });
+    }
+
+    const url = String(row.recording_url);
+    if (url.startsWith("http")) {
+      const fileId = extractDriveFileId(url);
+      return res.json({
+        kind: "drive",
+        url: fileId ? `https://drive.google.com/file/d/${fileId}/view` : url,
+      });
+    }
+
+    return res.json({
+      kind: "local",
+      url: `/api/calendar/classes/${encodeURIComponent(class_id)}/recording?user_id=${encodeURIComponent(req.session.userId)}`,
+    });
+  } catch (err) {
+    console.error("GET /api/calendar/classes/:class_id/recording-link error:", err);
+    res.status(500).json({ message: "Error loading class recording" });
+  }
+});
+
 app.post("/api/calendar/classes/:class_id/recording-start", requireSession, requireClassAccess(), async (req, res) => {
   try {
     const [result] = await pool.query(`UPDATE class_attendance_logs cal JOIN classes c ON c.class_id = cal.class_id

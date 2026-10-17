@@ -16,6 +16,7 @@ import CriteriaChipField from "../components/CriteriaChipField.jsx";
 import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/studentSchedule.module.css";
 import { API_BASE_URL } from "../utils/api.js";
+import { openClassRecording } from "../utils/classRecording.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { openAuthenticatedFile } from "../utils/authenticatedFile.js";
 import { compressImageFile } from "../utils/imageCompression.js";
@@ -3864,14 +3865,13 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
             {hasVerificationRecording && (
               <div style={{ display: "grid", gap: 8 }}>
                 <strong style={{ color: "#166534", fontSize: "0.85rem" }}>Recording uploaded ✓</strong>
-                <a
-                  href={`${API}/api/calendar/classes/${selectedClass.id}/recording?user_id=${encodeURIComponent(localUserId)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ borderRadius: 8, padding: "12px 14px", background: "#1864ab", color: "#fff", textAlign: "center", textDecoration: "none", fontWeight: 800 }}
+                <button
+                  type="button"
+                  onClick={() => openClassRecording({ classId: selectedClass.id, notify })}
+                  style={{ borderRadius: 8, padding: "12px 14px", background: "#1864ab", color: "#fff", textAlign: "center", border: "none", fontWeight: 800 }}
                 >
                   View Recording
-                </a>
+                </button>
                 {!recording.session && selectedClassStarted && !selectedClassEnded && (
                   <>
                     <button

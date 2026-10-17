@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import styles from "../assets/AdminDashboard.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { API_BASE_URL } from "../utils/api.js";
+import { openClassRecording } from "../utils/classRecording.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { openAuthenticatedFile } from "../utils/authenticatedFile.js";
 import { readStoredUser } from "../utils/sessionUser.js";
@@ -483,14 +484,13 @@ export default function StudentClassHistory({ mode = "student" }) {
                           </button>
                         )}
                         {row.recording_url ? (
-                          <a
+                          <button
+                            type="button"
                             className={`${styles.linkBtn} ${styles.tableActionBtn}`}
-                            href={`${API}/api/calendar/classes/${row.class_id}/recording?user_id=${encodeURIComponent(currentUserId)}`}
-                            target="_blank"
-                            rel="noreferrer"
+                            onClick={() => openClassRecording({ classId: row.class_id, notify })}
                           >
                             Open Recording
-                          </a>
+                          </button>
                         ) : row.proof_url ? (
                           <button
                             type="button"

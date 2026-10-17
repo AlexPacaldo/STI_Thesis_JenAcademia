@@ -30,6 +30,7 @@ import { readStoredUser } from "../utils/sessionUser.js";
 import ModalPortal from "../utils/ModalPortal.jsx";
 import Calendar from "./Calendar.jsx"; // admin calendar view
 import { API_BASE_URL } from "../utils/api.js";
+import { openClassRecording } from "../utils/classRecording.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { openAuthenticatedFile } from "../utils/authenticatedFile.js";
 
@@ -2110,14 +2111,13 @@ export default function AdminDashboard() {
                           </button>
                         )}
                         {row.recording_url ? (
-                          <a
+                          <button
+                            type="button"
                             className={`${styles.linkBtn} ${styles.tableActionBtn}`}
-                            href={`${API}/api/calendar/classes/${row.class_id}/recording?user_id=${encodeURIComponent(currentAdminId || "")}`}
-                            target="_blank"
-                            rel="noreferrer"
+                            onClick={() => openClassRecording({ classId: row.class_id, notify })}
                           >
                             View Recording
-                          </a>
+                          </button>
                         ) : row.proof_url ? (
                           <button
                             type="button"
