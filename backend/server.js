@@ -477,34 +477,22 @@ const resumeUpload = multer({
 // !! route. Do not "fix" it without reading this first, because the obvious
 // !! approaches both fail here.
 //!
-// !! Why it is acceptable: filenames are a millisecond timestamp plus 8 bytes of
-// !! random hex (e.g. 1787813275699-99fd97aece8809f8.webp), so nothing is
-//! browsable or guessable. The only exposure is a URL leaking through a shared
-//! link or a screenshot, after which the file is readable by anyone. Every API
-//! route that returns one of these paths requires a session, so the URLs are not
-//! handed out to anonymous callers.
-//!
-// !! Why a requireSession in front of the static handler does not work: these
-//! URLs are rendered as <img src> and used as <a href> downloads, and neither
-//! can send an Authorization header. The guard would 401 every avatar and every
-//! file in the app.
-//!
-// !! Tried and reverted (d5be64a): a session cookie scoped to Path=/uploads.
-// !! The frontend is on jenacademia.vercel.app and the API on railway.app, so
-//! an <img> request is cross-site and SameSite=Lax is not sent on it - every
-//! image 401'd. SameSite=None would fix that but lets any site the user visits
-//! make authenticated requests, which is a worse trade than the risk above.
-//!
-// !! The clean fix, deliberately not done blind: fetch each file through
-//! apiFetch (which already sends the header) and render from a blob: URL. That
-//! is fully secure, but it touches the 8 duplicated upload-URL helpers and
-//! about 19 <img src> sites, and there is no way to confirm avatars still render
-//! without looking at the app. Do it with someone able to see the screen.
-//!
-// !! Practical hardening when that happens, in order of value: stop storing
-//! !! uploaded filenames in the client response at all for course content under
-//! !! lessons/ and books/, and serve those through the authenticated path.
-app.use("/uploads", express.static(UPLOAD_ROOT));
+// Stored files are only served to a signed-in account.
+//
+// Filenames are a millisecond timestamp plus 8 bytes of random hex, so nothing
+// here was ever browsable or guessable - the exposure was that a URL leaking
+// through a shared link or a screenshot stayed readable by anyone, indefinitely.
+// Every API route that returns one of these paths requires a session, so the
+// URLs are not handed out to anonymous callers in the first place; this closes
+// the second half, where the URL itself is the only thing an attacker needs.
+//
+// CORS is mounted above this (and app.options(/(.*)/) answers preflights for
+// every path), which is what lets the browser send the Authorization header on
+// these cross-origin requests.
+//
+// See requireSessionForUpload below for why this was not simply requireSession,
+// and frontend/src/utils/authenticatedFile.js for the client half.
+app.use("/uploads", requireSessionForUpload, express.static(UPLOAD_ROOT));
 
 app.get("/healthz", (_req, res) => {
   res.json({ ok: true });
@@ -589,6 +577,82 @@ async function authenticateSession(req, res) {
 async function requireSession(req, res, next) {
   if (!(await authenticateSession(req, res))) return;
   next();
+}
+
+/**
+ * Require a signed-in account before serving anything from /uploads.
+ *
+ * !! Why this was left open until now, and why the obvious fixes did not work:
+ * !! these URLs render as <img src> and are used as <a href> downloads, and
+ * !! neither can send an Authorization header. A plain requireSession in front
+ * !! of the static handler therefore 401'd every avatar in the app (d5be64a, and
+ * !! the note that stood here until this commit).
+ * !!
+ * !! Tried and reverted (d5be64a): a session cookie scoped to Path=/uploads.
+ * !! The frontend is on jenacademia.vercel.app and the API on railway.app, so an
+ * !! <img> request is cross-site and SameSite=Lax is never sent on it - every
+ * !! image 401'd. SameSite=None would work but lets any site the user visits
+ * !! make authenticated requests, which is a worse trade than the exposure.
+ * !!
+ * !! What made it possible instead: the frontend now fetches each file through
+ * !! apiFetch, which already attaches the header, and renders it from a blob:
+ * !! URL. That is why this guard is safe now and was not before. See
+ * !! frontend/src/utils/authenticatedFile.js.
+ *
+ * The signature check is the same HMAC as the API and is not cached, so a
+ * forged or expired token is rejected outright. The database check is memoised
+ * for a minute: blob URLs are not held in the browser's HTTP cache the way a
+ * plain image URL is, so a page with a dozen avatars is a dozen requests, and
+ * that against a five-connection pool is worth avoiding. The trade is that an
+ * account archived mid-session keeps file access for up to that minute; the API
+ * routes, which are not numerous enough to matter, still check every time.
+ */
+const uploadSessionCache = new Map();
+const UPLOAD_SESSION_CACHE_MS = 60 * 1000;
+
+async function requireSessionForUpload(req, res, next) {
+  const token = readBearerToken(req);
+  if (!token) {
+    return res.status(401).json({ message: "Sign in to continue" });
+  }
+
+  const claims = verifySessionToken(token, { secret: SESSION_SECRET });
+  if (!claims) {
+    return res.status(401).json({ message: "Your session has expired. Please sign in again" });
+  }
+
+  const now = Date.now();
+  const cached = uploadSessionCache.get(claims.sub);
+  if (cached && cached.expiresAt > now) {
+    if (!cached.active) {
+      return res.status(401).json({ message: "This account is no longer active" });
+    }
+    return next();
+  }
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT user_id, status
+       FROM users
+       WHERE user_id = ?
+       LIMIT 1`,
+      [claims.sub]
+    );
+    const account = rows[0];
+    const active = Boolean(account) && account.status === "active";
+
+    // Replace rather than accumulate, so a long-lived process cannot grow this
+    // without bound.
+    uploadSessionCache.set(claims.sub, { active, expiresAt: now + UPLOAD_SESSION_CACHE_MS });
+
+    if (!active) {
+      return res.status(401).json({ message: "This account is no longer active" });
+    }
+    return next();
+  } catch (err) {
+    console.error("requireSessionForUpload error:", err);
+    return res.status(500).json({ message: "Could not verify your session" });
+  }
 }
 
 async function requireAdminSession(req, res, next) {
