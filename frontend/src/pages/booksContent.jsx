@@ -8,7 +8,7 @@ import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { API_BASE_URL } from "../utils/api.js";
 import { apiFetch } from "../utils/apiAuth.js";
-import { useAuthenticatedFileUrl } from "../utils/authenticatedFile.js";
+import { AuthenticatedFrame, AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { compressFileIfImage } from "../utils/imageCompression.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS, readNamespacedStorageValue } from "../utils/storageKeys.js";
@@ -51,25 +51,6 @@ const PREVIEW_TEXT_LIMIT = 1200;
 // Pages of a lesson file a student sees inline before full screen takes over.
 const STUDENT_PREVIEW_PAGES = 1;
 
-// <img> and <iframe> sources cannot carry the session header, so the file is
-// fetched through it and handed over as a blob: URL, which the browser treats as
-// same-origin. Kept out of InlineFilePreview so the hook only mounts for the
-// types that need it.
-function AuthenticatedImage({ fileUrl, alt, className, onLoad }) {
-  const { url, error, loading } = useAuthenticatedFileUrl(fileUrl);
-  if (!fileUrl) return null;
-  if (loading) return <p className={styles.emptyText}>Loading file...</p>;
-  if (error) return <p className={styles.emptyText}>This file could not be loaded.</p>;
-  return <img src={url} alt={alt} className={className} onLoad={onLoad} />;
-}
-
-function AuthenticatedFrame({ fileUrl, title, className, onLoad }) {
-  const { url, error, loading } = useAuthenticatedFileUrl(fileUrl);
-  if (!fileUrl) return null;
-  if (loading) return <p className={styles.emptyText}>Loading file...</p>;
-  if (error) return <p className={styles.emptyText}>This file could not be loaded.</p>;
-  return <iframe title={title} src={url} className={className} onLoad={onLoad} />;
-}
 
 // pageLimit caps how much is rendered inline. Students get 1 page so the
 // fullscreen scroll stays a meaningful "I read the whole thing" gate; teachers
@@ -132,7 +113,7 @@ function InlineFilePreview({ fileUrl, fileName, onRendered, pageLimit = 0 }) {
     return (
       <div className={styles.imagePreview}>
         <AuthenticatedImage
-          fileUrl={fileUrl}
+          src={fileUrl}
           alt={fileName}
           className={styles.previewImage}
           onLoad={onRendered}
@@ -163,7 +144,7 @@ function InlineFilePreview({ fileUrl, fileName, onRendered, pageLimit = 0 }) {
 
   return (
     <AuthenticatedFrame
-      fileUrl={fileUrl}
+      src={fileUrl}
       title={`${fileName} preview`}
       className={styles.genericPreview}
       onLoad={onRendered}
@@ -1333,7 +1314,7 @@ export default function BooksContent({ mode = "student" }) {
             ) : fileExtension && ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(fileExtension) ? (
               <div className={styles.imagePreview}>
                 <AuthenticatedImage
-                  fileUrl={selectedFileUrl}
+                  src={selectedFileUrl}
                   alt={selectedFileName}
                   className={styles.previewImage}
                   onLoad={handleRendered}
@@ -1347,7 +1328,7 @@ export default function BooksContent({ mode = "student" }) {
               />
             ) : (
               <AuthenticatedFrame
-                fileUrl={selectedFileUrl}
+                src={selectedFileUrl}
                 title={`${selectedFileName} preview`}
                 className={styles.genericPreview}
                 onLoad={handleRendered}

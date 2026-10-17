@@ -3,14 +3,10 @@ import axios from "axios";
 import { useEffect, useMemo, useState } from "react";
 import styles from "../assets/chatPanel.module.css";
 import { API_BASE_URL } from "../utils/api.js";
+import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 
 const API = API_BASE_URL;
 
-function profileSrc(url) {
-  if (!url) return null;
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API}${url}`;
-}
 
 const formatClock = (value) => {
   if (!value) return "";
@@ -426,17 +422,16 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
                 onClick={() => openConversation(chat)}
               >
                 <div className={styles.avatarWrap}>
-                  {chat.profileImageUrl ? (
-                    <img
-                      src={profileSrc(chat.profileImageUrl)}
-                      alt={chat.name}
-                      className={styles.avatarImage}
-                    />
-                  ) : (
-                    <div className={styles.avatar} style={{ background: chat.accent }}>
-                      {getInitials(chat.name)}
-                    </div>
-                  )}
+                  <AuthenticatedImage
+                    src={chat.profileImageUrl}
+                    alt={chat.name}
+                    className={styles.avatarImage}
+                    fallback={
+                      <div className={styles.avatar} style={{ background: chat.accent }}>
+                        {getInitials(chat.name)}
+                      </div>
+                    }
+                  />
                   {chat.online && <span className={styles.onlineDot} />}
                 </div>
 
@@ -472,17 +467,16 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
                   className={styles.windowTitle}
                   onClick={() => setActiveChatId(chatId)}
                 >
-                  {chat.profileImageUrl ? (
-                    <img
-                      src={profileSrc(chat.profileImageUrl)}
-                      alt={chat.name}
-                      className={styles.avatarCompactImage}
-                    />
-                  ) : (
-                    <div className={styles.avatarCompact} style={{ background: chat.accent }}>
-                      {getInitials(chat.name)}
-                    </div>
-                  )}
+                  <AuthenticatedImage
+                    src={chat.profileImageUrl}
+                    alt={chat.name}
+                    className={styles.avatarCompactImage}
+                    fallback={
+                      <div className={styles.avatarCompact} style={{ background: chat.accent }}>
+                        {getInitials(chat.name)}
+                      </div>
+                    }
+                  />
                   <div className={styles.windowTitleText}>
                     <strong>{chat.name}</strong>
                     <span>{chat.online ? "Active now" : chat.status}</span>
@@ -519,15 +513,14 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
                           >
                             {message.sender !== "me" && (
                               <div className={styles.messageAvatarWrap}>
-                                {chat.profileImageUrl ? (
-                                  <img
-                                    src={profileSrc(chat.profileImageUrl)}
-                                    alt={chat.name}
-                                    className={styles.messageAvatar}
-                                  />
-                                ) : (
-                                  <div className={styles.messageAvatarFallback}>{getInitials(chat.name)}</div>
-                                )}
+                                <AuthenticatedImage
+                                  src={chat.profileImageUrl}
+                                  alt={chat.name}
+                                  className={styles.messageAvatar}
+                                  fallback={
+                                    <div className={styles.messageAvatarFallback}>{getInitials(chat.name)}</div>
+                                  }
+                                />
                               </div>
                             )}
                             <div className={styles.messageBubble}>

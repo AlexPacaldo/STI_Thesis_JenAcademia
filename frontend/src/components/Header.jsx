@@ -8,15 +8,24 @@ import ChatPanel from "./ChatPanel";
 import NotificationPanel from "./NotificationPanel";
 import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 
 const API = API_BASE_URL;
 const BADGE_REFRESH_MS = 60 * 1000;
 
-function profileSrc(user) {
+// <img src> cannot send the session header, so a stored profile photo is
+// resolved to a blob: URL first. The bundled placeholder stands in while it
+// loads and if it fails, so the header avatar never flashes empty.
+function ProfilePic({ user, className }) {
   const url = user?.profileImageUrl || user?.profile_image_url;
-  if (!url) return pfp;
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API}${url}`;
+  return (
+    <AuthenticatedImage
+      src={url}
+      alt="Profile"
+      className={className}
+      fallback={<img src={pfp} alt="Profile" className={className} />}
+    />
+  );
 }
 
 function Header({ isSidebarOpen = false, onMenuClick }) {
@@ -369,7 +378,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
                 <div className={styles.account}>
                   {`${user?.firstName || ""} ${user?.lastName || ""}`}
                 </div>
-                <img src={profileSrc(user)} alt="Profile" className={styles.profilePic}/>
+                <ProfilePic user={user} className={styles.profilePic} />
               </Link>
 
              
@@ -401,7 +410,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
                 <div className={styles.account}>
                   {`${user?.firstName || ""} ${user?.lastName || ""}`}
                 </div>
-                <img src={profileSrc(user)} alt="Profile" className={styles.profilePic}/>
+                <ProfilePic user={user} className={styles.profilePic} />
               </Link>
 
               
@@ -436,11 +445,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
                 <div className={styles.account}>
                   {`${user?.firstName || ""} ${user?.lastName || ""}`}
                 </div>
-                <img
-                  src={profileSrc(user)}
-                  alt="Profile"
-                  className={styles.profilePic}
-                />
+                <ProfilePic user={user} className={styles.profilePic} />
               </Link>
 
               

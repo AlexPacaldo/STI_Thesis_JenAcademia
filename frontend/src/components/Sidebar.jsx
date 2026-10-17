@@ -16,12 +16,6 @@ function isProfileComplete(user) {
   return Boolean(user?.profileCompleted);
 }
 
-function profileSrc(user) {
-  const url = user?.profileImageUrl || user?.profile_image_url;
-  if (!url) return pfp;
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API}${url}`;
-}
 
 function Sidebar({ isMobileOpen = false, onClose }) {
   const location = useLocation();

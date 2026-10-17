@@ -29,6 +29,20 @@ export function absoluteUploadUrl(path) {
   return path;
 }
 
+/**
+ * True when a src points at a stored upload, and so needs the session.
+ *
+ * Anything else - a bundled asset such as an imported placeholder image, or a
+ * URL on another host - is handed straight back, so it keeps normal browser
+ * caching and costs no request. This is what lets callers pass a src without
+ * first checking whether it happens to be protected.
+ */
+export function isStoredUpload(path) {
+  if (!path) return false;
+  if (/^https?:\/\//i.test(path)) return path.startsWith(`${API_BASE_URL}/uploads/`);
+  return path.startsWith("/uploads/");
+}
+
 async function fetchObjectUrl(path) {
   const response = await apiFetch(absoluteUploadUrl(path));
   if (!response.ok) throw new Error(`Could not load file (${response.status})`);
@@ -48,6 +62,14 @@ export function useAuthenticatedFileUrl(path) {
   useEffect(() => {
     if (!path) {
       setUrl(null);
+      setError(null);
+      return undefined;
+    }
+
+    // Not a stored upload: a bundled asset or another host. Returned as-is so
+    // it is rendered as a plain URL, with no request and normal caching.
+    if (!isStoredUpload(path)) {
+      setUrl(path);
       setError(null);
       return undefined;
     }
@@ -79,7 +101,13 @@ export function useAuthenticatedFileUrl(path) {
     };
   }, [path]);
 
-  return { url, error, loading: Boolean(path) && !url && !error };
+  return {
+    url,
+    error,
+    // isStoredUpload is part of the condition so a bundled asset or external
+    // URL never flashes a loading state on the render before this settles.
+    loading: Boolean(path) && isStoredUpload(path) && !url && !error,
+  };
 }
 
 /** Open a stored file in a new tab, through the session. */
