@@ -7,6 +7,7 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { getStoredUserTimezone } from "../utils/timezone.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { apiFetch } from "../utils/apiAuth.js";
 import {
   openAuthenticatedFile,
@@ -16,14 +17,6 @@ import { compressFileIfImage } from "../utils/imageCompression.js";
 
 const API = API_BASE_URL;
 
-function profileSrc(url) {
-  if (!url) return teacherPic;
-  const cleaned = String(url).replace(/\\/g, "/");
-  if (/^https?:\/\//i.test(cleaned)) return cleaned;
-  if (cleaned.startsWith("/uploads/")) return `${API}${cleaned}`;
-  if (cleaned.startsWith("uploads/")) return `${API}/${cleaned}`;
-  return cleaned;
-}
 
 function normalizeFileUrl(url) {
   if (!url) return "";
@@ -288,10 +281,7 @@ export default function AssignmentsDropbox() {
   const attemptLimit = getAttemptLimit(selectedAssignment);
   const attemptsUsed = getAttemptsUsed(selectedAssignment);
   const isAttemptLimitReached = attemptLimit !== null && attemptsUsed >= attemptLimit;
-  const teacherImage = profileSrc(
-    selectedAssignment?.teacherProfileImageUrl ||
-    selectedAssignment?.teacher_profile_image_url
-  );
+
   const submissionStatus = selectedAssignment?.submissionId ? "Submitted" : "Not submitted";
   const submittedAnswer = selectedAssignment?.comments || "";
   const submittedFileUrl = normalizeFileUrl(selectedAssignment?.fileUrl);
@@ -623,7 +613,15 @@ export default function AssignmentsDropbox() {
 
               <div className={styles.peopleBlock}>
                 <div className={styles.personRow}>
-                  <img src={teacherImage} alt="Teacher profile" className={styles.profileImg} />
+                  <AuthenticatedImage
+                    src={
+                      selectedAssignment?.teacherProfileImageUrl ||
+                      selectedAssignment?.teacher_profile_image_url
+                    }
+                    alt="Teacher profile"
+                    className={styles.profileImg}
+                    fallback={<img src={teacherPic} alt="Teacher profile" className={styles.profileImg} />}
+                  />
                   <div>
                     <span className={styles.kicker}>Teacher</span>
                     <strong>{selectedAssignment?.teacherName || "Teacher Jen"}</strong>

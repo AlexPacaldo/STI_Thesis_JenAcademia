@@ -6,6 +6,7 @@ import { addLocalNotification } from "../utils/localNotificationStore.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { apiFetch } from "../utils/apiAuth.js";
+import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import {
   downloadAuthenticatedFile,
   openAuthenticatedFile,
@@ -29,17 +30,6 @@ function getUserName(user) {
     : user.name || user.fullName || "";
 }
 
-function studentProfileSrc(student) {
-  const url = student?.profileImageUrl || student?.profile_image_url || student?.profile_picture;
-  if (!url) return userPic;
-  const cleaned = String(url).replace(/\\/g, "/");
-  if (/^https?:\/\//i.test(cleaned)) return cleaned;
-  // uploads paths arrive both with and without a leading slash; a bare concat
-  // produces "localhost:3001uploads/..." with no separator, which 404s.
-  if (cleaned.startsWith("/uploads/")) return `${API}${cleaned}`;
-  if (cleaned.startsWith("uploads/")) return `${API}/${cleaned}`;
-  return cleaned;
-}
 
 // The API returns submittedAt as a MySQL-formatted string
 // ("2026-08-27 16:14"), which is not valid ISO - new Date() parses it
@@ -405,13 +395,11 @@ export default function AssignTask() {
                   }}
                 >
                   <div className={styles.studentSummary}>
-                    <img
-                      src={studentProfileSrc(student)}
+                    <AuthenticatedImage
+                      src={student.profileImageUrl || student.profile_image_url || student.profile_picture}
                       alt={student.name}
                       className={styles.studentAvatar}
-                      onError={(event) => {
-                        event.currentTarget.src = userPic;
-                      }}
+                      fallback={<img src={userPic} alt={student.name} className={styles.studentAvatar} />}
                     />
                     <h1>{student.name}</h1>
                   </div>
@@ -447,7 +435,15 @@ export default function AssignTask() {
             {activeTab === "assign" ? (
               <>
                 <div className={styles.user}>
-                  <img src={studentProfileSrc(selectedStudent)} alt={selected || "Selected student"} />
+                  <AuthenticatedImage
+                    src={
+                      selectedStudent?.profileImageUrl ||
+                      selectedStudent?.profile_image_url ||
+                      selectedStudent?.profile_picture
+                    }
+                    alt={selected || "Selected student"}
+                    fallback={<img src={userPic} alt={selected || "Selected student"} />}
+                  />
                   <div>
                     <h1>{selected || "Select a student"}</h1>
                   </div>

@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import styles from "../assets/AdminDashboard.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { API_BASE_URL } from "../utils/api.js";
+import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
+import { openAuthenticatedFile } from "../utils/authenticatedFile.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 
 const API = API_BASE_URL;
@@ -471,7 +473,15 @@ export default function StudentClassHistory({ mode = "student" }) {
                       {row.review_reason && <p><strong>Teacher review request:</strong> {row.review_reason}</p>}
                       {row.evidence_mode && <p>Evidence: {row.evidence_mode === "screenshots" ? "Start and end screenshots" : `Recording (${Math.floor(Number(row.recording_duration_seconds || 0) / 60)} min)`}</p>}
                       <div className={styles.verificationActions}>
-                        {row.start_proof_url && <a className={`${styles.linkBtn} ${styles.tableActionBtn}`} href={resolveUploadUrl(row.start_proof_url)} target="_blank" rel="noreferrer">Open Start Screenshot</a>}
+                        {row.start_proof_url && (
+                          <button
+                            type="button"
+                            className={`${styles.linkBtn} ${styles.tableActionBtn}`}
+                            onClick={() => openAuthenticatedFile(row.start_proof_url)}
+                          >
+                            Open Start Screenshot
+                          </button>
+                        )}
                         {row.recording_url ? (
                           <a
                             className={`${styles.linkBtn} ${styles.tableActionBtn}`}
@@ -587,7 +597,7 @@ export default function StudentClassHistory({ mode = "student" }) {
               </button>
             </div>
             <div style={{ padding: 18, background: "#f8fafc" }}>
-              <img
+              <AuthenticatedImage
                 src={selectedProof.url}
                 alt="Class proof screenshot"
                 style={{ display: "block", width: "100%", maxHeight: "72vh", objectFit: "contain", borderRadius: 10, background: "#fff" }}

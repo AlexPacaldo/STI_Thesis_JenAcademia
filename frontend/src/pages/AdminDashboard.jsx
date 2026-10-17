@@ -30,6 +30,8 @@ import { readStoredUser } from "../utils/sessionUser.js";
 import ModalPortal from "../utils/ModalPortal.jsx";
 import Calendar from "./Calendar.jsx"; // admin calendar view
 import { API_BASE_URL } from "../utils/api.js";
+import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
+import { openAuthenticatedFile } from "../utils/authenticatedFile.js";
 
 const API = API_BASE_URL;
 const VERIFICATIONS_PER_PAGE = 10;
@@ -261,9 +263,9 @@ const TeacherAvatar = ({ teacher, broken, onError }) => {
 
   if (teacher.profile_image_url && !broken) {
     return (
-      <img
+      <AuthenticatedImage
         className={styles.bookTeacherAvatar}
-        src={resolveUploadUrl(teacher.profile_image_url)}
+        src={teacher.profile_image_url}
         alt={label}
         title={label}
         onError={onError}
@@ -2098,7 +2100,15 @@ export default function AdminDashboard() {
                       <div className={styles.verificationActions}>
                         <div className={styles.verificationActionsTitle}>Proof & Actions</div>
                         {!hasAnyProof && <span className={styles.noProofText}>No proof uploaded</span>}
-                        {row.start_proof_url && <a className={`${styles.linkBtn} ${styles.tableActionBtn}`} href={resolveUploadUrl(row.start_proof_url)} target="_blank" rel="noreferrer">View Start</a>}
+                        {row.start_proof_url && (
+                          <button
+                            type="button"
+                            className={`${styles.linkBtn} ${styles.tableActionBtn}`}
+                            onClick={() => openAuthenticatedFile(row.start_proof_url)}
+                          >
+                            View Start
+                          </button>
+                        )}
                         {row.recording_url ? (
                           <a
                             className={`${styles.linkBtn} ${styles.tableActionBtn}`}
@@ -3460,7 +3470,7 @@ export default function AdminDashboard() {
                 </button>
               </div>
               <div style={{ padding: 18, background: "#f8fafc" }}>
-                <img
+                <AuthenticatedImage
                   src={selectedProof.url}
                   alt="Class proof screenshot"
                   style={{ display: "block", width: "100%", maxHeight: "72vh", objectFit: "contain", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8 }}
@@ -3829,9 +3839,9 @@ export default function AdminDashboard() {
                     >
                       <div className={styles.bookCoverWrap}>
                         {book.cover_url && !coverErrors[book.book_id] ? (
-                          <img
+                          <AuthenticatedImage
                             className={styles.bookCover}
-                            src={resolveUploadUrl(book.cover_url)}
+                            src={book.cover_url}
                             alt=""
                             onError={() =>
                               setCoverErrors((prev) => ({ ...prev, [book.book_id]: true }))

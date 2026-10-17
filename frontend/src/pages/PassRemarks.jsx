@@ -5,25 +5,11 @@ import styles from "../assets/teacherSchedule.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { apiFetch } from "../utils/apiAuth.js";
 
 const API = API_BASE_URL;
 
-function studentProfileSrc(student) {
-  const url = student?.profileImageUrl || student?.profile_image_url || student?.profile_picture;
-  if (!url) return userPic;
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API}${url.startsWith("/") || url.startsWith("uploads/") ? "" : "/"}${url}`;
-}
-
-function remarkProfileSrc(url) {
-  if (!url) return userPic;
-  const cleaned = String(url).replace(/\\/g, "/");
-  if (/^https?:\/\//i.test(cleaned)) return cleaned;
-  if (cleaned.startsWith("/uploads/")) return `${API}${cleaned}`;
-  if (cleaned.startsWith("uploads/")) return `${API}/${cleaned}`;
-  return cleaned;
-}
 
 function formatDateTime(value) {
   if (!value) return "—";
@@ -284,13 +270,17 @@ export default function PassRemarks() {
                 style={{ cursor: "pointer" }}
               >
                 <div className={styles.studentSummary}>
-                  <img
-                    src={studentProfileSrc(student)}
+                  <AuthenticatedImage
+                    src={student.profileImageUrl || student.profile_image_url || student.profile_picture}
                     alt={`${student.first_name} ${student.last_name}`}
                     className={styles.studentAvatar}
-                    onError={(event) => {
-                      event.currentTarget.src = userPic;
-                    }}
+                    fallback={
+                      <img
+                        src={userPic}
+                        alt={`${student.first_name} ${student.last_name}`}
+                        className={styles.studentAvatar}
+                      />
+                    }
                   />
                   <div className={styles.studentMeta}>
                     <h1>{`${student.first_name} ${student.last_name}`}</h1>
@@ -308,9 +298,19 @@ export default function PassRemarks() {
             {selectedStudent ? (
               <>
                 <div className={styles.user}>
-                  <img
-                    src={studentProfileSrc(selectedStudent)}
+                  <AuthenticatedImage
+                    src={
+                      selectedStudent.profileImageUrl ||
+                      selectedStudent.profile_image_url ||
+                      selectedStudent.profile_picture
+                    }
                     alt={`${selectedStudent.first_name} ${selectedStudent.last_name}`}
+                    fallback={
+                      <img
+                        src={userPic}
+                        alt={`${selectedStudent.first_name} ${selectedStudent.last_name}`}
+                      />
+                    }
                   />
                   <h1>{`${selectedStudent.first_name} ${selectedStudent.last_name}`}</h1>
                 </div>
@@ -374,12 +374,10 @@ export default function PassRemarks() {
                           >
                             <div className={styles.historyItemTop}>
                               <div className={styles.historyIdentity}>
-                                <img
-                                  src={remarkProfileSrc(remark.student_profile_image_url)}
+                                <AuthenticatedImage
+                                  src={remark.student_profile_image_url}
                                   alt=""
-                                  onError={(event) => {
-                                    event.currentTarget.src = userPic;
-                                  }}
+                                  fallback={<img src={userPic} alt="" />}
                                 />
                                 <div>
                                   <p className={styles.historyStudent}>{remark.student_name}</p>

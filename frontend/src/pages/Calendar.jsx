@@ -16,6 +16,8 @@ import CriteriaChipField from "../components/CriteriaChipField.jsx";
 import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/studentSchedule.module.css";
 import { API_BASE_URL } from "../utils/api.js";
+import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
+import { openAuthenticatedFile } from "../utils/authenticatedFile.js";
 import { compressImageFile } from "../utils/imageCompression.js";
 import useClassRecording from "../components/useClassRecording.js";
 import {
@@ -213,11 +215,6 @@ const getEndTime = (startTime, durationMins) => {
   return humanTime(minutesToTime(start + duration));
 };
 
-const resolveProfileImageSrc = (url) => {
-  if (!url) return userPic;
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API}${url}`;
-};
 
 const formatRemarkDate = (value) => {
   if (!value) return "";
@@ -3818,14 +3815,13 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                 {selectedClassVerification?.start_proof_url && (
                   <div className={styles.evidencePreview}>
                     <div className={styles.evidencePreviewActions}>
-                      <a
-                        href={`${API}${selectedClassVerification.start_proof_url}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        type="button"
                         className={styles.evidenceViewBtn}
+                        onClick={() => openAuthenticatedFile(selectedClassVerification.start_proof_url)}
                       >
                         View
-                      </a>
+                      </button>
                       <button
                         type="button"
                         onClick={removeStartProof}
@@ -3837,15 +3833,21 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         x
                       </button>
                     </div>
-                    <img
-                      src={`${API}${selectedClassVerification.start_proof_url}`}
+                    <AuthenticatedImage
+                      src={selectedClassVerification.start_proof_url}
                       alt="Start screenshot preview"
                       className={styles.evidencePreviewImage}
                     />
                   </div>
                 )}
                 {selectedClassVerification?.__unused_start_proof_ui && (selectedClassVerification?.start_proof_url ? (
-                  <a href={`${API}${selectedClassVerification.start_proof_url}`} target="_blank" rel="noopener noreferrer">View start screenshot ✓</a>
+                  <button
+                    type="button"
+                    className={styles.evidenceViewBtn}
+                    onClick={() => openAuthenticatedFile(selectedClassVerification.start_proof_url)}
+                  >
+                    View start screenshot
+                  </button>
                 ) : (
                   <label onPaste={event => {
                     const item = Array.from(event.clipboardData?.items || []).find(item => item.type.startsWith("image/"));
@@ -3957,8 +3959,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         x
                       </button>
                     </div>
-                    <img
-                      src={verificationProofPreview || `${API}${verificationProofUrl}`}
+                    <AuthenticatedImage
+                      src={verificationProofPreview || verificationProofUrl}
                       alt="End screenshot preview"
                       className={styles.evidencePreviewImage}
                     />
@@ -4027,8 +4029,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         x
                       </button>
                     </div>
-                    <img
-                      src={verificationProofPreview || `${API}${verificationProofUrl}`}
+                    <AuthenticatedImage
+                      src={verificationProofPreview || verificationProofUrl}
                       alt="Class proof screenshot preview"
                       style={{ display: "block", width: "100%", maxHeight: 180, objectFit: "contain", background: "#f8fafc" }}
                     />
@@ -4248,10 +4250,17 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     {selectedClass.studentName && (
                       <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <img
-                            src={resolveProfileImageSrc(selectedClass.student_profile_image_url || selectedClass.studentProfileImageUrl)}
+                          <AuthenticatedImage
+                            src={selectedClass.student_profile_image_url || selectedClass.studentProfileImageUrl}
                             alt={selectedClass.studentFullName || selectedClass.studentName}
                             style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", flex: "0 0 auto" }}
+                            fallback={
+                              <img
+                                src={userPic}
+                                alt={selectedClass.studentFullName || selectedClass.studentName}
+                                style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", flex: "0 0 auto" }}
+                              />
+                            }
                           />
                           <div>
                             <div><strong>Student:</strong></div>
@@ -5398,10 +5407,17 @@ $5padding: 20,
                       {selectedTeacherFullName && (
                         <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <img
-                              src={resolveProfileImageSrc(selectedClass.teacherProfileImageUrl)}
+                            <AuthenticatedImage
+                              src={selectedClass.teacherProfileImageUrl}
                               alt={selectedTeacherFullName || selectedClass.teacherFullName || selectedClass.teacherName}
                               style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", flex: "0 0 auto" }}
+                              fallback={
+                                <img
+                                  src={userPic}
+                                  alt={selectedTeacherFullName || selectedClass.teacherFullName || selectedClass.teacherName}
+                                  style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", flex: "0 0 auto" }}
+                                />
+                              }
                             />
                             <div>
                               <div><strong>Teacher:</strong></div>

@@ -5,20 +5,10 @@ import styles from "../assets/remarks.module.css";
 import { getStoredUserTimezone } from "../utils/timezone.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { apiFetch } from "../utils/apiAuth.js";
 
 const API = API_BASE_URL;
-
-// Mirrors profileSrc() in assignmentsDropbox.jsx: uploads paths come back from
-// the API both with and without a leading slash, and Windows paths may use "\".
-function profileSrc(url) {
-  if (!url) return teacherPic;
-  const cleaned = String(url).replace(/\\/g, "/");
-  if (/^https?:\/\//i.test(cleaned)) return cleaned;
-  if (cleaned.startsWith("/uploads/")) return `${API}${cleaned}`;
-  if (cleaned.startsWith("uploads/")) return `${API}/${cleaned}`;
-  return cleaned;
-}
 
 function remarkCountLabel(count) {
   if (count === 1) return "1 remark";
@@ -207,13 +197,11 @@ export default function Remarks() {
               >
                 <div className={styles.remarksHeader}>
                   <div className={styles.teacherInfo}>
-                    <img
-                      src={profileSrc(remark.teacher_profile_image_url)}
+                    <AuthenticatedImage
+                      src={remark.teacher_profile_image_url}
                       alt=""
                       className={styles.avatar}
-                      onError={(event) => {
-                        event.currentTarget.src = teacherPic;
-                      }}
+                      fallback={<img src={teacherPic} alt="" className={styles.avatar} />}
                     />
                     <div className={styles.teacherNames}>
                       <h3>{remark.teacher_name || "Teacher"}</h3>
