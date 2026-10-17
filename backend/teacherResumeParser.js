@@ -41,7 +41,29 @@ export const RESUME_MIME_TYPES = {
 // exists in the .env file.
 const geminiApiKey = () =>
   String(process.env.GOOGLE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "").trim();
-const geminiModel = () => String(process.env.GEMINI_MODEL || "gemini-2.5-flash").trim();
+
+// Google's docs write the model both bare (gemini-2.5-flash) and prefixed
+// (models/gemini-2.5-flash), and this value is interpolated straight into the
+// request path. A GEMINI_MODEL of models/gemini-2.5-flash therefore produced
+// models/models%2Fgemini-2.5-flash:generateContent, which Gemini answers with
+// 404 - a failure indistinguishable from a retired model name unless you
+// already suspect the prefix.
+export function normaliseModelId(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^models\//i, "")
+    .replace(/:generateContent$/i, "")
+    .trim();
+}
+
+// Retried once if the configured model 404s. A versioned name gets retired; the
+// rolling alias keeps pointing at the current flash model, so a stale setting
+// heals itself instead of failing every upload until someone edits it. A 404
+// costs nothing - no generation happens - so the retry is free when the
+// configured model was right.
+const GEMINI_FALLBACK_MODEL = "gemini-flash-latest";
+
+const geminiModel = () => normaliseModelId(process.env.GEMINI_MODEL) || "gemini-2.5-flash";
 
 export function isResumeParserConfigured() {
   return Boolean(geminiApiKey());
@@ -319,49 +341,70 @@ function parseResponseJson(text) {
 
 async function callGemini({ documentParts, courseNames }) {
   const apiKey = geminiApiKey();
-  const url = `${GEMINI_API_BASE}/${encodeURIComponent(geminiModel())}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const payload = {
+    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: [{ role: "user", parts: [...documentParts, { text: buildTaskPrompt(courseNames) }] }],
+    generationConfig: {
+      temperature: 0.2,
+      responseMimeType: "application/json",
+      responseSchema: buildResponseSchema(courseNames),
+    },
+  };
 
-  let response;
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: "user", parts: [...documentParts, { text: buildTaskPrompt(courseNames) }] }],
-        generationConfig: {
-          temperature: 0.2,
-          responseMimeType: "application/json",
-          responseSchema: buildResponseSchema(courseNames),
-        },
-      }),
-    });
-  } catch (err) {
-    if (err?.name === "TimeoutError") {
-      throw new Error("Reading the resume took too long. Try again with a smaller file.");
-    }
-    throw new Error(`Could not reach Gemini: ${err.message}`);
-  }
+  const configured = geminiModel();
+  const candidates =
+    configured === GEMINI_FALLBACK_MODEL ? [configured] : [configured, GEMINI_FALLBACK_MODEL];
 
-  if (!response.ok) {
-    let detail = "";
+  let lastStatus = 0;
+  let lastDetail = "";
+
+  for (const model of candidates) {
+    const url = `${GEMINI_API_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+    let response;
     try {
-      detail = (await response.json())?.error?.message || "";
-    } catch {
-      detail = "";
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      if (err?.name === "TimeoutError") {
+        throw new Error("Reading the resume took too long. Try again with a smaller file.");
+      }
+      throw new Error(`Could not reach Gemini: ${err.message}`);
     }
-    console.error("Gemini resume parse failed:", response.status, detail);
-    if (response.status === 400 && /api key/i.test(detail)) {
+
+    if (response.ok) {
+      return parseResponseJson(extractResponseText(await response.json()));
+    }
+
+    try {
+      lastDetail = (await response.json())?.error?.message || "";
+    } catch {
+      lastDetail = "";
+    }
+    lastStatus = response.status;
+    // The model name is in this line deliberately. A 404 on the configured
+    // model is the failure most easily misread from the status alone.
+    console.error("Gemini resume parse failed:", response.status, model, lastDetail);
+
+    if (response.status === 400 && /api key/i.test(lastDetail)) {
       throw new Error("Gemini rejected the API key. Check GOOGLE_GEMINI_API_KEY on the backend.");
     }
     if (response.status === 429) {
       throw new Error("Gemini rate limit reached. Try again in a moment.");
     }
-    throw new Error(`Gemini could not read this resume (${response.status}).`);
+    // Anything else - a 404 above all - is worth one more try on the alias.
   }
 
-  return parseResponseJson(extractResponseText(await response.json()));
+  // Gemini's own wording is appended, because the bare status is ambiguous: a
+  // 404 covers both "no such model" and "unsupported for this API version",
+  // and only the detail tells them apart.
+  throw new Error(
+    `Gemini could not read this resume (${lastStatus})${lastDetail ? `: ${lastDetail}` : ""}`
+  );
 }
 
 /**
