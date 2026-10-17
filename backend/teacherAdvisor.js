@@ -1,0 +1,260 @@
+// teacherAdvisor.js
+/**
+ * Rank the candidate teachers with a language model.
+ *
+ * The deterministic scorer in teacherMatching.js matches closed vocabularies by
+ * exact string overlap. That is precise and repeatable, and it is also blind: it
+ * cannot tell that a teacher who lists "exam preparation" is the right person for
+ * a student who wants to sound more confident in an interview. So the model is
+ * asked to do the judgement the rules cannot, while the rules keep everything
+ * they are good at.
+ *
+ * !! What the model is NOT trusted with. It never chooses from outside the
+ * !! candidate list - the ids are constrained by an enum built from that list, and
+ * !! anything unrecognised is dropped. It does not decide course eligibility,
+ * !! availability or workload; those are applied to its answer by us, on both
+ * !! sides. It is a reordering of a list we already decided was valid.
+ * !!
+ * !! And it is never the only path. If it is unconfigured, times out, rate
+ * !! limits, errors, or returns something unreadable, the rules rank on their own
+ * !! and the caller is told, so a degraded result is never presented as a
+ * !! considered one.
+ *
+ * Cost is bounded by the request rate limiter on the route and by the candidate
+ * cap below, which exists so a large academy cannot turn one click into an
+ * enormous prompt.
+ */
+
+import { isGeminiConfigured, requestGeminiJson } from "./geminiClient.js";
+
+// Long enough that a realistic school never truncates, short enough that one
+// click cannot send an unbounded prompt. When it does truncate the shortlist is
+// the rules' strongest candidates, and the model is told that is what happened.
+export const MAX_ADVISOR_CANDIDATES = 60;
+const REQUEST_TIMEOUT_MS = 25_000;
+const MAX_BIO_CHARS = 400;
+
+export function isTeacherAdvisorConfigured() {
+  return isGeminiConfigured();
+}
+
+/**
+ * Turn scored rows into the compact shape the model sees.
+ *
+ * Only what affects a judgement. Notably NOT sent: email, birth date, contact
+ * details, the raw availability rows, or anything personal about the student
+ * beyond what the admin already typed as criteria and notes.
+ */
+function describeCandidates(scored, availability) {
+  return scored.map((teacher) => {
+    const profile = teacher.profile || {};
+    const free = availability?.get(String(teacher.user_id)) || null;
+    return {
+      id: teacher.user_id,
+      name: `${teacher.first_name || ""} ${teacher.last_name || ""}`.trim() || `Teacher ${teacher.user_id}`,
+      specialization: profile.specialization || [],
+      teachingStyle: profile.teachingStyle || [],
+      bestStudentPace: profile.idealStudentPace || [],
+      experienceYears: profile.experienceYears ?? null,
+      // A short excerpt only: the full bio can be long and the matcher already
+      // uses it, so there is no reason to send a whole CV's worth of prose.
+      bioExcerpt: String(profile.bio || "").slice(0, MAX_BIO_CHARS),
+      activeStudents: Number(teacher.assigned_student_count || 0),
+      availableAtPreferredTime: free ? Boolean(free.available) : null,
+    };
+  });
+}
+
+function buildSchema(candidateIds) {
+  return {
+    type: "OBJECT",
+    properties: {
+      rankedTeacherIds: {
+        type: "ARRAY",
+        description:
+          "Every candidate id, best match first. Must contain each id exactly once and nothing else.",
+        items: { type: "STRING", enum: candidateIds },
+      },
+      reasons: {
+        type: "OBJECT",
+        description: "One short sentence per teacher id explaining why they sit where they do.",
+        additionalProperties: { type: "STRING" },
+      },
+      summary: {
+        type: "STRING",
+        description: "One or two sentences describing who best fits this student and why.",
+      },
+    },
+    required: ["rankedTeacherIds", "reasons", "summary"],
+  };
+}
+
+function buildPrompt({ criteria, trialNotes, courseName, shortlisted, preferredLabel }) {
+  const lines = [];
+  if (courseName) lines.push(`Course: ${courseName}`);
+  if (criteria?.learningGoal?.length) lines.push(`Student's learning goals: ${criteria.learningGoal.join(", ")}`);
+  if (criteria?.focusArea?.length) lines.push(`Focus areas: ${criteria.focusArea.join(", ")}`);
+  if (criteria?.learningStyle?.length) lines.push(`Preferred learning style: ${criteria.learningStyle.join(", ")}`);
+  if (criteria?.pace?.length) lines.push(`Preferred pace: ${criteria.pace.join(", ")}`);
+  if (trialNotes) lines.push(`Trial notes: ${String(trialNotes).slice(0, 2000)}`);
+  if (preferredLabel) lines.push(`Preferred class time: ${preferredLabel}`);
+
+  return [
+    "You are advising which teacher is the best fit for an English student.",
+    "",
+    "Student:",
+    ...lines,
+    "",
+    "Candidate teachers:",
+    ...shortlisted.map((c) =>
+      [
+        `- id ${c.id} (${c.name})`,
+        c.specialization.length ? `  teaches: ${c.specialization.join(", ")}` : "  teaches: (no subjects listed)",
+        c.teachingStyle.length ? `  style: ${c.teachingStyle.join(", ")}` : "",
+        c.bestStudentPace.length ? `  pace: ${c.bestStudentPace.join(", ")}` : "",
+        c.experienceYears != null ? `  experience: ${c.experienceYears} years` : "",
+        c.activeStudents ? `  current load: ${c.activeStudents} students` : "  current load: 0 students",
+        c.availableAtPreferredTime === true ? "  available at the preferred time" : "",
+        c.availableAtPreferredTime === false ? "  NOT available at the preferred time" : "",
+        c.bioExcerpt ? `  about: ${c.bioExcerpt}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    ),
+    "",
+    "Rules:",
+    "- Return EVERY id exactly once. Do not add, drop, merge or rename any.",
+    "- Judge fit for THIS student: their goals, focus areas, pace and the trial notes.",
+    "- A teacher with no listed subjects can still be the best match if the notes suggest it. Say so in your reason.",
+    "- Weigh teaching fit above raw experience. A slightly less experienced teacher who specialises in what this student needs beats a generalist.",
+    "- Reason about what suits the student, not about workload; workload is handled separately and is not a reason to rank someone low.",
+    "- Reasons are one short sentence each, specific to that teacher and student.",
+  ].join("\n");
+}
+
+const SYSTEM_PROMPT = [
+  "You rank teachers for an English student based on teaching fit.",
+  "You are given a fixed list and must return that same list, reordered.",
+].join(" ");
+
+/**
+ * Ask the model to rank the candidates.
+ *
+ * Never throws. Every failure mode resolves to `{ ok: false, reason }` so the
+ * caller can fall back to the rules and say so.
+ *
+ * @returns {Promise<{ok: boolean, order?: string[], reasons?: object, summary?: string, reason?: string, shortlistSize?: number, candidateCount?: number}>}
+ */
+export async function adviseTeacherRanking({
+  criteria = {},
+  trialNotes = "",
+  courseName = "",
+  scored = [],
+  availability = null,
+  preferredLabel = "",
+} = {}) {
+  if (!isTeacherAdvisorConfigured()) {
+    return { ok: false, reason: "not-configured" };
+  }
+  if (!scored.length) {
+    return { ok: false, reason: "no-candidates" };
+  }
+
+  const candidateCount = scored.length;
+  const shortlisted = describeCandidates(scored.slice(0, MAX_ADVISOR_CANDIDATES), availability);
+
+  try {
+    const payload = {
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: buildPrompt({
+                criteria,
+                trialNotes,
+                courseName,
+                shortlisted,
+                preferredLabel,
+              }),
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        // Low on purpose: this is a ranking judgement, and consistency between
+        // identical requests is worth more than creative phrasing.
+        temperature: 0.2,
+        responseMimeType: "application/json",
+        responseSchema: buildSchema(shortlisted.map((c) => String(c.id))),
+      },
+    };
+
+    const response = await requestGeminiJson({
+      payload,
+      timeoutMs: REQUEST_TIMEOUT_MS,
+      timeoutMessage: "The advisor took too long to rank the teachers.",
+      label: "Gemini teacher advisor",
+    });
+
+    const text = response?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    if (!text) return { ok: false, reason: "unreadable", shortlistSize: shortlisted.length, candidateCount };
+
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return { ok: false, reason: "unreadable", shortlistSize: shortlisted.length, candidateCount };
+    }
+
+    const allowed = new Set(shortlisted.map((c) => String(c.id)));
+    const seen = new Set();
+    const order = [];
+    for (const raw of Array.isArray(parsed?.rankedTeacherIds) ? parsed.rankedTeacherIds : []) {
+      const id = String(raw);
+      // Belt and braces: the schema's enum should prevent this, but an id we did
+      // not offer is dropped rather than trusted.
+      if (!allowed.has(id) || seen.has(id)) continue;
+      seen.add(id);
+      order.push(id);
+    }
+
+    // An order that covers none of the list is worse than no order at all.
+    if (!order.length) {
+      return { ok: false, reason: "unusable-order", shortlistSize: shortlisted.length, candidateCount };
+    }
+
+    // Reasons are the admin's only account of WHY, so keep only ones we can
+    // attribute to a real candidate.
+    const reasons = {};
+    for (const [id, text2] of Object.entries(parsed?.reasons || {})) {
+      if (allowed.has(String(id)) && String(text2 || "").trim()) {
+        reasons[String(id)] = String(text2).trim().slice(0, 240);
+      }
+    }
+
+    return {
+      ok: true,
+      order,
+      reasons,
+      summary: String(parsed?.summary || "").trim().slice(0, 400),
+      shortlistSize: shortlisted.length,
+      candidateCount,
+      // True when the academy is bigger than the cap, so the admin can be told the
+      // model only saw a shortlist rather than everyone.
+      shortlisted: candidateCount > shortlisted.length,
+    };
+  } catch (err) {
+    const reason = /not configured/i.test(err.message)
+      ? "not-configured"
+      : /api key/i.test(err.message)
+        ? "bad-key"
+        : /rate limit/i.test(err.message)
+          ? "rate-limited"
+          : /too long/i.test(err.message)
+            ? "timed-out"
+            : "unavailable";
+    return { ok: false, reason, candidateCount };
+  }
+}

@@ -1226,6 +1226,7 @@ export default function AdminDashboard() {
         trialNotes: sForm.trialNotes,
         criteria: sForm.aiCriteria,
         courseId: sForm.courseId,
+        courseName: courses.find((course) => String(course.course_id) === String(sForm.courseId))?.course_name || "",
         proficiencyLevel: computedLevel?.level || "",
         teacherId: sForm.teacherId,
         preferredSchedule: sForm.preferredSchedule,
@@ -2927,8 +2928,33 @@ export default function AdminDashboard() {
                           All teachers are at 2 or more students, so the least-loaded suitable teacher was selected.
                         </div>
                       )}
+                      {aiRecommendation.advisor?.used && (
+                        <div style={{ marginTop: "6px" }}>
+                          {aiRecommendation.advisor.summary}
+                          {aiRecommendation.advisor.reasons?.[String(aiRecommendation.teacher.user_id)] && (
+                            <div style={{ marginTop: "4px" }}>
+                              {aiRecommendation.advisor.reasons[String(aiRecommendation.teacher.user_id)]}
+                            </div>
+                          )}
+                          {aiRecommendation.advisor.shortlisted && (
+                            <div style={{ marginTop: "4px", fontSize: "0.85em", color: "#666" }}>
+                              {aiRecommendation.advisor.candidateCount} teachers matched the course; the AI ranked the
+                              strongest {aiRecommendation.advisor.shortlistSize || aiRecommendation.advisor.candidateCount}.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {aiRecommendation.advisor && !aiRecommendation.advisor.used && (
+                        <div style={{ marginTop: "6px", color: "#666" }}>
+                          {aiRecommendation.advisor.configured
+                            ? "The AI ranking was unavailable, so these are the rule-based scores instead."
+                            : "The AI ranking is not configured, so these are the rule-based scores instead."}
+                        </div>
+                      )}
                       {aiRecommendation.teacher.reasons?.length > 0 && (
-                        <div>Reason: {aiRecommendation.teacher.reasons.join(", ")}</div>
+                        <div style={{ marginTop: "6px", fontSize: "0.85em", color: "#666" }}>
+                          Rule scores: {aiRecommendation.teacher.reasons.join(", ")}
+                        </div>
                       )}
                       {aiRecommendation.preferredScheduleEvaluated && (
                         <div

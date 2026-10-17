@@ -312,24 +312,62 @@ export function scoreTeacherForStudent(
   };
 }
 
-/** Sort by score, then by lighter load. */
-export function rankTeachers(scored, availability = null) {
+/** Sort by score, then by lighter load. The rules-only ordering. */
+export function rankTeachers(scored) {
   return [...scored].sort((a, b) => {
-    // Availability is a scheduling preference, not a teaching-quality signal, so
-    // it partitions rather than scores. Teachers who can actually take the
-    // requested slot come first; inside each group the existing score order is
-    // untouched, so the weights in SCORE_WEIGHTS mean what they say.
-    //
-    // Passed as null (or omitted) this is byte-identical to the previous
-    // behaviour, which matters: without a preferred schedule nothing changes.
-    if (availability) {
-      const aFree = availability.get(String(a.user_id))?.available;
-      const bFree = availability.get(String(b.user_id))?.available;
-      if (aFree !== bFree) return aFree ? -1 : 1;
-    }
     if (b.score !== a.score) return b.score - a.score;
     return Number(a.assigned_student_count || 0) - Number(b.assigned_student_count || 0);
   });
+}
+
+/**
+ * Stable partition: teachers who can take the preferred slot first.
+ *
+ * A scheduling constraint, not a teaching-quality signal, so it is applied after
+ * whatever produced the order rather than folded into it. Stable, so teachers
+ * keep their existing relative order inside each group.
+ *
+ * Availability is per DATE, so this partitions by "has at least one workable
+ * date", not by a single verdict. Passing null (no preferred schedule) is a no-op.
+ */
+export function preferAvailable(ranked, availability = null) {
+  if (!availability) return [...ranked];
+  const free = [];
+  const blocked = [];
+  for (const teacher of ranked) {
+    const entry = availability.get(String(teacher.user_id));
+    if (entry?.available) free.push(teacher);
+    else blocked.push(teacher);
+  }
+  return [...free, ...blocked];
+}
+
+/**
+ * Reorder by an external advisor's ranking, keeping our order for anything it
+ * did not mention.
+ *
+ * The advisor is only ever trusted with reordering a list we already decided is
+ * valid - the candidate pool is fixed beforehand, so it cannot introduce a
+ * teacher, and course/availability/load are applied by us either side of this.
+ */
+export function applyAdvisorOrder(ranked, advisorOrder = []) {
+  const position = new Map();
+  (Array.isArray(advisorOrder) ? advisorOrder : []).forEach((id, index) => {
+    const key = String(id);
+    // First mention wins, so a duplicate cannot reorder the list twice.
+    if (!position.has(key)) position.set(key, index);
+  });
+  if (!position.size) return [...ranked];
+
+  const mentioned = [];
+  const unmentioned = [];
+  for (const teacher of ranked) {
+    const key = String(teacher.user_id);
+    if (position.has(key)) mentioned.push(teacher);
+    else unmentioned.push(teacher);
+  }
+  mentioned.sort((a, b) => position.get(String(a.user_id)) - position.get(String(b.user_id)));
+  return [...mentioned, ...unmentioned];
 }
 
 /**

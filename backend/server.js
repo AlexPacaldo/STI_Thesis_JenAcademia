@@ -27,7 +27,10 @@ import {
   evaluateAvailability,
   AVAILABILITY_HORIZON_DAYS,
   TEACHER_BALANCE_LIMIT,
+  preferAvailable,
+  applyAdvisorOrder,
 } from "./teacherMatching.js";
+import { adviseTeacherRanking, isTeacherAdvisorConfigured } from "./teacherAdvisor.js";
 import {
   isResumeParserConfigured,
   MAX_RESUME_BYTES,
@@ -2538,7 +2541,7 @@ async function loadTeacherAvailability(teacherIds, preference, db) {
 // measuring what the AI changed costs no extra query. It exists only to report
 // whether the suggestions moved the pick - the returned teacher always comes
 // from criteria.
-async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = null, proficiencyLevel = "", preferredTeacherId = null, baselineCriteria = null, preferredSchedule = null, honourPreferredTeacher = false, db = pool }) {
+async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = null, courseName = "", proficiencyLevel = "", preferredTeacherId = null, baselineCriteria = null, preferredSchedule = null, honourPreferredTeacher = false, db = pool }) {
   const normalizedCriteria = normalizeCriteria(criteria);
   const level = normalizeProficiencyLevel(proficiencyLevel);
   const courseFilter = courseId ? parseInt(courseId, 10) : null;
@@ -2574,7 +2577,8 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
   );
 
   // Availability is only read when the admin gave a preferred slot. Without one
-  // this stays null and rankTeachers behaves exactly as it always has.
+  // this stays null and preferAvailable is a no-op, so the result is exactly what
+  // it always was.
   const preference = normalizePreferredSchedule(preferredSchedule);
   const availability = preference
     ? await loadTeacherAvailability(teachers.map((teacher) => teacher.user_id), preference, db)
@@ -2585,11 +2589,36 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
       teachers.map((teacher) => ({
         ...scoreTeacherForStudent(teacher, activeCriteria, trialNotes, courseId, level),
         availability: availability ? availability.get(String(teacher.user_id)) || null : null,
-      })),
-      availability
+      }))
     );
 
-  const ranked = scoreWith(normalizedCriteria);
+  // The rules always run first. They are the fallback if the advisor is
+  // unavailable, and they are also what decides the shortlist it sees, so there is
+  // never a moment where we have no ordering at all.
+  let ranked = scoreWith(normalizedCriteria);
+
+  // The advisor reorders that list. It cannot add, drop or qualify anyone: the
+  // pool is already fixed above, and availability and workload are applied to
+  // its answer below.
+  const preferredLabel = preference
+    ? `${preference.days.join(", ")} ${preference.start}-${preference.end}`
+    : "";
+  const advisor = await adviseTeacherRanking({
+    criteria: normalizedCriteria,
+    trialNotes,
+    courseName,
+    scored: ranked,
+    availability,
+    preferredLabel,
+  });
+  if (advisor.ok) {
+    ranked = applyAdvisorOrder(ranked, advisor.order);
+  }
+
+  // Availability last: a constraint, applied to whatever ordering we ended up
+  // with, so neither the scorer nor the model can place someone unavailable
+  // ahead of someone who can teach the slot.
+  ranked = preferAvailable(ranked, availability);
 
   const { assigned, usedLeastLoadedFallback, preferredHonouredOverLimit } = selectTeacherFromRanking(
     ranked,
@@ -2609,6 +2638,29 @@ async function recommendTeacher({ criteria = {}, trialNotes = "", courseId = nul
     availabilityReason: "",
     preferredHonouredOverLimit: false,
   };
+
+  // Reported either way, and always here rather than at each return: a rules-only
+  // result that looks identical to a considered one is how an admin ends up
+  // trusting a degraded recommendation.
+  result.advisor = advisor.ok
+    ? {
+        used: true,
+        summary: advisor.summary || "",
+        reasons: advisor.reasons || {},
+        shortlisted: Boolean(advisor.shortlisted),
+        candidateCount: advisor.candidateCount || 0,
+        shortlistSize: advisor.shortlistSize || 0,
+      }
+    : { used: false, configured: isTeacherAdvisorConfigured(), reason: advisor.reason || "" };
+
+  if (advisor.ok && advisor.shortlisted) {
+    console.log(
+      "[teacher-advisor] shortlist:",
+      advisor.candidateCount,
+      "candidates, model saw",
+      advisor.shortlistSize
+    );
+  }
 
   if (!ranked.length) {
     // An empty pool has two very different causes and the admin needs to be told
@@ -3805,7 +3857,7 @@ app.post("/api/admin/teacher-fit-check", requireAdminSession, async (req, res) =
 
 app.post("/api/admin/recommend-teacher", requireAdminSession, limitMatchInsights, async (req, res) => {
   try {
-    const { criteria, trialNotes, courseId, proficiencyLevel, teacherId, preferredSchedule } = req.body || {};
+    const { criteria, trialNotes, courseId, courseName, proficiencyLevel, teacherId, preferredSchedule } = req.body || {};
 
     // Read the trial notes for extra criteria. This never blocks: a Gemini
     // failure costs the suggestions and nothing else, because the rules are
@@ -3817,6 +3869,7 @@ app.post("/api/admin/recommend-teacher", requireAdminSession, limitMatchInsights
       baselineCriteria: criteria,
       trialNotes,
       courseId,
+      courseName,
       proficiencyLevel,
       preferredTeacherId: teacherId,
       preferredSchedule,
@@ -3864,6 +3917,7 @@ app.post("/api/admin/recommend-teacher", requireAdminSession, limitMatchInsights
       availabilityConflict: recommendation.availabilityConflict,
       availabilityReason: recommendation.availabilityReason || "",
       preferredHonouredOverLimit: recommendation.preferredHonouredOverLimit,
+      advisor: recommendation.advisor,
     });
   } catch (err) {
     console.error("POST /api/admin/recommend-teacher error:", err);

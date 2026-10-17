@@ -13,6 +13,8 @@ import {
   normalizePreferredDays,
   rankTeachers,
   selectTeacherFromRanking,
+  preferAvailable,
+  applyAdvisorOrder,
   TEACHER_BALANCE_LIMIT,
   toMinutes,
   weekdayOf,
@@ -211,19 +213,56 @@ const availabilityMap = new Map([
   ["2", { evaluated: true, available: false, matchingDates: [], reason: "they have a class then" }],
 ]);
 
-const availabilityRanked = rankTeachers([busy, free], availabilityMap);
-check("an available teacher outranks a better-scored unavailable one", availabilityRanked[0].user_id, 1);
+// Availability is a constraint applied AFTER whatever produced the order, so the
+// two steps are deliberately separate: rankTeachers scores, preferAvailable
+// partitions. Folding availability into the sort would make it look like a
+// teaching-quality signal, which it is not.
+const scoredOrder = rankTeachers([busy, free]);
+check("the rules order by score", scoredOrder[0].user_id, 2);
 
-// Inside each group the original ordering is untouched.
-check("scores still order within the available group", rankTeachers([busy, free], new Map([
-  ["1", { available: true }], ["2", { available: true }],
-]))[0].user_id, 2);
+const availabilityRanked = preferAvailable(scoredOrder, availabilityMap);
+check("an available teacher is moved ahead of a better-scored unavailable one", availabilityRanked[0].user_id, 1);
+check("the partition is stable", availabilityRanked.map((t) => t.user_id), [1, 2]);
+
+// Inside the available group the rules order still decides.
+const twoFree = preferAvailable(rankTeachers([
+  { user_id: 1, score: 5, assigned_student_count: 0 },
+  { user_id: 2, score: 50, assigned_student_count: 0 },
+]), new Map([["1", { available: true }], ["2", { available: true }]]));
+check("scores still order within the available group", twoFree[0].user_id, 2);
 
 // No map, or an unevaluated entry: identical to before.
-const withoutMap = rankTeachers([busy, free]);
-check("without availability the score decides", withoutMap[0].user_id, 2);
-const unevaluated = rankTeachers([busy, free], new Map([["1", { evaluated: false, available: null }], ["2", { evaluated: false, available: null }]]));
+check("no availability map leaves the order alone", preferAvailable(scoredOrder, null).map((t) => t.user_id), [2, 1]);
+check("omitting the map returns the same order", preferAvailable(scoredOrder).map((t) => t.user_id), [2, 1]);
+const unevaluated = preferAvailable(scoredOrder, new Map([
+  ["1", { evaluated: false, available: null }],
+  ["2", { evaluated: false, available: null }],
+]));
 check("an unevaluated teacher is not treated as unavailable", unevaluated[0].user_id, 2);
+
+/* ------------------------------------------------- advisor ordering the rules */
+
+// The advisor may reorder the list we gave it, and only that list.
+const advisorList = [
+  { user_id: 30, score: 90 },
+  { user_id: 31, score: 80 },
+  { user_id: 32, score: 70 },
+];
+check("the advisor's order is applied", applyAdvisorOrder(advisorList, ["32", "30", "31"]).map((t) => t.user_id), [32, 30, 31]);
+check("unmentioned teachers keep our order, after the mentioned ones", applyAdvisorOrder(advisorList, ["31"]).map((t) => t.user_id), [31, 30, 32]);
+check("an id we never offered is ignored", applyAdvisorOrder(advisorList, ["999", "31"]).map((t) => t.user_id), [31, 30, 32]);
+check("an empty order is a no-op", applyAdvisorOrder(advisorList, []).map((t) => t.user_id), [30, 31, 32]);
+check("an absent order is a no-op", applyAdvisorOrder(advisorList).map((t) => t.user_id), [30, 31, 32]);
+check("a duplicate id does not reorder twice", applyAdvisorOrder(advisorList, ["32", "32", "31"]).map((t) => t.user_id), [32, 31, 30]);
+
+// Availability still wins over the advisor: a model that puts an unavailable
+// teacher first does not get to keep them there.
+const advisorPickedBusy = applyAdvisorOrder(rankTeachers([
+  { user_id: 1, score: 5, assigned_student_count: 0 },
+  { user_id: 2, score: 90, assigned_student_count: 0 },
+]), ["2", "1"]);
+check("the advisor can put an unavailable teacher first", advisorPickedBusy[0].user_id, 2);
+check("but availability still moves them back", preferAvailable(advisorPickedBusy, availabilityMap).map((t) => t.user_id), [1, 2]);
 
 /* -------------------------------------------- manual pick vs the balance limit */
 
