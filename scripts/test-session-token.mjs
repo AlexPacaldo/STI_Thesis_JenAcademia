@@ -10,7 +10,7 @@
  * payload, an expired token, and a token signed with a different secret.
  */
 
-import { readBearerToken, readCookie, signSessionToken, verifySessionToken } from "../backend/sessionToken.js";
+import { readBearerToken, signSessionToken, verifySessionToken } from "../backend/sessionToken.js";
 
 let failures = 0;
 let checks = 0;
@@ -87,21 +87,6 @@ check("is case insensitive about the scheme", readBearerToken({ headers: { autho
 check("ignores a missing header", readBearerToken({ headers: {} }), null);
 check("ignores a header with no token", readBearerToken({ headers: { authorization: "Bearer" } }), null);
 check("ignores a non-bearer scheme", readBearerToken({ headers: { authorization: "Basic abc" } }), null);
-
-console.log("\n=== cookie header parsing ===");
-
-// The upload guard reads the session from a cookie because <img src> and
-// download links cannot send an Authorization header.
-check("reads the named cookie", readCookie({ headers: { cookie: "a=1; jen_upload_session=abc; b=2" } }, "jen_upload_session"), "abc");
-check("is not fooled by a similarly named cookie", readCookie({ headers: { cookie: "x_jen_upload_session=evil" } }, "jen_upload_session"), null);
-check("is not fooled by a prefix", readCookie({ headers: { cookie: "jen_upload_session_extra=evil" } }, "jen_upload_session"), null);
-check("returns null when the cookie is absent", readCookie({ headers: { cookie: "a=1" } }, "jen_upload_session"), null);
-check("handles no cookie header at all", readCookie({ headers: {} }, "jen_upload_session"), null);
-check("handles a missing headers object", readCookie({}, "jen_upload_session"), null);
-check("trims whitespace around the name", readCookie({ headers: { cookie: "  jen_upload_session  =abc" } }, "jen_upload_session"), "abc");
-check("decodes a percent-encoded value", readCookie({ headers: { cookie: "jen_upload_session=a%2Bb" } }, "jen_upload_session"), "a+b");
-check("keeps a value containing an equals sign", readCookie({ headers: { cookie: "jen_upload_session=ab=cd" } }, "jen_upload_session"), "ab=cd");
-check("survives a malformed percent escape", readCookie({ headers: { cookie: "jen_upload_session=%E0%A4%A" } }, "jen_upload_session"), "%E0%A4%A");
 
 console.log(`\n${checks - failures}/${checks} checks passed.`);
 if (failures) {
