@@ -34,6 +34,55 @@ export const MAX_ADVISOR_CANDIDATES = 60;
 const REQUEST_TIMEOUT_MS = 25_000;
 const MAX_BIO_CHARS = 400;
 
+// The fallback has to be usable, not merely correct. While Gemini is healthy the
+// admin waits a few seconds and gets the advisor's ranking. While it is DOWN,
+// waiting 25 seconds per click to be handed the old rule-based answer anyway -
+// on every click, with nothing learned in between - is not a fallback, it is a
+// slower way of getting yesterday's result.
+//
+// So transport failures trip a breaker. A few in a row and we stop calling for a
+// cooldown, returning the rules answer immediately. The old way, at the old
+// speed, which is the whole point of having one.
+//
+// !! Only transport failures count. A response we could not parse, or an id list
+// !! we could not use, is not evidence that the service is down: opening on
+// !! those would let one malformed reply disable the advisor for everyone for
+// !! minutes. Those cases fall back individually, and still count as "used: false".
+//
+// Per process. Every container keeps its own counter, so a multi-container deploy
+// has each one trip independently rather than sharing state, and a restarted
+// container simply starts over. Both are acceptable; there is no correctness
+// dependency on it.
+const CIRCUIT_FAILURES_TO_OPEN = 3;
+const CIRCUIT_COOLDOWN_MS = 5 * 60_000;
+
+let consecutiveFailures = 0;
+let lastFailureAt = 0;
+
+/** True while Gemini is considered down and the rules answer should be served directly. */
+export function advisorCircuitOpen(now = Date.now()) {
+  if (consecutiveFailures < CIRCUIT_FAILURES_TO_OPEN) return false;
+  return now - lastFailureAt < CIRCUIT_COOLDOWN_MS;
+}
+
+function recordAdvisorSuccess() {
+  consecutiveFailures = 0;
+  lastFailureAt = 0;
+}
+
+// Exported so the tests can drive the breaker without a network or a bad key.
+// The state machine is the unit under test, and a module that owns hidden state
+// is only testable by breaking it for real.
+export function recordAdvisorFailure(now = Date.now()) {
+  consecutiveFailures += 1;
+  lastFailureAt = now;
+}
+
+/** Clear the breaker. Exported for the tests, and for an operator who has fixed the key. */
+export function resetAdvisorCircuit() {
+  recordAdvisorSuccess();
+}
+
 export function isTeacherAdvisorConfigured() {
   return isGeminiConfigured();
 }
@@ -157,7 +206,13 @@ export async function adviseTeacherRanking({
     return { ok: false, reason: "not-configured" };
   }
   if (!scored.length) {
+    // Deliberately before the breaker: an academy with no candidates for this
+    // course has no call to make, and counting that as a Gemini failure would let
+    // an empty teacher list disable the advisor for everyone.
     return { ok: false, reason: "no-candidates" };
+  }
+  if (advisorCircuitOpen()) {
+    return { ok: false, reason: "temporarily-unavailable" };
   }
 
   const candidateCount = scored.length;
@@ -234,6 +289,7 @@ export async function adviseTeacherRanking({
       }
     }
 
+    recordAdvisorSuccess();
     return {
       ok: true,
       order,
@@ -246,6 +302,9 @@ export async function adviseTeacherRanking({
       shortlisted: candidateCount > shortlisted.length,
     };
   } catch (err) {
+    // The only place that trips the breaker. Reaching here means the call itself
+    // did not work, as opposed to the call working and us not liking the answer.
+    recordAdvisorFailure();
     const reason = /not configured/i.test(err.message)
       ? "not-configured"
       : /api key/i.test(err.message)

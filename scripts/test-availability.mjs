@@ -234,11 +234,35 @@ check("scores still order within the available group", twoFree[0].user_id, 2);
 // No map, or an unevaluated entry: identical to before.
 check("no availability map leaves the order alone", preferAvailable(scoredOrder, null).map((t) => t.user_id), [2, 1]);
 check("omitting the map returns the same order", preferAvailable(scoredOrder).map((t) => t.user_id), [2, 1]);
-const unevaluated = preferAvailable(scoredOrder, new Map([
-  ["1", { evaluated: false, available: null }],
-  ["2", { evaluated: false, available: null }],
-]));
-check("an unevaluated teacher is not treated as unavailable", unevaluated[0].user_id, 2);
+// An entry with no verdict (available: null) must not be treated as "we could
+// not check", which would be a reason to prefer someone else. It is simply not
+// first-available, and its position among its peers is left to the rules.
+const unevaluated = preferAvailable(
+  rankTeachers([
+    { user_id: 7, score: 99, assigned_student_count: 0 },
+    { user_id: 8, score: 99, assigned_student_count: 0 },
+  ]),
+  new Map([
+    ["7", { evaluated: false, available: null }],
+    ["8", { evaluated: false, available: null }],
+  ])
+);
+check("an unevaluated teacher is left in rules order", unevaluated.map((t) => t.user_id), [7, 8]);
+
+check(
+  "an unevaluated teacher does not jump ahead of a verified-available one",
+  preferAvailable(
+    rankTeachers([
+      { user_id: 7, score: 99, assigned_student_count: 0 },
+      { user_id: 8, score: 1, assigned_student_count: 0 },
+    ]),
+    new Map([
+      ["7", { evaluated: false, available: null }],
+      ["8", { available: true }],
+    ])
+  ).map((t) => t.user_id)[0],
+  8
+);
 
 /* ------------------------------------------------- advisor ordering the rules */
 
