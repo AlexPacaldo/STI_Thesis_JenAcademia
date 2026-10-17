@@ -1,3 +1,4 @@
+import { openSseStream } from "../utils/sseClient.js";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
@@ -877,7 +878,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   useEffect(() => {
     if (!localUserId || localRole === "admin") return;
 
-    const stream = new EventSource(`${API}/api/calendar/stream/${localUserId}`);
+    // Reconnect delay passed in because EventSource reconnected automatically and
+// the calendar keeps refreshing in the background; without it a single dropped
+// connection would leave the page stale until a reload.
+const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reconnectMs: 5000 });
     const handleCalendarChange = () => {
       triggerCalendarRefresh();
     };

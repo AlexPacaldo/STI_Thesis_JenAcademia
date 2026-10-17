@@ -4574,7 +4574,10 @@ app.put("/api/users/:userId/status", requireAdminSession, async (req, res) => {
 
 // ==================== CALENDAR ENDPOINTS ====================
 
-app.get("/api/calendar/stream/:user_id", (req, res) => {
+app.get("/api/calendar/stream/:user_id", requireSession, (req, res) => {
+  if (!sessionMayActFor(req, req.params.user_id)) {
+    return res.status(403).json({ message: "You can only subscribe to your own calendar." });
+  }
   const { user_id } = req.params;
   if (!user_id) {
     return res.status(400).json({ message: "Missing user_id" });
@@ -7502,7 +7505,10 @@ app.get("/api/video-sessions/user/:user_id", requireSession, async (req, res) =>
 
 // ==================== CHATS ====================
 
-app.get("/api/chats/stream/:user_id", async (req, res) => {
+app.get("/api/chats/stream/:user_id", requireSession, async (req, res) => {
+  if (!sessionMayActFor(req, req.params.user_id)) {
+    return res.status(403).json({ message: "You can only subscribe to your own messages." });
+  }
   try {
     const { user_id } = req.params;
 

@@ -1,3 +1,4 @@
+import { openSseStream } from "../utils/sseClient.js";
 import axios from "axios";
 import { useEffect, useMemo, useState } from "react";
 import styles from "../assets/chatPanel.module.css";
@@ -177,7 +178,7 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
   useEffect(() => {
     if (!currentUserId) return undefined;
 
-    let source = new EventSource(`${API}/api/chats/stream/${currentUserId}`);
+    let source = openSseStream(`${API}/api/chats/stream/${currentUserId}`);
 
     const handleChatMessage = async (event) => {
       try {
