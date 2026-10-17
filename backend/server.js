@@ -12,7 +12,7 @@ import { Resend } from "resend";
 import { assessClassEvidence } from "./classEvidence.js";
 import { createDbStore, ensureRateLimitsTable } from "./dbRateLimit.js";
 import { createRateLimiter } from "./rateLimit.js";
-import { readBearerToken, signSessionToken, verifySessionToken } from "./sessionToken.js";
+import { readBearerToken, readCookie, signSessionToken, verifySessionToken } from "./sessionToken.js";
 import { deleteRecordingFromDrive, extractDriveFileId, isGoogleDriveConfigured, uploadRecordingToDrive } from "./googleDrive.js";
 import {
   buildLevelEvaluationNotes,
@@ -470,6 +470,63 @@ const resumeUpload = multer({
 // evaluating - which crashes the process at startup, before any route runs and
 // outside the try/catch around the counter table migration.
 
+/**
+ * Static files are only served to a signed-in account.
+ *
+ * !! Why a cookie rather than a bearer header: these URLs are rendered as
+ * !! <img src> and used as <a href> downloads, and neither can send an
+ * !! Authorization header. The alternatives were signing every stored file_url
+ * !! across the tables that hold one plus a backfill, or blob-fetching every
+ * !! image in the app. A cookie the browser sends automatically avoids all three.
+ * !!
+ * !! It is deliberately scoped to Path=/uploads and is only ever consulted by
+ * !! this GET handler. It is never used to authenticate an API request, so it
+ * !! adds no CSRF surface: nothing that changes state reads it.
+ *
+ * The same signed token as the API, so an archived or suspended account still
+ * loses access. The account lookup is memoised for a minute because a page with
+ * a dozen avatars would otherwise be a dozen database round trips against a
+ * small connection pool.
+ */
+const UPLOAD_COOKIE = "jen_upload_session";
+const UPLOAD_ACCESS_CACHE_MS = 60_000;
+const uploadAccessCache = new Map();
+
+async function isUploadAccessAllowed(userId) {
+  const cached = uploadAccessCache.get(Number(userId));
+  if (cached && cached.expiresAt > Date.now()) return cached.allowed;
+
+  let allowed = false;
+  try {
+    const [rows] = await pool.query(
+      "SELECT user_id FROM users WHERE user_id = ? AND status = 'active' LIMIT 1",
+      [userId]
+    );
+    allowed = rows.length > 0;
+  } catch (err) {
+    console.error("Upload access check failed:", err);
+  }
+
+  uploadAccessCache.set(Number(userId), { allowed, expiresAt: Date.now() + UPLOAD_ACCESS_CACHE_MS });
+  return allowed;
+}
+
+app.use("/uploads", async (req, res, next) => {
+  const token = readCookie(req, UPLOAD_COOKIE) || readBearerToken(req);
+  const claims = token ? verifySessionToken(token, { secret: SESSION_SECRET }) : null;
+
+  if (!claims) {
+    return res.status(401).json({ message: "Sign in to view this file" });
+  }
+  if (!(await isUploadAccessAllowed(claims.sub))) {
+    return res.status(401).json({ message: "Your account is no longer active" });
+  }
+
+  next();
+});
+
+// eslint-disable-next-line no-unused-vars -- keep express.static last so the
+// guard above always runs first.
 app.use("/uploads", express.static(UPLOAD_ROOT));
 
 app.get("/healthz", (_req, res) => {
@@ -2922,6 +2979,25 @@ app.post("/api/login", limitLoginAttempts, async (req, res) => {
       );
     } catch (err) {
       console.error("Could not issue a session token at login:", err);
+    }
+
+    // Lets <img src> and download links authenticate against /uploads, which
+    // cannot take a bearer header. Scoped to that path and never used for API
+    // authentication, so it carries no CSRF risk.
+    if (sessionToken) {
+      // Secure on anything actually served over HTTPS. Keyed off Railway as well
+      // as NODE_ENV, because a Secure cookie is silently dropped over plain HTTP
+      // and that would break local development rather than fail loudly.
+      const secure =
+        String(process.env.NODE_ENV || "").toLowerCase() === "production" ||
+        Boolean(process.env.RAILWAY_ENVIRONMENT);
+      res.cookie(UPLOAD_COOKIE, sessionToken, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure,
+        path: "/uploads",
+        maxAge: SESSION_TTL_MS,
+      });
     }
 
     res.json({
