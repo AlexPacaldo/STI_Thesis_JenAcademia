@@ -62,8 +62,13 @@ function parseMysqlUrl(url) {
 const mysqlUrlConfig = parseMysqlUrl(mysqlUrl);
 const DB_HOST = process.env.DB_HOST || process.env.MYSQLHOST || mysqlUrlConfig.host || "localhost";
 const DB_USER = process.env.DB_USER || process.env.MYSQLUSER || mysqlUrlConfig.user || "root";
+// !! The fallback below is a credential that is also in this repository's
+// !! history. Anything reading the source can connect to a database left using
+// !! it, so it is only ever a last resort for local development and the start-up
+// !! check below says so loudly. Rotate the real password, and set DB_PASSWORD.
+const HARDCODED_DB_PASSWORD = "LORAKLANG0405++";
 const DB_PASSWORD =
-  process.env.DB_PASSWORD || process.env.MYSQLPASSWORD || mysqlUrlConfig.password || "LORAKLANG0405++";
+  process.env.DB_PASSWORD || process.env.MYSQLPASSWORD || mysqlUrlConfig.password || HARDCODED_DB_PASSWORD;
 const DB_NAME = process.env.DB_NAME || process.env.MYSQLDATABASE || mysqlUrlConfig.database || "jen_academia";
 const DB_PORT = Number(process.env.DB_PORT || process.env.MYSQLPORT || mysqlUrlConfig.port || 3306);
 const requestedConnectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 5);
@@ -165,6 +170,14 @@ const ENCRYPTION_KEY = crypto.scryptSync(String(ENCRYPTION_SECRET), "jen-academi
 
 if (!process.env.CHAT_ENCRYPTION_KEY && !process.env.ENCRYPTION_KEY && !process.env.JWT_SECRET) {
   console.warn("CHAT_ENCRYPTION_KEY is not set; using DB_PASSWORD as the chat encryption secret.");
+}
+
+if (DB_PASSWORD === HARDCODED_DB_PASSWORD) {
+  console.warn(
+    "DB_PASSWORD is not configured, so the backend is falling back to a password that " +
+      "is committed to this repository. Set DB_PASSWORD, and rotate the database password " +
+      "if this database is reachable from anywhere but your machine."
+  );
 }
 
 // Signing key for session tokens. Preferred over reusing the chat secret so the
@@ -9595,19 +9608,19 @@ async function isBookDistributedToTeacher(bookId, teacherId) {
 }
 
 /**
- * Gate for every book/lesson write. Only an admin may author books, distribute
- * them, or touch their lessons.
+ * Secondary check for book and lesson routes, plus the "does this book exist"
+ * half of the original guard.
  *
- * !! STILL NOT AUTHENTICATED. This trusts an admin_id supplied in the request,
- * !! which proves nothing: any caller can pass an admin's id.
+ * !! THIS IS NOT AN AUTH GATE. It trusts an admin_id supplied in the request,
+ * !! which proves nothing - any caller can pass an admin id. It was the only
+ * !! admin check in the app until every admin route moved onto
+ * !! requireAdminSession, which verifies a signed token and re-reads the
+ * !! account. Every route calling this now also sits behind that gate, so the
+ * !! admin_id check is redundant defence in depth rather than what keeps the
+ * !! door shut.
  * !!
- * !! Every admin-only WRITE now sits behind requireAdminSession, including book
- * !! editing and lesson authoring, which booksContent.jsx reaches through
- * !! apiFetch rather than axios. The one remaining caller is the book/lesson
- * !! READ path via validateBookReadAccess, which is left alone on purpose: it
- * !! also serves teachers and students, so migrating it means deciding how a
- * !! read should be authorised by role, which is a larger change than adding a
- * !! header to a request. Do not treat a route using this function as protected.
+ * !! Do not add a route that relies on this alone, and do not read the name as
+ * !! a promise. Real authentication is requireSession / requireAdminSession.
  *
  * @param {Object} res - Express response object
  * @param {number} adminId - The admin ID making the request
