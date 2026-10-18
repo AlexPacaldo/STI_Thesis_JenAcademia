@@ -2606,20 +2606,16 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div style={{ marginTop: "12px" }}>
-                  <label
-                    htmlFor="teacher-does-not-teach-children"
-                    style={{ display: "flex", alignItems: "flex-start", gap: "8px", cursor: "pointer" }}
-                  >
+                  <label className={styles.checkboxOption} htmlFor="teacher-does-not-teach-children">
                     <input
                       id="teacher-does-not-teach-children"
                       type="checkbox"
                       checked={tForm.teachesChildren === false}
                       onChange={(e) => setTForm({ ...tForm, teachesChildren: !e.target.checked })}
-                      style={{ marginTop: "3px" }}
                     />
                     <span>
                       This teacher will not teach children (under 13)
-                      <p className={styles.criteriaFieldHint}>
+                      <p className={styles.checkboxOptionHint}>
                         Ticking this keeps them out of the running for younger students. It is a rule,
                         not a preference: they will not be recommended for a child even if the match is
                         otherwise good. Leave it unticked and they can teach any age.

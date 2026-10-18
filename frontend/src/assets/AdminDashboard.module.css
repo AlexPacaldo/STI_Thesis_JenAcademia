@@ -1798,3 +1798,55 @@
     padding: 8px 12px !important;
   }
 }
+
+/* A checkbox sitting in a form, next to a sentence of explanation.
+ *
+ * The shared `.form input` rule above sets width: 100%, min-height and padding
+ * for text fields. On `input[type=checkbox]` that turns the box into a large
+ * empty rectangle, and because it is width: 100% of a flex row it also shoves
+ * the label to the far end of the line. The boldness of `.form label` is
+ * inherited here too, which is why the whole sentence renders heavy.
+ *
+ * Deliberately in the stylesheet rather than inline in the component: this is
+ * the damage done by the shared rule, so the correction belongs beside it, and
+ * the next checkbox will not have to rediscover it.
+ *
+ * Specificity is raised on purpose. `.form label` and `.form input` are each
+ * (0,1,1), so a plain `.checkboxOption` would lose to both and change nothing.
+ */
+.form label.checkboxOption,
+label.checkboxOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 0;
+  font-weight: 600;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.form label.checkboxOption > input[type='checkbox'],
+label.checkboxOption > input[type='checkbox'] {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  min-width: 0;
+  min-height: 0;
+  margin: 2px 0 0;
+  padding: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.form label.checkboxOption > input[type='checkbox']:disabled,
+label.checkboxOption > input[type='checkbox']:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.checkboxOptionHint {
+  margin: 4px 0 0;
+  font-size: 0.8em;
+  font-weight: 400;
+  line-height: 1.45;
+}

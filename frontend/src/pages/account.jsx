@@ -745,21 +745,17 @@ export default function Account() {
             <p><strong>Courses:</strong> {formatValue(details.courses)}</p>
           </div>
           <div className={styles.detailList} style={{ marginTop: "12px" }}>
-            <label
-              htmlFor="teacher-teaches-children"
-              style={{ display: "flex", alignItems: "flex-start", gap: "8px", cursor: childrenSaving ? "wait" : "pointer" }}
-            >
+            <label className={styles.checkboxOption} htmlFor="teacher-teaches-children">
               <input
                 id="teacher-teaches-children"
                 type="checkbox"
                 checked={teachesChildren}
                 disabled={childrenSaving}
                 onChange={(e) => saveTeachesChildren(e.target.checked)}
-                style={{ marginTop: "3px" }}
               />
               <span>
                 I will teach students of any age, including children under 13
-                <p style={{ margin: "4px 0 0", color: "#666", fontSize: "0.9em" }}>
+                <p className={styles.checkboxOptionHint} style={{ color: "#666" }}>
                   {teachesChildren
                     ? "You can be recommended for any student."
                     : "You will not be recommended for students under 13. The school is told this, and your other settings are unchanged."}
