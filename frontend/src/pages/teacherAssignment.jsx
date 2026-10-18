@@ -255,10 +255,73 @@ export default function AssignTask() {
     }
   };
 
+  const requestDeleteAssignment = (assignment) => {
+    const relatedSubmissions = submissions.filter(
+      (item) => String(item.assignmentId) === String(assignment.id)
+    );
+    const lostNote =
+      relatedSubmissions.length > 0
+        ? ` This also permanently deletes ${relatedSubmissions.length} submitted ${
+            relatedSubmissions.length === 1 ? "file" : "files"
+          } from ${relatedSubmissions[0].student || "the student"}.`
+        : "";
+
+    setConfirmAction({
+      type: "delete-assignment",
+      assignment,
+      title: "Delete this assignment?",
+      message: `"${assignment.name || "Assignment"}" will be removed for ${
+        assignment.student || "the student"
+      }.${lostNote} This cannot be undone.`,
+      confirmLabel: "Delete",
+    });
+  };
+
+  const deleteAssignment = async () => {
+    const assignment = confirmAction?.assignment;
+    if (!assignment) return;
+
+    try {
+      const res = await apiFetch(`${API}/api/assignments/${assignment.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        // The backend requires the exact title back as the confirmation token.
+        body: JSON.stringify({ confirm: assignment.name || assignment.title || "" }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Could not delete the assignment");
+      }
+
+      setTeacherAssignments((prev) => prev.filter((item) => String(item.id) !== String(assignment.id)));
+      setSubmissions((prev) =>
+        prev.filter((item) => String(item.assignmentId) !== String(assignment.id))
+      );
+      setSelectedSubmission((current) =>
+        current && String(current.assignmentId) === String(assignment.id) ? null : current
+      );
+
+      notify?.(
+        data.deletedSubmissions > 0
+          ? `Assignment deleted, along with ${data.deletedSubmissions} submitted ${
+              data.deletedSubmissions === 1 ? "file" : "files"
+            }.`
+          : "Assignment deleted.",
+        "success"
+      );
+    } catch (err) {
+      console.error("Delete assignment error:", err);
+      notify?.(err.message || "Could not delete the assignment.", "error");
+    }
+  };
+
   const performConfirmAction = async () => {
     if (!confirmAction) return;
     if (confirmAction.type === "create-assignment") {
       await createAssignment();
+    } else if (confirmAction.type === "delete-assignment") {
+      await deleteAssignment();
     }
     closeConfirmAction();
   };
@@ -338,6 +401,15 @@ export default function AssignTask() {
 
   const currentSubmissions = submissions.filter(
     (item) => String(item.studentId) === String(selectedStudentId)
+  );
+
+  // Newest first, so a mistake made moments ago is the first thing seen.
+  const postedAssignments = useMemo(
+    () =>
+      [...teacherAssignments].sort(
+        (a, b) => new Date(String(b.postedAt || 0).replace(" ", "T")) - new Date(String(a.postedAt || 0).replace(" ", "T"))
+      ),
+    [teacherAssignments]
   );
 
   const filtered = students.filter((student) =>
@@ -445,6 +517,13 @@ export default function AssignTask() {
               >
                 View Submissions
               </button>
+              <button
+                type="button"
+                className={`${styles.tabButton} ${activeTab === "posted" ? styles.activeTab : ""}`}
+                onClick={() => setActiveTab("posted")}
+              >
+                My Assignments
+              </button>
             </div>
 
             {activeTab === "assign" ? (
@@ -538,7 +617,7 @@ export default function AssignTask() {
                   </div>
                 </div>
               </>
-            ) : (
+            ) : activeTab === "submissions" ? (
               <div className={styles.submissionsPanel}>
                 <h2>{selected || "Selected student"}'s Submissions</h2>
                 <div className={styles.submissionList}>
@@ -613,6 +692,45 @@ export default function AssignTask() {
                         </div>
                       );
                     })
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* My Assignments. The third arm of the tab ternary, so the two
+                 existing panels are untouched. */
+              <div className={styles.postedPanel}>
+                <h2>Assignments you posted</h2>
+                <div className={styles.postedList}>
+                  {postedAssignments.length === 0 ? (
+                    <div className={styles.emptyState}>
+                      {isLoading ? "Loading assignments..." : "You have not posted any assignments yet."}
+                    </div>
+                  ) : (
+                    postedAssignments.map((assignment) => (
+                      <div key={assignment.id} className={styles.postedRow}>
+                        <div className={styles.postedRowText}>
+                          <strong>{assignment.name || "Assignment"}</strong>
+                          <p className={styles.postedMeta}>
+                            {assignment.student || "Student"}
+                            {assignment.subject ? ` · ${assignment.subject}` : ""}
+                            {assignment.postedAt ? ` · ${formatSubmittedAt(assignment.postedAt)}` : ""}
+                          </p>
+                          {assignment.attachmentName ? (
+                            <p className={styles.fileInfo}>
+                              <i className="bi bi-paperclip" aria-hidden="true" />{" "}
+                              {assignment.attachmentName}
+                            </p>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          className={styles.deleteBtn}
+                          onClick={() => requestDeleteAssignment(assignment)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ))
                   )}
                 </div>
               </div>

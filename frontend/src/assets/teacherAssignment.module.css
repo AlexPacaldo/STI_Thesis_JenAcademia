@@ -325,6 +325,90 @@
   gap: 10px;
 }
 
+/* "My Assignments" tab: what this teacher has posted, and the one place an
+   assignment can be taken back. */
+.postedPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.postedPanel h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.postedList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.postedRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border: 1px solid rgba(38, 66, 59, 0.12);
+  border-radius: 20px;
+  background: #fff;
+}
+
+.postedRowText {
+  min-width: 0;
+  flex: 1;
+}
+
+.postedRowText strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.postedMeta {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.postedRow .fileInfo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Destructive, so it is the one control on the row that is not the primary
+   colour - and it is never the default focus of the page. */
+.deleteBtn {
+  flex-shrink: 0;
+  min-height: 38px;
+  padding: 8px 16px;
+  border: 1px solid rgba(187, 87, 66, 0.32);
+  border-radius: 14px;
+  background: #fff;
+  color: #bb5742;
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.deleteBtn:hover {
+  background: rgba(187, 87, 66, 0.08);
+  border-color: #bb5742;
+}
+
+.deleteBtn:focus-visible {
+  outline: 2px solid #bb5742;
+  outline-offset: 2px;
+}
+
 .confirmActions button {
   min-height: 42px;
   padding: 10px 18px;

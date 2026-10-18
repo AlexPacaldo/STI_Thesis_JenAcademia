@@ -486,6 +486,43 @@ const MIME_BY_EXTENSION = {
   ".mov": "video/quicktime",
 };
 
+/**
+ * Turn a stored upload URL back into a path on disk.
+ *
+ * The stored value is the file's public URL, but express.static is mounted AT
+ * /uploads, so that segment is the mount point rather than a folder inside
+ * UPLOAD_ROOT - keeping it resolves one directory too deep and 404s.
+ *
+ * Returns null when the result would land outside UPLOAD_ROOT, so a stored
+ * value containing traversal cannot produce a readable path.
+ */
+function uploadPathFromStoredUrl(storedUrl) {
+  if (!storedUrl) return null;
+  const relative = String(storedUrl)
+    .replace(/^https?:\/\/[^/]+/i, "")
+    .replace(/^\/+/, "")
+    .replace(/^uploads\//, "");
+  const absolute = path.join(UPLOAD_ROOT, relative);
+  return isInsidePath(absolute, UPLOAD_ROOT) ? absolute : null;
+}
+
+/**
+ * Delete a file from the uploads tree, ignoring one that is already gone.
+ *
+ * Best effort by design: a missing file must not fail the request that is
+ * cleaning up the database, or a half-finished delete would leave the rows in
+ * place and make the button look broken.
+ */
+function removeUploadedFile(storedUrl) {
+  const absolute = uploadPathFromStoredUrl(storedUrl);
+  if (!absolute) return;
+  fs.promises.unlink(absolute).catch((err) => {
+    if (err?.code !== "ENOENT") {
+      console.warn("Could not remove uploaded file", absolute, "-", err.message);
+    }
+  });
+}
+
 const profileStorage = multer.diskStorage({
   destination: profileUploadDir,
   filename: (req, file, cb) => {
@@ -10065,18 +10102,12 @@ app.get("/f/:token/:filename", async (req, res) => {
   }
 
   // Resolved from the stored path in the database, never from the :filename
-  // segment. The stored value is server-generated, and isInsidePath is a second
-  // guard, so nothing in the request can steer the read out of uploads.
-  const relative = String(storedUrl)
-    .replace(/^https?:\/\/[^/]+/i, "")
-    .replace(/^\/+/, "")
-    // express.static is mounted AT /uploads, so that segment is the mount point
-    // rather than a folder inside the root. Keeping it made every lookup resolve
-    // to <root>/uploads/assignments/... and 404 against the real location.
-    .replace(/^uploads\//, "");
-  const absolute = path.join(UPLOAD_ROOT, relative);
+  // segment. The stored value is server-generated, and uploadPathFromStoredUrl
+  // refuses anything outside UPLOAD_ROOT, so nothing in the request can steer
+  // the read out of uploads.
+  const absolute = uploadPathFromStoredUrl(storedUrl);
 
-  if (!isInsidePath(absolute, UPLOAD_ROOT) || !fs.existsSync(absolute)) {
+  if (!absolute || !fs.existsSync(absolute)) {
     return res.status(404).json({ message: "That file is no longer available." });
   }
 
@@ -10100,6 +10131,107 @@ app.get("/f/:token/:filename", async (req, res) => {
     res.end();
   });
   stream.pipe(res);
+});
+
+/**
+ * Delete an assignment, and the submitted work attached to it.
+ *
+ * Not a plain DELETE, per BOOK_DISTRIBUTION.md: "Require an explicit
+ * confirmation token." The caller must send the assignment's exact title back,
+ * so this cannot be triggered by a URL being visited or a request being
+ * replayed - only by a UI that has shown the teacher what is about to go.
+ *
+ * Irreversible, and it takes the student's submissions with it. That is the
+ * documented behaviour (BOOK_DISTRIBUTION.md: a plain DELETE would be the
+ * "sharpest edge in the app"), and the UI states the submission count before
+ * the teacher commits.
+ *
+ * The teacher who posted it, or an admin. A student cannot delete their own
+ * assignment even though they can read it.
+ */
+app.delete("/api/assignments/:assignment_id", requireSession, async (req, res) => {
+  const conn = await pool.getConnection();
+  let transactionStarted = false;
+  try {
+    const { assignment_id } = req.params;
+    const { confirm } = req.body || {};
+
+    const [assignmentRows] = await conn.query(
+      `SELECT assignment_id, teacher_id, student_id, title, attachment_url
+       FROM assignments
+       WHERE assignment_id = ?
+       LIMIT 1`,
+      [assignment_id]
+    );
+
+    const assignment = assignmentRows[0];
+    if (!assignment) {
+      return res.status(404).json({ message: "Assignment not found" });
+    }
+
+    const session = req.session || {};
+    const mayDelete =
+      session.role === "admin" ||
+      String(assignment.teacher_id) === String(session.userId);
+    if (!mayDelete) {
+      return res.status(403).json({ message: "You can only delete assignments you posted." });
+    }
+
+    if (String(confirm || "") !== String(assignment.title)) {
+      return res.status(400).json({
+        message: "Type the assignment title exactly to confirm deletion.",
+      });
+    }
+
+    const [submissionRows] = await conn.query(
+      `SELECT submission_id, file_url
+       FROM assignment_submissions
+       WHERE assignment_id = ?`,
+      [assignment_id]
+    );
+    const submissionFiles = submissionRows.map((row) => row.file_url).filter(Boolean);
+
+    await conn.beginTransaction();
+    transactionStarted = true;
+
+    // Notifications point at the assignment through related_id, which is not a
+    // foreign key, so they have to be removed explicitly or the student keeps
+    // a link to something that no longer exists.
+    await conn.query(
+      `DELETE FROM notifications
+       WHERE related_type = 'assignment' AND related_id = ?`,
+      [assignment_id]
+    );
+
+    await conn.query(
+      "DELETE FROM assignment_submissions WHERE assignment_id = ?",
+      [assignment_id]
+    );
+
+    await conn.query("DELETE FROM assignments WHERE assignment_id = ?", [assignment_id]);
+
+    await conn.commit();
+    transactionStarted = false;
+
+    // Only after the rows are gone, so a failure here cannot leave the database
+    // pointing at a file that no longer exists.
+    removeUploadedFile(assignment.attachment_url);
+    submissionFiles.forEach(removeUploadedFile);
+
+    res.json({
+      message: "Assignment deleted",
+      deletedSubmissions: submissionRows.length,
+    });
+  } catch (err) {
+    if (transactionStarted) await conn.rollback();
+    console.error("DELETE /api/assignments/:assignment_id error:", err);
+    res.status(500).json({
+      message: "Could not delete the assignment",
+      ...(process.env.NODE_ENV !== "production" ? { error: err.message } : {}),
+    });
+  } finally {
+    conn.release();
+  }
 });
 
 app.post("/api/assignments", requireSession, optionalFileUpload, async (req, res) => {
