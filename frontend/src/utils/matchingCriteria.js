@@ -145,6 +145,37 @@ export const toCriteriaSlug = (text) =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 60);
 
+/**
+ * The value stored for the "Others" chip while its text box is open.
+ *
+ * Lives here rather than only in CriteriaChipField because both the component
+ * and the forms need it, and importing a component module into a util - or a
+ * util into a component - to get one constant is how the two drift apart.
+ * CriteriaChipField re-exports it, so existing imports keep working.
+ */
+export const CUSTOM_OPTION_VALUE = "__custom__";
+
+/**
+ * Merge one criteria field's chips with whatever was typed in its "Others" box.
+ *
+ * The sentinel and the raw text become one clean array: the sentinel is UI state
+ * and must not reach the scorer, and the text is slugified so it is stored and
+ * compared in the same shape as the fixed vocabulary. An empty box contributes
+ * nothing at all, so ticking Others and leaving it blank is a no-op rather than
+ * a criterion that can never be matched.
+ *
+ * !! Shared rather than written per form. It was a local function inside the
+ * !! admin's Create Student, which meant the student's own Request New Contract
+ * !! form could not have the same behaviour without copying it - and the copy
+ * !! never happened, so the two forms silently diverged while sharing a
+ * !! component that documents them as identical.
+ */
+export const criteriaWithCustom = (values, otherText) => {
+  const chosen = (Array.isArray(values) ? values : []).filter((v) => v !== CUSTOM_OPTION_VALUE);
+  const custom = toCriteriaSlug(otherText);
+  return custom ? [...chosen, custom] : chosen;
+};
+
 /** Toggle one value in a multi-select array. */
 export const toggleValue = (selected, value) => {
   const current = Array.isArray(selected) ? selected : [];

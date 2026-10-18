@@ -184,6 +184,39 @@ check("criteria notes are empty when nothing is chosen", criteriaNotes({
 
 check("bio text mentions the experience", aiBio({ experience: 8 }).includes("8"), true);
 
+
+/* ------------------------------- matching criteria parity (frontend merge) */
+
+/**
+ * The admin's Create Student form and the student's Request New Contract form
+ * share CriteriaChipField, which documents them as behaving identically. They
+ * did not: only the admin passed allowCustom, so a student could not describe a
+ * goal the fixed vocabulary did not have. These assert the merge that turns an
+ * "Others" box into a scorable value, because that merge was a local function
+ * inside the admin component - which is precisely why it was never shared.
+ */
+import {
+  CUSTOM_OPTION_VALUE,
+  criteriaWithCustom,
+  toCriteriaSlug,
+} from "../frontend/src/utils/matchingCriteria.js";
+
+check("a slug drops punctuation and collapses spacing", toCriteriaSlug("Patient and supportive!"), "patient-and-supportive");
+check("an empty box contributes nothing", toCriteriaSlug(""), "");
+check("the slug is capped so a paragraph cannot become a criterion", toCriteriaSlug("a".repeat(200)).length, 60);
+
+check("chips pass through untouched", criteriaWithCustom(["exam-prep"], ""), ["exam-prep"]);
+check("typed text is added as a slug", criteriaWithCustom(["exam-prep"], "Build Confidence"), ["exam-prep", "build-confidence"]);
+check("the sentinel never reaches the scorer", criteriaWithCustom([CUSTOM_OPTION_VALUE, "exam-prep"], "Build Confidence"), ["exam-prep", "build-confidence"]);
+check("an empty box leaves no sentinel behind", criteriaWithCustom([CUSTOM_OPTION_VALUE], ""), []);
+check("only Others is still a valid choice", criteriaWithCustom([], "Pronunciation drills"), ["pronunciation-drills"]);
+check("nothing selected and nothing typed is nothing", criteriaWithCustom([], ""), []);
+
+// The bug this guards: the sentinel surviving into the payload, where the scorer
+// compares it against teacher vocabularies and reports a criterion the student
+// never actually failed.
+check("a stray sentinel from a stale selection is stripped", criteriaWithCustom(["exam-prep", CUSTOM_OPTION_VALUE], "Fluency"), ["exam-prep", "fluency"]);
+
 console.log(`${passed}/${passed + failures.length} checks passed.`);
 if (failures.length) {
   console.error("\nFAILED:");

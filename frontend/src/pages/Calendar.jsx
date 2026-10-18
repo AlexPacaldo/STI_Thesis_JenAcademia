@@ -8,10 +8,13 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
 import { PROFICIENCY_LEVEL_OPTIONS, formatProficiencyLevel } from "../utils/proficiencyLevels.js";
 import {
+  CUSTOM_OPTION_VALUE,
   createEmptyCriteria,
+  criteriaWithCustom,
   filterOptionsForCourses,
   pruneSelectionToCourses,
   STUDENT_CRITERIA_OPTIONS,
+  toCriteriaSlug,
   toggleValue,
 } from "../utils/matchingCriteria.js";
 import CriteriaChipField from "../components/CriteriaChipField.jsx";
@@ -630,6 +633,19 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   // through explicitly, with the consequence stated on the form rather than
   // hidden behind a rule they cannot overrule.
   const [requestingNewContract, setRequestingNewContract] = useState(false);
+  // The free text typed into each "Others" box, mirroring the admin's
+  // Create Student form.
+  //
+  // !! The criterion is merged into ai_criteria on submit by criteriaWithCustom,
+  // !! which is the same function the admin form uses. Keeping the raw text out
+  // !! of the criteria array is what stops the "__custom__" sentinel - a piece of
+  // !! UI state - from reaching the scorer, where it could never match anything.
+  const [contractCriteriaOther, setContractCriteriaOther] = useState({
+    learningGoal: "",
+    focusArea: "",
+    learningStyle: "",
+    pace: "",
+  });
   const [currentTimeTick, setCurrentTimeTick] = useState(() => Date.now());
   const isAdmin = localRole === "admin"; // helper for rendering
   const viewerTimezone = useMemo(() => getUserTimezone(me), [me]);
@@ -3512,6 +3528,17 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   const submitContractRequest = async () => {
     setContractRequestError("");
 
+    // Each field's chips merged with whatever was typed in its "Others" box.
+    // Identical to the admin's Create Student form, deliberately: the scorer
+    // treats both the same way, and two implementations of the same merge is
+    // how they stop agreeing.
+    const mergedContractCriteria = {
+      learningGoal: criteriaWithCustom(contractAiCriteria?.learningGoal, contractCriteriaOther.learningGoal),
+      focusArea: criteriaWithCustom(contractAiCriteria?.focusArea, contractCriteriaOther.focusArea),
+      learningStyle: criteriaWithCustom(contractAiCriteria?.learningStyle, contractCriteriaOther.learningStyle),
+      pace: criteriaWithCustom(contractAiCriteria?.pace, contractCriteriaOther.pace),
+    };
+
     if (!contractCourseId) {
       setContractRequestError("Please choose your desired course.");
       return;
@@ -3530,7 +3557,11 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         requested_classes: contractClassCount,
         class_duration: contractClassDuration,
         trial_notes: contractTrialNotes,
-        ai_criteria: contractAiCriteria,
+        // The "Others" free text is merged in here, by the same function the
+        // admin's Create Student form uses. Sending contractAiCriteria raw would
+        // carry the __custom__ sentinel to the scorer, where it matches nothing
+        // and then reports as a criterion the student failed.
+        ai_criteria: mergedContractCriteria,
       });
 
       notify?.("Contract request sent to the admin.", "success");
@@ -3542,6 +3573,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       setContractClassDuration("50");
       setContractTrialNotes("");
       setContractAiCriteria(createEmptyCriteria());
+      setContractCriteriaOther({ learningGoal: "", focusArea: "", learningStyle: "", pace: "" });
       loadContractRequests();
     } catch (err) {
       setContractRequestError(err?.response?.data?.message || "Unable to send contract request.");
@@ -3602,10 +3634,17 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   };
 
   const toggleContractAiCriterionValue = (key, value) => {
-    setContractAiCriteria((current) => ({
-      ...current,
-      [key]: toggleValue(current?.[key], value),
-    }));
+    setContractAiCriteria((current) => {
+      const next = { ...current, [key]: toggleValue(current?.[key], value) };
+      // Ticking "Others" opens a box that may stay empty. If the sentinel were
+      // left in the selection it would be sent to the scorer as a criterion no
+      // teacher can ever match, and it would show up as a permanent miss. Drop it
+      // until something is actually typed - the same rule the admin form uses.
+      if (next?.[key]?.includes(CUSTOM_OPTION_VALUE) && !toCriteriaSlug(contractCriteriaOther[key])) {
+        next[key] = next[key].filter((item) => item !== CUSTOM_OPTION_VALUE);
+      }
+      return next;
+    });
   };
 
   const submitStudentBooking = async () => {
@@ -6423,6 +6462,9 @@ $5padding: 20,
                               onToggle={(value) => toggleContractAiCriterionValue("learningGoal", value)}
                               emptyMessage="Select a course to show matching goals."
                               name="contract-learning-goal"
+                              allowCustom
+                              customValue={contractCriteriaOther.learningGoal}
+                              onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, learningGoal: text }))}
                             />
                             <CriteriaChipField
                               legend="Focus Area"
@@ -6431,6 +6473,9 @@ $5padding: 20,
                               onToggle={(value) => toggleContractAiCriterionValue("focusArea", value)}
                               emptyMessage="Select a course to show matching focus areas."
                               name="contract-focus-area"
+                              allowCustom
+                              customValue={contractCriteriaOther.focusArea}
+                              onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, focusArea: text }))}
                             />
                             <CriteriaChipField
                               legend="Learning Style"
@@ -6438,6 +6483,9 @@ $5padding: 20,
                               selected={contractAiCriteria.learningStyle}
                               onToggle={(value) => toggleContractAiCriterionValue("learningStyle", value)}
                               name="contract-learning-style"
+                              allowCustom
+                              customValue={contractCriteriaOther.learningStyle}
+                              onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, learningStyle: text }))}
                             />
                             <CriteriaChipField
                               legend="Learning Pace"
@@ -6445,6 +6493,9 @@ $5padding: 20,
                               selected={contractAiCriteria.pace}
                               onToggle={(value) => toggleContractAiCriterionValue("pace", value)}
                               name="contract-pace"
+                              allowCustom
+                              customValue={contractCriteriaOther.pace}
+                              onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, pace: text }))}
                             />
                             <div>
                               <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Request Notes</label>

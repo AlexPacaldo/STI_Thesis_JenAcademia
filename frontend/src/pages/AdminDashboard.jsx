@@ -22,6 +22,7 @@ import {
   STUDENT_CRITERIA_OPTIONS,
   TEACHER_CRITERIA_HINTS,
   TEACHER_CRITERIA_OPTIONS,
+  criteriaWithCustom,
   toCriteriaSlug,
   toggleValue,
 } from "../utils/matchingCriteria.js";
@@ -1098,11 +1099,10 @@ export default function AdminDashboard() {
   // stored and compared in the same shape as the fixed vocabulary. An empty box
   // contributes nothing at all, so ticking Others and leaving it blank is a
   // no-op rather than a criterion that can never be matched.
-  function criteriaWithCustom(values, otherText) {
-    const chosen = (Array.isArray(values) ? values : []).filter((v) => v !== CUSTOM_OPTION_VALUE);
-    const custom = toCriteriaSlug(otherText);
-    return custom ? [...chosen, custom] : chosen;
-  }
+  // criteriaWithCustom now lives in matchingCriteria.js, next to toCriteriaSlug.
+// It was a local function here, which is why the student's Request New Contract
+// form could not have the same "Others" behaviour without duplicating it - and
+// because nothing prompted the duplication, the two forms diverged silently.
 
   // Only replace the fields whose box has been filled. Touching every field
   // would drop a selection the admin made but did not type anything under.

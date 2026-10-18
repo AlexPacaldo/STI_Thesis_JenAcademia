@@ -1,5 +1,5 @@
 import styles from "./CriteriaChipField.module.css";
-import { isSelectedValue } from "../utils/matchingCriteria.js";
+import { isSelectedValue, CUSTOM_OPTION_VALUE } from "../utils/matchingCriteria.js";
 
 /**
  * One multi-select criteria field, rendered as checkbox chips.
@@ -8,10 +8,18 @@ import { isSelectedValue } from "../utils/matchingCriteria.js";
  * forms so all three look and behave identically - which is the point, because
  * the matcher compares these values against each other.
  *
+ * !! That identical behaviour includes the "Others" box. This component accepted
+ * !! allowCustom for a long time while the student's contract-request form never
+ * !! passed it, so a student could not describe a goal the vocabulary did not
+ * !! have while an admin could. The prop being optional is what allowed that to
+ * !! go unnoticed; it is still optional, but all three forms now pass it.
+ *
  * Uses native checkboxes (visually hidden, not replaced) so keyboard and
  * screen-reader behaviour comes for free. Each chip shows a check when selected.
  */
-export const CUSTOM_OPTION_VALUE = "__custom__";
+
+// Re-exported so callers can keep importing it from here.
+export { CUSTOM_OPTION_VALUE };
 
 export default function CriteriaChipField({
   legend,
