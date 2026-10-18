@@ -391,6 +391,22 @@ ${rule}
      would write to your own machine, so it refuses and tells you to pass
      ALLOW_LOCAL_DB_SEED=1 if that is genuinely what you want.
 
+     !! Railway gives out TWO URLs for one database, and this script needs the
+     !! other one from the app. The app runs inside Railway, so it uses the
+     !! private address that only resolves on Railway's own network
+     !! (mysql.railway.internal). This script runs on YOUR machine, where that
+     !! name never resolves - the driver just waits on DNS until it times out,
+     !! with no error to tell you the hostname itself was the problem.
+     !!
+     !! So in backend/.env, for seeding only, use the PUBLIC URL from the Railway
+     !! dashboard (MySQL service > Networking > public domain). Leave the
+     !! deployment itself on the internal one, which is correct there.
+     !!
+     !! Also check the database name it prints. Railway's default is "railway",
+     !! not "jen_academia"; whichever your deployment actually uses is the one
+     !! that must match, and the seeder only warns you about this rather than
+     !! guessing.
+
      It is safe to re-run - it updates the same rows rather than duplicating.
 
   3. START THE SERVER ONCE, then stop it.

@@ -25,6 +25,44 @@
  *   4. Hardcoded defaults, which are the developer's own machine, never a server.
  */
 
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
+
+/**
+ * Load backend/.env here, BEFORE resolving anything below.
+ *
+ * !! This must happen in this file and not in whoever imports it. ES modules
+ * !! evaluate every import before a single statement of the importing module's
+ * !! body runs, so `dotenv.config()` sitting in server.js's body, or in the
+ * !! seeder's, happens strictly too late: this module has already read
+ * !! process.env, found it empty, and frozen DB_HOST="localhost" with an empty
+ * !! password.
+ * !!
+ * !! It looks like it works on Railway, because Railway injects real environment
+ * !! variables into the process rather than relying on a .env file - so there is
+ * !! nothing to load and nothing to be too late for. It fails on a developer
+ * !! machine, which is exactly where you notice a credential problem, and it
+ * !! fails as a silent fallback to localhost rather than as an error.
+ * !!
+ * !! dotenv never overwrites a variable that is already set, so loading the same
+ * !! file from several places is harmless: the platform's real variables win.
+ */
+export const envPath = (() => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [path.resolve(here, ".env"), path.resolve(here, "..", "backend", ".env")];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      dotenv.config({ path: candidate });
+      return candidate;
+    }
+  }
+
+  return "";
+})();
+
 export function parseMysqlUrl(url) {
   if (!url) return {};
 
@@ -92,9 +130,15 @@ export function describeDbConfig() {
     database: DB_NAME,
     passwordSet: Boolean(DB_PASSWORD),
     source: DB_SOURCE,
+    envFile: envPath,
     // True when the host is the developer machine rather than a server, which is
     // the tell that a Railway URL went unread.
     looksLocal: /^(localhost|127\.0\.0\.1|::1)$/i.test(DB_HOST),
+    // True for Railway's private network DNS. Those names only resolve from
+    // inside Railway's own network, so a laptop hangs on DNS forever waiting for
+    // a name that will never answer. Railway ships a *separate* public proxy URL
+    // for exactly this case, and it is the one you need for a local script.
+    looksInternal: /\.railway\.internal$/i.test(DB_HOST),
   };
 }
 

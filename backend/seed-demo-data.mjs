@@ -36,13 +36,9 @@
  * Idempotent: re-running updates the same rows rather than duplicating them.
  */
 
-import { config as loadEnv } from "dotenv";
 import bcrypt from "bcryptjs";
 import mysql from "mysql2/promise";
-import { describeDbConfig } from "./dbConfig.js";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
-import fs from "node:fs";
+import { DB_PASSWORD, describeDbConfig } from "./dbConfig.js";
 import {
   ADMIN, ALL_COURSES, BOOKED_CLASSES, COUNTRY, PASSWORD, STUDENTS, TEACHERS,
   TIMEZONE, WEEKLY_AVAILABILITY, aiBio, criteriaNotes, daysLeftFrom,
@@ -57,13 +53,14 @@ import {
 //
 // The data module and the txt generator stay in scripts/ - they import nothing
 // external, so they resolve from anywhere.
-const here = path.dirname(fileURLToPath(import.meta.url));
-for (const candidate of [path.resolve(here, ".env"), path.resolve(here, "..", "backend", ".env")]) {
-  if (fs.existsSync(candidate)) {
-    loadEnv({ path: candidate });
-    break;
-  }
-}
+//
+// !! Loading .env here used to be this script's job, and it was always too late.
+// !! ES modules evaluate every import before any statement of the importing
+// !! module's body, so dbConfig.js had already read process.env - found it
+// !! empty - and fixed DB_HOST on "localhost" with an empty password by the time
+// !! the line below ran. The seeder then reported NOT SET while standing next to
+// !! a perfectly good .env. dbConfig.js loads the file itself now, before it
+// !! resolves, so importing it is enough.
 
 // The credentials come from dbConfig.js, the same resolution the server uses:
 // DB_* , then MYSQL*, then a parsed MYSQL_URL / DATABASE_URL, which is what
@@ -85,7 +82,8 @@ console.log(`  host      ${target.host}:${target.port}`);
 console.log(`  database  ${target.database}`);
 console.log(`  user      ${target.user}`);
 console.log(`  password  ${target.passwordSet ? "found" : "MISSING"}`);
-console.log(`  from      ${target.source}\n`);
+console.log(`  from      ${target.source}`);
+console.log(`  env file  ${target.envFile || "(none found)"}\n`);
 
 if (!target.passwordSet) {
   console.error(
@@ -96,6 +94,32 @@ if (!target.passwordSet) {
       "    MYSQL_URL=mysql://USER:PASSWORD@HOST:PORT/jen_academia\n\n" +
       "Not sure? Run this and it will tell you what it resolved:\n" +
       "  node -e \"import('./dbConfig.js').then(m => console.log(m.describeDbConfig()))\"\n"
+  );
+  process.exit(1);
+}
+
+if (target.looksInternal && process.env.ALLOW_INTERNAL_DB_SEED !== "1") {
+  // *** THIS IS THE RAILWAY TRAP, AND IT HANGS RATHER THAN ERRORS. ***
+  // Railway hands out two different URLs for the same database. The one wired up
+  // inside Railway resolves on *.railway.internal, which only exists on Railway's
+  // private network. From a laptop that name never resolves, so the driver waits
+  // on DNS until it times out - no error message tells you the hostname is wrong,
+  // because as far as the network is concerned the request was well formed.
+  //
+  // It is tempting to leave the app pointed at the internal URL, since that is
+  // the one that works in production. That is correct for the app and wrong for
+  // this script: the script runs on your machine, not inside Railway.
+  console.error(
+    `That is Railway's PRIVATE network address (${target.host}).\n\n` +
+      `It only resolves from inside Railway's network, so this script - running on\n` +
+      `your machine - will hang on DNS until it times out.\n\n` +
+      `You want Railway's PUBLIC URL instead: in the Railway dashboard open the\n` +
+      `MySQL service > Networking, copy the public domain, and put THAT in\n` +
+      `backend/.env:\n` +
+      `    MYSQL_URL=mysql://USER:PASSWORD@<public-domain>:PORT/jen_academia\n\n` +
+      `Leave the app on the internal URL - that one is right for it, because the\n` +
+      `app runs inside Railway. This script is the only thing that needs the\n` +
+      `public one.\n`
   );
   process.exit(1);
 }
@@ -113,11 +137,20 @@ if (target.looksLocal && process.env.ALLOW_LOCAL_DB_SEED !== "1") {
   process.exit(1);
 }
 
+if (process.env.ALLOW_WRONG_DB_SEED !== "1" && !/^jen_academia$|^railway$/i.test(target.database)) {
+  // Worth a second look rather than a hard stop: the name is not something this
+  // script can reason about, only the person who owns the deployment can.
+  console.warn(
+    `NOTE: the database name is "${target.database}", not "jen_academia".\n` +
+      `If that is not the database your deployment uses, stop here.\n`
+  );
+}
+
 const db = await mysql.createConnection({
   host: target.host,
   port: target.port,
   user: target.user,
-  password: process.env.DB_PASSWORD || process.env.MYSQLPASSWORD || "", // resolved in dbConfig
+  password: DB_PASSWORD,
   database: target.database,
   charset: "utf8mb4",
 });
