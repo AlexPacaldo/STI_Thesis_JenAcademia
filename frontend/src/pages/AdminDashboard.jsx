@@ -405,6 +405,18 @@ export default function AdminDashboard() {
   const [me, setMe] = useState(null);
   const currentAdminId = me?.id || me?.user_id || me?.userId;
 
+  // Select the whole link the moment the fallback dialog opens, so Ctrl+C works
+  // straight away. Making the admin click into a field, drag across a URL and
+  // copy it by hand is the friction this dialog exists to remove - it is only
+  // reached when the automatic route has already failed.
+  useEffect(() => {
+    if (!inviteManualCopy) return;
+    const input = inviteCopyInputRef.current;
+    if (!input) return;
+    input.focus();
+    input.select();
+  }, [inviteManualCopy]);
+
   useEffect(() => {
     const requestedTab = new URLSearchParams(location.search).get("tab");
     const nextActive = getAdminTabFromSearch(location.search);
@@ -550,6 +562,11 @@ export default function AdminDashboard() {
   const [selectedProof, setSelectedProof] = useState(null);
   const [adminConfirm, setAdminConfirm] = useState(null);
   const [studentAccountModal, setStudentAccountModal] = useState(null);
+  // Shown when the clipboard is unusable, so the link can still be copied by hand.
+  // Replaces a window.prompt, which DESIGN_LANGUAGE.md does not permit and which
+  // is unusable on touch anyway.
+  const [inviteManualCopy, setInviteManualCopy] = useState(null); // { url }
+  const inviteCopyInputRef = useRef(null);
   const [studentAccountLoading, setStudentAccountLoading] = useState(false);
   const [studentEmailDraft, setStudentEmailDraft] = useState("");
   const [studentAccountActionLoading, setStudentAccountActionLoading] = useState("");
@@ -1502,12 +1519,29 @@ export default function AdminDashboard() {
       const inviteUrl = response.data?.setupInviteUrl;
 
       if (copyOnly && inviteUrl) {
-        if (!navigator.clipboard?.writeText) {
-          window.prompt("Copy this setup invite link:", inviteUrl);
-        } else {
-          await navigator.clipboard.writeText(inviteUrl);
+        // navigator.clipboard existing says nothing about it working. It rejects
+        // on a denied permission and on a non-secure origin, and both are
+        // ordinary. An unguarded await here meant a clipboard failure surfaced as
+        // "Failed to prepare setup invite" - reporting a failed copy as a failed
+        // invite, for an invite that had already been created successfully.
+        let copied = false;
+        if (navigator.clipboard?.writeText) {
+          try {
+            await navigator.clipboard.writeText(inviteUrl);
+            copied = true;
+          } catch {
+            copied = false;
+          }
         }
-        notify("Fresh setup invite link copied.", "success");
+
+        if (copied) {
+          notify("Fresh setup invite link copied.", "success");
+        } else {
+          // Hand the link over visibly instead. The admin can select and copy it
+          // themselves, which is the one route that cannot be blocked.
+          setInviteManualCopy({ url: inviteUrl });
+          notify("Could not copy automatically. Copy the link from the dialog.", "warning");
+        }
       } else {
         notify(
           response.data?.inviteEmailSent
@@ -4409,6 +4443,76 @@ export default function AdminDashboard() {
         )}
         {/* Portalled so the overlay covers the whole viewport. See ModalPortal. */}
         <ModalPortal>
+          {inviteManualCopy && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0,0,0,0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1100,
+            }}
+            onClick={() => setInviteManualCopy(null)}
+          >
+            <div
+              style={{
+                background: "#fff",
+                border: "1px solid rgba(38, 66, 59, 0.12)",
+                borderRadius: 24,
+                padding: 24,
+                maxWidth: "440px",
+                width: "100%",
+                boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
+                animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: "0 0 12px 0", fontSize: "1.2rem", fontWeight: 800, color: "#13251f" }}>
+                Copy this setup invite link
+              </h3>
+              <p style={{ margin: "0 0 16px 0", color: "#5e7268", lineHeight: 1.6, fontSize: "0.95rem" }}>
+                This browser would not let the page copy on its own, so the link is selected
+                below. Press <b>Ctrl</b>+<b>C</b> (or <b>Cmd</b>+<b>C</b> on a Mac) to copy it,
+                then send it to the student.
+              </p>
+              <input
+                ref={inviteCopyInputRef}
+                type="text"
+                readOnly
+                value={inviteManualCopy.url}
+                onFocus={(e) => e.target.select()}
+                aria-label="Setup invite link"
+                style={{
+                  width: "100%",
+                  padding: "11px 13px",
+                  marginBottom: "20px",
+                  border: "1px solid rgba(38, 66, 59, 0.12)",
+                  borderRadius: 12,
+                  background: "#f8fbf9",
+                  color: "#26423b",
+                  fontFamily: "monospace",
+                  fontSize: "0.85rem",
+                  textAlign: "center",
+                }}
+              />
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                <button
+                  className={styles.primary}
+                  type="button"
+                  onClick={() => setInviteManualCopy(null)}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
           {adminConfirm && (
           <div
             style={{
