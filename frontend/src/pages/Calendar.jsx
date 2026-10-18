@@ -20,6 +20,7 @@ import {
   toggleValue,
 } from "../utils/matchingCriteria.js";
 import CriteriaChipField from "../components/CriteriaChipField.jsx";
+import MatchPreviewCard from "../components/MatchPreviewCard.jsx";
 import ModalPortal from "../utils/ModalPortal.jsx";
 import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/studentSchedule.module.css";
@@ -662,6 +663,65 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [contractPreferredSchedule, setContractPreferredSchedule] = useState(
     createEmptyPreferredSchedule()
   );
+
+  // Each field's chips merged with whatever was typed in its "Others" box.
+  //
+  // At component scope rather than inside the submit handler, because the match
+  // preview needs the same merged criteria and computing it twice would let the
+  // two drift - the preview describing something other than what gets sent.
+  // Identical to the admin's Create Student form, deliberately: the scorer treats
+  // both the same way, and two implementations of the same merge is how they stop
+  // agreeing.
+  const mergedContractCriteria = {
+    learningGoal: criteriaWithCustom(contractAiCriteria?.learningGoal, contractCriteriaOther.learningGoal),
+    focusArea: criteriaWithCustom(contractAiCriteria?.focusArea, contractCriteriaOther.focusArea),
+    learningStyle: criteriaWithCustom(contractAiCriteria?.learningStyle, contractCriteriaOther.learningStyle),
+    pace: criteriaWithCustom(contractAiCriteria?.pace, contractCriteriaOther.pace),
+  };
+
+  // The preview of who this would match.
+  //
+  // Cleared whenever anything it depends on changes - course, criteria, schedule -
+  // because a preview of the previous criteria sitting above newly chosen ones is
+  // worse than no preview at all. It describes a state that no longer exists.
+  const [matchPreview, setMatchPreview] = useState(null);
+  const [previewingMatch, setPreviewingMatch] = useState(false);
+  const [matchPreviewError, setMatchPreviewError] = useState("");
+
+  useEffect(() => {
+    setMatchPreview(null);
+    setMatchPreviewError("");
+  }, [
+    contractCourseId,
+    contractAiCriteria,
+    contractCriteriaOther,
+    contractPreferredSchedule,
+  ]);
+
+  const previewContractMatch = async () => {
+    if (!contractCourseId) {
+      setMatchPreviewError("Choose a course first.");
+      return;
+    }
+    setPreviewingMatch(true);
+    setMatchPreviewError("");
+    try {
+      const res = await axios.post(`${API}/api/student/contract-match-preview`, {
+        student_id: localUserId,
+        course_id: contractCourseId,
+        criteria: mergedContractCriteria,
+        preferred_schedule: toPreferredSchedulePayload(contractPreferredSchedule),
+      });
+      setMatchPreview(res.data);
+    } catch (err) {
+      setMatchPreview(null);
+      setMatchPreviewError(
+        err?.response?.data?.message || "Could not work out a match right now."
+      );
+    } finally {
+      setPreviewingMatch(false);
+    }
+  };
   const [currentTimeTick, setCurrentTimeTick] = useState(() => Date.now());
   const isAdmin = localRole === "admin"; // helper for rendering
   const viewerTimezone = useMemo(() => getUserTimezone(me), [me]);
@@ -3543,17 +3603,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
   const submitContractRequest = async () => {
     setContractRequestError("");
-
-    // Each field's chips merged with whatever was typed in its "Others" box.
-    // Identical to the admin's Create Student form, deliberately: the scorer
-    // treats both the same way, and two implementations of the same merge is
-    // how they stop agreeing.
-    const mergedContractCriteria = {
-      learningGoal: criteriaWithCustom(contractAiCriteria?.learningGoal, contractCriteriaOther.learningGoal),
-      focusArea: criteriaWithCustom(contractAiCriteria?.focusArea, contractCriteriaOther.focusArea),
-      learningStyle: criteriaWithCustom(contractAiCriteria?.learningStyle, contractCriteriaOther.learningStyle),
-      pace: criteriaWithCustom(contractAiCriteria?.pace, contractCriteriaOther.pace),
-    };
 
     if (!contractCourseId) {
       setContractRequestError("Please choose your desired course.");
@@ -6675,6 +6724,47 @@ $5padding: 20,
                                     <option value="20">20 classes</option>
                                   </select>
                                 </div>
+                                {/* Who this would match, before sending it.
+                                    !! The same recommendTeacher the approval
+                                    !! path runs, so this is a preview rather than
+                                    !! an approximation - a preview that could
+                                    !! disagree with what actually happens would be
+                                    !! worse than none. Nothing is assigned: the
+                                    !! admin still decides, and a student cannot
+                                    !! name a teacher here. */}
+                                <div style={{ marginTop: 6 }}>
+                                  <button
+                                    type="button"
+                                    onClick={previewContractMatch}
+                                    disabled={previewingMatch || !contractCourseId}
+                                    style={{
+                                      width: "100%",
+                                      padding: "9px 12px",
+                                      border: "1px solid #26423b",
+                                      borderRadius: 8,
+                                      background: "#fff",
+                                      color: "#26423b",
+                                      fontWeight: 700,
+                                      cursor: previewingMatch || !contractCourseId ? "not-allowed" : "pointer",
+                                      opacity: !contractCourseId ? 0.55 : 1,
+                                    }}
+                                  >
+                                    {previewingMatch
+                                      ? "Working out a match..."
+                                      : matchPreview
+                                        ? "Check again"
+                                        : "See who would match"}
+                                  </button>
+
+                                  {matchPreviewError && (
+                                    <p style={{ marginTop: 8, fontSize: "0.85em", color: "#8c2020" }}>
+                                      {matchPreviewError}
+                                    </p>
+                                  )}
+
+                                  {matchPreview && <MatchPreviewCard preview={matchPreview} />}
+                                </div>
+
                                 {contractRequestError && (
                                   <div style={{ padding: 8, border: "1px solid #fecaca", borderRadius: 8, background: "#fef2f2", color: "#b91c1c", fontSize: 12 }}>
                                     {contractRequestError}

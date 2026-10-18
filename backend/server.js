@@ -4691,6 +4691,12 @@ app.post("/api/admin/users", requireAdminSession, async (req, res) => {
         trialNotes,
         courseId,
         proficiencyLevel,
+        // The admin typed the birthday two dozen lines above and it is what decides
+        // whether a teacher who declines children is eligible at all. Passing it is
+        // what makes that rule apply on this path rather than only when the admin
+        // stops and presses Analyze, which reads as the rule working when it is
+        // the Analyze button doing it.
+        studentBirthDate: normalizedBirthDate,
         preferredTeacherId: teacherId,
         preferredSchedule,
         // The admin assigns teachers personally, so an explicit choice is honoured
@@ -5539,6 +5545,119 @@ app.get("/api/admin/contract-requests", requireAdminSession, async (_req, res) =
   }
 });
 
+/**
+ * What a student's contract request would match, before they send it.
+ *
+ * !! Read-only, and it assigns nothing. The whole point is that the student can
+ * !! see who is likely and how strong it is, adjust their criteria, and send -
+ * !! the assignment still happens on admin approval and nowhere else. A student
+ * !! cannot name a teacher here, and cannot cause one to be assigned.
+ *
+ * Deliberately a different endpoint from /api/admin/recommend-teacher rather
+ * than the same one with a looser guard. That endpoint accepts a teacherId to
+ * assign, is admin-only, and returns internal ranking detail. Reusing it would
+ * mean either handing a student the ability to assign a teacher or returning a
+ * payload built for someone who has to make the decision.
+ *
+ * The inputs are read from the student's own profile and from the body, and the
+ * same recommendTeacher runs - so this is a genuine preview of the approval path,
+ * not an approximation of it. Which is the only kind worth showing: a preview
+ * that could disagree with what actually happens would be worse than none.
+ */
+app.post("/api/student/contract-match-preview", requireSession, requireBodyIdentity("student_id"), limitMatchInsights, async (req, res) => {
+  try {
+    const { student_id, course_id, criteria, preferred_schedule } = req.body || {};
+    const parsedStudentId = parseInt(student_id, 10);
+    const parsedCourseId = course_id ? parseInt(course_id, 10) : null;
+
+    if (!parsedStudentId || !parsedCourseId) {
+      return res.status(400).json({ message: "Choose a course to see who would match." });
+    }
+
+    // Identity: a student may only preview themselves. requireBodyIdentity
+    // already rejects a body that disagrees with the session; this additionally
+    // refuses an admin previewing somebody else, so this endpoint cannot become
+    // a back door around the admin one's own guards.
+    const [canRead] = await pool.query(
+      "SELECT 1 FROM users WHERE user_id = ? AND role = 'student' AND status = 'active' LIMIT 1",
+      [parsedStudentId]
+    );
+    if (!canRead.length) {
+      return res.status(403).json({ message: "You can only preview your own match." });
+    }
+
+    // proficiency_level lives on student_profiles, birth_date on users - and
+    // birth_date is encrypted, so it has to come back through the decryptor. Read
+    // both here rather than trusting that the caller sends a usable one: the age
+    // decides whether a teacher who declines children is eligible at all.
+    const [profileRows] = await pool.query(
+      `SELECT sp.proficiency_level, sp.assigned_teacher_id, u.birth_date
+       FROM student_profiles sp
+       JOIN users u ON u.user_id = sp.user_id
+       WHERE sp.user_id = ?
+       LIMIT 1`,
+      [parsedStudentId]
+    );
+
+    const recommendation = await recommendTeacher({
+      criteria: normalizeCriteria(criteria || {}),
+      trialNotes: "",
+      courseId: parsedCourseId,
+      proficiencyLevel: profileRows[0]?.proficiency_level || "",
+      studentBirthDate: decryptNullableText(profileRows[0]?.birth_date) || null,
+      // Their current teacher, exactly as the approval path passes it. Leaving it
+      // out would let the preview name someone the approval would not pick, which
+      // is the one thing a preview must never do. Not honoured as a preference
+      // though - honourPreferredTeacher stays false, because a student's existing
+      // teacher is an assignment they were given, not a choice they made.
+      preferredTeacherId: profileRows[0]?.assigned_teacher_id || null,
+      preferredSchedule: normalizePreferredSchedule(preferred_schedule),
+      honourPreferredTeacher: false,
+    });
+
+    const teacher = recommendation.teacher;
+    if (!teacher) {
+      return res.json({
+        teacher: null,
+        noTeacherReason: recommendation.noTeacherReason || "",
+        rankedTeachers: [],
+      });
+    }
+
+    // A deliberately narrow payload. The admin card shows workload fallbacks,
+    // profile-completion state and balance-limit warnings - all things an admin
+    // needs to make a decision and a student has no use for, and two of which
+    // are about other students' loads.
+    res.json({
+      teacher: {
+        user_id: teacher.user_id,
+        first_name: teacher.first_name,
+        last_name: teacher.last_name,
+        reasons: teacher.reasons || [],
+      },
+      matchStrength: recommendation.matchStrength,
+      advisor: recommendation.advisor
+        ? {
+            // Reported whether or not it was used, so a quiet AI is
+            // distinguishable from a broken one instead of reading as silence.
+            used: Boolean(recommendation.advisor.used),
+            configured: Boolean(recommendation.advisor.configured),
+            summary: recommendation.advisor.summary || "",
+            reasons: recommendation.advisor.reasons || {},
+          }
+        : null,
+      preferredScheduleEvaluated: Boolean(recommendation.preferredScheduleEvaluated),
+      availabilityConflict: Boolean(recommendation.availabilityConflict),
+      availabilityReason: recommendation.availabilityReason || "",
+      // Enough to understand the outcome without the internal bookkeeping.
+      rankedCount: recommendation.rankedTeachers?.length || 0,
+    });
+  } catch (err) {
+    console.error("POST /api/student/contract-match-preview error:", err);
+    res.status(500).json({ message: "Could not work out a match right now." });
+  }
+});
+
 app.put("/api/admin/contract-requests/:request_id", requireAdminSession, async (req, res) => {
   const connection = await pool.getConnection();
 
@@ -5721,11 +5840,28 @@ app.put("/api/admin/contract-requests/:request_id", requireAdminSession, async (
       const combinedTrialNotes = [decryptNullableText(profileRows[0].trial_notes) || "", request.trial_notes || ""]
         .filter((part) => String(part).trim())
         .join("\n\nContract request notes:\n");
+
+      // The student's birthday decides whether a teacher who declines children is
+      // eligible at all, so the matcher has to be told it. Read separately from the
+      // locked profile row because birth_date is on users and encrypted, and
+      // locking the user row just to read one field would block every other write
+      // to that account for the length of this approval.
+      //
+      // This was silently missing, which made the child rule inert on the one path
+      // that assigns a teacher from a student's own request: with no birthday,
+      // every student reads as an adult and a teacher who said they will not teach
+      // children stays in the running.
+      const [requestBirthRows] = await connection.query(
+        "SELECT birth_date FROM users WHERE user_id = ? LIMIT 1",
+        [request.student_id]
+      );
+
       const recommendation = await recommendTeacher({
         criteria: requestCriteria,
         trialNotes: combinedTrialNotes,
         courseId: request.course_id,
         proficiencyLevel: profileRows[0].proficiency_level,
+        studentBirthDate: decryptNullableText(requestBirthRows[0]?.birth_date) || null,
         preferredTeacherId: profileRows[0].assigned_teacher_id,
         // The student said when they can attend. Honoured here, on approval,
         // rather than at submission - which is the whole reason this had to be

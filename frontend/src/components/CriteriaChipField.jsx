@@ -37,6 +37,7 @@ export { CUSTOM_OPTION_VALUE };
 
 const MAX_CUSTOM_LENGTH = 60;
 
+
 export default function CriteriaChipField({
   legend,
   hint,
