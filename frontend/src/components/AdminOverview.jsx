@@ -516,7 +516,7 @@ export default function AdminOverview({ onNavigateToTab }) {
           )}
         </section>
 
-        <div style={{ display: "grid", gap: "20px" }}>
+        <div className={styles.overviewStack}>
           <section className={styles.overviewPanel}>
             <div className={styles.overviewPanelHead}>
               <div>
@@ -568,6 +568,11 @@ export default function AdminOverview({ onNavigateToTab }) {
         </div>
       </div>
 
+      {/* These two are the same shape - a short list of names, each with one
+          detail beside it - so they sit together rather than as two full-width
+          bands. Stretched alone, each row pushed its detail to the far edge of
+          a very wide panel and left the space between empty. */}
+      <div className={styles.overviewPair}>
       <section className={styles.overviewPanel}>
         <div className={styles.overviewPanelHead}>
           <div>
@@ -632,6 +637,7 @@ export default function AdminOverview({ onNavigateToTab }) {
           <div className={styles.overviewEmpty}>No accounts yet.</div>
         )}
       </section>
+      </div>
     </div>
   );
 }

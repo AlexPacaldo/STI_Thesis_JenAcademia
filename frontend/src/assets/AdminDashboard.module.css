@@ -1890,12 +1890,31 @@
   gap: 20px;
 }
 
-/* auto-fit, not a fixed column count: four tiles on a laptop, two on a tablet,
-   one on a phone, with no breakpoints to keep in sync with the ones below. */
+/* Six tiles, so the column count is set per breakpoint rather than left to
+ * auto-fit. auto-fit can only ever land on a track count that happens to fit
+ * the width, and the leftover tiles then stretch across a part-empty final
+ * row - four across and two below at laptop width, which reads as a bug rather
+ * than a grid. Counting from six keeps every row whole: 6 / 3x2 / 2x3 / 1x6.
+ * The 1280px floor is where six columns still clear ~205px each. Below it, three
+ * columns of ~410px: six tiles cannot divide into four, so the only whole-row
+ * layouts are 6 / 3x2 / 2x3 / 1x6, and this is where the jump from the first to
+ * the second is least jarring. */
 .statGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+@media (min-width: 620px) {
+  .statGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .statGrid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
 }
 
 .statTile {
@@ -1960,12 +1979,54 @@
 }
 
 /* Two columns of independent panels; the grid owns the collapse so a long
-   attention list never stretches the trend beside it. */
+   attention list never squeezes the trend beside it.
+
+   Deliberately *not* align-items: start. That was here to stop a tall panel
+   stretching its neighbour, but the panels are cards on a card background, so
+   a short one that stops early does not look "protected" - it leaves a ragged
+   hole of bare page background under it, beside a neighbour still running.
+   Both panels now take the full row height and finish level. */
 .overviewSplit {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   gap: 20px;
-  align-items: start;
+}
+
+/* A column of stacked panels sitting in the narrower half of an
+ * .overviewSplit. Was an inline style, which is why it could not take part in
+ * the collapse below - the panels beside it went single-column on a narrow
+ * window and this column kept its own spacing.
+ *
+ * auto-rows is what fills the column. Two panels with auto rows would sit at
+ * the top of it and leave the rest of the height as a gap; this splits the
+ * slack between them so the column is as tall as the panel beside it, all the
+ * way down.
+ *
+ * min-content, not 0, in the track minimum: the two panels are not the same
+ * height, and a plain 1fr would hand them equal halves - so the taller one
+ * gets less than it needs and its content spills out of a track told it could
+ * be smaller. This way slack is shared evenly, and a panel never goes below
+ * the size it asked for. */
+.overviewStack {
+  display: grid;
+  gap: 20px;
+  grid-auto-rows: minmax(min-content, 1fr);
+}
+
+/* Panels of equal weight, side by side rather than stacked full width.
+ *
+ * Both of these are short name-and-stamp lists. Stretched across the whole
+ * content width, every row pinned its stamp to the far edge - some 800px from
+ * the name it describes - so the page read as empty on the right while the
+ * information itself was two words long. Side by side, each row keeps its name
+ * and its detail in the same neighbourhood, and both panels finish level.
+ *
+ * auto-fit still collapses these to one column on a narrow window, where two
+ * 460px panels would only shrink. */
+.overviewPair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+  gap: 20px;
 }
 
 .overviewPanel {
@@ -1977,6 +2038,24 @@
   background: var(--surface-raised);
   box-shadow: var(--shadow-sm);
   min-width: 0;
+
+  /* Head keeps its natural height; the body below it takes whatever the row
+     handed this panel. That is what stops a panel that has to match a tall
+     neighbour from being a short box of content floating in a large empty
+     card - the spare height lands on the list or the empty state instead, and
+     an empty state given extra room grows its dashed box to match.
+     A panel whose content is taller than its neighbour is unaffected: the 1fr
+     track never shrinks below what the content needs. */
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+/* Lists keep their items at natural height when the panel stretches. Without
+ * this the spare height would be distributed between the rows, turning a
+ * two-item list into two very tall bands. */
+.attentionList,
+.overviewNameList,
+.scheduleList {
+  align-content: start;
 }
 
 .overviewPanelHead {
@@ -2237,13 +2316,21 @@
   white-space: nowrap;
 }
 
+/* Centred, not just horizontally. These boxes stretch to whatever height the
+ * panel beside them needed, so top-aligned text left a long blank run under a
+ * single line - the sentence read as a caption above an empty box rather than
+ * as the message of one. */
 .overviewEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 16px;
   border: 1px dashed var(--border-mid);
   border-radius: var(--radius-sm);
   background: var(--surface-recessed);
   color: var(--muted);
   font-weight: 700;
+  line-height: 1.5;
   text-align: center;
 }
 
