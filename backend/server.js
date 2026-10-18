@@ -876,6 +876,36 @@ async function sessionMayReadAssignment(req, assignmentId) {
 }
 
 /**
+ * May this session read a submission?
+ *
+ * Same shape as sessionMayReadAssignment: the teacher the work was set for, the
+ * student who submitted it, or an admin. Kept separate rather than resolving the
+ * parent assignment first because the mint endpoint takes a submission id, and
+ * an assignment check would need the extra lookup to prove the submission
+ * actually belongs to that assignment.
+ */
+async function sessionMayReadSubmission(req, submissionId) {
+  const session = req.session || {};
+  if (session.role === "admin") return true;
+
+  const [rows] = await pool.query(
+    `SELECT s.student_id, a.teacher_id
+     FROM assignment_submissions s
+     JOIN assignments a ON a.assignment_id = s.assignment_id
+     WHERE s.submission_id = ?
+     LIMIT 1`,
+    [submissionId]
+  );
+  const submission = rows[0];
+  if (!submission) return false;
+
+  return (
+    String(submission.teacher_id) === String(session.userId) ||
+    String(submission.student_id) === String(session.userId)
+  );
+}
+
+/**
  * Middleware form of sessionMayActOnClass.
  *
  * Most class routes are plain async handlers, but some - the recording upload
@@ -1816,13 +1846,14 @@ async function ensureAssignmentAttemptColumns() {
   }
 }
 
-// The worksheet a teacher attaches to a task.
+// The file a teacher attaches to a task, and the file a student sends back.
 //
-// Stored separately from assignment_submissions.file_url on purpose: those are
-// files coming back *from* the student, this is the material going out *to*
-// them, and only one side can own the name. Keeping a separate original-name
-// column matters because the stored filename is a timestamp prefix plus the
-// sanitised original, so the on-disk name is not something to show a student.
+// Two separate name columns, because they are separate columns on separate
+// tables that merely happen to share a directory. Each keeps the original
+// filename, which matters because the stored filename is a timestamp prefix
+// plus a sanitised original - so "Week 3 Notes.pdf" is on disk as
+// "Week_3_Notes.pdf" and the URL can never carry the name a user expects to
+// see. /f serves both by signed link and titles the tab from these.
 async function ensureAssignmentAttachmentColumns() {
   if (!(await columnExists("assignments", "attachment_url"))) {
     await pool.query("ALTER TABLE assignments ADD COLUMN attachment_url VARCHAR(1000) DEFAULT NULL AFTER attempt_limit");
@@ -1830,6 +1861,10 @@ async function ensureAssignmentAttachmentColumns() {
 
   if (!(await columnExists("assignments", "attachment_name"))) {
     await pool.query("ALTER TABLE assignments ADD COLUMN attachment_name VARCHAR(255) DEFAULT NULL AFTER attachment_url");
+  }
+
+  if (!(await columnExists("assignment_submissions", "file_name"))) {
+    await pool.query("ALTER TABLE assignment_submissions ADD COLUMN file_name VARCHAR(255) DEFAULT NULL AFTER file_url");
   }
 }
 
@@ -3336,6 +3371,7 @@ const assignmentSelect = `
          s.submission_id AS submissionId,
          s.submission_text AS comments,
          s.file_url AS fileUrl,
+         s.file_name AS fileName,
          COALESCE(s.attempt_count, 0) AS attemptsUsed,
          COALESCE(s.attempt_count, 0) AS attemptCount,
          DATE_FORMAT(s.submitted_at, '%Y-%m-%d %H:%i') AS submittedAt,
@@ -3363,6 +3399,7 @@ const submissionSelect = `
          CONCAT(teacher.first_name, ' ', teacher.last_name) AS teacherName,
          s.submission_text AS comments,
          s.file_url AS fileUrl,
+         s.file_name AS fileName,
          s.attempt_count AS attemptsUsed,
          s.attempt_count AS attemptCount,
          COALESCE(s.file_url, 'Comment submission') AS file,
@@ -9896,18 +9933,13 @@ app.post("/api/assignment-attachments/link", requireSession, async (req, res) =>
       return res.status(403).json({ message: "You can only open files on your own assignments." });
     }
 
-    const name = assignment.attachment_name || "Attachment";
-    const token = signFileLink(
-      { assignmentId: assignment.assignment_id, filename: name },
-      { secret: SESSION_SECRET }
+    res.json(
+      fileLinkResponse(req, {
+        kind: "assignment",
+        id: assignment.assignment_id,
+        filename: assignment.attachment_name || "Attachment",
+      })
     );
-
-    res.json({
-      // The filename is a URL segment so the browser titles the tab with it.
-      // It is display only - nothing reads the file from it.
-      url: `${req.protocol}://${req.get("host")}/f/${token}/${encodeURIComponent(name)}`,
-      filename: name,
-    });
   } catch (err) {
     console.error("POST /api/assignment-attachments/link error:", err);
     res.status(500).json({
@@ -9917,8 +9949,79 @@ app.post("/api/assignment-attachments/link", requireSession, async (req, res) =>
   }
 });
 
+// The same, for the work a student sent back. Separate endpoint rather than a
+// kind on the assignment one, so neither can be used to probe the other's table.
+app.post("/api/submission-files/link", requireSession, async (req, res) => {
+  try {
+    const { url } = req.body || {};
+    if (!url) {
+      return res.status(400).json({ message: "A file url is required" });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT submission_id, file_name
+       FROM assignment_submissions
+       WHERE file_url = ?
+       LIMIT 1`,
+      [url]
+    );
+
+    const submission = rows[0];
+    if (!submission) {
+      return res.status(404).json({ message: "That file is no longer available." });
+    }
+    if (!(await sessionMayReadSubmission(req, submission.submission_id))) {
+      return res.status(403).json({ message: "You can only open submitted work on your own assignments." });
+    }
+
+    res.json(
+      fileLinkResponse(req, {
+        kind: "submission",
+        id: submission.submission_id,
+        // file_name is null for work submitted before this column existed. The
+        // stored path still carries the sanitised original as its last segment,
+        // which is a better title than "Submission".
+        filename: submission.file_name || fileNameFromStoredUrl(url) || "Submission",
+      })
+    );
+  } catch (err) {
+    console.error("POST /api/submission-files/link error:", err);
+    res.status(500).json({
+      message: "Could not open that file",
+      ...(process.env.NODE_ENV !== "production" ? { error: err.message } : {}),
+    });
+  }
+});
+
+/** Build the signed link response body shared by both mint endpoints. */
+function fileLinkResponse(req, { kind, id, filename }) {
+  const token = signFileLink({ kind, id, filename }, { secret: SESSION_SECRET });
+  return {
+    // The filename is a URL segment so the browser titles the tab with it.
+    // It is display only - nothing reads the file from it.
+    url: `${req.protocol}://${req.get("host")}/f/${token}/${encodeURIComponent(filename)}`,
+    filename,
+  };
+}
+
 /**
- * Serve one assignment attachment by signed link, for viewing in a new tab.
+ * Recover a usable name from a stored upload path.
+ *
+ * The stored filename is <timestamp>-<sanitised original>, so this drops the
+ * timestamp prefix and puts the spaces back. Only a fallback for rows with no
+ * file_name - underscores are already lost at write time and cannot be
+ * distinguished from names the user actually typed with underscores.
+ */
+function fileNameFromStoredUrl(storedUrl) {
+  if (!storedUrl) return "";
+  const last = String(storedUrl).split(/[/?#]/).filter(Boolean).pop() || "";
+  const trimmed = last.replace(/^\d{10,}-/, "");
+  if (!trimmed) return "";
+  return trimmed.replace(/_/g, " ");
+}
+
+/**
+ * Serve one assignment file by signed link, for viewing in a new tab.
  *
  * Deliberately NOT behind requireSession. A tab navigation cannot send an
  * Authorization header - that is the entire reason the rest of the app fetches
@@ -9933,22 +10036,38 @@ app.get("/f/:token/:filename", async (req, res) => {
     return res.status(401).json({ message: "This link has expired. Please open the file again." });
   }
 
-  const [rows] = await pool.query(
-    `SELECT attachment_url, attachment_name
-     FROM assignments
-     WHERE assignment_id = ?
-     LIMIT 1`,
-    [link.aid]
-  );
-  const assignment = rows[0];
-  if (!assignment?.attachment_url) {
+  let storedUrl;
+  let storedName;
+  if (link.kind === "assignment") {
+    const [rows] = await pool.query(
+      `SELECT attachment_url, attachment_name
+       FROM assignments
+       WHERE assignment_id = ?
+       LIMIT 1`,
+      [link.id]
+    );
+    storedUrl = rows[0]?.attachment_url;
+    storedName = rows[0]?.attachment_name;
+  } else {
+    const [rows] = await pool.query(
+      `SELECT file_url, file_name
+       FROM assignment_submissions
+       WHERE submission_id = ?
+       LIMIT 1`,
+      [link.id]
+    );
+    storedUrl = rows[0]?.file_url;
+    storedName = rows[0]?.file_name;
+  }
+
+  if (!storedUrl) {
     return res.status(404).json({ message: "That file is no longer available." });
   }
 
   // Resolved from the stored path in the database, never from the :filename
   // segment. The stored value is server-generated, and isInsidePath is a second
   // guard, so nothing in the request can steer the read out of uploads.
-  const relative = String(assignment.attachment_url)
+  const relative = String(storedUrl)
     .replace(/^https?:\/\/[^/]+/i, "")
     .replace(/^\/+/, "")
     // express.static is mounted AT /uploads, so that segment is the mount point
@@ -9962,8 +10081,8 @@ app.get("/f/:token/:filename", async (req, res) => {
   }
 
   // Prefer the database name; the signed copy is only a fallback for rows
-  // written before attachment_name existed.
-  const name = assignment.attachment_name || link.fn || "Attachment";
+  // written before the name column existed.
+  const name = storedName || link.fn || "Attachment";
   const ext = path.extname(name).toLowerCase();
 
   res.setHeader("Content-Type", MIME_BY_EXTENSION[ext] || "application/octet-stream");
@@ -10115,6 +10234,9 @@ app.post("/api/assignments/:assignment_id/submissions", requireSession, optional
     const text = (submissionText ?? comments ?? "").trim();
     const uploadedFile = uploadedFileUrl(req, req.file);
     const finalFileUrl = uploadedFile ?? fileUrl ?? file_url ?? null;
+    // Only from the upload: a body-supplied URL has no trustworthy name behind
+    // it, and inventing one would put a wrong title in the teacher's tab.
+    const finalFileName = uploadedFile ? req.file.originalname : null;
 
     if (!resolvedStudentId || (!text && !finalFileUrl)) {
       return res.status(400).json({ message: "Student and submission text or file are required" });
@@ -10166,16 +10288,17 @@ app.post("/api/assignments/:assignment_id/submissions", requireSession, optional
     }
 
     const [result] = await conn.query(
-      `INSERT INTO assignment_submissions (assignment_id, student_id, submission_text, file_url)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO assignment_submissions (assignment_id, student_id, submission_text, file_url, file_name)
+       VALUES (?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE submission_text = VALUES(submission_text),
                                 file_url = VALUES(file_url),
+                                file_name = VALUES(file_name),
                                 attempt_count = attempt_count + 1,
                                 submitted_at = CURRENT_TIMESTAMP,
                                 grade = NULL,
                                 feedback = NULL,
                                graded_at = NULL`,
-      [assignment_id, resolvedStudentId, encryptNullableText(text || null), finalFileUrl]
+      [assignment_id, resolvedStudentId, encryptNullableText(text || null), finalFileUrl, finalFileName]
     );
 
     await conn.query(

@@ -172,28 +172,20 @@ export async function openAuthenticatedFile(path) {
 }
 
 /**
- * Open an assignment attachment in a new tab, titled with its real filename.
+ * Mint a signed link and open it in a new tab.
  *
- * openAuthenticatedFile cannot do this. It has to work through a blob: URL,
- * because /uploads is behind the session token and a tab navigation cannot
- * send the header - and a blob URL's path is a random ID the browser uses as
- * the filename, so the PDF viewer titles the tab "3463429d-9273-..." instead of
- * the teacher's filename. So this asks the backend for a short-lived signed URL
- * that carries the name in its last segment. See backend/fileLink.js.
- *
- * The filename is deliberately not sent from here: the server reads it from the
- * database, so what the tab ends up called cannot be decided by the caller.
- *
- * The tab is still opened before the first await, for the same pop-up reason as
- * above - minting the link needs a round trip.
+ * Shared by openAssignmentFile and openSubmissionFile - the only difference is
+ * which endpoint the link comes from. The tab is opened before the first await,
+ * because Firefox and Safari only honour window.open in the same task as the
+ * click that triggered it, and minting a link needs a round trip.
  */
-export async function openAssignmentFile(path) {
+async function openSignedFile(endpoint, path) {
   const tab = window.open("", "_blank");
   if (tab) tab.opener = null;
 
   let link;
   try {
-    const res = await apiFetch(`${API_BASE_URL}/api/assignment-attachments/link`, {
+    const res = await apiFetch(`${API_BASE_URL}${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: path }),
@@ -214,6 +206,28 @@ export async function openAssignmentFile(path) {
   }
 
   tab.location.href = link;
+}
+
+/**
+ * Open an assignment attachment in a new tab, titled with its real filename.
+ *
+ * openAuthenticatedFile cannot do this. It has to work through a blob: URL,
+ * because /uploads is behind the session token and a tab navigation cannot
+ * send the header - and a blob URL's path is a random ID the browser uses as
+ * the filename, so the PDF viewer titles the tab "3463429d-9273-..." instead of
+ * the teacher's filename. So this asks the backend for a short-lived signed URL
+ * that carries the name in its last segment. See backend/fileLink.js.
+ *
+ * The filename is deliberately not sent from here: the server reads it from the
+ * database, so what the tab ends up called cannot be decided by the caller.
+ */
+export function openAssignmentFile(path) {
+  return openSignedFile("/api/assignment-attachments/link", path);
+}
+
+/** The same, for the work a student sent back. */
+export function openSubmissionFile(path) {
+  return openSignedFile("/api/submission-files/link", path);
 }
 
 /** Save a stored file, through the session. */

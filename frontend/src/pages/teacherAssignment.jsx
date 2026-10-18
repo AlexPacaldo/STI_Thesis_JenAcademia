@@ -10,7 +10,7 @@ import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import ModalPortal from "../utils/ModalPortal.jsx";
 import {
   downloadAuthenticatedFile,
-  openAuthenticatedFile,
+  openSubmissionFile,
   useAuthenticatedFileUrl,
 } from "../utils/authenticatedFile.js";
 
@@ -125,6 +125,9 @@ function SubmissionPreview({ url }) {
 }
 
 function SubmissionFile({ url }) {
+  // Reported rather than swallowed: the realistic failure here is a blocked
+  // pop-up, and without this the click looks like it did nothing at all.
+  const { notify } = useNotification() || {};
   if (!url) return null;
 
   return (
@@ -132,7 +135,9 @@ function SubmissionFile({ url }) {
       <span className={styles.submissionLabel}>Submitted file</span>
       <p className={styles.fileName}>{getSubmissionFileName(url)}</p>
       <div className={styles.fileActions}>
-        <button type="button" onClick={() => openAuthenticatedFile(url)}>
+        <button type="button" onClick={() =>
+          openSubmissionFile(url).catch((err) => notify?.(err.message, "error"))
+        }>
           Open file
         </button>
         <button type="button" onClick={() => downloadAuthenticatedFile(url)}>

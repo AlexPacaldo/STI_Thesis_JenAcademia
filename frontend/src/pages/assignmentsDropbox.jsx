@@ -11,7 +11,7 @@ import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { apiFetch } from "../utils/apiAuth.js";
 import {
   openAssignmentFile,
-  openAuthenticatedFile,
+  openSubmissionFile,
   useAuthenticatedFileUrl,
 } from "../utils/authenticatedFile.js";
 import { compressFileIfImage } from "../utils/imageCompression.js";
@@ -61,7 +61,10 @@ function SubmissionPreview({ fileUrl, storedPath }) {
     return (
       <video className={styles.previewMedia} controls preload="metadata" src={blobUrl}>
         Your browser cannot play this video.{" "}
-        <button type="button" onClick={() => openAuthenticatedFile(storedPath ?? fileUrl)}>
+        <button
+          type="button"
+          onClick={() => openSubmissionFile(storedPath ?? fileUrl).catch(() => {})}
+        >
           Open it instead
         </button>
         .
@@ -527,7 +530,11 @@ export default function AssignmentsDropbox() {
                           <button
                             type="button"
                             className={styles.textBtn}
-                            onClick={() => openAuthenticatedFile(selectedAssignment?.fileUrl)}
+                            onClick={() =>
+                              openSubmissionFile(selectedAssignment?.fileUrl).catch((err) =>
+                                notify?.(err.message, "error")
+                              )
+                            }
                             title={getFileName(submittedFileUrl)}
                           >
                             {getFileName(submittedFileUrl)}
@@ -612,7 +619,11 @@ export default function AssignmentsDropbox() {
                         <button
                           type="button"
                           className={styles.textBtn}
-                          onClick={() => openAuthenticatedFile(selectedAssignment.fileUrl)}
+                          onClick={() =>
+                              openSubmissionFile(selectedAssignment.fileUrl).catch((err) =>
+                                notify?.(err.message, "error")
+                              )
+                            }
                         >
                           {selectedAssignment.fileUrl.split("/").pop()}
                         </button>

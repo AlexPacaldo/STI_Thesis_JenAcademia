@@ -12,7 +12,8 @@
  * reachable by URL alone. That makes the URL itself the credential - so this
  * mints a link that stands in for the header, and it is deliberately narrow:
  *
- *   - scoped to ONE assignment, so a leaked link opens that file and nothing else
+ *   - scoped to ONE file, identified by kind plus id, so a leaked link opens
+ *     that file and nothing else - and cannot be read as a different kind
  *   - expires in minutes, so it is not a durable share link
  *   - the filename in the URL is for display only. The path actually read off
  *     disk comes from the database, never from the request, so the URL segment
@@ -28,6 +29,14 @@ import crypto from "crypto";
 
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 
+/**
+ * The kinds of file a link can open. Both live in uploads/assignments and both
+ * are reached from the two ends of an assignment, so they share a route - which
+ * is exactly why the kind has to be inside the signed payload: without it, a
+ * submission id could be presented where an assignment id is expected.
+ */
+export const FILE_LINK_KINDS = ["assignment", "submission"];
+
 const base64url = (buffer) => Buffer.from(buffer).toString("base64url");
 
 function sign(payloadEncoded, secret) {
@@ -36,26 +45,30 @@ function sign(payloadEncoded, secret) {
 
 /**
  * @returns {string} `payload.signature`, both base64url.
- * @throws if the assignment id is missing - a link that cannot identify which
- *         file it opens is never useful.
+ * @throws if the kind or id is missing or unknown - a link that cannot identify
+ *         which file it opens is never useful.
  */
 export function signFileLink(
-  { assignmentId, filename },
+  { kind, id, filename },
   { secret, ttlMs = DEFAULT_TTL_MS, now = Date.now() } = {}
 ) {
   if (!secret) throw new Error("signFileLink needs a secret");
-  const aid = Number(assignmentId);
-  if (!Number.isInteger(aid) || aid <= 0) throw new Error("signFileLink needs a positive assignmentId");
+  const subject = Number(id);
+  if (!Number.isInteger(subject) || subject <= 0) throw new Error("signFileLink needs a positive id");
+  const k = String(kind || "");
+  if (!FILE_LINK_KINDS.includes(k)) {
+    throw new Error(`signFileLink needs a known kind, got ${JSON.stringify(kind)}`);
+  }
 
   const payloadEncoded = base64url(
-    JSON.stringify({ aid, fn: String(filename || ""), exp: now + ttlMs })
+    JSON.stringify({ k, id: subject, fn: String(filename || ""), exp: now + ttlMs })
   );
   return `${payloadEncoded}.${sign(payloadEncoded, secret)}`;
 }
 
 /**
- * @returns {{aid: number, fn: string, exp: number}|null} null for anything that
- *   is not a well-formed, correctly signed, unexpired link.
+ * @returns {{kind: string, id: number, fn: string, exp: number}|null} null for
+ *   anything that is not a well-formed, correctly signed, unexpired link.
  */
 export function verifyFileLink(token, { secret, now = Date.now() } = {}) {
   if (!secret || typeof token !== "string") return null;
@@ -80,9 +93,11 @@ export function verifyFileLink(token, { secret, now = Date.now() } = {}) {
   }
   if (!payload || typeof payload !== "object") return null;
 
-  const aid = Number(payload.aid);
-  if (!Number.isInteger(aid) || aid <= 0) return null;
+  const subject = Number(payload.id);
+  if (!Number.isInteger(subject) || subject <= 0) return null;
+  const kind = String(payload.k || "");
+  if (!FILE_LINK_KINDS.includes(kind)) return null;
   if (!Number.isFinite(payload.exp) || payload.exp <= now) return null;
 
-  return { aid, fn: String(payload.fn || ""), exp: payload.exp };
+  return { kind, id: subject, fn: String(payload.fn || ""), exp: payload.exp };
 }
