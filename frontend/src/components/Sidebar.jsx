@@ -202,6 +202,10 @@ function Sidebar({ isMobileOpen = false, onClose }) {
       { to: "/teacherBooksLessons", label: "Books / Lessons", icon: "bi-book" },
     ],
     admin: [
+      // First because it is where an admin should land, and because every entry
+      // below is reachable from it - the tiles and the attention list link straight
+      // into these tabs.
+      { to: "/AdminDashboard?tab=overview", label: "Overview", icon: "bi-speedometer2" },
       { to: "/AdminDashboard?tab=calendar", label: "Calendar", icon: "bi-calendar3" },
       { to: "/AdminDashboard?tab=books", label: "Books / Lessons", icon: "bi-book" },
       { to: "/AdminDashboard?tab=verifications", label: "Verifications", icon: "bi-shield-check" },

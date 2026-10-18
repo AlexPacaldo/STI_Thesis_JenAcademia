@@ -1589,6 +1589,453 @@
   background: var(--surface-raised);
 }
 
+/* ===== OVERVIEW =====
+   The admin's landing tab. Everything here answers one of three questions:
+   how big is the school, what is waiting on me, and what is happening today.
+
+   Built from CSS grid and plain divs rather than a charting library - the trend
+   bars are one flex column per day, so there is nothing for a dependency to do.
+   Every number comes from one request (see backend/adminOverview.js), so the tiles
+   can never disagree with each other the way separately-fetched cards did. */
+
+.overview {
+  display: grid;
+  gap: 20px;
+}
+
+/* auto-fit, not a fixed column count: four tiles on a laptop, two on a tablet,
+   one on a phone, with no breakpoints to keep in sync with the ones below. */
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 14px;
+}
+
+.statTile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+  /* The same tile is rendered as a <button> when it navigates and as a <div> when
+     it does not, so the font has to be inherited rather than left to the UA's
+     button defaults - otherwise the two versions are not the same size. */
+  font: inherit;
+  color: inherit;
+}
+
+.statTileValue {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.statTileLabel {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text-mid);
+}
+
+/* The one tile that is a link rather than a fact. Styled like the rest so the row
+   does not visibly break around it. */
+.statTileLink {
+  cursor: pointer;
+  transition: transform 0.2s var(--ease-out), border-color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
+}
+
+.statTileLink:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.statTileAccent {
+  border-color: rgba(216, 138, 16, 0.5);
+  background: linear-gradient(180deg, var(--pill-warn), #fff 70%);
+}
+
+.statTileMuted {
+  color: var(--muted);
+}
+
+.statTileNote {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+/* Two columns of independent panels; the grid owns the collapse so a long
+   attention list never stretches the trend beside it. */
+.overviewSplit {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.overviewPanel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+
+.overviewPanelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.overviewPanelHead h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.overviewPanelHead p {
+  margin: 2px 0 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.overviewCount {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Each attention item is the whole row, so the click target is the card and not a
+   "Review" link the admin has to aim at. */
+.attentionList {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attentionItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid var(--border-mid);
+  border-left: 4px solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out);
+}
+
+.attentionItem:hover {
+  transform: translateX(2px);
+  box-shadow: var(--shadow-md);
+}
+
+.attentionHigh {
+  border-left-color: var(--accent-danger);
+}
+
+.attentionMedium {
+  border-left-color: var(--accent-warn);
+}
+
+.attentionCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  padding: 5px 11px;
+  border-radius: var(--radius-pill);
+  background: var(--pill-danger);
+  color: var(--text-danger);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.attentionMedium .attentionCount {
+  background: var(--pill-warn);
+  color: var(--text-warn);
+}
+
+.attentionTitle {
+  display: block;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.attentionHint {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* Zero is good news, and saying so is what makes a non-zero count stand out. */
+.attentionClear {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--pill-success);
+  color: var(--text-success);
+  font-weight: 700;
+}
+
+/* ===== TREND =====
+   Stacked bars, one flex column per day. Height is set inline as a percentage of a
+   fixed-height track, so the chart needs no measurement in JS and cannot disagree
+   with the labels beside it. */
+.trend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  align-items: end;
+  gap: 10px;
+  /* Baseline for the columns. The day/label row sits under this, so the bar and
+     its date are guaranteed to share a horizontal centre. */
+  height: 150px;
+}
+
+.trendDay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  height: 100%;
+  min-width: 0;
+}
+
+.trendTrack {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-start;
+  width: 100%;
+  max-width: 42px;
+  height: 100%;
+  border-radius: var(--radius-xs);
+  background: var(--surface-recessed);
+  overflow: hidden;
+}
+
+.trendBar {
+  width: 100%;
+  min-height: 2px;
+}
+
+.trendCompleted {
+  background: var(--accent-success);
+}
+
+.trendScheduled {
+  background: var(--accent-info);
+}
+
+.trendNoShow {
+  background: var(--alert-danger);
+}
+
+.trendCancelled {
+  background: var(--accent-sage);
+}
+
+.trendLabel {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.trendToday {
+  color: var(--primary);
+}
+
+.trendTotal {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--text-mid);
+  font-variant-numeric: tabular-nums;
+}
+
+.trendLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.trendLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trendSwatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+}
+
+/* ===== TODAY'S TIMETABLE =====
+   A definition list rather than a table: it is a list of facts per class, not a
+   matrix, and it collapses to one column without any extra rules. */
+.scheduleList {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scheduleRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 13px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+}
+
+.scheduleTime {
+  font-weight: 800;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.scheduleNames {
+  min-width: 0;
+}
+
+.scheduleStudent {
+  display: block;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scheduleTeacher {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overviewEmpty {
+  padding: 16px;
+  border: 1px dashed var(--border-mid);
+  border-radius: var(--radius-sm);
+  background: var(--surface-recessed);
+  color: var(--muted);
+  font-weight: 700;
+  text-align: center;
+}
+
+.overviewNameList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.overviewNameRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-xs);
+  background: var(--surface-soft);
+}
+
+.overviewNameRow span:first-child {
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overviewMeta {
+  font-size: 0.8rem;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The error banner. Rendered in place of the panels, not on top of them: a
+   half-drawn dashboard that every tile disagrees with is worse than an honest
+   empty state, and this keeps the last-known data off the screen.
+
+   Two lines on purpose - what went wrong, and what to do about it. The second is
+   the one that matters: a 404 here means the backend needs deploying, and telling
+   the admin only that it "could not load" sends them hunting a fault in code that
+   is working. */
+.overviewError {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  border: 1px solid rgba(168, 58, 52, 0.4);
+  border-radius: var(--radius-md);
+  background: var(--pill-danger);
+  color: var(--text-danger);
+}
+
+.overviewErrorTitle {
+  display: block;
+  font-weight: 800;
+}
+
+.overviewErrorHint {
+  display: block;
+  margin-top: 4px;
+  font-weight: 500;
+  font-size: 0.86rem;
+  /* The hint is supporting detail, not the alarm. Dropping it to the muted tone
+     keeps the eye on the one sentence that needs acting on. */
+  color: color-mix(in srgb, var(--text-danger) 78%, var(--surface));
+}
+
+@media (max-width: 900px) {
+  .overviewSplit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 900px) {
   .Center {
     padding: 16px;

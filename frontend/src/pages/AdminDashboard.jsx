@@ -1,6 +1,6 @@
 import axios from "axios";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import styles from "../assets/AdminDashboard.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import {
@@ -31,6 +31,7 @@ import {
   toggleValue,
 } from "../utils/matchingCriteria.js";
 import CriteriaChipField, { CUSTOM_OPTION_VALUE } from "../components/CriteriaChipField.jsx";
+import AdminOverview from "../components/AdminOverview.jsx";
 import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import ModalPortal from "../utils/ModalPortal.jsx";
@@ -44,6 +45,10 @@ const API = API_BASE_URL;
 const VERIFICATIONS_PER_PAGE = 10;
 
 const ADMIN_TABS = [
+  // The landing tab. It comes first because it is what the admin sees on arrival,
+  // and every item on it is a link into one of the tabs below - it is an index,
+  // not another place to work.
+  "overview",
   "calendar",
   "books",
   "verifications",
@@ -55,9 +60,12 @@ const ADMIN_TABS = [
   "archive",
 ];
 
+// A bad ?tab= falls back to the overview rather than to the calendar, for the same
+// reason: it is the tab that makes sense to land on, not the one that happened to
+// be first in the list.
 const getAdminTabFromSearch = (search) => {
   const requestedTab = new URLSearchParams(search).get("tab");
-  return ADMIN_TABS.includes(requestedTab) ? requestedTab : "calendar";
+  return ADMIN_TABS.includes(requestedTab) ? requestedTab : "overview";
 };
 
 // Resume auto-fill on the Create Teacher form. The client-side checks mirror the
@@ -390,14 +398,45 @@ const getVerificationReviewReasons = (row) => {
 export default function AdminDashboard() {
   const { notify } = useNotification() || {};
   const location = useLocation();
-  const [active, setActive] = useState("calendar"); // 'calendar' | 'createTeacher' | 'createStudent' | 'archive' | 'requests'
+  // Only the setter is destructured: the current query string is read through
+  // location.search, which is what the effect above already depends on.
+  const [, setSearchParams] = useSearchParams();
+  const [active, setActive] = useState("overview"); // 'overview' | 'calendar' | 'createTeacher' | 'createStudent' | 'archive' | 'requests'
   const [me, setMe] = useState(null);
   const currentAdminId = me?.id || me?.user_id || me?.userId;
 
   useEffect(() => {
+    const requestedTab = new URLSearchParams(location.search).get("tab");
     const nextActive = getAdminTabFromSearch(location.search);
     setActive((currentActive) => (currentActive === nextActive ? currentActive : nextActive));
+
+    // Normalise a bare /AdminDashboard (or a bogus ?tab=) to the real default.
+    //
+    // !! Without this the page shows the Overview tab while the URL still says
+    // !! nothing, and the Sidebar - which highlights an item by comparing the
+    // !! query string - highlights nothing. The admin is on a screen the navigation
+    // !! does not admit exists. `replace` keeps it out of history so Back does not
+    // !! bounce through a state the admin never chose.
+    if (requestedTab !== nextActive) {
+      setSearchParams({ tab: nextActive }, { replace: true });
+    }
+    // setSearchParams is stable across renders; including it would re-run this on
+    // every navigation and fight the guard above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
+
+  /**
+   * Switch tabs from inside the page.
+   *
+   * !! The tab lives in the URL, not only in state, so the query string is updated
+   * !! alongside it. That is what makes the Overview tab's links work: each
+   * !! "needs attention" row points at a tab, and the admin lands on the right one
+   * !! whether they arrived by click or by the browser's Back button.
+   */
+  function goToTab(tab) {
+    if (!ADMIN_TABS.includes(tab)) return;
+    setSearchParams({ tab });
+  }
 
   // data
   const [students, setStudents] = useState([]);
@@ -2222,6 +2261,12 @@ export default function AdminDashboard() {
     <div className={styles.page}>
 
       <main className={styles.main}>
+        {active === "overview" && (
+          <section className={styles.card}>
+            <AdminOverview onNavigateToTab={goToTab} />
+          </section>
+        )}
+
         {active === "verifications" && (
           <section className={styles.card}>
             <div className={styles.cardHead}>
