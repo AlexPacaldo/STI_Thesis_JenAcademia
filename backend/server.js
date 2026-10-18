@@ -3771,7 +3771,7 @@ app.get("/api/users/:id", requireSession, async (req, res) => {
          LEFT JOIN teacher_courses tc ON tc.teacher_id = u.user_id
          LEFT JOIN courses c ON c.course_id = tc.course_id
          WHERE u.user_id = ?
-         GROUP BY tp.bio, tp.specialization, tp.experience_years, tp.hourly_rate
+         GROUP BY tp.bio, tp.specialization, tp.experience_years, tp.hourly_rate, tp.teaches_children
          LIMIT 1`,
         [req.params.id]
       );
@@ -3821,6 +3821,45 @@ app.get("/api/users/:id", requireSession, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+// A teacher changing this on their own account page.
+//
+// No id is accepted from the body on purpose: the subject of the change is the
+// session. An endpoint that took a teacherId would be a way for any teacher to
+// rewrite someone else's stated preference, which is exactly the field this
+// exists to make trustworthy.
+app.patch("/api/teacher/teaches-children", requireSession, async (req, res) => {
+  try {
+    const teacherId = parseInt(req.session?.userId, 10);
+    if (!teacherId || req.session?.role !== "teacher") {
+      return res.status(403).json({ message: "Only teachers can set this." });
+    }
+
+    const raw = req.body?.teachesChildren;
+    if (typeof raw !== "boolean") {
+      return res.status(400).json({ message: "teachesChildren must be true or false" });
+    }
+
+    const [result] = await pool.query(
+      `UPDATE teacher_profiles SET teaches_children = ? WHERE user_id = ?`,
+      [raw ? 1 : 0, teacherId]
+    );
+
+    if (!result.affectedRows) {
+      // An admin-created teacher whose profile row is somehow absent. Inserting
+      // is better than reporting success on a change that did not happen.
+      await pool.query(
+        `INSERT INTO teacher_profiles (user_id, teaches_children) VALUES (?, ?)`,
+        [teacherId, raw ? 1 : 0]
+      );
+    }
+
+    res.json({ teachesChildren: raw });
+  } catch (err) {
+    console.error("PATCH /api/teacher/teaches-children error:", err);
+    res.status(500).json({ message: "Could not update that preference" });
+  }
+});
+
 app.put("/api/users/:id", requireSession, async (req, res) => {
   try {
     if (!sessionMayActFor(req, req.params.id)) {

@@ -107,6 +107,18 @@ function formatRole(role) {
   return role ? role.charAt(0).toUpperCase() + role.slice(1) : "User";
 }
 
+/**
+ * Does this teacher teach children?
+ *
+ * Opt-out, so anything other than an explicit 0 or "0" means yes. That mirrors
+ * teacherWillTeachChildren on the server rather than inventing a second reading
+ * of the same column - and it means a teacher who never touched the setting sees
+ * themselves as willing, which is what the database says about them.
+ */
+function readsAsTeachesChildren(value) {
+  return !(value === 0 || value === "0" || value === false);
+}
+
 function formatValue(value, fallback = "Not set") {
   return value === null || value === undefined || value === "" ? fallback : value;
 }
@@ -194,6 +206,42 @@ export default function Account() {
   }, []);
 
   const details = user?.roleDetails || {};
+  // Seeded from the profile so the control reflects the stored value. Kept as
+  // local state because it saves on change rather than through Save Changes -
+  // it is a statement about what work you will take, not a profile field, and
+  // folding it into the generic profile save would let a teacher change it
+  // without meaning to.
+  const [teachesChildren, setTeachesChildren] = useState(true);
+  const [childrenSaving, setChildrenSaving] = useState(false);
+
+  useEffect(() => {
+    if (user?.role === "teacher") {
+      setTeachesChildren(readsAsTeachesChildren(details.teaches_children));
+    }
+  }, [user?.role, details.teaches_children]);
+
+  async function saveTeachesChildren(next) {
+    const previous = teachesChildren;
+    setTeachesChildren(next);
+    setChildrenSaving(true);
+    try {
+      await axios.patch(`${API}/api/teacher/teaches-children`, { teachesChildren: next });
+      notify(
+        next
+          ? "Saved. You can now be matched with students of any age."
+          : "Saved. You will no longer be recommended for students under 13.",
+        "success"
+      );
+    } catch (err) {
+      // Put it back. Showing a setting that did not persist is worse than an
+      // error message - the teacher would believe students under 13 were being
+      // kept away from them when they were not.
+      setTeachesChildren(previous);
+      notify(err?.response?.data?.message || "Could not save that preference.", "error");
+    } finally {
+      setChildrenSaving(false);
+    }
+  }
   const fullName = `${form.firstName || ""} ${form.lastName || ""}`.trim() || "Account";
   const age = calculateAge(form.birthDate);
   const completionItems = useMemo(() => ([
@@ -695,6 +743,30 @@ export default function Account() {
           </div>
           <div className={styles.detailList}>
             <p><strong>Courses:</strong> {formatValue(details.courses)}</p>
+          </div>
+          <div className={styles.detailList} style={{ marginTop: "12px" }}>
+            <label
+              htmlFor="teacher-teaches-children"
+              style={{ display: "flex", alignItems: "flex-start", gap: "8px", cursor: childrenSaving ? "wait" : "pointer" }}
+            >
+              <input
+                id="teacher-teaches-children"
+                type="checkbox"
+                checked={teachesChildren}
+                disabled={childrenSaving}
+                onChange={(e) => saveTeachesChildren(e.target.checked)}
+                style={{ marginTop: "3px" }}
+              />
+              <span>
+                I will teach students of any age, including children under 13
+                <p style={{ margin: "4px 0 0", color: "#666", fontSize: "0.9em" }}>
+                  {teachesChildren
+                    ? "You can be recommended for any student."
+                    : "You will not be recommended for students under 13. The school is told this, and your other settings are unchanged."}
+                  {childrenSaving ? " Saving..." : ""}
+                </p>
+              </span>
+            </label>
           </div>
         </section>
       );
