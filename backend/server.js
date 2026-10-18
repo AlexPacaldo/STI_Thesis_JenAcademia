@@ -2085,6 +2085,46 @@ async function ensureTeacherProfileColumns() {
  * request, so existing rows need no rewriting and the old approval path keeps
  * behaving exactly as it did.
  */
+async function ensureContractRequestScheduleColumns() {
+  // When the student can actually attend.
+  //
+  // The admin's Create Student form collects this and passes it straight to
+  // recommendTeacher, where it filters candidates by availability. Nothing stores
+  // it - student_profiles has no column for it and never did - which was fine
+  // while matching happened in the same request that collected it.
+  //
+  // A contract request is not the same request. The student fills this in, an
+  // admin approves it later, and the matching happens on that later approval. So
+  // unlike the admin's version this has to survive in between, or the student
+  // states when they can attend and it is then ignored by the one process that
+  // could have acted on it.
+  //
+  // Comma-separated weekday numbers rather than a join table: this is three
+  // values read once, next to a request row, and it is never queried across
+  // students. days are JS getDay indices, 0 = Sunday, which is what weekdayOf()
+  // and normalizePreferredSchedule() already speak.
+  if (!(await columnExists("student_contract_requests", "preferred_days"))) {
+    await pool.query(
+      `ALTER TABLE student_contract_requests
+       ADD COLUMN preferred_days VARCHAR(64) NULL AFTER class_duration`
+    );
+  }
+
+  if (!(await columnExists("student_contract_requests", "preferred_start"))) {
+    await pool.query(
+      `ALTER TABLE student_contract_requests
+       ADD COLUMN preferred_start TIME NULL AFTER preferred_days`
+    );
+  }
+
+  if (!(await columnExists("student_contract_requests", "preferred_end"))) {
+    await pool.query(
+      `ALTER TABLE student_contract_requests
+       ADD COLUMN preferred_end TIME NULL AFTER preferred_start`
+    );
+  }
+}
+
 async function ensureContractRequestTypeColumns() {
   if (!(await columnExists("student_contract_requests", "request_type"))) {
     await pool.query(
@@ -2444,6 +2484,7 @@ const SCHEMA_STEPS = [
   ["user demographics columns", ensureUserDemographicsColumns],
   ["teacher profile columns", ensureTeacherProfileColumns],
   ["contract request type columns", ensureContractRequestTypeColumns],
+  ["contract request schedule columns", ensureContractRequestScheduleColumns],
   ["profile completion refresh", refreshAllProfileCompletion],
   ["student contract requests table", ensureStudentContractRequestsTable],
   ["class package duration column", ensureStudentClassPackageDurationColumn],
@@ -2666,6 +2707,34 @@ function normalizePreferredSchedule(raw) {
   const end = String(raw?.end ?? "").trim();
   if (!days.length || !start || !end) return null;
   return { days, start, end };
+}
+
+/**
+ * Read a stored preferred schedule back off a contract request row.
+ *
+ * Three columns rather than one JSON blob, so this is the only place that has to
+ * know how they are shaped. Everything downstream receives the same object shape
+ * the admin's Create Student form sends, so recommendTeacher cannot tell - and
+ * does not need to - whether the preference came from a live request or from one
+ * that sat in an admin queue for a week.
+ *
+ * Returns null when any part is missing, which is what makes the whole thing
+ * optional: normalizePreferredSchedule treats null as "no preference" and skips
+ * the availability check entirely, so a student who did not say when they can
+ * attend is matched exactly as they were before this existed.
+ */
+function preferredScheduleFromRow(row) {
+  if (!row) return null;
+  const days = String(row.preferred_days || "")
+    .split(",")
+    .map((d) => d.trim())
+    .filter((d) => d !== "")
+    .map((d) => String(Number(d)));
+  return normalizePreferredSchedule({
+    days,
+    start: row.preferred_start || "",
+    end: row.preferred_end || "",
+  });
 }
 
 /**
@@ -5204,7 +5273,7 @@ app.put("/api/admin/student-contracts/:student_id", requireAdminSession, async (
 
 app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("student_id"), async (req, res) => {
   try {
-    const { student_id, course_id, requested_classes, class_duration, trial_notes, ai_criteria, request_type } = req.body;
+    const { student_id, course_id, requested_classes, class_duration, trial_notes, ai_criteria, request_type, preferred_schedule } = req.body;
     const parsedStudentId = parseInt(student_id, 10);
     const parsedCourseId = course_id ? parseInt(course_id, 10) : null;
     const parsedClasses = parseInt(requested_classes, 10);
@@ -5288,12 +5357,21 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
       : null;
     const snapshotPackageId = isExtension ? extensionPackage.package_id : null;
 
+    // When the student can attend, if they said. Optional in every part: a
+    // partial answer is treated as no answer rather than half a preference that
+    // would filter candidates against an unspecified end time.
+    const preferredSchedule = normalizePreferredSchedule(preferred_schedule);
+    const preferredDays = preferredSchedule ? preferredSchedule.days.join(",") : null;
+    const preferredStart = preferredSchedule ? preferredSchedule.start : null;
+    const preferredEnd = preferredSchedule ? preferredSchedule.end : null;
+
     if (existing.length) {
       const requestId = existing[0].request_id;
       await pool.query(
         `UPDATE student_contract_requests
          SET course_id = ?, requested_classes = ?, class_duration = ?, trial_notes = ?, ai_criteria = ?,
              request_type = ?, package_id = ?, classes_left_at_request = ?,
+             preferred_days = ?, preferred_start = ?, preferred_end = ?,
              admin_response = NULL, resolved_at = NULL, requested_at = CURRENT_TIMESTAMP, status = 'pending'
          WHERE request_id = ?`,
         [
@@ -5305,6 +5383,9 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
           parsedRequestType,
           snapshotPackageId,
           snapshotClassesLeft,
+          preferredDays,
+          preferredStart,
+          preferredEnd,
           requestId,
         ]
       );
@@ -5351,8 +5432,9 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
     const [result] = await pool.query(
       `INSERT INTO student_contract_requests
          (student_id, course_id, requested_classes, class_duration, trial_notes, ai_criteria, status,
-          request_type, package_id, classes_left_at_request)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+          request_type, package_id, classes_left_at_request,
+          preferred_days, preferred_start, preferred_end)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
       [
         parsedStudentId,
         parsedCourseId,
@@ -5363,6 +5445,9 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
         parsedRequestType,
         snapshotPackageId,
         snapshotClassesLeft,
+        preferredDays,
+        preferredStart,
+        preferredEnd,
       ]
     );
 
@@ -5470,6 +5555,7 @@ app.put("/api/admin/contract-requests/:request_id", requireAdminSession, async (
     const [requestRows] = await connection.query(
       `SELECT r.request_id, r.student_id, r.course_id, r.requested_classes, r.class_duration, r.trial_notes, r.ai_criteria, r.status,
               r.request_type, r.package_id, r.classes_left_at_request,
+              r.preferred_days, r.preferred_start, r.preferred_end,
               c.course_name
        FROM student_contract_requests r
        LEFT JOIN courses c ON c.course_id = r.course_id
@@ -5641,6 +5727,11 @@ app.put("/api/admin/contract-requests/:request_id", requireAdminSession, async (
         courseId: request.course_id,
         proficiencyLevel: profileRows[0].proficiency_level,
         preferredTeacherId: profileRows[0].assigned_teacher_id,
+        // The student said when they can attend. Honoured here, on approval,
+        // rather than at submission - which is the whole reason this had to be
+        // stored at all. Without it the preference is a note the admin reads and
+        // the one process that could have acted on it never sees.
+        preferredSchedule: preferredScheduleFromRow(request),
         db: connection,
       });
       const assignedTeacherId = recommendation.teacher?.user_id || null;

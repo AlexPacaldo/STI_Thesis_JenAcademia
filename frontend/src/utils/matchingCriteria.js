@@ -156,6 +156,59 @@ export const toCriteriaSlug = (text) =>
 export const CUSTOM_OPTION_VALUE = "__custom__";
 
 /**
+ * Weekday choices for a preferred-schedule picker, and the helpers around them.
+ *
+ * !! Shared rather than declared inside AdminDashboard. The student's contract
+ * !! request needs the identical control, and a second copy of this list would be
+ * !! free to order the days differently - which reads as two different meanings
+ * !! for the same feature.
+ *
+ * Days are JS getDay indices, 0 = Sunday, which is what backend weekdayOf() and
+ * normalizePreferredSchedule() already expect. Stored as strings because that is
+ * how the column and the existing form both hold them.
+ */
+export const WEEKDAY_CHOICES = [
+  ["1", "Mon"], ["2", "Tue"], ["3", "Wed"], ["4", "Thu"],
+  ["5", "Fri"], ["6", "Sat"], ["0", "Sun"],
+];
+
+export const createEmptyPreferredSchedule = () => ({ days: [], start: "", end: "" });
+
+/**
+ * Is this a complete preference?
+ *
+ * All three parts or nothing. A preference with days but no end time would filter
+ * candidates against an open-ended window, which is not a narrower set of
+ * teachers - it is a different and meaningless one.
+ */
+export const hasPreferredSchedule = (schedule) =>
+  Boolean(schedule && schedule.days?.length && schedule.start && schedule.end);
+
+/** "Mon, Sat 18:00-20:00", or "" when incomplete. */
+export const describePreferredSchedule = (schedule) => {
+  if (!hasPreferredSchedule(schedule)) return "";
+  const days = (schedule.days || [])
+    .map((day) => WEEKDAY_CHOICES.find((choice) => choice[0] === String(day))?.[1] || day)
+    .join(", ");
+  return `${days} ${schedule.start}-${schedule.end}`;
+};
+
+/**
+ * The payload shape recommendTeacher reads, or null when incomplete.
+ *
+ * Trimmed and filtered here rather than at each call site, so "the student did
+ * not say" is decided in exactly one place.
+ */
+export const toPreferredSchedulePayload = (schedule) => {
+  if (!hasPreferredSchedule(schedule)) return null;
+  return {
+    days: schedule.days.map((day) => String(day)),
+    start: String(schedule.start).trim(),
+    end: String(schedule.end).trim(),
+  };
+};
+
+/**
  * Merge one criteria field's chips with whatever was typed in its "Others" box.
  *
  * The sentinel and the raw text become one clean array: the sentinel is UI state

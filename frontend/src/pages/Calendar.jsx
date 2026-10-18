@@ -8,11 +8,15 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
 import { PROFICIENCY_LEVEL_OPTIONS, formatProficiencyLevel } from "../utils/proficiencyLevels.js";
 import {
+  WEEKDAY_CHOICES,
   createEmptyCriteria,
+  createEmptyPreferredSchedule,
   criteriaWithCustom,
   filterOptionsForCourses,
+  hasPreferredSchedule,
   pruneSelectionToCourses,
   STUDENT_CRITERIA_OPTIONS,
+  toPreferredSchedulePayload,
   toggleValue,
 } from "../utils/matchingCriteria.js";
 import CriteriaChipField from "../components/CriteriaChipField.jsx";
@@ -645,6 +649,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     learningStyle: "",
     pace: "",
   });
+  // When this student can actually attend.
+  //
+  // !! Optional, and the server treats a partial answer as no answer rather than
+  // !! half a preference. What it is NOT is decorative: the backend filters
+  // !! candidates by teacher availability when it runs matching on approval, so a
+  // !! student who can only do Saturdays gets matched against teachers free on
+  // !! Saturdays. The same control the admin's Create Student form uses, from
+  // !! the same shared WEEKDAY_CHOICES, so the two cannot drift.
+  const [contractPreferredSchedule, setContractPreferredSchedule] = useState(
+    createEmptyPreferredSchedule()
+  );
   const [currentTimeTick, setCurrentTimeTick] = useState(() => Date.now());
   const isAdmin = localRole === "admin"; // helper for rendering
   const viewerTimezone = useMemo(() => getUserTimezone(me), [me]);
@@ -3561,6 +3576,10 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         // carry the __custom__ sentinel to the scorer, where it matches nothing
         // and then reports as a criterion the student failed.
         ai_criteria: mergedContractCriteria,
+        // null, not a half-filled object, when incomplete. The server treats
+        // both the same way - no preference - but sending null means the columns
+        // are cleared on an edit rather than retaining a stale answer.
+        preferred_schedule: toPreferredSchedulePayload(contractPreferredSchedule),
       });
 
       notify?.("Contract request sent to the admin.", "success");
@@ -3573,6 +3592,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       setContractTrialNotes("");
       setContractAiCriteria(createEmptyCriteria());
       setContractCriteriaOther({ learningGoal: "", focusArea: "", learningStyle: "", pace: "" });
+      setContractPreferredSchedule(createEmptyPreferredSchedule());
       loadContractRequests();
     } catch (err) {
       setContractRequestError(err?.response?.data?.message || "Unable to send contract request.");
@@ -6556,6 +6576,80 @@ $5padding: 20,
                                   customValue={contractCriteriaOther.pace}
                                   onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, pace: text }))}
                                 />
+                                <div style={{ marginBottom: 4 }}>
+                                  <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 700, marginBottom: 4, color: "#1d3a2c" }}>
+                                    When can you take classes?{" "}
+                                    <span style={{ fontWeight: 400, color: "#6b7d73" }}>(optional)</span>
+                                  </label>
+                                  <p style={{ margin: "0 0 10px 0", fontSize: "0.85em", color: "#4b5f55", lineHeight: 1.5 }}>
+                                    Teachers publish their own availability, so this lets the match
+                                    prefer someone who can actually teach you then. Leave it blank
+                                    and we match on teaching fit alone.
+                                  </p>
+
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
+                                    {WEEKDAY_CHOICES.map(([value, label]) => {
+                                      const active = contractPreferredSchedule.days.includes(value);
+                                      return (
+                                        <button
+                                          key={value}
+                                          type="button"
+                                          aria-pressed={active}
+                                          onClick={() => {
+                                            const days = active
+                                              ? contractPreferredSchedule.days.filter((day) => day !== value)
+                                              : [...contractPreferredSchedule.days, value];
+                                            setContractPreferredSchedule((prev) => ({ ...prev, days }));
+                                          }}
+                                          style={{
+                                            padding: "5px 13px",
+                                            borderRadius: "999px",
+                                            border: `1px solid ${active ? "#26423b" : "#d0d0d0"}`,
+                                            background: active ? "#26423b" : "#fff",
+                                            color: active ? "#fff" : "#333",
+                                            cursor: "pointer",
+                                            fontSize: "0.88em",
+                                            fontWeight: 600,
+                                          }}
+                                        >
+                                          {label}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+
+                                  <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                                    <label style={{ fontSize: "0.85em", color: "#555" }}>From</label>
+                                    <input
+                                      type="time"
+                                      value={contractPreferredSchedule.start}
+                                      onChange={(e) =>
+                                        setContractPreferredSchedule((prev) => ({ ...prev, start: e.target.value }))
+                                      }
+                                      style={{ padding: "7px 9px", border: "1px solid #cbd5cd", borderRadius: 8, fontFamily: "inherit" }}
+                                    />
+                                    <label style={{ fontSize: "0.85em", color: "#555" }}>To</label>
+                                    <input
+                                      type="time"
+                                      value={contractPreferredSchedule.end}
+                                      onChange={(e) =>
+                                        setContractPreferredSchedule((prev) => ({ ...prev, end: e.target.value }))
+                                      }
+                                      style={{ padding: "7px 9px", border: "1px solid #cbd5cd", borderRadius: 8, fontFamily: "inherit" }}
+                                    />
+                                  </div>
+
+                                  {/* Only when it is actually true. Warning on every
+                                      keystroke of an optional field is how a
+                                      helpful hint becomes noise people ignore. */}
+                                  {contractPreferredSchedule.days.length > 0 &&
+                                  !hasPreferredSchedule(contractPreferredSchedule) && (
+                                    <p style={{ margin: "8px 0 0", fontSize: "0.85em", color: "#7a5210" }}>
+                                      Pick a start and an end time too, otherwise this is ignored.
+                                    </p>
+                                  )}
+                                </div>
+
                                 <div>
                                   <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Request Notes</label>
                                   <textarea

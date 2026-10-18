@@ -197,8 +197,13 @@ check("bio text mentions the experience", aiBio({ experience: 8 }).includes("8")
  */
 import {
   CUSTOM_OPTION_VALUE,
+  WEEKDAY_CHOICES,
+  createEmptyPreferredSchedule,
   criteriaWithCustom,
+  describePreferredSchedule,
+  hasPreferredSchedule,
   toCriteriaSlug,
+  toPreferredSchedulePayload,
 } from "../frontend/src/utils/matchingCriteria.js";
 
 check("a slug drops punctuation and collapses spacing", toCriteriaSlug("Patient and supportive!"), "patient-and-supportive");
@@ -216,6 +221,45 @@ check("nothing selected and nothing typed is nothing", criteriaWithCustom([], ""
 // compares it against teacher vocabularies and reports a criterion the student
 // never actually failed.
 check("a stray sentinel from a stale selection is stripped", criteriaWithCustom(["exam-prep", CUSTOM_OPTION_VALUE], "Fluency"), ["exam-prep", "fluency"]);
+
+
+/* ------------------------------------------ the preferred schedule, in common */
+
+// A student's preferred schedule is honoured when the ADMIN approves their
+// request, not when they submit it - the student fills a form and an admin acts
+// later. That is why it has to be stored, and it is why these matter: a
+// half-filled preference that silently filters candidates is worse than none.
+
+check("empty means empty", createEmptyPreferredSchedule(), { days: [], start: "", end: "" });
+
+check("days alone is not a preference", hasPreferredSchedule({ days: ["6"], start: "", end: "" }), false);
+check("a start without an end is not a preference", hasPreferredSchedule({ days: ["6"], start: "09:00", end: "" }), false);
+check("an end without a start is not a preference", hasPreferredSchedule({ days: ["6"], start: "", end: "11:00" }), false);
+check("no days is not a preference", hasPreferredSchedule({ days: [], start: "09:00", end: "11:00" }), false);
+check("all three parts is a preference", hasPreferredSchedule({ days: ["6"], start: "09:00", end: "11:00" }), true);
+
+// The payload must be null when incomplete, so the server's own guard is a second
+// line of defence rather than the only one.
+check("an incomplete preference sends null", toPreferredSchedulePayload({ days: ["6"], start: "09:00", end: "" }), null);
+check("nothing sends null", toPreferredSchedulePayload(createEmptyPreferredSchedule()), null);
+check("null sends null", toPreferredSchedulePayload(null), null);
+check("a complete one sends its parts", toPreferredSchedulePayload({ days: ["6"], start: "09:00", end: "11:00" }), { days: ["6"], start: "09:00", end: "11:00" });
+
+// Days are JS getDay indices. 0 = Sunday is what backend weekdayOf() expects, and
+// a picker ordered Mon-first with a 0 index is how that gets forgotten.
+check("the day list is Monday first and Sunday last", WEEKDAY_CHOICES.map((d) => d[1]), ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
+check("Sunday is the zero index", WEEKDAY_CHOICES.find((d) => d[1] === "Sun"), ["0", "Sun"]);
+check("Saturday is the six index", WEEKDAY_CHOICES.find((d) => d[1] === "Sat"), ["6", "Sat"]);
+
+// Order is the order picked, not the order of the week. That is honest - the
+// picker shows Mon, Sat because those are the chips that were clicked - but it
+// means "Mon, Sat" and "Sat, Mon" are different strings for the same schedule,
+// so anything comparing them must compare the underlying days, not the label.
+check("a preference reads back in pick order", describePreferredSchedule({ days: ["6", "1"], start: "09:00", end: "11:00" }), "Sat, Mon 09:00-11:00");
+check("picking Mon then Sat gives that order", describePreferredSchedule({ days: ["1", "6"], start: "09:00", end: "11:00" }), "Mon, Sat 09:00-11:00");
+check("two pick orders of the same days are different labels", ["1", "6"].join() === ["6", "1"].join(), false);
+check("an incomplete one describes as nothing", describePreferredSchedule({ days: ["6"], start: "09:00" }), "");
+check("an unknown day index is not dropped silently", describePreferredSchedule({ days: ["9"], start: "1", end: "2" }), "9 1-2");
 
 console.log(`${passed}/${passed + failures.length} checks passed.`);
 if (failures.length) {

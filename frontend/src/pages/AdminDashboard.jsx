@@ -22,7 +22,11 @@ import {
   STUDENT_CRITERIA_OPTIONS,
   TEACHER_CRITERIA_HINTS,
   TEACHER_CRITERIA_OPTIONS,
+  WEEKDAY_CHOICES,
+  createEmptyPreferredSchedule,
   criteriaWithCustom,
+  describePreferredSchedule,
+  hasPreferredSchedule,
   toCriteriaSlug,
   toggleValue,
 } from "../utils/matchingCriteria.js";
@@ -180,30 +184,6 @@ const INSIGHT_REASON_LABELS = {
   unavailable: "the AI could not be reached",
 };
 
-// Preferred class schedule for the student. Optional throughout: with any part
-// missing the backend skips the availability check entirely and matching behaves
-// exactly as it did before. Days are JS getDay indices, 0 = Sunday, which is what
-// weekdayOf() on the backend expects.
-const WEEKDAY_CHOICES = [
-  ["1", "Mon"], ["2", "Tue"], ["3", "Wed"], ["4", "Thu"],
-  ["5", "Fri"], ["6", "Sat"], ["0", "Sun"],
-];
-
-function createEmptyPreferredSchedule() {
-  return { days: [], start: "", end: "" };
-}
-
-function hasPreferredSchedule(schedule) {
-  return Boolean(schedule && schedule.days?.length && schedule.start && schedule.end);
-}
-
-function describePreferredSchedule(schedule) {
-  if (!hasPreferredSchedule(schedule)) return "";
-  const days = (schedule.days || [])
-    .map((day) => WEEKDAY_CHOICES.find((choice) => choice[0] === String(day))?.[1] || day)
-    .join(", ");
-  return `${days} ${schedule.start}-${schedule.end}`;
-}
 
 function criteriaLabelFor(field, value) {
   const option = (STUDENT_CRITERIA_OPTIONS?.[field] || []).find((entry) => entry[0] === value);
