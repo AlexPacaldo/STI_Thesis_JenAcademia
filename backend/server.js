@@ -2338,37 +2338,81 @@ async function encryptExistingPlaintextMessages() {
   }
 }
 
+/**
+ * Every schema step, run in order at boot.
+ *
+ * Named and run individually rather than awaited as a bare sequence. A bare
+ * sequence means one bad statement takes the whole service down: the throw skips
+ * every later step and prepareDatabaseWithRetry calls process.exit(1), which on
+ * Railway is an unrecoverable crash loop - the router ends up with no healthy
+ * replica and answers 502 to everything, with no clue which statement failed.
+ *
+ * A server that boots with one feature broken is recoverable and the logs say
+ * which feature. A server that never answers is neither.
+ *
+ * Order still matters - later steps can depend on earlier tables - so this is a
+ * sequence, just one that survives a failure.
+ */
+const SCHEMA_STEPS = [
+  ["assignment attempt columns", ensureAssignmentAttemptColumns],
+  ["books columns", ensureBooksColumns],
+  ["remark columns", ensureRemarkColumns],
+  ["lessons columns", ensureLessonsColumns],
+  ["book teachers table", ensureBookTeachersTable],
+  ["lesson progress table", ensureLessonProgressTable],
+  ["class attendance logs table", ensureClassAttendanceLogsTable],
+  ["student course progress table", ensureStudentCourseProgressTable],
+  ["user profile image column", ensureUserProfileImageColumn],
+  ["user password changed column", ensureUserPasswordChangedColumn],
+  ["account setup invites table", ensureAccountSetupInvitesTable],
+  ["password reset tokens table", ensurePasswordResetTokensTable],
+  ["api rate limits table", ensureApiRateLimitsTable],
+  ["user demographics columns", ensureUserDemographicsColumns],
+  ["teacher profile columns", ensureTeacherProfileColumns],
+  ["profile completion refresh", refreshAllProfileCompletion],
+  ["student contract requests table", ensureStudentContractRequestsTable],
+  ["class package duration column", ensureStudentClassPackageDurationColumn],
+  ["class status no-show column", ensureClassStatusSupportsNoShow],
+  ["student proficiency levels", ensureStudentProficiencyLevels],
+  ["messages table", ensureMessagesTable],
+  ["encrypted column types", ensureSensitiveEncryptedColumnTypes],
+  ["performance indexes", ensurePerformanceIndexes],
+  ["encrypt plaintext messages", encryptExistingPlaintextMessages],
+  ["encrypt existing sensitive data", encryptExistingSensitiveData],
+  ["remove legacy package date columns", removeStudentPackageDateColumns],
+  ["class package expiry columns", ensureStudentClassPackageExpiryColumns],
+  ["teacher courses table", ensureTeacherCoursesTable],
+  ["expire finished packages", expireFinishedPackages],
+  ["delete past teacher availability", deletePastTeacherAvailability],
+];
+
 async function prepareDatabase() {
-  await ensureAssignmentAttemptColumns();
-  await ensureBooksColumns();
-  await ensureRemarkColumns();
-  await ensureLessonsColumns();
-  await ensureBookTeachersTable();
-  await ensureLessonProgressTable();
-  await ensureClassAttendanceLogsTable();
-  await ensureStudentCourseProgressTable();
-  await ensureUserProfileImageColumn();
-  await ensureUserPasswordChangedColumn();
-  await ensureAccountSetupInvitesTable();
-  await ensurePasswordResetTokensTable();
-  await ensureApiRateLimitsTable();
-  await ensureUserDemographicsColumns();
-  await ensureTeacherProfileColumns();
-  await refreshAllProfileCompletion();
-  await ensureStudentContractRequestsTable();
-  await ensureStudentClassPackageDurationColumn();
-  await ensureClassStatusSupportsNoShow();
-  await ensureStudentProficiencyLevels();
-  await ensureMessagesTable();
-  await ensureSensitiveEncryptedColumnTypes();
-  await ensurePerformanceIndexes();
-  await encryptExistingPlaintextMessages();
-  await encryptExistingSensitiveData();
-  await removeStudentPackageDateColumns();
-  await ensureStudentClassPackageExpiryColumns();
-  await ensureTeacherCoursesTable();
-  await expireFinishedPackages();
-  await deletePastTeacherAvailability();
+  const failed = [];
+
+  for (const [name, run] of SCHEMA_STEPS) {
+    try {
+      await run();
+    } catch (err) {
+      // A connection-limit error means the database is momentarily unavailable
+      // rather than wrong, and it is transient - so it is rethrown for the retry
+      // wrapper to handle, exactly as before. Anything else is a statement or
+      // schema problem: skipping it costs one feature, whereas exiting costs the
+      // entire service.
+      if (isMysqlConnectionLimitError(err)) throw err;
+
+      failed.push(name);
+      console.error(`[schema] step "${name}" failed and was skipped:`, err?.message || err);
+    }
+  }
+
+  if (failed.length) {
+    console.error(
+      `[schema] ${failed.length} of ${SCHEMA_STEPS.length} steps failed: ${failed.join(", ")}. ` +
+        "Starting anyway - the affected features will error until the schema is fixed."
+    );
+  }
+
+  return failed;
 }
 
 async function prepareDatabaseWithRetry() {
@@ -2380,6 +2424,10 @@ async function prepareDatabaseWithRetry() {
       await prepareDatabase();
       return;
     } catch (err) {
+      // Only a connection-limit error reaches here now; prepareDatabase skips
+      // every other kind and keeps going. Exiting after exhausting the retries
+      // is still right for a genuinely unreachable database, because starting
+      // without one would just serve 500s from every route.
       if (!isMysqlConnectionLimitError(err) || attempt === maxAttempts) {
         console.error("Error preparing database columns:", err);
         process.exit(1);
