@@ -1306,43 +1306,322 @@
   width: min(460px, 100%);
 }
 
-/* Book create/edit/distribute dialog. */
+/* Book create/edit/distribute dialog, plus the contract extension approval
+ * dialog that reuses the same card.
+ *
+ * Three things earn their keep here:
+ *
+ *  - z-index is 1200, above the app chrome (header 99, sidebar 110) and the
+ *    chat launcher (140). It used to be 60, which put the sidebar and the logo
+ *    pill *over* the backdrop: the page stayed bright and fully clickable and
+ *    the header text drew straight across the dialog.
+ *  - The card is a head / body / footer column with the body as the only
+ *    scroller. This form is legitimately taller than a laptop viewport (title,
+ *    description, course, cover, teacher picker), and one `overflow-y: auto`
+ *    box put Cancel and the confirm button below the fold while the title
+ *    scrolled away. Now the actions stay pinned and the title stays put.
+ *  - The overlay itself scrolls, as the fallback for viewports too short to
+ *    hold even head + footer.
+ */
 .modalBackdrop {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 1200;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(15, 23, 42, 0.42);
+  overflow-y: auto;
+  background: rgba(19, 37, 31, 0.52);
+  animation: fadeInFast var(--duration-fast) var(--ease-out);
 }
 
 .modalCard {
-  background: #fff;
-  border: 1px solid rgba(38, 66, 59, 0.12);
-  border-radius: 24px;
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
-  animation: scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  max-height: calc(100vh - 40px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+  animation: scaleIn var(--duration-base) var(--ease-out);
 }
 
-.modalCard label input,
-.modalCard label textarea,
-.modalCard label select {
-  font: inherit;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(38, 66, 59, 0.16);
-  background: #fff;
+.modalHead {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modalHead h3 {
+  /* min-width + wrap so a long book title breaks instead of shoving the
+   * close button off the card. */
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1.3;
   color: var(--text);
 }
 
+.modalClose {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin: -4px -8px 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.modalClose:hover {
+  background: rgba(38, 66, 59, 0.08);
+  color: var(--text);
+}
+
+.modalClose:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The one scroll container in the dialog. min-height: 0 is required - without
+ * it a flex item refuses to shrink below its content, so the column would
+ * overflow the card instead of the card scrolling its body. */
+.modalBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: 20px 24px;
+}
+
+.modalFooter {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+}
+
+/* Field = label + control, both inside a grid so the label stays a real,
+ * clickable <label> while the control stretches to the column. */
+.field {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-mid);
+}
+
+.fieldHint {
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.fieldOptional {
+  font-weight: 500;
+  color: var(--muted-light);
+}
+
+/* A block inside the modal body that groups a heading, a hint and its
+ * controls - the teacher picker is the only one, but the body is a grid and
+ * this keeps it on the same rhythm as the fields around it.
+ *
+ * The divider is drawn only when the section actually follows something: in
+ * the distribute-only dialog the section is the body's first child and a rule
+ * there would just be a stray line under the heading. */
+.modalSection {
+  display: grid;
+  gap: 8px;
+}
+
+.modalBody > .modalSection:not(:first-child) {
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* The teacher list carries its own divider for its use inside the course
+ * manager. Inside a modal section that divider would sit a few pixels under an
+ * identical one, so it is dropped and the gap carries the separation. */
+.modalSection .courseCheckboxGrid {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* Same reason: the warning banner's own bottom margin was tuned for a flow
+ * layout, and would break the grid's rhythm inside a section. */
+.modalSection .modalWarning {
+  margin-bottom: 0;
+}
+
+.modalSectionTitle {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+/* Live "n of m selected" line. Colour stays inline because it is a state,
+ * not a variant. */
+.modalCount {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+/* Checkboxes and radios are sized by their own rules, not stretched to fill
+ * the field, hence the :not(). File inputs are excluded too - the picker
+ * hides the real input behind a drop tile, and this rule outranks the
+ * `.filePicker` reset (three classes vs two) and would paint a white field
+ * straight over that tile. */
+.modalCard input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.modalCard textarea,
+.modalCard select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-mid);
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  outline: 0;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.modalCard input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+.modalCard textarea:focus,
+.modalCard select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(47, 77, 62, 0.1);
+}
+
+.modalCard select {
+  cursor: pointer;
+}
+
 .modalCard textarea {
+  min-height: 92px;
   resize: vertical;
+  line-height: 1.5;
+}
+
+/* Cover picker.
+ *
+ * The OS file widget cannot be styled, and the old bare
+ * <input type="file"> rendered as "Choose File / No file chosen" inside the
+ * field border - which reads as a broken input, not a picker. The real input
+ * is now stretched transparently over a drop target, so the whole tile is the
+ * hit area, keyboard focus still lands on the input, and the chosen file is
+ * reported back with its own name and a way to undo the pick. */
+.filePicker {
+  position: relative;
+}
+
+.filePicker input[type="file"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.fileDrop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  color: var(--text-mid);
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.fileDrop:hover {
+  border-color: var(--primary);
+  background: #fbfdfc;
+}
+
+.filePicker:focus-within .fileDrop {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(47, 77, 62, 0.1);
+}
+
+.fileDropIcon {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.fileDropTypes {
+  margin-left: auto;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted-light);
+}
+
+.fileChosen {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 13px;
+  border: 1px solid var(--border-mid);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.fileChosenIcon {
+  flex: 0 0 auto;
+  color: var(--primary);
+  font-size: 1rem;
+}
+
+.fileChosenName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.fileChosenRemove {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 7px 12px;
+  font-size: 0.82rem;
 }
 
 /* Warning banner inside a modal, e.g. a teacher who can no longer be assigned. */
@@ -1467,9 +1746,17 @@
 }
 
 .courseCheck input {
-  width: auto;
+  /* Neutralised against the modal field rule, which stretches text inputs to
+   the column width. */
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
   min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
   accent-color: var(--primary);
+  cursor: pointer;
 }
 
 .split {
@@ -2034,6 +2321,56 @@
   .overviewSplit {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* ===== ARCHIVED USERS =====
+   The list behind "Show Archived Users". Two things it has to say per row:
+   who closed the account, and why. An automatic archive and a manual one used to
+   render identically, which made the dormancy rule's output impossible to
+   separate from the admin's own decisions after the fact. */
+
+.archivedSummary {
+  margin: 0 0 14px;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+/* Two lines per row: the identity, then what happened to it. */
+.archiveIdentity {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.archiveName {
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.archiveMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* Deliberately not the same green as "Setup Complete" above it. Green there
+   means "this account is fine"; an account closed by a rule is neither fine nor
+   a mistake - it needs reading. */
+.autoBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--pill-info);
+  color: var(--text-info);
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 @media (max-width: 900px) {

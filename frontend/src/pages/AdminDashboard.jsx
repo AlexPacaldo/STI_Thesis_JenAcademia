@@ -774,6 +774,26 @@ export default function AdminDashboard() {
     setBookModal(kind);
   }
 
+  // While a dialog is open the page behind it must not scroll and Escape must
+  // close it - otherwise the "modal" is only a box painted over content the
+  // user can still move, and the only way out is the Cancel button.
+  useEffect(() => {
+    if (!bookModal && !extensionApproval) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      // Only the topmost dialog reacts, so Escape cannot close two at once.
+      if (bookModal) setBookModal(null);
+      else setExtensionApproval(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [bookModal, extensionApproval]);
+
   // Teachers already on the book who no longer appear in the eligible list -
   // they left the course, or were archived. Their checkbox is not rendered, so
   // without this the selection would be invisible and the save would fail with
@@ -4650,40 +4670,54 @@ export default function AdminDashboard() {
                 className={styles.modalCard}
                 onClick={(e) => e.stopPropagation()}
                 style={{ maxWidth: "520px" }}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="extension-modal-title"
               >
-                <h3 style={{ margin: "0 0 4px 0", fontSize: "1.15rem", fontWeight: 800, color: "#13251f" }}>
-                  Approve contract extension
-                </h3>
-                <p style={{ margin: "0 0 14px 0", fontSize: "0.9rem", color: "#4b5563", lineHeight: 1.5 }}>
-                  {extensionApproval.request.first_name} {extensionApproval.request.last_name} has{" "}
-                  <strong>{extensionApproval.request.classes_left_at_request ?? "?"}</strong> unused class
-                  {(extensionApproval.request.classes_left_at_request ?? 0) === 1 ? "" : "es"} on a contract
-                  that ended{" "}
-                  {formatDate(extensionApproval.request.package_expires_at)}.
-                </p>
-
-                <div className={styles.modalWarning}>
-                  This moves the end date of the existing contract. The classes are
-                  kept, not replaced - no new package is created and nothing used
-                  is reset.
+                <div className={styles.modalHead}>
+                  <h3 id="extension-modal-title">Approve contract extension</h3>
+                  <button
+                    type="button"
+                    className={styles.modalClose}
+                    onClick={() => setExtensionApproval(null)}
+                    aria-label="Close"
+                  >
+                    <i className="bi bi-x-lg" aria-hidden="true" />
+                  </button>
                 </div>
 
-                <label style={{ display: "grid", gap: 6, marginTop: 14 }}>
-                  <span style={{ fontSize: "0.85rem", fontWeight: 700 }}>New end date</span>
-                  <input
-                    type="date"
-                    value={extensionApproval.date}
-                    onChange={(e) => setExtensionApproval({ ...extensionApproval, date: e.target.value })}
-                    min={new Date().toISOString().slice(0, 10)}
-                  />
-                </label>
+                <div className={styles.modalBody}>
+                  <p className={styles.fieldHint} style={{ fontSize: "0.9rem" }}>
+                    {extensionApproval.request.first_name} {extensionApproval.request.last_name} has{" "}
+                    <strong>{extensionApproval.request.classes_left_at_request ?? "?"}</strong> unused class
+                    {(extensionApproval.request.classes_left_at_request ?? 0) === 1 ? "" : "es"} on a contract
+                    that ended{" "}
+                    {formatDate(extensionApproval.request.package_expires_at)}.
+                  </p>
 
-                <p style={{ margin: "10px 0 0", fontSize: "0.8rem", color: "#6b7280", lineHeight: 1.5 }}>
-                  Payment is handled outside this system. Recording the new date
-                  here is what extends the contract; nothing is charged.
-                </p>
+                  <div className={styles.modalWarning}>
+                    This moves the end date of the existing contract. The classes are
+                    kept, not replaced - no new package is created and nothing used
+                    is reset.
+                  </div>
 
-                <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+                  <label className={styles.field}>
+                    New end date
+                    <input
+                      type="date"
+                      value={extensionApproval.date}
+                      onChange={(e) => setExtensionApproval({ ...extensionApproval, date: e.target.value })}
+                      min={new Date().toISOString().slice(0, 10)}
+                    />
+                  </label>
+
+                  <p className={styles.fieldHint}>
+                    Payment is handled outside this system. Recording the new date
+                    here is what extends the contract; nothing is charged.
+                  </p>
+                </div>
+
+                <div className={styles.modalFooter}>
                   <button
                     type="button"
                     className={styles.decline}
@@ -4717,18 +4751,32 @@ export default function AdminDashboard() {
               className={styles.modalCard}
               onClick={(e) => e.stopPropagation()}
               style={{ maxWidth: "560px" }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="book-modal-title"
             >
-              <h3 style={{ margin: "0 0 16px 0", fontSize: "1.2rem", fontWeight: 800, color: "#13251f" }}>
-                {bookModal === "create"
-                  ? "Add Book"
-                  : bookModal === "edit"
-                    ? "Edit Book"
-                    : `Distribute "${bookDraft.title}"`}
-              </h3>
+              <div className={styles.modalHead}>
+                <h3 id="book-modal-title">
+                  {bookModal === "create"
+                    ? "Add Book"
+                    : bookModal === "edit"
+                      ? "Edit Book"
+                      : `Distribute "${bookDraft.title}"`}
+                </h3>
+                <button
+                  type="button"
+                  className={styles.modalClose}
+                  onClick={() => setBookModal(null)}
+                  aria-label="Close"
+                >
+                  <i className="bi bi-x-lg" aria-hidden="true" />
+                </button>
+              </div>
 
+              <div className={styles.modalBody}>
               {bookModal !== "distribute" && (
-                <div style={{ display: "grid", gap: "14px", marginBottom: "20px" }}>
-                  <label style={{ display: "grid", gap: "6px", fontSize: "0.9rem", fontWeight: 600 }}>
+                <>
+                  <label className={styles.field}>
                     Title
                     <input
                       value={bookDraft.title}
@@ -4737,8 +4785,8 @@ export default function AdminDashboard() {
                     />
                   </label>
 
-                  <label style={{ display: "grid", gap: "6px", fontSize: "0.9rem", fontWeight: 600 }}>
-                    Description (optional)
+                  <label className={styles.field}>
+                    Description <span className={styles.fieldOptional}>(optional)</span>
                     <textarea
                       rows={3}
                       value={bookDraft.description}
@@ -4750,7 +4798,7 @@ export default function AdminDashboard() {
                   </label>
 
                   {bookModal === "create" && (
-                    <label style={{ display: "grid", gap: "6px", fontSize: "0.9rem", fontWeight: 600 }}>
+                    <label className={styles.field}>
                       Course
                       <select
                         value={bookDraft.courseId}
@@ -4787,28 +4835,60 @@ export default function AdminDashboard() {
                     </label>
                   )}
 
-                  <label style={{ display: "grid", gap: "6px", fontSize: "0.9rem", fontWeight: 600 }}>
-                    Cover image (optional)
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      onChange={(e) =>
-                        setBookDraft((prev) => ({
-                          ...prev,
-                          coverFile: e.target.files?.[0] || null,
-                        }))
-                      }
-                    />
-                  </label>
-                </div>
+                  {/* The native file widget cannot be styled, so it is hidden
+                      under a drop tile that names the chosen file and can drop
+                      it again - the bare "Choose File / No file chosen" control
+                      read as a broken field next to the other inputs. */}
+                  <div className={styles.field}>
+                    <span>
+                      Cover image <span className={styles.fieldOptional}>(optional)</span>
+                    </span>
+                    {bookDraft.coverFile ? (
+                      <div className={styles.fileChosen}>
+                        <i
+                          className={`bi bi-file-earmark-image ${styles.fileChosenIcon}`}
+                          aria-hidden="true"
+                        />
+                        <span className={styles.fileChosenName} title={bookDraft.coverFile.name}>
+                          {bookDraft.coverFile.name}
+                        </span>
+                        <button
+                          type="button"
+                          className={`${styles.linkBtn} ${styles.fileChosenRemove}`}
+                          onClick={() =>
+                            setBookDraft((prev) => ({ ...prev, coverFile: null }))
+                          }
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <div className={styles.filePicker}>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={(e) =>
+                            setBookDraft((prev) => ({
+                              ...prev,
+                              coverFile: e.target.files?.[0] || null,
+                            }))
+                          }
+                        />
+                        <span className={styles.fileDrop}>
+                          <i className={`bi bi-upload ${styles.fileDropIcon}`} aria-hidden="true" />
+                          Choose an image
+                          <span className={styles.fileDropTypes}>JPG, PNG or WEBP</span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
 
               {bookModal !== "edit" && (
-                <div style={{ marginBottom: "20px" }}>
-                  <h4 style={{ margin: "0 0 4px 0", fontSize: "0.95rem", fontWeight: 700, color: "#13251f" }}>
-                    Distribute to teachers
-                  </h4>
-                  <p style={{ margin: "0 0 12px 0", fontSize: "0.85rem", color: "#666" }}>
+                <div className={styles.modalSection}>
+                  <h4 className={styles.modalSectionTitle}>Distribute to teachers</h4>
+                  <p className={styles.fieldHint}>
                     {bookDraft.courseId
                       ? "Teachers assigned to this course. You can leave this empty and distribute later."
                       : "Pick a course first to see its teachers. You can leave this empty and distribute later."}
@@ -4816,10 +4896,8 @@ export default function AdminDashboard() {
                   {/* Live count, so what is about to be saved is never a surprise. */}
                   {bookDraft.courseId && eligibleTeachersForCourse.length > 0 && (
                     <p
+                      className={styles.modalCount}
                       style={{
-                        margin: "0 0 12px 0",
-                        fontSize: "0.82rem",
-                        fontWeight: 700,
                         color: bookDraft.teacherIds.length > 0 ? "#1f7a4d" : "#8a6d1f",
                       }}
                     >
@@ -4891,8 +4969,9 @@ export default function AdminDashboard() {
                   )}
                 </div>
               )}
+              </div>
 
-              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <div className={styles.modalFooter}>
                 <button className={styles.secondaryBtn} type="button" onClick={() => setBookModal(null)}>
                   Cancel
                 </button>
@@ -4936,17 +5015,66 @@ function ArchivedUsers({ onUnarchive, refresh, search = "" }) {
       .includes(searchTerm);
   });
 
+  // Newest first, and automatic before manual.
+  //
+  // The dormancy rule can close accounts with nobody watching, so the one an
+  // admin most needs to look at is the most recent unexplained one. Sorting by
+  // name - as this list used to - buried that under alphabetical order, which is
+  // the wrong order for an audit trail. `archived_at` is NULL for a hand-archived
+  // account, and those go last rather than first.
+  const sortedItems = [...filteredItems].sort((a, b) => {
+    if (Boolean(a.archived_at) !== Boolean(b.archived_at)) {
+      return a.archived_at ? -1 : 1;
+    }
+    if (a.archived_at && b.archived_at) {
+      return new Date(b.archived_at).getTime() - new Date(a.archived_at).getTime();
+    }
+    return `${a.last_name || a.first_name || ""}`.localeCompare(`${b.last_name || b.first_name || ""}`);
+  });
+
+  const autoCount = items.filter((user) => user.archived_at).length;
+
   return (
-    <ul className={styles.list}>
-      {filteredItems.length === 0 && <li className={styles.empty}>No archived users found</li>}
-      {filteredItems.map(u => (
-        <li key={u.user_id} className={styles.listRow}>
-          <span>{u.first_name} {u.last_name} - {u.email} ({u.role})</span>
-          <div>
-            <button className={styles.approve} onClick={() => onUnarchive(u.user_id)}>Restore</button>
-          </div>
-        </li>
-      ))}
-    </ul>
+    <>
+      {items.length > 0 && (
+        <p className={styles.archivedSummary}>
+          {items.length} archived {items.length === 1 ? "account" : "accounts"}
+          {autoCount > 0
+            ? `, ${autoCount} closed automatically by the dormancy rule.`
+            : ", all archived by you."}
+        </p>
+      )}
+      <ul className={styles.list}>
+        {sortedItems.length === 0 && <li className={styles.empty}>No archived users found</li>}
+        {sortedItems.map(u => (
+          <li key={u.user_id} className={styles.listRow}>
+            <span className={styles.archiveIdentity}>
+              <span className={styles.archiveName}>
+                {u.first_name} {u.last_name} - {u.email} ({u.role})
+              </span>
+              {/* The reason the account closed, and who decided it. Without this,
+                  an automatic archive is indistinguishable from a judgement the
+                  admin remembers making and cannot now verify. */}
+              <span className={styles.archiveMeta}>
+                {u.archived_at ? (
+                  <>
+                    <span className={styles.autoBadge}>Auto-archived</span>
+                    <span>
+                      {formatDateTime(u.archived_at)}
+                      {u.archived_reason ? ` \u00b7 ${u.archived_reason}` : ""}
+                    </span>
+                  </>
+                ) : (
+                  <span>Archived manually</span>
+                )}
+              </span>
+            </span>
+            <div>
+              <button className={styles.approve} onClick={() => onUnarchive(u.user_id)}>Restore</button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
