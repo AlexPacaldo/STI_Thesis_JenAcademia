@@ -381,7 +381,16 @@ ${rule}
      node_modules - which this repo has only in backend/. From scripts/ those
      three imports fail with ERR_MODULE_NOT_FOUND.
 
-     It reads backend/.env, so it uses the same credentials as the server.
+     It reads backend/.env and resolves credentials exactly the way the server
+     does - DB_*, then MYSQL*, then a parsed MYSQL_URL or DATABASE_URL, which is
+     what Railway provides. So point it at Railway the same way you point the
+     server at Railway: MYSQL_URL in backend/.env, or the DB_* variables.
+
+     It prints what it resolved before it connects, so check that line says your
+     Railway host and not "localhost". A seed that quietly resolved to localhost
+     would write to your own machine, so it refuses and tells you to pass
+     ALLOW_LOCAL_DB_SEED=1 if that is genuinely what you want.
+
      It is safe to re-run - it updates the same rows rather than duplicating.
 
   3. START THE SERVER ONCE, then stop it.

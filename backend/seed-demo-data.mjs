@@ -39,6 +39,7 @@
 import { config as loadEnv } from "dotenv";
 import bcrypt from "bcryptjs";
 import mysql from "mysql2/promise";
+import { describeDbConfig } from "./dbConfig.js";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs";
@@ -64,12 +65,60 @@ for (const candidate of [path.resolve(here, ".env"), path.resolve(here, "..", "b
   }
 }
 
+// The credentials come from dbConfig.js, the same resolution the server uses:
+// DB_* , then MYSQL*, then a parsed MYSQL_URL / DATABASE_URL, which is what
+// Railway provides.
+//
+// !! This script used to read DB_* on its own and default the host to localhost.
+// !! Against Railway that found nothing at all, so mysql2 connected to localhost
+// !! with no password and answered:
+// !!     Access denied for user 'Q'@'localhost' (using password: NO)
+// !! "using password: NO" means the credential was never found, not that the one
+// !! found was wrong - so no amount of retyping it would have fixed that.
+//
+// Say what we are about to touch BEFORE touching it. The driver's own error
+// names the user and host but not what it was looking for, so it cannot tell you
+// that a Railway URL went unread.
+const target = describeDbConfig();
+console.log(`\nTarget database`);
+console.log(`  host      ${target.host}:${target.port}`);
+console.log(`  database  ${target.database}`);
+console.log(`  user      ${target.user}`);
+console.log(`  password  ${target.passwordSet ? "found" : "MISSING"}`);
+console.log(`  from      ${target.source}\n`);
+
+if (!target.passwordSet) {
+  console.error(
+    "No database password was found.\n\n" +
+      "Put one in backend/.env, either as\n" +
+      "    DB_PASSWORD=...\n" +
+      "or, if you are pointing at Railway, as the single URL it provides:\n" +
+      "    MYSQL_URL=mysql://USER:PASSWORD@HOST:PORT/jen_academia\n\n" +
+      "Not sure? Run this and it will tell you what it resolved:\n" +
+      "  node -e \"import('./dbConfig.js').then(m => console.log(m.describeDbConfig()))\"\n"
+  );
+  process.exit(1);
+}
+
+if (target.looksLocal && process.env.ALLOW_LOCAL_DB_SEED !== "1") {
+  // A Railway seed that quietly resolved to localhost would write to the
+  // developer's own machine - or fail with a confusing error, which is what
+  // happened. Ask rather than guess.
+  console.error(
+    `This resolved to a LOCAL database (${target.host}), not a server.\n\n` +
+      `That is almost certainly not what you meant when seeding for Railway.\n` +
+      `If it IS what you meant, re-run with:\n` +
+      `  ALLOW_LOCAL_DB_SEED=1 node seed-demo-data.mjs\n`
+  );
+  process.exit(1);
+}
+
 const db = await mysql.createConnection({
-  host: process.env.DB_HOST || "localhost",
-  port: Number(process.env.DB_PORT || 3306),
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
+  host: target.host,
+  port: target.port,
+  user: target.user,
+  password: process.env.DB_PASSWORD || process.env.MYSQLPASSWORD || "", // resolved in dbConfig
+  database: target.database,
   charset: "utf8mb4",
 });
 

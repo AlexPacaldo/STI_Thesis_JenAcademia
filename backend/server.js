@@ -11,6 +11,16 @@ import path from "path";
 import { Resend } from "resend";
 import { assessClassEvidence } from "./classEvidence.js";
 import { createDbStore, ensureRateLimitsTable } from "./dbRateLimit.js";
+import {
+  DB_CONNECTION_LIMIT,
+  DB_HOST,
+  DB_NAME,
+  DB_PASSWORD,
+  DB_PORT,
+  DB_USER,
+  assertDbPasswordPresent,
+  describeDbConfig,
+} from "./dbConfig.js";
 import { createRateLimiter } from "./rateLimit.js";
 import { readBearerToken, signSessionToken, verifySessionToken } from "./sessionToken.js";
 import { deleteRecordingFromDrive, extractDriveFileId, isGoogleDriveConfigured, uploadRecordingToDrive } from "./googleDrive.js";
@@ -50,54 +60,15 @@ dotenv.config();
 
 const PORT = process.env.PORT || 3001;
 const INVITE_EXPIRY_HOURS = Number(process.env.ACCOUNT_INVITE_EXPIRY_HOURS || 24);
-const mysqlUrl = process.env.MYSQL_URL || process.env.DATABASE_URL || "";
-
-function parseMysqlUrl(url) {
-  if (!url) return {};
-
-  try {
-    const parsed = new URL(url);
-    if (!["mysql:", "mysql2:"].includes(parsed.protocol)) return {};
-
-    return {
-      host: parsed.hostname,
-      port: parsed.port ? Number(parsed.port) : undefined,
-      user: decodeURIComponent(parsed.username || ""),
-      password: decodeURIComponent(parsed.password || ""),
-      database: parsed.pathname ? decodeURIComponent(parsed.pathname.replace(/^\//, "")) : "",
-    };
-  } catch (err) {
-    console.warn("Ignoring invalid MYSQL_URL/DATABASE_URL:", err.message);
-    return {};
-  }
-}
-
-const mysqlUrlConfig = parseMysqlUrl(mysqlUrl);
-const DB_HOST = process.env.DB_HOST || process.env.MYSQLHOST || mysqlUrlConfig.host || "localhost";
-const DB_USER = process.env.DB_USER || process.env.MYSQLUSER || mysqlUrlConfig.user || "root";
-const DB_PASSWORD = process.env.DB_PASSWORD || process.env.MYSQLPASSWORD || mysqlUrlConfig.password || "";
-
-// Required, with no fallback. This used to fall back to a real credential that
-// was committed to this repository, which meant anyone reading the source could
-// connect to a database still left using it - and, because it was also the last
-// resort for the chat and session secrets below, a missing configuration looked
-// like a working one. Failing here is deliberate: a clear refusal at start-up
-// beats an "access denied for user" from the driver twenty lines later.
+// Where the credentials come from - DB_*, then MYSQL*, then a parsed MYSQL_URL or
+// DATABASE_URL, which is what Railway provides. See dbConfig.js.
 //
-// Note that removing it from the source does not remove it from the git
-// history. The old password should still be rotated at the database.
-if (!DB_PASSWORD) {
-  throw new Error(
-    "DB_PASSWORD is not set. Set DB_PASSWORD, MYSQLPASSWORD, or put a password in " +
-      "MYSQL_URL / DATABASE_URL (for example ${{MySQL.MYSQL_URL}} in Railway)."
-  );
-}
-const DB_NAME = process.env.DB_NAME || process.env.MYSQLDATABASE || mysqlUrlConfig.database || "jen_academia";
-const DB_PORT = Number(process.env.DB_PORT || process.env.MYSQLPORT || mysqlUrlConfig.port || 3306);
-const requestedConnectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 5);
-const DB_CONNECTION_LIMIT = Number.isFinite(requestedConnectionLimit)
-  ? Math.min(Math.max(requestedConnectionLimit, 1), 10)
-  : 5;
+// The whole chain used to live here inline. It was moved because the demo seeder
+// needed the same one and had a shortened copy that read DB_* only: against
+// Railway, where the credential arrives as MYSQL_URL, that copy found nothing and
+// connected to localhost with no password. Two copies of this is how that
+// happened, so there is one now.
+assertDbPasswordPresent();
 const UPLOAD_ROOT = path.resolve(
   process.env.UPLOAD_ROOT ||
     process.env.RAILWAY_VOLUME_MOUNT_PATH ||
