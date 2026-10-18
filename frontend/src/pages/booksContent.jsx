@@ -311,6 +311,38 @@ export default function BooksContent({ mode = "student" }) {
     };
   }, [showPdfFullscreen]);
 
+  // One place that closes a dialog and clears its draft, so the Cancel button,
+  // the close icon and Escape cannot drift apart in what they reset. Declared
+  // here rather than next to each form because the effect below depends on them.
+  const closeLessonModal = useCallback(() => {
+    setShowLessonModal(false);
+    setLessonData({ title: "", content: "", file: null });
+  }, []);
+
+  const closeCoverModal = useCallback(() => {
+    setShowCoverModal(false);
+    setCoverFile(null);
+  }, []);
+
+  // A dialog that leaves the page scrollable behind it and can only be left by
+  // hunting for a button is not really modal. Escape closes the topmost one;
+  // the flag check keeps it from closing two at once.
+  useEffect(() => {
+    if (!showLessonModal && !showCoverModal) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      if (showLessonModal) closeLessonModal();
+      else closeCoverModal();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [showLessonModal, showCoverModal, closeLessonModal, closeCoverModal]);
+
   const isTeacherView = mode === "teacher";
   // The admin owns the library: only this view may change a book or its lessons.
   const isAdminView = mode === "admin";
@@ -785,11 +817,30 @@ export default function BooksContent({ mode = "student" }) {
     }
   };
 
-  const handleDeleteLesson = async (lesson) => {
-    if (!window.confirm(`Delete lesson "${lesson.title}"? Students' progress on it is removed too.`)) {
-      return;
-    }
+  // Deleting a lesson is destructive and irreversible - it takes the students'
+  // progress on it with it - so it goes through a real dialog rather than a
+  // window.confirm. DESIGN_LANGUAGE.md forbids the native one, and this file
+  // already carries the pattern (ModalPortal + modalContent/dialogHead/dialogBody/
+  // dialogFooter) for the cover and lesson forms two dialogs above.
+  //
+  // Split in two on purpose: requestDeleteLesson only records WHICH lesson is
+  // pending, and the dialog's own confirm button calls handleDeleteLesson. Doing
+  // both in the click handler is what put a native confirm here in the first place.
+  const [lessonPendingDeletion, setLessonPendingDeletion] = useState(null);
+  const [deletingLesson, setDeletingLesson] = useState(false);
 
+  const requestDeleteLesson = (lesson) => setLessonPendingDeletion(lesson);
+
+  const closeDeleteDialog = () => {
+    if (deletingLesson) return;
+    setLessonPendingDeletion(null);
+  };
+
+  const handleDeleteLesson = async () => {
+    const lesson = lessonPendingDeletion;
+    if (!lesson || deletingLesson) return;
+
+    setDeletingLesson(true);
     try {
       const response = await apiFetch(
         `${API_BASE}/api/lessons/${lesson.lesson_id}?admin_id=${encodeURIComponent(adminId)}`,
@@ -799,10 +850,13 @@ export default function BooksContent({ mode = "student" }) {
       if (!response.ok) throw new Error("Failed to delete lesson");
 
       notify?.("Lesson deleted", "success");
+      setLessonPendingDeletion(null);
       await reloadLessons();
     } catch (err) {
       console.error("Error deleting lesson:", err);
       notify?.(`Error: ${err.message}`, "error");
+    } finally {
+      setDeletingLesson(false);
     }
   };
 
@@ -1033,7 +1087,7 @@ export default function BooksContent({ mode = "student" }) {
                       <button
                         type="button"
                         className={styles.deleteLessonBtn}
-                        onClick={() => handleDeleteLesson(lesson)}
+                        onClick={() => requestDeleteLesson(lesson)}
                         aria-label={`Delete lesson ${lesson.lesson_number}`}
                         title="Delete lesson"
                       >
@@ -1125,18 +1179,63 @@ export default function BooksContent({ mode = "student" }) {
       {showCoverModal && (
         <ModalPortal>
           <div className={styles.modal}>
-          <div className={styles.modalContent}>
-            <h2>Change Book Cover</h2>
-            <label>
-              Select cover image:
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
-              />
-            </label>
+          <div
+            className={`${styles.modalContent} ${styles.dialogCard}`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="change-cover-title"
+          >
+            <div className={styles.dialogHead}>
+              <h2 id="change-cover-title">Change Book Cover</h2>
+              <button
+                type="button"
+                className={styles.dialogClose}
+                aria-label="Close"
+                onClick={closeCoverModal}
+              >
+                <i className="bi bi-x-lg" aria-hidden="true" />
+              </button>
+            </div>
 
-            <div className={styles.modalButtons}>
+            <div className={styles.dialogBody}>
+              <div className={styles.formLabel}>
+                <span>Cover image</span>
+                {coverFile ? (
+                  <div className={styles.fileChosen}>
+                    <i
+                      className={`bi bi-file-earmark-image ${styles.fileChosenIcon}`}
+                      aria-hidden="true"
+                    />
+                    <span className={styles.fileChosenName} title={coverFile.name}>
+                      {coverFile.name}
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.fileChosenRemove}
+                      onClick={() => setCoverFile(null)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div className={styles.filePicker}>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
+                    />
+                    <span className={styles.fileDrop}>
+                      <i className={`bi bi-upload ${styles.fileDropIcon}`} aria-hidden="true" />
+                      Choose an image
+                      <span className={styles.fileDropTypes}>Any image format</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className={styles.dialogFooter}>
+              <button onClick={closeCoverModal} className={styles.cancelBtn}>Cancel</button>
               <button
                 onClick={async () => {
                   if (!coverFile) {
@@ -1160,8 +1259,7 @@ export default function BooksContent({ mode = "student" }) {
                     if (!res.ok) throw new Error("Failed to upload cover");
 
                     notify?.("Cover updated", "success");
-                    setShowCoverModal(false);
-                    setCoverFile(null);
+                    closeCoverModal();
                     // reload book
                     const bookQuery = new URLSearchParams(staffQueryParams);
                     const bk = await (
@@ -1177,7 +1275,6 @@ export default function BooksContent({ mode = "student" }) {
               >
                 Save
               </button>
-              <button onClick={() => { setShowCoverModal(false); setCoverFile(null); }} className={styles.cancelBtn}>Cancel</button>
             </div>
           </div>
           </div>
@@ -1188,52 +1285,107 @@ export default function BooksContent({ mode = "student" }) {
       {showLessonModal && (
         <ModalPortal>
           <div className={styles.modal}>
-          <div className={`${styles.modalContent} ${styles.lessonModalContent}`}>
-            <h2>Upload Lesson</h2>
-            <p className={styles.autoLessonNote}>
-              The lesson number will be assigned automatically.
-            </p>
+          <div
+            className={`${styles.modalContent} ${styles.dialogCard}`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="upload-lesson-title"
+          >
+            <div className={styles.dialogHead}>
+              <h2 id="upload-lesson-title">Upload Lesson</h2>
+              <button
+                type="button"
+                className={styles.dialogClose}
+                aria-label="Close"
+                onClick={closeLessonModal}
+              >
+                <i className="bi bi-x-lg" aria-hidden="true" />
+              </button>
+            </div>
 
-            <label>
-              Lesson Title:
-              <input
-                className={styles.lessonInput}
-                type="text"
-                placeholder="Enter lesson title"
-                value={lessonData.title}
-                onChange={(e) =>
-                  setLessonData({ ...lessonData, title: e.target.value })
-                }
-              />
-            </label>
+            <div className={styles.dialogBody}>
+              <p className={styles.dialogNote}>
+                The lesson number will be assigned automatically.
+              </p>
 
-            <label>
-              File:
-              <input
-                className={styles.lessonInput}
-                type="file"
-                accept=".pdf,.doc,.docx,.txt"
-                onChange={handleLessonFileChange}
-              />
-            </label>
+              <label>
+                Lesson title
+                <input
+                  className={styles.lessonInput}
+                  type="text"
+                  placeholder="Enter lesson title"
+                  value={lessonData.title}
+                  onChange={(e) =>
+                    setLessonData({ ...lessonData, title: e.target.value })
+                  }
+                />
+              </label>
 
-            {lessonData.file && (
-              <p className={styles.selectedFileName}>{lessonData.file.name}</p>
-            )}
+              <div className={styles.formLabel}>
+                <span>
+                  Lesson file{" "}
+                  <span className={styles.dialogOptional}>(PDF, DOC, DOCX or TXT)</span>
+                </span>
+                {/* The OS file widget cannot be styled and was also echoing the
+                    file name twice - once in the widget, once in a line below it.
+                    The real input is hidden under a drop tile that names the file
+                    once and can drop it again. */}
+                {lessonData.file ? (
+                  <div className={styles.fileChosen}>
+                    <i
+                      className={`bi bi-file-earmark-pdf ${styles.fileChosenIcon}`}
+                      aria-hidden="true"
+                    />
+                    <span className={styles.fileChosenName} title={lessonData.file.name}>
+                      {lessonData.file.name}
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.fileChosenRemove}
+                      onClick={() =>
+                        setLessonData({ ...lessonData, file: null })
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div className={styles.filePicker}>
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,.txt"
+                      onChange={handleLessonFileChange}
+                    />
+                    <span className={styles.fileDrop}>
+                      <i className={`bi bi-upload ${styles.fileDropIcon}`} aria-hidden="true" />
+                      Choose a file
+                      <span className={styles.fileDropTypes}>PDF, DOC, DOCX or TXT</span>
+                    </span>
+                  </div>
+                )}
+              </div>
 
-            <label>
-              Description (optional):
-              <textarea
-                className={styles.lessonTextarea}
-                placeholder="Write additional notes for this lesson..."
-                value={lessonData.content}
-                onChange={(e) =>
-                  setLessonData({ ...lessonData, content: e.target.value })
-                }
-              />
-            </label>
+              <label>
+                Description <span className={styles.dialogOptional}>(optional)</span>
+                <textarea
+                  className={styles.lessonTextarea}
+                  placeholder="Write additional notes for this lesson..."
+                  value={lessonData.content}
+                  onChange={(e) =>
+                    setLessonData({ ...lessonData, content: e.target.value })
+                  }
+                />
+              </label>
+            </div>
 
-            <div className={styles.modalButtons}>
+            <div className={styles.dialogFooter}>
+              <button
+                type="button"
+                onClick={closeLessonModal}
+                className={styles.cancelBtn}
+              >
+                Cancel
+              </button>
               <button
                 type="button"
                 onClick={handleUploadLesson}
@@ -1242,19 +1394,61 @@ export default function BooksContent({ mode = "student" }) {
               >
                 {uploadingLesson ? "Uploading..." : "Upload"}
               </button>
+            </div>
+          </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {lessonPendingDeletion && (
+        <ModalPortal>
+          <div className={styles.modal}>
+          <div
+            className={`${styles.modalContent} ${styles.dialogCard}`}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-lesson-title"
+            aria-describedby="delete-lesson-note"
+          >
+            <div className={styles.dialogHead}>
+              <h2 id="delete-lesson-title">Delete this lesson?</h2>
               <button
                 type="button"
-                onClick={() => {
-                  setShowLessonModal(false);
-                  setLessonData({
-                    title: "",
-                    content: "",
-                    file: null,
-                  });
-                }}
+                className={styles.dialogClose}
+                aria-label="Close"
+                onClick={closeDeleteDialog}
+                disabled={deletingLesson}
+              >
+                <i className="bi bi-x-lg" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className={styles.dialogBody}>
+              {/* Names the lesson outright. A generic "are you sure?" on a list of
+                  forty lessons is a confirmation of the wrong thing. */}
+              <p id="delete-lesson-note" className={styles.dialogNote}>
+                &ldquo;{decodeText(lessonPendingDeletion.title)}&rdquo; will be deleted
+                permanently, along with every student&apos;s progress on it. This cannot be
+                undone.
+              </p>
+            </div>
+
+            <div className={styles.dialogFooter}>
+              <button
+                type="button"
+                onClick={closeDeleteDialog}
                 className={styles.cancelBtn}
+                disabled={deletingLesson}
               >
                 Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteLesson}
+                className={`${styles.confirmBtn} ${styles.dangerBtn}`}
+                disabled={deletingLesson}
+              >
+                {deletingLesson ? "Deleting..." : "Delete lesson"}
               </button>
             </div>
           </div>

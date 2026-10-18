@@ -153,24 +153,10 @@
   background: #fff;
 }
 
-.lessonInput[type="file"]::file-selector-button {
-  margin-right: 12px;
-  border: 0;
-  border-radius: 10px;
-  background: rgba(145, 167, 154, 0.18);
-  color: var(--primary);
-  padding: 8px 12px;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.selectedFileName {
-  margin: -6px 0 0;
-  color: var(--muted);
-  font-size: 0.9rem;
-  overflow-wrap: anywhere;
-}
+/* The lesson/cover pickers used to be bare <input type="file">, styled through
+ * ::file-selector-button and echoed the picked name in a second line. Both are
+ * superseded by the .fileDrop / .fileChosen tiles near .dialogBody - left here
+ * they only invite the old markup back. */
 
 .instructionsBox {
   min-height: 25vh;
@@ -853,8 +839,7 @@
   color: var(--muted);
 }
 
-.fileActions,
-.modalButtons {
+.fileActions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -884,6 +869,27 @@
   background: var(--primary);
   color: #fff;
   border-color: var(--primary);
+}
+
+/* Danger variant for destructive confirms.
+   DESIGN_LANGUAGE.md requires one ("Destructive actions use the Danger button
+   variant"), and this file had none - the only destructive affordance here was a
+   window.confirm. Colours are the documented Danger ramp, not literals. */
+.dangerBtn {
+  background: var(--pill-danger);
+  color: var(--text-danger);
+  border-color: rgba(168, 58, 52, 0.35);
+  font-weight: 800;
+}
+
+.dangerBtn:hover:not(:disabled) {
+  background: #f9d9d4;
+  border-color: var(--accent-danger);
+}
+
+.dangerBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .filePreview {
@@ -991,6 +997,218 @@
   display: grid;
   gap: 8px;
   color: var(--text);
+}
+
+/* ---- Dialog shell: Upload Lesson, Change Book Cover ----
+ *
+ * `.modalContent` on its own is one scrolling box with 24px of padding, so a
+ * form taller than the viewport pushed its actions off the bottom and - since
+ * it is not a grid - the fields had no vertical rhythm between them either.
+ * `.dialogCard` turns it into a head / body / footer column where only the
+ * body scrolls, matching the Add Book dialog in AdminDashboard.module.css.
+ */
+.modalContent.dialogCard {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.dialogHead {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dialogHead h2 {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.dialogNote {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.dialogClose {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin: -4px -8px 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.dialogClose:hover {
+  background: rgba(38, 66, 59, 0.08);
+  color: var(--text);
+}
+
+.dialogClose:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The one scroll container. min-height: 0 is required: a flex item will not
+ * shrink below its content without it, so the column would overflow the card
+ * rather than the card scrolling its body. */
+.dialogBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: 20px 24px;
+}
+
+/* Beats `.modalContent label` on specificity so the labels match the rest of
+ * the app: smaller, semibold, muted - not full-strength body text. */
+.dialogBody label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-mid);
+}
+
+.dialogOptional {
+  font-weight: 500;
+  color: var(--muted-light);
+}
+
+.dialogFooter {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+}
+
+/* File picker.
+ *
+ * The OS widget cannot be styled, so it rendered as
+ * "Choose File / regEx.pdf" inside the field border - and the file name was
+ * then echoed again in a line underneath it. The real input is now stretched
+ * transparently over a drop tile: the whole tile is the hit area, keyboard
+ * focus still lands on the input, and the chosen file is reported once, with
+ * a way to drop it again. */
+.dialogBody .filePicker {
+  position: relative;
+}
+
+.dialogBody .filePicker input[type="file"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.fileDrop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  color: var(--text-mid);
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.fileDrop:hover {
+  border-color: var(--primary);
+  background: #fbfdfc;
+}
+
+.filePicker:focus-within .fileDrop {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(47, 77, 62, 0.1);
+}
+
+.fileDropIcon {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.fileDropTypes {
+  margin-left: auto;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted-light);
+}
+
+.fileChosen {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 13px;
+  border: 1px solid var(--border-mid);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.fileChosenIcon {
+  flex: 0 0 auto;
+  color: var(--primary);
+  font-size: 1rem;
+}
+
+.fileChosenName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.fileChosenRemove {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 7px 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--primary);
+  cursor: pointer;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-mid);
+  border-radius: 10px;
 }
 
 .fullscreenPdf {
@@ -1159,7 +1377,7 @@
   .TopContent,
   .lessonActions,
   .fileActions,
-  .modalButtons,
+  .dialogFooter,
   .fullscreenActions,
   .fullscreenHeader {
     flex-direction: column;
