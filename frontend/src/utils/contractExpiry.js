@@ -168,6 +168,41 @@ export function describeStudentContract({
 }
 
 /**
+ * What a student should be offered when their contract is not active.
+ *
+ * !! The case this exists for: a contract that ENDED with classes still on it.
+ * !! That satisfies "no active package", so the only thing offered was a request
+ * !! for a NEW contract - and approving a new contract expires the old package
+ * !! and starts a fresh one at zero used. The student's unspent classes would
+ * !! have been discarded by the screen meant to help them. Asking for an
+ * !! extension is what they actually mean, and it keeps the balance.
+ *
+ * Three outcomes, and only ever one of them:
+ *   "extend"   - the contract ended and there is something left to spend
+ *   "new"      - nothing active, or everything used up
+ *   "none"     - a live contract with classes left. Nothing to ask for.
+ *
+ * "extend" suppresses "new" rather than appearing beside it: two different asks
+ * for one situation, with the one that throws the balance away sitting right
+ * next to the one that does not.
+ *
+ * @param {object} state
+ * @param {object|null} [state.activePackage] the active package, if any
+ * @param {object|null} [state.latestPackage] the most recent package, any status
+ */
+export function describeExtensionEligibility({ activePackage = null, latestPackage = null } = {}) {
+  const left = Number(latestPackage?.classes_left ?? 0);
+  const endedContractWithBalance = !activePackage && !!latestPackage && left > 0;
+
+  if (endedContractWithBalance) return "extend";
+
+  if (!activePackage) return "new";
+
+  const activeLeft = Number(activePackage.classes_left ?? 0);
+  return activeLeft <= 0 ? "new" : "none";
+}
+
+/**
  * Classes still available, and whether they are at risk of being lost.
  *
  * The two limits are independent, so this answers "how much can they still book"

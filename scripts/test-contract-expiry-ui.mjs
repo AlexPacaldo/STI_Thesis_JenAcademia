@@ -2,6 +2,7 @@ import {
   EXPIRY_SOON_DAYS,
   describeContractBalance,
   describeContractExpiry,
+  describeExtensionEligibility,
   describeStudentContract,
 } from "../frontend/src/utils/contractExpiry.js";
 
@@ -202,6 +203,73 @@ check(
   "a missing status is treated as active",
   describeStudentContract({ packageId: 1, expiresAt: inDays(-1) }, NOW).state,
   "expired"
+);
+
+/* --------------------------------------------- what a student should be offered */
+
+// The rule the client asked for. Every "extend" case below is a contract that
+// ended with classes still on it - a situation that previously satisfied "no
+// active package" and so offered only a NEW contract, which discards the balance
+// on approval.
+
+const live = { classes_left: 12 };
+const endedWithBalance = { classes_left: 6, status: "expired" };
+const endedSpent = { classes_left: 0, status: "expired" };
+
+check(
+  "a live contract with classes left offers nothing",
+  describeExtensionEligibility({ activePackage: live, latestPackage: live }),
+  "none"
+);
+
+check(
+  "an ended contract with classes left offers an EXTENSION",
+  describeExtensionEligibility({ activePackage: null, latestPackage: endedWithBalance }),
+  "extend"
+);
+check(
+  "...and never a new contract, which would discard those classes",
+  describeExtensionEligibility({ activePackage: null, latestPackage: endedWithBalance }) === "new",
+  false
+);
+
+check(
+  "an ended contract fully used offers a new contract",
+  describeExtensionEligibility({ activePackage: null, latestPackage: endedSpent }),
+  "new"
+);
+
+check(
+  "no package at all offers a new contract",
+  describeExtensionEligibility({}),
+  "new"
+);
+
+check(
+  "a live contract with nothing left offers a new contract",
+  describeExtensionEligibility({ activePackage: { classes_left: 0 }, latestPackage: { classes_left: 0 } }),
+  "new"
+);
+
+// Exactly one of the two asks, never both.
+const offers = (state) => {
+  const ask = describeExtensionEligibility(state);
+  return [ask === "extend", ask === "new"];
+};
+check("extend and new are never offered together (ended with balance)", offers({ activePackage: null, latestPackage: endedWithBalance }), [true, false]);
+check("extend and new are never offered together (fully spent)", offers({ activePackage: null, latestPackage: endedSpent }), [false, true]);
+check("extend and new are never offered together (live)", offers({ activePackage: live, latestPackage: live }), [false, false]);
+
+// A stale classes_left must not offer an extension for a spent contract.
+check(
+  "a package reporting no classes left is not extended",
+  describeExtensionEligibility({ activePackage: null, latestPackage: { classes_left: 0 } }),
+  "new"
+);
+check(
+  "a null classes_left is not treated as a balance",
+  describeExtensionEligibility({ activePackage: null, latestPackage: { classes_left: null } }),
+  "new"
 );
 
 if (failures.length) {

@@ -1,5 +1,6 @@
 import { openSseStream } from "../utils/sseClient.js";
 import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
+import { describeExtensionEligibility } from "../utils/contractExpiry.js";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
@@ -614,6 +615,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [contractRequestError, setContractRequestError] = useState("");
   const [contractRequests, setContractRequests] = useState([]);
   const [isSubmittingContractRequest, setIsSubmittingContractRequest] = useState(false);
+  // Only the extension form uses this. Kept separate from contractTrialNotes
+  // because that one is attached to a new-contract request as AI matching
+  // criteria, and an extension has no teacher to match - it is a request for
+  // time on a contract that already exists.
+  const [contractExtensionNote, setContractExtensionNote] = useState("");
   const [currentTimeTick, setCurrentTimeTick] = useState(() => Date.now());
   const isAdmin = localRole === "admin"; // helper for rendering
   const viewerTimezone = useMemo(() => getUserTimezone(me), [me]);
@@ -3143,7 +3149,35 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     !!studentPackage &&
     Number(effectiveClassesLeft) > 0 &&
     Number(effectiveBookableClasses) <= 0;
-  const canRequestNewContract = hasNoActiveStudentPackage || contractExhausted;
+  // !! This is the case the client reported. A contract that ended with classes
+  // !! still on it used to satisfy hasNoActiveStudentPackage, so the only thing
+  // !! offered was "request a new contract" - and approving a new contract
+  // !! expires the old package and starts a fresh one at zero used. The student's
+  // !! unspent classes would have been discarded by the very screen meant to help
+  // !! them. The rule lives in contractExpiry.js so it is decided and tested once
+  // !! rather than re-derived on this screen.
+  const contractAsk = describeExtensionEligibility({
+    activePackage: studentPackage,
+    latestPackage: latestStudentPackage,
+  });
+  const endedContractWithUnusedClasses = contractAsk === "extend";
+  const canRequestExtension = contractAsk === "extend";
+  // Suppressed rather than shown alongside: two different asks for the same
+  // situation, and the one that silently throws their balance away should not be
+  // the one sitting next to the button that does not.
+  const canRequestNewContract = contractAsk === "new";
+
+  // The student's own most recent request of the kind they are being offered.
+  // Matching on request_type is the point: an approved new-contract request from
+  // months ago must not make a pending extension look already-answered.
+  const extensionRequestPending = contractRequests.find(
+    (r) => r.request_type === "extension" && r.status === "pending"
+  );
+  // One pending request per kind on the server too, so re-sending updates the
+  // existing row rather than piling duplicates in the admin's queue.
+  const extensionRequestResolved = contractRequests.find(
+    (r) => r.request_type === "extension" && r.status !== "pending"
+  );
   const hasNoClassesLeft = hasNoBookableClasses;
   const studentBookingLimit = Math.max(0, Number(effectiveBookableClasses || 0));
   const studentBookingSelectionFull = studentBookingLimit > 0 && studentBookingSelections.length >= studentBookingLimit;
@@ -3483,6 +3517,36 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       loadContractRequests();
     } catch (err) {
       setContractRequestError(err?.response?.data?.message || "Unable to send contract request.");
+    } finally {
+      setIsSubmittingContractRequest(false);
+    }
+  };
+
+  const submitExtensionRequest = async () => {
+    setContractRequestError("");
+
+    if (!contractExtensionNote.trim()) {
+      setContractRequestError("Please tell the admin why you are asking for more time.");
+      return;
+    }
+
+    setIsSubmittingContractRequest(true);
+    try {
+      await axios.post(`${API}/api/student/contract-requests`, {
+        student_id: localUserId,
+        request_type: "extension",
+        trial_notes: contractExtensionNote.trim(),
+      });
+
+      notify?.(
+        "Extension request sent to the admin. Your classes stay on the contract until it is resolved.",
+        "success"
+      );
+      setContractRequestOpen(false);
+      setContractExtensionNote("");
+      loadContractRequests();
+    } catch (err) {
+      setContractRequestError(err?.response?.data?.message || "Unable to send extension request.");
     } finally {
       setIsSubmittingContractRequest(false);
     }
@@ -6110,13 +6174,91 @@ $5padding: 20,
                     </div>
                     <div style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
                       {hasNoActiveStudentPackage
-                        ? "No active contract is available."
+                        ? (endedContractWithUnusedClasses
+                            ? "This contract has ended. The classes you did not use are still on it."
+                            : "No active contract is available.")
                         : contractExhausted
                           ? "All classes in this contract have been used."
                           : allRemainingClassesReserved
                             ? "All remaining classes are already scheduled. Reschedule or cancel a booked class to free a slot."
                             : "Tip: Contact your teacher to add or reschedule classes."}
                     </div>
+                    {canRequestExtension && (
+                      <div style={{ marginTop: 12, padding: 12, border: "1px solid #e0b872", borderRadius: 10, background: "#fdf9f1" }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#7a5210" }}>
+                          You have {latestStudentPackage.classes_left} unused class
+                          {Number(latestStudentPackage.classes_left) === 1 ? "" : "es"} on this contract
+                        </div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: "#6b5a3c", lineHeight: 1.45 }}>
+                          Your contract ended, but those classes were paid for and are still yours.
+                          Ask the admin to extend it and you can book them.
+                        </div>
+                        {extensionRequestPending ? (
+                          <div style={{ marginTop: 10, fontSize: 12, color: "#7a5210" }}>
+                            Extension request <strong>{extensionRequestPending.status}</strong>. The admin has been notified.
+                          </div>
+                        ) : extensionRequestResolved ? (
+                          /* Said explicitly, because silence after a decision is
+                             the same as never having asked. */
+                          <div style={{ marginTop: 10, fontSize: 12, color: extensionRequestResolved.status === "approved" ? "#2f5a43" : "#8c2020" }}>
+                            Your last extension request was{" "}
+                            <strong>{extensionRequestResolved.status}</strong>
+                            {extensionRequestResolved.admin_response
+                              ? `: ${extensionRequestResolved.admin_response}`
+                              : extensionRequestResolved.status === "declined"
+                                ? ". Your unused classes remain on the expired contract."
+                                : "."}
+                          </div>
+                        ) : !contractRequestOpen ? (
+                          <button
+                            type="button"
+                            className={styles.slotBtn}
+                            onClick={() => {
+                              setContractRequestOpen(true);
+                              setContractRequestError("");
+                            }}
+                            style={{ marginTop: 10, width: "100%", border: "1px solid #d9b477", borderRadius: 8, background: "#fff", cursor: "pointer" }}
+                          >
+                            Request an extension
+                          </button>
+                        ) : (
+                          <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                            <textarea
+                              value={contractExtensionNote}
+                              onChange={(e) => setContractExtensionNote(e.target.value)}
+                              rows={3}
+                              placeholder="Why do you need longer? e.g. illness delayed your lessons."
+                              style={{ width: "100%", padding: 9, border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit", resize: "vertical" }}
+                            />
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setContractRequestOpen(false);
+                                  setContractExtensionNote("");
+                                }}
+                                disabled={isSubmittingContractRequest}
+                                style={{ flex: 1, padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={submitExtensionRequest}
+                                disabled={isSubmittingContractRequest}
+                                style={{ flex: 1, padding: "9px 10px", border: "none", borderRadius: 8, background: "#7a5210", color: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
+                              >
+                                {isSubmittingContractRequest ? "Sending..." : "Send Request"}
+                              </button>
+                            </div>
+                            <div style={{ fontSize: 11, color: "#6b5a3c" }}>
+                              Payment is handled outside this system, so nothing is charged here. The
+                              admin decides how much longer the contract runs.
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {canRequestNewContract && (
                       <div style={{ marginTop: 12, padding: 12, border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff" }}>
                         {contractRequests[0] && (

@@ -88,6 +88,25 @@ function isInsidePath(child, parent) {
 }
 
 /**
+ * Read the new end date an admin chose when approving an extension.
+ *
+ * Must be a real date in the future. A date at or before now would be accepted
+ * by a naive parse and then immediately undone by expireFinishedPackages, which
+ * runs every 60 seconds - the admin would watch an approval evaporate with no
+ * error anywhere. Rejecting it at the boundary is the only place that can be
+ * sure.
+ *
+ * Returns a Date, or null when the input is unusable.
+ */
+function parseAdminExtensionExpiry(value) {
+  if (!value) return null;
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  if (parsed.getTime() <= Date.now()) return null;
+  return parsed;
+}
+
+/**
  * Say plainly at start-up whether uploads will survive a deploy.
  *
  * Railway mounts a volume at RAILWAY_VOLUME_MOUNT_PATH and wipes everything else
@@ -2038,6 +2057,65 @@ async function ensureTeacherProfileColumns() {
   }
 }
 
+/**
+ * Let a contract request be an extension rather than a new contract.
+ *
+ * These are genuinely different requests and the difference is not cosmetic.
+ * Approving a NEW contract expires the student's active package and inserts a
+ * fresh one with classes_used = 0 - correct when someone wants to buy more
+ * classes, and destructive when they are asking for more TIME on classes they
+ * already paid for and never used. Running an extension down that path would
+ * silently discard the unused balance, which is the exact thing the student is
+ * asking to keep.
+ *
+ * So the kind of request is stored rather than inferred, and the approval path
+ * branches on it.
+ *
+ *   request_type            'new' (the only kind that existed before) or
+ *                           'extension'
+ *   package_id              which package the extension applies to. NULL for a
+ *                           new contract, which has no package yet.
+ *   classes_left_at_request a snapshot of what was left when they asked.
+ *
+ * The snapshot is deliberate. If the admin reads the request a week later the
+ * balance may have moved, and "you had 6 classes left when you asked" is a
+ * different and more honest claim than whatever the number says today.
+ *
+ * DEFAULT 'new' on request_type: every row that already exists is a new-contract
+ * request, so existing rows need no rewriting and the old approval path keeps
+ * behaving exactly as it did.
+ */
+async function ensureContractRequestTypeColumns() {
+  if (!(await columnExists("student_contract_requests", "request_type"))) {
+    await pool.query(
+      `ALTER TABLE student_contract_requests
+       ADD COLUMN request_type ENUM('new','extension') NOT NULL DEFAULT 'new' AFTER student_id`
+    );
+  }
+
+  if (!(await columnExists("student_contract_requests", "package_id"))) {
+    await pool.query(
+      `ALTER TABLE student_contract_requests
+       ADD COLUMN package_id INT NULL AFTER request_type`
+    );
+  }
+
+  if (!(await columnExists("student_contract_requests", "classes_left_at_request"))) {
+    await pool.query(
+      `ALTER TABLE student_contract_requests
+       ADD COLUMN classes_left_at_request INT NULL AFTER requested_classes`
+    );
+  }
+
+  try {
+    await pool.query(
+      `CREATE INDEX idx_contract_requests_type ON student_contract_requests (request_type, status)`
+    );
+  } catch {
+    // Present after the first boot. Not worth a noisy failure path.
+  }
+}
+
 async function refreshProfileCompletion(userId) {
   await pool.query(
     `UPDATE users
@@ -2365,6 +2443,7 @@ const SCHEMA_STEPS = [
   ["api rate limits table", ensureApiRateLimitsTable],
   ["user demographics columns", ensureUserDemographicsColumns],
   ["teacher profile columns", ensureTeacherProfileColumns],
+  ["contract request type columns", ensureContractRequestTypeColumns],
   ["profile completion refresh", refreshAllProfileCompletion],
   ["student contract requests table", ensureStudentContractRequestsTable],
   ["class package duration column", ensureStudentClassPackageDurationColumn],
@@ -5113,36 +5192,107 @@ app.put("/api/admin/student-contracts/:student_id", requireAdminSession, async (
 
 app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("student_id"), async (req, res) => {
   try {
-    const { student_id, course_id, requested_classes, class_duration, trial_notes, ai_criteria } = req.body;
+    const { student_id, course_id, requested_classes, class_duration, trial_notes, ai_criteria, request_type } = req.body;
     const parsedStudentId = parseInt(student_id, 10);
     const parsedCourseId = course_id ? parseInt(course_id, 10) : null;
     const parsedClasses = parseInt(requested_classes, 10);
     const parsedDuration = normalizeClassDuration(class_duration);
 
-    if (!parsedStudentId || !parsedCourseId || !Number.isFinite(parsedClasses) || parsedClasses <= 0) {
-      return res.status(400).json({ message: "Please choose a course and number of classes." });
+    // Anything unrecognised becomes "new" rather than being rejected. A client
+    // that has not been updated yet still submits a plain contract request, and
+    // failing it because a column it knows nothing about is missing would break
+    // a flow that works.
+    const parsedRequestType = String(request_type || "new").toLowerCase() === "extension" ? "extension" : "new";
+
+    // An extension is a request for more TIME on a contract that already ran
+    // out, with classes on it they never used. Every one of those conditions is
+    // checked here rather than trusted from the browser, because approving one
+    // mutates a package and a UI that can be bypassed is not a guard.
+    let extensionPackage = null;
+    if (parsedRequestType === "extension") {
+      const [packageRows] = await pool.query(
+        `SELECT package_id, total_classes, classes_used, classes_left, class_duration,
+                status, created_at, expires_at
+           FROM student_class_packages
+          WHERE student_id = ?
+          ORDER BY created_at DESC, package_id DESC
+          LIMIT 1`,
+        [parsedStudentId]
+      );
+
+      if (!packageRows.length) {
+        return res.status(400).json({
+          message: "You have no class contract to extend. Request a new contract instead.",
+        });
+      }
+
+      extensionPackage = packageRows[0];
+
+      const left = Number(extensionPackage.classes_left ?? 0);
+      const endPassed =
+        extensionPackage.expires_at != null && new Date(extensionPackage.expires_at) <= new Date();
+
+      if (left <= 0) {
+        // Nothing to extend. They used everything, so this is a new contract and
+        // sending it down the new path is what they actually want.
+        return res.status(400).json({
+          message:
+            "You have used all the classes on this contract, so there is nothing to extend. Please request a new contract instead.",
+        });
+      }
+
+      if (extensionPackage.status !== "expired" && !endPassed) {
+        return res.status(400).json({
+          message: "This contract has not ended yet, so there is nothing to extend.",
+        });
+      }
     }
 
+    if (parsedRequestType === "new") {
+      if (!parsedStudentId || !parsedCourseId || !Number.isFinite(parsedClasses) || parsedClasses <= 0) {
+        return res.status(400).json({ message: "Please choose a course and number of classes." });
+      }
+    }
+
+    // One pending request per KIND, not per student.
+    //
+    // !! This used to match any pending row for the student, which was fine when
+    // !! there was only one kind. With extensions it silently became dangerous: a
+    // !! student with a pending new-contract request who then asked for an
+    // !! extension would have had that row rewritten, and the admin would open
+    // !! the queue to find an extension where a class purchase was submitted -
+    // !! with the original request gone and nobody told.
     const [existing] = await pool.query(
       `SELECT request_id
        FROM student_contract_requests
-       WHERE student_id = ? AND status = 'pending'
+       WHERE student_id = ? AND status = 'pending' AND request_type = ?
        LIMIT 1`,
-      [parsedStudentId]
+      [parsedStudentId, parsedRequestType]
     );
+
+    const isExtension = parsedRequestType === "extension";
+    const snapshotClassesLeft = isExtension
+      ? Number(extensionPackage.classes_left ?? 0)
+      : null;
+    const snapshotPackageId = isExtension ? extensionPackage.package_id : null;
 
     if (existing.length) {
       const requestId = existing[0].request_id;
       await pool.query(
         `UPDATE student_contract_requests
-         SET course_id = ?, requested_classes = ?, class_duration = ?, trial_notes = ?, ai_criteria = ?, admin_response = NULL, resolved_at = NULL, requested_at = CURRENT_TIMESTAMP, status = 'pending'
+         SET course_id = ?, requested_classes = ?, class_duration = ?, trial_notes = ?, ai_criteria = ?,
+             request_type = ?, package_id = ?, classes_left_at_request = ?,
+             admin_response = NULL, resolved_at = NULL, requested_at = CURRENT_TIMESTAMP, status = 'pending'
          WHERE request_id = ?`,
         [
           parsedCourseId,
-          parsedClasses,
-          parsedDuration,
+          isExtension ? 0 : parsedClasses,
+          isExtension ? normalizeClassDuration(extensionPackage.class_duration) : parsedDuration,
           encryptNullableText(String(trial_notes || "").trim() || null),
           encryptNullableText(JSON.stringify(normalizeCriteria(ai_criteria || {}))),
+          parsedRequestType,
+          snapshotPackageId,
+          snapshotClassesLeft,
           requestId,
         ]
       );
@@ -5163,29 +5313,44 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
         ? `${studentRows[0].first_name} ${studentRows[0].last_name}`.trim()
         : "A student";
       const courseName = courseRows[0]?.course_name || "a course";
-      const notificationMessage = `${studentName} updated a pending contract request for ${courseName} with ${parsedClasses} classes (${parsedDuration}-minute lessons).`;
+      const notificationMessage = isExtension
+        ? `${studentName} updated their pending extension request. They have ${snapshotClassesLeft} unused class${snapshotClassesLeft === 1 ? "" : "es"} left on a contract that has ended.`
+        : `${studentName} updated a pending contract request for ${courseName} with ${parsedClasses} classes (${parsedDuration}-minute lessons).`;
 
       if (adminRows.length) {
         await pool.query(
           `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
-           VALUES ${adminRows.map(() => "(?, 'general', 'Updated Contract Request', ?, ?, 'contract_request', '/AdminDashboard')").join(", ")}`,
-          adminRows.flatMap((admin) => [admin.user_id, encryptNullableText(notificationMessage), requestId])
+           VALUES ${adminRows.map(() => "(?, 'general', ?, ?, ?, 'contract_request', '/AdminDashboard')").join(", ")}`,
+          adminRows.flatMap((admin) => [
+            admin.user_id,
+            encryptNullableText(isExtension ? "Updated Extension Request" : "Updated Contract Request"),
+            encryptNullableText(notificationMessage),
+            requestId,
+          ])
         );
       }
 
-      return res.status(200).json({ message: "Contract request updated", request_id: requestId });
+      return res.status(200).json({
+        message: isExtension ? "Extension request updated" : "Contract request updated",
+        request_id: requestId,
+      });
     }
 
     const [result] = await pool.query(
-      `INSERT INTO student_contract_requests (student_id, course_id, requested_classes, class_duration, trial_notes, ai_criteria, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
+      `INSERT INTO student_contract_requests
+         (student_id, course_id, requested_classes, class_duration, trial_notes, ai_criteria, status,
+          request_type, package_id, classes_left_at_request)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
       [
         parsedStudentId,
         parsedCourseId,
-        parsedClasses,
-        parsedDuration,
+        isExtension ? 0 : parsedClasses,
+        isExtension ? normalizeClassDuration(extensionPackage.class_duration) : parsedDuration,
         encryptNullableText(String(trial_notes || "").trim() || null),
         encryptNullableText(JSON.stringify(normalizeCriteria(ai_criteria || {}))),
+        parsedRequestType,
+        snapshotPackageId,
+        snapshotClassesLeft,
       ]
     );
 
@@ -5205,17 +5370,27 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
       ? `${studentRows[0].first_name} ${studentRows[0].last_name}`.trim()
       : "A student";
     const courseName = courseRows[0]?.course_name || "a course";
-    const notificationMessage = `${studentName} requested a new contract for ${courseName} with ${parsedClasses} classes (${parsedDuration}-minute lessons).`;
+    const notificationMessage = isExtension
+      ? `${studentName} requested an extension. They have ${snapshotClassesLeft} unused class${snapshotClassesLeft === 1 ? "" : "es"} left on a contract that has ended.`
+      : `${studentName} requested a new contract for ${courseName} with ${parsedClasses} classes (${parsedDuration}-minute lessons).`;
 
     if (adminRows.length) {
       await pool.query(
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
-         VALUES ${adminRows.map(() => "(?, 'general', 'New Contract Request', ?, ?, 'contract_request', '/AdminDashboard')").join(", ")}`,
-        adminRows.flatMap((admin) => [admin.user_id, encryptNullableText(notificationMessage), result.insertId])
+         VALUES ${adminRows.map(() => "(?, 'general', ?, ?, ?, 'contract_request', '/AdminDashboard')").join(", ")}`,
+        adminRows.flatMap((admin) => [
+          admin.user_id,
+          encryptNullableText(isExtension ? "Extension Request" : "New Contract Request"),
+          encryptNullableText(notificationMessage),
+          result.insertId,
+        ])
       );
     }
 
-    res.status(201).json({ message: "Contract request sent", request_id: result.insertId });
+    res.status(201).json({
+      message: isExtension ? "Extension request sent" : "Contract request sent",
+      request_id: result.insertId,
+    });
   } catch (err) {
     console.error("POST /api/student/contract-requests error:", err);
     res.status(500).json({ message: "Error sending contract request" });
@@ -5249,10 +5424,14 @@ app.get("/api/admin/contract-requests", requireAdminSession, async (_req, res) =
   try {
     const [rows] = await pool.query(
       `SELECT r.*, c.course_name,
-              u.first_name, u.last_name, u.email
+              u.first_name, u.last_name, u.email,
+              p.expires_at AS package_expires_at,
+              p.classes_left AS package_classes_left,
+              p.status AS package_status
        FROM student_contract_requests r
        JOIN users u ON u.user_id = r.student_id
        LEFT JOIN courses c ON c.course_id = r.course_id
+       LEFT JOIN student_class_packages p ON p.package_id = r.package_id
        ORDER BY FIELD(r.status, 'pending', 'approved', 'declined'), r.requested_at DESC`
     );
 
@@ -5278,6 +5457,7 @@ app.put("/api/admin/contract-requests/:request_id", requireAdminSession, async (
 
     const [requestRows] = await connection.query(
       `SELECT r.request_id, r.student_id, r.course_id, r.requested_classes, r.class_duration, r.trial_notes, r.ai_criteria, r.status,
+              r.request_type, r.package_id, r.classes_left_at_request,
               c.course_name
        FROM student_contract_requests r
        LEFT JOIN courses c ON c.course_id = r.course_id
@@ -5295,6 +5475,132 @@ app.put("/api/admin/contract-requests/:request_id", requireAdminSession, async (
     if (request.status !== "pending") {
       await connection.rollback();
       return res.status(409).json({ message: "This request has already been resolved" });
+    }
+
+    const isExtension = String(request.request_type || "new").toLowerCase() === "extension";
+
+    if (isExtension) {
+      // An extension changes ONE thing: how much longer the existing contract
+      // runs. Everything below the new-contract branch is deliberately absent -
+      // no teacher recommendation, no profile rewrite, no expiring the package
+      // and no fresh package with classes_used = 0.
+      //
+      // That last one is the whole point. The student is asking to keep classes
+      // they already paid for and never used; running this down the new-contract
+      // path would discard that balance and hand them a blank package, which is
+      // the opposite of the request.
+      if (status === "declined") {
+        await connection.query(
+          `UPDATE student_contract_requests
+           SET status = ?, admin_response = ?, resolved_at = NOW()
+           WHERE request_id = ?`,
+          [status, encryptNullableText(admin_response || null), request_id]
+        );
+
+        await connection.query(
+          `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+           VALUES (?, 'general', ?, ?, ?, 'contract_request', '/Calendar')`,
+          [
+            request.student_id,
+            encryptNullableText("Extension Request Declined"),
+            encryptNullableText(
+              admin_response?.trim()
+                ? `Your request to extend your contract was declined: ${admin_response.trim()}`
+                : "Your request to extend your contract was declined. Your unused classes remain on the expired contract."
+            ),
+            request.request_id,
+          ]
+        );
+
+        await connection.commit();
+        return res.json({ message: "Extension request declined" });
+      }
+
+      const newExpiry = parseAdminExtensionExpiry(req.body.extension_expires_at);
+      if (!newExpiry) {
+        await connection.rollback();
+        return res.status(400).json({
+          message:
+            "Choose a new end date for the contract. It has to be in the future, or the extension would end the contract rather than extend it.",
+        });
+      }
+
+      const [packageRows] = await connection.query(
+        `SELECT package_id, total_classes, classes_used, classes_left, status, expires_at
+           FROM student_class_packages
+          WHERE package_id = ?
+          FOR UPDATE`,
+        [request.package_id]
+      );
+
+      if (!packageRows.length) {
+        await connection.rollback();
+        return res.status(404).json({
+          message: "The contract this extension refers to no longer exists.",
+        });
+      }
+
+      const target = packageRows[0];
+
+      // Guard against approving an extension for a balance that is gone. The
+      // snapshot is what the student asked about; this is what is actually
+      // there now, and if they have since used the classes the admin should
+      // send them to the new-contract path instead.
+      if (Number(target.classes_left ?? 0) <= 0) {
+        await connection.rollback();
+        return res.status(409).json({
+          message:
+            "This student has no unused classes left on that contract, so there is nothing to extend. Ask them to request a new contract.",
+        });
+      }
+
+      const left = Number(target.classes_left);
+
+      await connection.query(
+        `UPDATE student_class_packages
+            SET expires_at = ?,
+                status = 'active',
+                -- Cleared so the 14-day warning fires again for the new deadline.
+                -- Without this the student is never warned about the extension
+                -- they were just given, because the old warning already consumed
+                -- the one notification this contract is allowed.
+                expiry_notified_at = NULL
+          WHERE package_id = ?`,
+        [newExpiry, target.package_id]
+      );
+
+      await connection.query(
+        `UPDATE student_contract_requests
+         SET status = ?, admin_response = ?, resolved_at = NOW()
+         WHERE request_id = ?`,
+        [status, encryptNullableText(admin_response || null), request_id]
+      );
+
+      const endDate = newExpiry.toLocaleDateString("en-US", {
+        year: "numeric", month: "long", day: "numeric",
+      });
+
+      await connection.query(
+        `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+         VALUES (?, 'general', ?, ?, ?, 'contract_request', '/Calendar')`,
+        [
+          request.student_id,
+          encryptNullableText("Contract Extended"),
+          encryptNullableText(
+            `Your contract was extended to ${endDate}. Your ${left} unused class${left === 1 ? "" : "es"} ` +
+              `${left === 1 ? "is" : "are"} still available to book.`
+          ),
+          request.request_id,
+        ]
+      );
+
+      await connection.commit();
+      return res.json({
+        message: "Extension approved",
+        package_id: target.package_id,
+        expires_at: newExpiry,
+        classes_left: left,
+      });
     }
 
     if (status === "approved") {

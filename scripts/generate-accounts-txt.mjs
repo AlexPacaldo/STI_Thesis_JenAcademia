@@ -342,6 +342,48 @@ STEP 6b - THE STUDENT'S OWN VIEW, which is the one that matters most. Sign in as
     one, so "my contract ended" is never mistaken for "I never had one" - while
     booking still requires an active package, so nothing ended is ever bookable.
 
+STEP 6c - THE EXTENSION. This is the case where a contract ran out with classes
+     still on it, and it is Danica - 6 classes paid for, none used.
+
+     Sign in as danica.pope@student.jenacademia.local and open the Calendar.
+     Under Classes Left it says the contract ended, and offers:
+
+         "You have 6 unused classes on this contract
+          Your contract ended, but those classes were paid for and are still
+          yours. Ask the admin to extend it and you can book them."
+         [ Request an extension ]
+
+     Note what is NOT there: "request a new contract". Before this, that was the
+     only option offered - and approving a new contract expires the old package
+     and creates a fresh one at zero used, which would have thrown away the 6
+     classes she was asking to keep. The two asks are mutually exclusive on
+     purpose, so the one that loses the balance cannot sit next to the one that
+     does not.
+
+     Click it, write a line, send. Then as the admin, Contracts > Contract
+     Requests, the row is labelled "Extension" and shows what she had when she
+     asked AND what is left now - 6 and 6. Approve opens a date box, defaulting
+     to one month out, because the amount was agreed outside this system and only
+     the admin knows it.
+
+     On approval, and this is the part worth pointing at:
+
+         same package_id, still ONE package
+         classes_left still 6, classes_used still 0
+         status expired -> active, expires_at moved to the new date
+         assigned teacher untouched
+
+     No new package. No teacher re-matched. Nothing reset. Then switch back to
+     Danica: her Classes Left tile reads "Contract ended" no longer - the badge
+     is green, the classes are bookable, and she has a notification saying her
+     contract was extended.
+
+     Worth saying aloud: a new contract is a purchase and an extension is a
+     correction, so they are stored as different request types and the approval
+     path branches. They cannot be handled by the same code, because the same
+     code would discard the balance. No payment anywhere in this - the system
+     records the new end date and nothing else.
+
 STEP 7 - Create Kyla Bautista, 16, Conversational English, Learning Goal set to
     "School Support" - only Rafael's profile touches that at all. Analyze.
     >>> THE CARD SHOULD READ, IN RED:

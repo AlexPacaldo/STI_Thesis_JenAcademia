@@ -500,6 +500,11 @@ export default function AdminDashboard() {
   const [contractRequests, setContractRequests] = useState([]);
   const [contractRequestSearch, setContractRequestSearch] = useState("");
   const [contractRequestsLoading, setContractRequestsLoading] = useState(false);
+  // The extension approval dialog. Approving one cannot be a single click: it
+  // changes the end date of a real contract, and there is no obviously correct
+  // amount of time - the admin knows what was agreed outside this system. So the
+  // dialog collects the date instead of guessing one.
+  const [extensionApproval, setExtensionApproval] = useState(null);
   const [updatingContractRequestId, setUpdatingContractRequestId] = useState(null);
   const [contractSubTab, setContractSubTab] = useState("packages");
   const [verifications, setVerifications] = useState([]);
@@ -1623,6 +1628,53 @@ export default function AdminDashboard() {
       notify("Failed to load contract requests", "error");
     } finally {
       setContractRequestsLoading(false);
+    }
+  }
+
+  /**
+   * A sensible starting date for the extension dialog: one month from today.
+   *
+   * Only a starting point for the admin to change. The amount was agreed outside
+   * this system, so nothing here decides it - it just means the date box is not
+   * empty and the admin is editing a value rather than composing one.
+   */
+  function defaultExtensionDate() {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  async function approveExtensionRequest() {
+    if (!extensionApproval?.request) return;
+    const { request, date } = extensionApproval;
+
+    // Caught here as well as on the server, because the server's rejection is a
+    // 400 that would otherwise arrive after the admin believed it was saved.
+    if (!date) {
+      notify("Choose the new end date for the contract.", "error");
+      return;
+    }
+    const chosen = new Date(`${date}T23:59:59`);
+    if (Number.isNaN(chosen.getTime()) || chosen.getTime() <= Date.now()) {
+      notify("The new end date has to be in the future.", "error");
+      return;
+    }
+
+    setUpdatingContractRequestId(request.request_id);
+    try {
+      await axios.put(`${API}/api/admin/contract-requests/${request.request_id}`, {
+        status: "approved",
+        extension_expires_at: date,
+      });
+      notify("Extension approved. The contract now runs to the new date.", "success");
+      setExtensionApproval(null);
+      loadContractRequests();
+      loadContracts();
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || "Failed to approve the extension", "error");
+    } finally {
+      setUpdatingContractRequestId(null);
     }
   }
 
@@ -3371,56 +3423,119 @@ export default function AdminDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredContractRequests.map((request) => (
-                        <tr key={request.request_id}>
-                          <td data-label="Student">
-                            <strong>{request.first_name} {request.last_name}</strong>
-                            <div style={{ fontSize: "0.8em", color: "#666" }}>{request.email}</div>
-                          </td>
-                          <td data-label="Requested Course">{request.course_name || "Course not set"}</td>
-                          <td data-label="Classes">{request.requested_classes}</td>
-                          <td data-label="Duration">{request.class_duration || 50} min</td>
-                          <td data-label="Status">
-                            <span style={{
+                      {filteredContractRequests.map((request) => {
+                        // An extension is not a class purchase, so it gets its own
+                        // row shape. Rendering it in the same columns as a new
+                        // contract invited the admin to approve it as one - and
+                        // approving a new contract expires the student's package
+                        // and starts a fresh one at zero used, discarding the
+                        // balance they were asking to keep.
+                        const isExtension = request.request_type === "extension";
+                        const decisionChip = (
+                          <span
+                            style={{
                               padding: "4px 8px",
                               borderRadius: 999,
-                              background: request.status === "pending" ? "#fef3c7" : request.status === "approved" ? "#dcfce7" : "#fee2e2",
-                              color: request.status === "pending" ? "#92400e" : request.status === "approved" ? "#166534" : "#991b1b",
+                              background:
+                                request.status === "pending" ? "#fef3c7"
+                                : request.status === "approved" ? "#dcfce7" : "#fee2e2",
+                              color:
+                                request.status === "pending" ? "#92400e"
+                                : request.status === "approved" ? "#166534" : "#991b1b",
                               fontWeight: 700,
                               textTransform: "capitalize",
-                            }}>
-                              {request.status}
-                            </span>
-                          </td>
-                          <td data-label="Requested">{formatDate(request.requested_at)}</td>
-                          <td data-label="Actions">
-                            {request.status === "pending" ? (
-                              <div className={styles.rowActions}>
-                                <button
-                                  className={styles.approve}
-                                  type="button"
-                                onClick={() => requestUpdateContractRequest(request.request_id, "approved", request)}
-                                  disabled={updatingContractRequestId === request.request_id}
-                                >
-                                  Approve
-                                </button>
-                                <button
-                                  className={styles.decline}
-                                  type="button"
-                                onClick={() => requestUpdateContractRequest(request.request_id, "declined", request)}
-                                  disabled={updatingContractRequestId === request.request_id}
-                                >
-                                  Decline
-                                </button>
-                              </div>
-                            ) : (
-                              <span style={{ color: "#666", fontSize: "0.9em" }}>
-                                {request.resolved_at ? `Resolved ${formatDate(request.resolved_at)}` : "Resolved"}
+                            }}
+                          >
+                            {request.status}
+                          </span>
+                        );
+
+                        return (
+                          <tr key={request.request_id}>
+                            <td data-label="Student">
+                              <strong>{request.first_name} {request.last_name}</strong>
+                              <div style={{ fontSize: "0.8em", color: "#666" }}>{request.email}</div>
+                            </td>
+                            <td data-label="Type">
+                              <span
+                                style={{
+                                  padding: "4px 8px",
+                                  borderRadius: 999,
+                                  background: isExtension ? "#e0f2fe" : "#f3f4f6",
+                                  color: isExtension ? "#075985" : "#374151",
+                                  fontWeight: 700,
+                                  fontSize: "0.85em",
+                                }}
+                              >
+                                {isExtension ? "Extension" : "New contract"}
                               </span>
+                            </td>
+                            {isExtension ? (
+                              <td data-label="Unused classes">
+                                <div style={{ fontWeight: 700 }}>
+                                  {request.classes_left_at_request ?? "?"} left when asked
+                                </div>
+                                <div style={{ fontSize: "0.8em", color: "#666" }}>
+                                  now: {request.package_classes_left ?? "?"}
+                                </div>
+                              </td>
+                            ) : (
+                              <>
+                                <td data-label="Requested Course">{request.course_name || "Course not set"}</td>
+                                <td data-label="Classes">{request.requested_classes}</td>
+                              </>
                             )}
-                          </td>
-                        </tr>
-                      ))}
+                            <td data-label="Duration">{request.class_duration || 50} min</td>
+                            {isExtension ? (
+                              <>
+                                <td data-label="Contract ended">
+                                  <div>{formatDate(request.package_expires_at)}</div>
+                                  <div style={{ fontSize: "0.8em", color: "#666" }}>
+                                    status: {request.package_status || "unknown"}
+                                  </div>
+                                </td>
+                                <td data-label="Decision">{decisionChip}</td>
+                              </>
+                            ) : (
+                              <td data-label="Status">{decisionChip}</td>
+                            )}
+                            <td data-label="Requested">{formatDate(request.requested_at)}</td>
+                            <td data-label="Actions">
+                              {request.status === "pending" ? (
+                                <div className={styles.rowActions}>
+                                  <button
+                                    className={styles.approve}
+                                    type="button"
+                                    onClick={() =>
+                                      isExtension
+                                        ? setExtensionApproval({
+                                            request,
+                                            date: defaultExtensionDate(request),
+                                          })
+                                        : requestUpdateContractRequest(request.request_id, "approved", request)
+                                    }
+                                    disabled={updatingContractRequestId === request.request_id}
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    className={styles.decline}
+                                    type="button"
+                                    onClick={() => requestUpdateContractRequest(request.request_id, "declined", request)}
+                                    disabled={updatingContractRequestId === request.request_id}
+                                  >
+                                    Decline
+                                  </button>
+                                </div>
+                              ) : (
+                                <span style={{ color: "#666", fontSize: "0.9em" }}>
+                                  {request.resolved_at ? `Resolved ${formatDate(request.resolved_at)}` : "Resolved"}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -4461,6 +4576,73 @@ export default function AdminDashboard() {
               </div>
             )}
           </section>
+        )}
+
+        {extensionApproval?.request && (
+          <ModalPortal>
+            <div className={styles.modalBackdrop} onClick={() => setExtensionApproval(null)}>
+              <div
+                className={styles.modalCard}
+                onClick={(e) => e.stopPropagation()}
+                style={{ maxWidth: "520px" }}
+              >
+                <h3 style={{ margin: "0 0 4px 0", fontSize: "1.15rem", fontWeight: 800, color: "#13251f" }}>
+                  Approve contract extension
+                </h3>
+                <p style={{ margin: "0 0 14px 0", fontSize: "0.9rem", color: "#4b5563", lineHeight: 1.5 }}>
+                  {extensionApproval.request.first_name} {extensionApproval.request.last_name} has{" "}
+                  <strong>{extensionApproval.request.classes_left_at_request ?? "?"}</strong> unused class
+                  {(extensionApproval.request.classes_left_at_request ?? 0) === 1 ? "" : "es"} on a contract
+                  that ended{" "}
+                  {formatDate(extensionApproval.request.package_expires_at)}.
+                </p>
+
+                <div className={styles.modalWarning}>
+                  This moves the end date of the existing contract. The classes are
+                  kept, not replaced - no new package is created and nothing used
+                  is reset.
+                </div>
+
+                <label style={{ display: "grid", gap: 6, marginTop: 14 }}>
+                  <span style={{ fontSize: "0.85rem", fontWeight: 700 }}>New end date</span>
+                  <input
+                    type="date"
+                    value={extensionApproval.date}
+                    onChange={(e) => setExtensionApproval({ ...extensionApproval, date: e.target.value })}
+                    min={new Date().toISOString().slice(0, 10)}
+                  />
+                </label>
+
+                <p style={{ margin: "10px 0 0", fontSize: "0.8rem", color: "#6b7280", lineHeight: 1.5 }}>
+                  Payment is handled outside this system. Recording the new date
+                  here is what extends the contract; nothing is charged.
+                </p>
+
+                <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+                  <button
+                    type="button"
+                    className={styles.decline}
+                    onClick={() => setExtensionApproval(null)}
+                    disabled={updatingContractRequestId === extensionApproval.request.request_id}
+                    style={{ flex: 1 }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.approve}
+                    onClick={approveExtensionRequest}
+                    disabled={updatingContractRequestId === extensionApproval.request.request_id}
+                    style={{ flex: 1 }}
+                  >
+                    {updatingContractRequestId === extensionApproval.request.request_id
+                      ? "Approving..."
+                      : "Approve extension"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </ModalPortal>
         )}
 
         {bookModal && (
