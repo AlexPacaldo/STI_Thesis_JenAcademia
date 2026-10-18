@@ -46,7 +46,7 @@ Student  (none)      -    Philippines  +63917 555 0200  noah.garcia@student.jena
       Teaching style      conversational, interactive
       Best student pace   balanced
       Experience years    9
-      Teaches children    NO   -> !! DECLINES CHILDREN - see section 2, step 2d
+      Teaches children    NO   -> !! DECLINES CHILDREN - see section 7, step 2d
       Notes
         I specialise in speaking and conversation. My students are usually
         quiet adults who freeze when put on the spot, so I build sessions
@@ -282,7 +282,45 @@ Student  (none)      -    Philippines  +63917 555 0200  noah.garcia@student.jena
   decides it is expired on the next sweep. Nothing in the seed marks it.
 
 --------------------------------------------------------------------------------
- 6. THE DEMO - 8 STEPS, IN THIS ORDER
+ 6. TEACHER AVAILABILITY - what the matcher will say
+--------------------------------------------------------------------------------
+
+  Ava wants Saturday 09:00 - 11:00.
+  The matcher looks ahead 21 days and asks, for each future Saturday in that
+  window, whether the teacher marked THAT date, whether their hours cover the
+  slot, whether it hits a break, and whether they already have a class then.
+
+  Her four candidates, as the system will report them:
+
+  Rafael Santos   AVAILABLE   08:00-12:00                     
+  Maia Cruz       AVAILABLE   08:00-12:00                       <- also DECLINES CHILDREN (blocked earlier, by the age rule)
+  Ben Martin      Unavailable 13:00-18:00                     their available hours do not cover that time
+  Dario Lim       Unavailable 09:00-11:00, booked 09:30-10:20 they already have a class booked then
+
+  That is the whole point of the section above it. Maia Cruz is AVAILABLE for
+  Ava's slot and is still not recommended - the age rule stopped her, not her
+  calendar. If availability had been the deciding factor she would have won.
+
+  Weekly patterns seeded (expanded onto real future dates by the seeder):
+
+  Rafael Santos    Saturday             08:00-12:00   x4 weeks  Wide Saturday morning window - the one candidate who can take Ava's slot.
+  Maia Cruz        Saturday             08:00-12:00   x4 weeks  Also free on Saturday mornings. The AGE rule is what stops her, not her calendar.
+  Ben Martin       Saturday             13:00-18:00   x4 weeks  Saturday marked, but afternoons only - so the 09:00-11:00 slot does not fit.
+  Dario Lim        Saturday             09:00-11:00   x4 weeks  Exact fit on paper, but every one of those Saturdays is already booked.
+  Rafael Santos    Tuesday/Thursday     15:00-17:00   x3 weeks
+  Maia Cruz        Monday/Wednesday     18:00-20:00   x3 weeks
+  Ben Martin       Monday               17:00-19:00   x3 weeks
+  Gina Dela Cruz   Saturday/Sunday      09:00-12:00   x3 weeks  Teaches IELTS and TOEIC, so she is not in Ava's pool at all - course eligibility, not availability.
+  Dario Lim        Wednesday            16:00-18:00   x3 weeks
+
+  gina.delacruz and clara.reyes have NO availability rows at all, which is what
+  produces "they have not marked that day available". Neither is a candidate for
+  Ava anyway - they do not teach Conversational English - so that reason shows up
+  on other courses rather than in this demo.
+
+
+--------------------------------------------------------------------------------
+ 7. THE DEMO - 8 STEPS, IN THIS ORDER
 --------------------------------------------------------------------------------
 
 STEP 1 - Sign in as admin. Open Create Student.
@@ -308,9 +346,16 @@ STEP 2 - Click ANALYZE. Let it load.
       e) Rafael Santos is recommended instead - and he won on the RULE, not on
          the AI's preference.
 
-STEP 3 - Look at the availability line. Ben Martin cannot do Saturday mornings
-    and has moved down. Availability is applied AFTER the AI too, so a model
-    that put him first does not get to keep him there.
+STEP 3 - Look at the availability line on the card, against the table in
+    section 6. Ben Martin is marked available on Saturdays but only from 13:00,
+    so his reason reads "their available hours do not cover that time". Dario Lim
+    looks like an exact fit on paper and is not, because he already has a class
+    booked on every one of those Saturdays.
+
+    Point out that Maia Cruz shows as AVAILABLE and is still not recommended.
+    Availability was never the thing that stopped her - the age rule was. Both
+    constraints are applied in code, after the AI, and neither of them is the
+    model's decision.
 
 STEP 4 - Point at the match strength. Ava should read STRONG or PARTIAL with a
     green or amber badge. Say plainly: "the computer tells the admin how good
@@ -354,7 +399,7 @@ STEP 8 - THE FALLBACK. This is the one that wins the argument.
     RESET: put the real key back and redeploy.
 
 --------------------------------------------------------------------------------
- 7. WHAT EACH PIECE DEMONSTRATES, IN ONE LINE EACH
+ 8. WHAT EACH PIECE DEMONSTRATES, IN ONE LINE EACH
 --------------------------------------------------------------------------------
 
   AI reorders, never decides ....... Step 2d - Maia ranked first, not chosen
@@ -370,7 +415,7 @@ STEP 8 - THE FALLBACK. This is the one that wins the argument.
   Explainable, every time ........... Rule scores shown beside the AI's reasons
 
 --------------------------------------------------------------------------------
- 8. HOW TO RUN
+ 9. HOW TO RUN
 --------------------------------------------------------------------------------
 
   1. Wipe the database.
@@ -394,10 +439,10 @@ STEP 8 - THE FALLBACK. This is the one that wins the argument.
 
   4. Sign in as admin@jenacademia.local / JEN2026!
 
-  5. Work through section 6 in order.
+  5. Work through section 7 in order.
 
 --------------------------------------------------------------------------------
- 9. IF SOMETHING LOOKS WRONG
+ 10. IF SOMETHING LOOKS WRONG
 --------------------------------------------------------------------------------
 
   "No teachers matched" on Ava
@@ -425,7 +470,7 @@ STEP 8 - THE FALLBACK. This is the one that wins the argument.
       UI, and re-run the seed if the profile page really disagrees.
 
 --------------------------------------------------------------------------------
- 10. A NOTE ON HONESTY
+ 11. A NOTE ON HONESTY
 --------------------------------------------------------------------------------
 
   Every number in this demo is real, and every "state" is produced by the real

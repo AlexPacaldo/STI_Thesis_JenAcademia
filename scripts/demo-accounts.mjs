@@ -290,7 +290,78 @@ export const STUDENTS = [
   },
 ];
 
-/** Days remaining on the 90-day term for a package of a given age. */
+/**
+ * Teacher availability, as a weekly pattern the seeder materialises onto real
+ * dates.
+ *
+ * !! Availability is per DATE in the database, not a repeating weekly rule. !!
+ * !! The matcher looks ahead 21 days and asks, for each future date whose
+ * !! weekday is one the admin asked for, whether the teacher has marked THAT
+ * !! date available, whether their hours cover the window, whether it clashes
+ * !! with a break, and whether they already have a class booked then.
+ * !! Declaring it as a weekly pattern here and expanding it in the seeder keeps
+ * !! that per-date reality out of this file, and means the pattern stays
+ * !! correct whenever the demo is run on a different day.
+ *
+ * The four Conversational English candidates are shaped so that every reason the
+ * matcher can give is reachable during demo step 2/3:
+ *
+ *   santos  available 08:00-12:00           -> AVAILABLE, and he wins
+ *   cruz    available 08:00-12:00           -> available too. She is NOT
+ *                                             recommended because she declined
+ *                                             children, not because of her
+ *                                             calendar - which is the point.
+ *   martin  available 13:00-18:00           -> "their available hours do not
+ *                                              cover that time"
+ *   lim     available 09:00-11:00, but has a class booked on every one of those
+ *           Saturdays                      -> "they already have a class booked
+ *                                              then"
+ *
+ * A teacher with no rows at all reports "they have not marked that day
+ * available", which is what gina and clara are there to show.
+ */
+export const WEEKLY_AVAILABILITY = [
+  // ---- the four Conversational English candidates, for Ava's Saturday slot ----
+  { key: "santos", days: ["Saturday"], start: "08:00", end: "12:00", weeks: 4,
+    note: "Wide Saturday morning window - the one candidate who can take Ava's slot." },
+  { key: "cruz", days: ["Saturday"], start: "08:00", end: "12:00", weeks: 4,
+    note: "Also free on Saturday mornings. The AGE rule is what stops her, not her calendar." },
+  { key: "martin", days: ["Saturday"], start: "13:00", end: "18:00", weeks: 4,
+    note: "Saturday marked, but afternoons only - so the 09:00-11:00 slot does not fit." },
+  { key: "lim", days: ["Saturday"], start: "09:00", end: "11:00", weeks: 4,
+    note: "Exact fit on paper, but every one of those Saturdays is already booked." },
+
+  // ---- a weekday slot each, so the teacher calendars are not empty ----
+  { key: "santos", days: ["Tuesday", "Thursday"], start: "15:00", end: "17:00", weeks: 3 },
+  { key: "cruz", days: ["Monday", "Wednesday"], start: "18:00", end: "20:00", weeks: 3 },
+  { key: "martin", days: ["Monday"], start: "17:00", end: "19:00", weeks: 3 },
+  { key: "delacruz", days: ["Saturday", "Sunday"], start: "09:00", end: "12:00", weeks: 3,
+    note: "Teaches IELTS and TOEIC, so she is not in Ava's pool at all - course eligibility, not availability." },
+  { key: "lim", days: ["Wednesday"], start: "16:00", end: "18:00", weeks: 3 },
+
+  // reyes is absent on purpose: no rows means "they have not marked that day
+  // available", and her thin profile should be thin everywhere.
+];
+
+/**
+ * Classes already booked, so the "already have a class booked then" path is
+ * reachable.
+ *
+ * Dario is booked on EVERY Saturday he has marked available, which is why his
+ * calendar looks perfect and his availability still reports unavailable.
+ */
+export const BOOKED_CLASSES = [
+  {
+    teacher: "lim",
+    student: "alvarez",
+    days: ["Saturday"],
+    start: "09:30", end: "10:20",
+    weeks: 4,
+    className: "Business English - Weekend Group",
+  },
+];
+
+/** Days left remaining on the 90-day term for a package of a given age. */
 export const daysLeftFrom = (createdDaysAgo) => 90 - createdDaysAgo;
 
 /** A readable age on the date the seed runs, for the reference table. */

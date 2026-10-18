@@ -43,8 +43,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs";
 import {
-  ADMIN, ALL_COURSES, COUNTRY, PASSWORD, STUDENTS, TEACHERS, TIMEZONE,
-  aiBio, criteriaNotes, daysLeftFrom,
+  ADMIN, ALL_COURSES, BOOKED_CLASSES, COUNTRY, PASSWORD, STUDENTS, TEACHERS,
+  TIMEZONE, WEEKLY_AVAILABILITY, aiBio, criteriaNotes, daysLeftFrom,
 } from "./demo-accounts.mjs";
 
 // The app loads backend/.env. Load it the same way so one set of credentials
@@ -196,6 +196,84 @@ async function courseIds(names) {
   return ids;
 }
 
+/* ------------------------------------------------------- availability */
+
+const WEEKDAY_INDEX = {
+  Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
+  Thursday: 4, Friday: 5, Saturday: 6,
+};
+
+/**
+ * The next `weeks` occurrences of each named weekday, from today forward.
+ *
+ * Only future dates: deletePastTeacherAvailability() strips anything before
+ * CURDATE() on every boot, so a past-dated seed would be gone by the time you
+ * looked at it.
+ */
+function upcomingWeekdays(days, weeks) {
+  const wanted = new Set(days.map((d) => WEEKDAY_INDEX[d]));
+  const out = [];
+  const cursor = new Date();
+  cursor.setHours(0, 0, 0, 0);
+  for (let i = 0; i < weeks * 7 + 7 && out.length < weeks; i += 1) {
+    if (wanted.has(cursor.getDay())) {
+      out.push(new Date(cursor));
+      if (out.length >= weeks) break;
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return out;
+}
+
+const isoDate = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+async function seedAvailability() {
+  let rows = 0;
+
+  for (const slot of WEEKLY_AVAILABILITY) {
+    const teacherId = byEmail[slot.key];
+    if (!teacherId) throw new Error(`Availability references unknown teacher "${slot.key}"`);
+
+    // Idempotent: replace this teacher's demo rows rather than accumulating.
+    await db.execute(
+      "DELETE FROM teacher_availability WHERE teacher_id = ?", [teacherId]
+    );
+
+    for (const date of upcomingWeekdays(slot.days, slot.weeks)) {
+      await db.execute(
+        `INSERT INTO teacher_availability
+           (teacher_id, available_date, status, start_time, end_time)
+         VALUES (?, ?, 'available', ?, ?)`,
+        [teacherId, isoDate(date), slot.start, slot.end]
+      );
+      rows += 1;
+    }
+  }
+
+  for (const booked of BOOKED_CLASSES) {
+    const teacherId = byEmail[booked.teacher];
+    const studentId = byEmail[booked.student];
+    if (!teacherId || !studentId) {
+      throw new Error(`Booked class references an unknown account: ${booked.teacher}/${booked.student}`);
+    }
+    for (const date of upcomingWeekdays(booked.days, booked.weeks)) {
+      // class_name is UNIQUE-keyed per row only by id, so re-running the seed
+      // would duplicate classes. Cleared first for the same reason as
+      // availability above.
+      await db.execute(
+        `INSERT INTO classes
+           (class_name, teacher_id, student_id, scheduled_date, start_time, end_time, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'scheduled')`,
+        [booked.className, teacherId, studentId, isoDate(date), booked.start, booked.end]
+      );
+      rows += 1;
+    }
+  }
+
+  return rows;
+}
+
 /* ------------------------------------------------------------------ main */
 
 const C = await courseIds(ALL_COURSES);
@@ -254,6 +332,10 @@ for (const s of STUDENTS) {
     `  student    ${s.email.padEnd(44)}${String(left).padStart(4)} days left${left <= 0 ? "  (will expire on boot)" : ""}`
   );
 }
+
+/* ---------------------------------------------------------- availability */
+const availRows = await seedAvailability();
+console.log(`  availability  ${availRows} rows across ${WEEKLY_AVAILABILITY.length} weekly patterns`);
 
 await db.end();
 console.log("\nDone. Start the server ONCE so it derives expires_at, encrypts the");

@@ -18,8 +18,8 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import {
-  ADMIN, COUNTRY, DEMO_STUDENT, PASSWORD, STUDENTS, TEACHERS, TIMEZONE,
-  ageOn, daysLeftFrom,
+  ADMIN, BOOKED_CLASSES, COUNTRY, DEMO_STUDENT, PASSWORD, STUDENTS, TEACHERS,
+  TIMEZONE, WEEKLY_AVAILABILITY, ageOn, daysLeftFrom,
 } from "./demo-accounts.mjs";
 
 const TXT = "SAMPLE_ACCOUNTS.txt";
@@ -40,6 +40,19 @@ const wrap = (text, width, indent) => {
   return lines;
 };
 const OR = (v) => (Array.isArray(v) && v.length ? v.join(", ") : "(none)");
+
+// Declared up here, not next to their only use further down: const is in the
+// temporal dead zone until its declaration runs, so a helper declared below the
+// code that calls it is a ReferenceError at runtime despite parsing. Hit this
+// twice in this file.
+const toMinutes = (hhmm) => {
+  const m = String(hhmm || "").match(/^(\d{1,2}):(\d{2})$/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+const WEEKDAY_INDEX = {
+  Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
+  Thursday: 4, Friday: 5, Saturday: 6,
+};
 
 /* ------------------------------------------------------------ the table */
 
@@ -72,7 +85,7 @@ const table = rows
 const teacherSections = TEACHERS.map((t) => {
   const flag = t.teachesChildren
     ? "teaches any age"
-    : "!! DECLINES CHILDREN - see section 2, step 2d";
+    : "!! DECLINES CHILDREN - see section 7, step 2d";
   const courses = t.courses.length === 9 ? "ALL NINE COURSES" : t.courses.join(", ");
   return [
     `  ${t.email}`,
@@ -146,6 +159,99 @@ const live = [
   ...wrap(d.trialNotes, 66, "        "),
 ].join("\n");
 
+/* ------------------------------------------------------- availability */
+
+// What the matcher will actually say about each candidate for Ava's slot.
+// Computed here from the same patterns the seeder expands, rather than written
+// out by hand, so this table cannot claim a reason the data does not produce.
+const avaDays = DEMO_STUDENT.preferredSchedule.days;
+const avaStart = toMinutes(DEMO_STUDENT.preferredSchedule.start);
+const avaEnd = toMinutes(DEMO_STUDENT.preferredSchedule.end);
+
+function availabilityVerdict(key) {
+  // Is this teacher even a candidate for Ava's course?
+  const t = teacherByKey[key];
+  if (!t.courses.includes(DEMO_STUDENT.course)) {
+    return { eligible: false, verdict: "NOT a candidate", reason: `does not teach ${DEMO_STUDENT.course}` };
+  }
+  const patterns = WEEKLY_AVAILABILITY.filter((p) => p.key === key);
+  if (!patterns.length) {
+    return { eligible: true, verdict: "Unavailable", reason: "they have not marked that day available" };
+  }
+  const onDay = patterns.filter((p) => p.days.some((d) => WEEKDAY_INDEX[d] === WEEKDAY_INDEX[avaDays[0]]));
+  if (!onDay.length) {
+    return { eligible: true, verdict: "Unavailable", reason: "they have not marked that day available" };
+  }
+  const covers = onDay.find(
+    (p) => toMinutes(p.start) <= avaStart && toMinutes(p.end) >= avaEnd
+  );
+  if (!covers) {
+    return {
+      eligible: true, verdict: "Unavailable",
+      reason: "their available hours do not cover that time",
+      hours: onDay.map((p) => `${p.start}-${p.end}`).join(", "),
+    };
+  }
+  const booked = BOOKED_CLASSES.find(
+    (b) => b.teacher === key && b.days.includes(avaDays[0]) &&
+      toMinutes(b.start) < avaEnd && toMinutes(b.end) > avaStart
+  );
+  if (booked) {
+    return {
+      eligible: true, verdict: "Unavailable",
+      reason: "they already have a class booked then",
+      hours: `${covers.start}-${covers.end}, booked ${booked.start}-${booked.end}`,
+    };
+  }
+  return {
+    eligible: true, verdict: "AVAILABLE",
+    reason: "", hours: `${covers.start}-${covers.end}`,
+  };
+}
+
+// The four Conversational English candidates, in the order the demo talks about
+// them: who is allowed, then who can actually teach then.
+const avaCandidates = ["santos", "cruz", "martin", "lim"]
+  .map((key) => {
+    const t = teacherByKey[key];
+    const v = availabilityVerdict(key);
+    return [
+      `  ${pad(t.firstName + " " + t.lastName, 16)}`,
+      pad(v.verdict, 12),
+      v.hours ? pad(v.hours, 32) : "",
+      v.reason,
+      t.teachesChildren ? "" : "  <- also DECLINES CHILDREN (blocked earlier, by the age rule)",
+    ].join("");
+  })
+  .join("\n");
+
+const availabilitySection = [
+  `  Ava wants ${avaDays.join(", ")} ${DEMO_STUDENT.preferredSchedule.start} - ${DEMO_STUDENT.preferredSchedule.end}.`,
+  `  The matcher looks ahead 21 days and asks, for each future ${avaDays[0]} in that`,
+  `  window, whether the teacher marked THAT date, whether their hours cover the`,
+  `  slot, whether it hits a break, and whether they already have a class then.`,
+  ``,
+  `  Her four candidates, as the system will report them:`,
+  ``,
+  avaCandidates,
+  ``,
+  `  That is the whole point of the section above it. Maia Cruz is AVAILABLE for`,
+  `  Ava's slot and is still not recommended - the age rule stopped her, not her`,
+  `  calendar. If availability had been the deciding factor she would have won.`,
+  ``,
+  `  Weekly patterns seeded (expanded onto real future dates by the seeder):`,
+  ``,
+  ...WEEKLY_AVAILABILITY.map((p) => {
+    const t = teacherByKey[p.key];
+    return `  ${pad(t.firstName + " " + t.lastName, 16)} ${pad(p.days.join("/"), 20)} ${pad(p.start + "-" + p.end, 14)}x${p.weeks} weeks${p.note ? "  " + p.note : ""}`;
+  }),
+  ``,
+  `  gina.delacruz and clara.reyes have NO availability rows at all, which is what`,
+  `  produces "they have not marked that day available". Neither is a candidate for`,
+  `  Ava anyway - they do not teach Conversational English - so that reason shows up`,
+  `  on other courses rather than in this demo.`,
+].join("\n");
+
 /* ------------------------------------------------- the hand-written prose */
 
 // Declared before PROSE, which interpolates them. const is in the temporal dead
@@ -165,7 +271,7 @@ const section = (title, body) =>
 
 const PROSE = `
 ${rule}
- 6. THE DEMO - 8 STEPS, IN THIS ORDER
+ 7. THE DEMO - 8 STEPS, IN THIS ORDER
 ${rule}
 
 STEP 1 - Sign in as admin. Open Create Student.
@@ -191,9 +297,16 @@ STEP 2 - Click ANALYZE. Let it load.
       e) Rafael Santos is recommended instead - and he won on the RULE, not on
          the AI's preference.
 
-STEP 3 - Look at the availability line. Ben Martin cannot do Saturday mornings
-    and has moved down. Availability is applied AFTER the AI too, so a model
-    that put him first does not get to keep him there.
+STEP 3 - Look at the availability line on the card, against the table in
+    section 6. Ben Martin is marked available on Saturdays but only from 13:00,
+    so his reason reads "their available hours do not cover that time". Dario Lim
+    looks like an exact fit on paper and is not, because he already has a class
+    booked on every one of those Saturdays.
+
+    Point out that Maia Cruz shows as AVAILABLE and is still not recommended.
+    Availability was never the thing that stopped her - the age rule was. Both
+    constraints are applied in code, after the AI, and neither of them is the
+    model's decision.
 
 STEP 4 - Point at the match strength. Ava should read STRONG or PARTIAL with a
     green or amber badge. Say plainly: "the computer tells the admin how good
@@ -237,7 +350,7 @@ STEP 8 - THE FALLBACK. This is the one that wins the argument.
     RESET: put the real key back and redeploy.
 
 ${rule}
- 7. WHAT EACH PIECE DEMONSTRATES, IN ONE LINE EACH
+ 8. WHAT EACH PIECE DEMONSTRATES, IN ONE LINE EACH
 ${rule}
 
   AI reorders, never decides ....... Step 2d - Maia ranked first, not chosen
@@ -253,7 +366,7 @@ ${rule}
   Explainable, every time ........... Rule scores shown beside the AI's reasons
 
 ${rule}
- 8. HOW TO RUN
+ 9. HOW TO RUN
 ${rule}
 
   1. Wipe the database.
@@ -277,10 +390,10 @@ ${rule}
 
   4. Sign in as ${ADMIN.email} / ${PASSWORD}
 
-  5. Work through section 6 in order.
+  5. Work through section 7 in order.
 
 ${rule}
- 9. IF SOMETHING LOOKS WRONG
+ 10. IF SOMETHING LOOKS WRONG
 ${rule}
 
   "No teachers matched" on Ava
@@ -308,7 +421,7 @@ ${rule}
       UI, and re-run the seed if the profile page really disagrees.
 
 ${rule}
- 10. A NOTE ON HONESTY
+ 11. A NOTE ON HONESTY
 ${rule}
 
   Every number in this demo is real, and every "state" is produced by the real
@@ -365,6 +478,9 @@ const generated =
     `  Danica's package is the important one: seeded 100 days ago, and the SERVER`,
     `  decides it is expired on the next sweep. Nothing in the seed marks it.`,
   ].join("\n")) +
+  "\n" +
+  section("6. TEACHER AVAILABILITY - what the matcher will say", availabilitySection) +
+  "\n" +
   PROSE;
 
 writeFileSync(TXT, generated, "utf8");
