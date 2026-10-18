@@ -10,6 +10,10 @@ import mysql from "mysql2/promise";
 import path from "path";
 import { Resend } from "resend";
 import { assessClassEvidence } from "./classEvidence.js";
+// Aliased on purpose: the wrapper below owns the throttle and the logging, and two
+// functions called archiveDormantAccounts in one file is how the policy engine and
+// the scheduler get swapped over by accident.
+import { archiveDormantAccounts as archiveDormantAccountsNow } from "./accountDormancy.js";
 import { fetchAdminOverview } from "./adminOverview.js";
 import { createDbStore, ensureRateLimitsTable } from "./dbRateLimit.js";
 import {
@@ -2447,6 +2451,32 @@ async function removeStudentPackageDateColumns() {
 }
 
 /**
+ * Record WHY an account was archived, and when.
+ *
+ * !! Only the automatic sweep writes these. An account the admin archived by
+ * !! hand has both NULL, which is the point: the columns are what let the UI say
+ * !! "archived automatically, 12 days ago, contract ended" rather than the
+ * !! indistinguishable "archived". An action that happens on its own, with no one
+ * !! watching, has to leave a trace - otherwise the first sign of it is a student
+ * !! who cannot log in and nobody who can say why.
+ */
+async function ensureUserArchiveColumns() {
+  if (!(await columnExists("users", "archived_at"))) {
+    await pool.query("ALTER TABLE users ADD COLUMN archived_at DATETIME NULL DEFAULT NULL AFTER status");
+  }
+
+  if (!(await columnExists("users", "archived_reason"))) {
+    await pool.query("ALTER TABLE users ADD COLUMN archived_reason VARCHAR(160) NULL DEFAULT NULL AFTER archived_at");
+  }
+
+  try {
+    await pool.query("CREATE INDEX idx_users_status_archived ON users (status, archived_at)");
+  } catch {
+    // Present already after the first boot.
+  }
+}
+
+/**
  * Give student_class_packages a deadline and a "we told them" marker.
  *
  * Named expires_at rather than the old package_end_date on purpose:
@@ -2673,6 +2703,8 @@ const SCHEMA_STEPS = [
   ["encrypt existing sensitive data", encryptExistingSensitiveData],
   ["remove legacy package date columns", removeStudentPackageDateColumns],
   ["class package expiry columns", ensureStudentClassPackageExpiryColumns],
+  // Before the dormancy sweep below, which writes to both of these columns.
+  ["user archive audit columns", ensureUserArchiveColumns],
   ["teacher courses table", ensureTeacherCoursesTable],
   ["expire finished packages", expireFinishedPackages],
   ["delete past teacher availability", deletePastTeacherAvailability],
@@ -3354,6 +3386,73 @@ async function autoMarkPastClassesAsNoShow(db = pool) {
     });
 
   await autoMarkPastClassesPromise;
+}
+
+/**
+ * How often the dormancy sweep is allowed to run.
+ *
+ * !! An hour, not the 60 seconds the rest of the sweep uses. Every other task in
+ * !! it reacts to a class that has just become due, where being late is visible
+ * !! and being early costs nothing. This one destroys an account's active status
+ * !! on nobody's say-so, and the shortest threshold it can act on is 60 days - so
+ * !! running it more often than that would do exactly the same work more often.
+ */
+const DORMANCY_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
+let lastDormancySweepAt = 0;
+let dormancySweepPromise = null;
+
+/**
+ * Archive accounts that have gone quiet past their threshold.
+ *
+ * Runs unattended by request, so it is built to be un-surprising: every decision
+ * it declines to make is logged with the reason, and the accounts it leaves alone
+ * are logged too. "No candidates" has to mean "nothing was eligible", not "the
+ * query failed" - which is why the skipped list exists and why the whole thing
+ * refuses to run rather than guessing if it cannot read the data.
+ */
+async function archiveDormantAccounts(db = pool) {
+  if (dormancySweepPromise) return dormancySweepPromise;
+  if (Date.now() - lastDormancySweepAt < DORMANCY_SWEEP_INTERVAL_MS) return;
+
+  dormancySweepPromise = runDormancySweep(db).finally(() => {
+    dormancySweepPromise = null;
+  });
+
+  await dormancySweepPromise;
+}
+
+async function runDormancySweep(db) {
+  let result;
+  try {
+    result = await archiveDormantAccountsNow(db);
+  } catch (err) {
+    // Never let this take the server down, and never let a failure look like a
+    // quiet day. An admin reading "no candidates" has to be able to trust it.
+    console.error("Dormancy sweep failed - no accounts were archived:", err);
+    return;
+  } finally {
+    lastDormancySweepAt = Date.now();
+  }
+
+  for (const row of result.archived) {
+    console.log(
+      `[dormancy] archived ${row.role} "${row.name}" (${row.user_id}) - ${row.reason}; ` +
+        `${row.quietDays} days quiet against a ${row.thresholdDays} day threshold`
+    );
+  }
+
+  if (result.archived.length === 0 && result.skipped.length) {
+    console.log(
+      `[dormancy] scanned ${result.scanned} active accounts, archived 0. ` +
+        `Closest to the line: ` +
+        result.skipped
+          .slice(0, 3)
+          .map((row) => `${row.name} (${row.reason})`)
+          .join("; ")
+    );
+  } else {
+    console.log(`[dormancy] scanned ${result.scanned} active accounts, archived ${result.archived.length}`);
+  }
 }
 
 async function markClassNoShowIfAttendanceGraceExpired(db, classId) {
@@ -12936,6 +13035,10 @@ const runClassStatusSweep = async () => {
       // After the expiry pass, so a package that has just expired is not warned
       // about on its way out.
       notifyUpcomingContractExpirations(pool),
+      // Last, because it is the only task here that reads the package state the
+      // expiry pass just settled. It throttles itself to hourly - it is called
+      // every minute but only decides anything once an hour.
+      archiveDormantAccounts(pool),
     ]);
   } catch (err) {
     console.error("Class status sweep error:", err);
