@@ -423,7 +423,12 @@ STEP 8 - THE FALLBACK. This is the one that wins the argument.
   2. Seed the accounts:
 
          cd backend
-         node ../scripts/seed-demo-data.mjs
+         node seed-demo-data.mjs
+
+     It lives in backend/ rather than scripts/ on purpose. It needs dotenv,
+     bcryptjs and mysql2, and Node resolves those by walking UP for
+     node_modules - which this repo has only in backend/. From scripts/ those
+     three imports fail with ERR_MODULE_NOT_FOUND.
 
      It reads backend/.env, so it uses the same credentials as the server.
      It is safe to re-run - it updates the same rows rather than duplicating.

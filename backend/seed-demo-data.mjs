@@ -2,7 +2,7 @@
 /**
  * Seed demo accounts for a thesis defense.
  *
- *   cd backend && node ../scripts/seed-demo-data.mjs
+ *   cd backend && node seed-demo-data.mjs
  *
  * Run it against a WIPED database. Every account uses the same password.
  *
@@ -45,13 +45,24 @@ import fs from "node:fs";
 import {
   ADMIN, ALL_COURSES, BOOKED_CLASSES, COUNTRY, PASSWORD, STUDENTS, TEACHERS,
   TIMEZONE, WEEKLY_AVAILABILITY, aiBio, criteriaNotes, daysLeftFrom,
-} from "./demo-accounts.mjs";
+} from "../scripts/demo-accounts.mjs";
 
 // The app loads backend/.env. Load it the same way so one set of credentials
 // works for both.
+// This script lives in backend/ so that Node can resolve dotenv, bcryptjs and
+// mysql2 from backend/node_modules. From scripts/ it could not: Node walks UP
+// from the importing file looking for node_modules, and backend/ is a sibling,
+// not a parent, so every one of those imports failed with ERR_MODULE_NOT_FOUND.
+//
+// The data module and the txt generator stay in scripts/ - they import nothing
+// external, so they resolve from anywhere.
 const here = path.dirname(fileURLToPath(import.meta.url));
-const backendEnv = path.resolve(here, "..", "backend", ".env");
-if (fs.existsSync(backendEnv)) loadEnv({ path: backendEnv });
+for (const candidate of [path.resolve(here, ".env"), path.resolve(here, "..", "backend", ".env")]) {
+  if (fs.existsSync(candidate)) {
+    loadEnv({ path: candidate });
+    break;
+  }
+}
 
 const db = await mysql.createConnection({
   host: process.env.DB_HOST || "localhost",
