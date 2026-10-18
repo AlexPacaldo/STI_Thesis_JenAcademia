@@ -9950,7 +9950,11 @@ app.get("/f/:token/:filename", async (req, res) => {
   // guard, so nothing in the request can steer the read out of uploads.
   const relative = String(assignment.attachment_url)
     .replace(/^https?:\/\/[^/]+/i, "")
-    .replace(/^\/+/, "");
+    .replace(/^\/+/, "")
+    // express.static is mounted AT /uploads, so that segment is the mount point
+    // rather than a folder inside the root. Keeping it made every lookup resolve
+    // to <root>/uploads/assignments/... and 404 against the real location.
+    .replace(/^uploads\//, "");
   const absolute = path.join(UPLOAD_ROOT, relative);
 
   if (!isInsidePath(absolute, UPLOAD_ROOT) || !fs.existsSync(absolute)) {
