@@ -5,17 +5,22 @@ import styles from "../assets/teacherSchedule.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { getStoredUserTimezone, parseServerTimestamp } from "../utils/timezone.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { apiFetch } from "../utils/apiAuth.js";
 
 const API = API_BASE_URL;
 
 
+// created_at is a CURRENT_TIMESTAMP column, so it is UTC - see
+// parseServerTimestamp. Rendering it as browser-local put it eight hours out
+// for a user east of Greenwich.
 function formatDateTime(value) {
   if (!value) return "—";
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
+  const date = parseServerTimestamp(value);
+  if (!date) return "—";
   return date.toLocaleDateString("en-US", {
+    timeZone: getStoredUserTimezone(),
     month: "short",
     day: "numeric",
     year: "numeric",

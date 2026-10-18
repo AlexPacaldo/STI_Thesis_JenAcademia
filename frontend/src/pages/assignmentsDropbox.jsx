@@ -5,7 +5,7 @@ import styles from "../assets/assignmentsDropbox.module.css";
 import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
-import { getStoredUserTimezone } from "../utils/timezone.js";
+import { getStoredUserTimezone, formatServerTimestamp } from "../utils/timezone.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { apiFetch } from "../utils/apiAuth.js";
@@ -145,42 +145,16 @@ function formatPostedDate(assignment) {
   const postedAt = assignment?.postedAt || assignment?.createdAt || "";
   if (!postedAt) return "Not available";
 
-  const normalized = String(postedAt).replace(" ", "T");
-  const date = new Date(normalized);
-
-  if (Number.isNaN(date.getTime())) {
-    return String(postedAt);
-  }
-
-  return date.toLocaleString(undefined, {
-    timeZone: getStoredUserTimezone(),
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
+  // UTC, from CURRENT_TIMESTAMP. See parseServerTimestamp - rendering it as
+  // browser-local shifted it by the UTC offset.
+  const formatted = formatServerTimestamp(postedAt, getStoredUserTimezone());
+  return formatted || String(postedAt);
 }
 
 function formatSubmissionDate(value) {
   if (!value) return "";
-  const normalized = String(value).replace(" ", "T");
-  const date = new Date(normalized);
-
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
-  }
-
-  return date.toLocaleString(undefined, {
-    timeZone: getStoredUserTimezone(),
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
+  const formatted = formatServerTimestamp(value, getStoredUserTimezone());
+  return formatted || String(value);
 }
 
 function getAttemptsUsed(assignment) {

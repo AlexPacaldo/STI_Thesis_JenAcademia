@@ -7,8 +7,10 @@ import {
   DEFAULT_TIMEZONE,
   convertDateTime,
   formatDateInTimezone,
+  getStoredUserTimezone,
   getUserTimezone,
   humanTime as formatHumanTime,
+  parseServerTimestamp,
 } from "../utils/timezone.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { formatProficiencyLevel } from "../utils/proficiencyLevels.js";
@@ -42,6 +44,23 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
   return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+// For the CURRENT_TIMESTAMP columns - submitted_at, created_at - which are UTC.
+// formatDate above is kept for the wall-clock columns (a scheduled_date is the
+// user's local intent and must not be shifted); routing a date-only value
+// through a UTC parse would move it to the previous day for anyone west of
+// Greenwich.
+function formatServerDate(value) {
+  if (!value) return "No date";
+  const instant = parseServerTimestamp(value);
+  if (!instant) return String(value).slice(0, 10);
+  return instant.toLocaleDateString(undefined, {
+    timeZone: getStoredUserTimezone(),
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -411,7 +430,7 @@ export default function Dashboard({ mode }) {
         id: submission.submissionId || submission.id,
         primary: submission.assignmentName || "Assignment",
         secondary: submission.student || "Student",
-        meta: `${submission.status || "Submitted"} • ${formatDate(submission.submittedAt)}`,
+        meta: `${submission.status || "Submitted"} • ${formatServerDate(submission.submittedAt)}`,
       }));
 
     return [
@@ -497,7 +516,11 @@ export default function Dashboard({ mode }) {
           to: "/remarks",
           primary: remark.remarks || "Teacher remark",
           secondary: remark.class_name || remark.teacher_name || "Remark",
-          meta: formatDate(remark.created_at || remark.scheduled_date),
+          // created_at is UTC; scheduled_date is a wall-clock date. Only the former may
+// be shifted, so the source is checked rather than assuming which arrived.
+meta: remark.created_at
+            ? formatServerDate(remark.created_at)
+            : formatDate(remark.scheduled_date),
         })),
         actionLabel: "View remarks",
         actionTo: "/remarks",

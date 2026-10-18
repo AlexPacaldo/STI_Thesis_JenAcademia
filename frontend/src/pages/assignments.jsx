@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import styles from "../assets/assignments.module.css";
-import { getStoredUserTimezone } from "../utils/timezone.js";
+import { getStoredUserTimezone, formatServerTimestamp } from "../utils/timezone.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { apiFetch } from "../utils/apiAuth.js";
@@ -47,22 +47,11 @@ function formatDateGiven(row) {
   const postedAt = row.postedAt || row.createdAt || "";
   if (!postedAt) return "Not available";
 
-  const normalized = String(postedAt).replace(" ", "T");
-  const date = new Date(normalized);
-
-  if (Number.isNaN(date.getTime())) {
-    return String(postedAt);
-  }
-
-  return date.toLocaleString(undefined, {
-    timeZone: getStoredUserTimezone(),
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
+  // created_at is a CURRENT_TIMESTAMP column, so it is UTC and arrives as a
+  // naive string. Rendering it in the user's timezone is what makes it read as
+  // the moment the assignment was actually posted - see parseServerTimestamp.
+  const formatted = formatServerTimestamp(postedAt, getStoredUserTimezone());
+  return formatted || String(postedAt);
 }
 
 function hasDueDate(row) {

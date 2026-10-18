@@ -7,7 +7,7 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
 import { describeStudentContract } from "../utils/contractExpiry.js";
 import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
-import { formatTimezoneLabel, getTimezoneOptions, getUserTimezone } from "../utils/timezone.js";
+import { formatTimezoneLabel, getTimezoneOptions, getUserTimezone, parseServerTimestamp } from "../utils/timezone.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { compressFileIfImage } from "../utils/imageCompression.js";
@@ -151,8 +151,9 @@ function calculateAge(birthDate) {
 
 function formatAccountDate(value, timezone) {
   if (!value) return "Not available";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Not available";
+  // created_at is a CURRENT_TIMESTAMP column: UTC, not local wall-clock.
+  const date = parseServerTimestamp(value);
+  if (!date) return "Not available";
   return date.toLocaleDateString("en-US", { timeZone: getUserTimezone({ timezone }) });
 }
 

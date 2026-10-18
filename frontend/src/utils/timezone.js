@@ -122,6 +122,80 @@ export function formatTimeInTimezone(date, timezone = DEFAULT_TIMEZONE) {
   return `${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`;
 }
 
+/**
+ * Parse a timestamp the database wrote with CURRENT_TIMESTAMP.
+ *
+ * These columns (created_at, submitted_at, sent_at, requested_at) come back
+ * through DATE_FORMAT as a naive string with no offset - "2026-10-18 13:56" -
+ * and they are UTC: the columns default to CURRENT_TIMESTAMP, the pool sets no
+ * session timezone, and Railway's MySQL runs in UTC.
+ *
+ * new Date("2026-10-18T13:56") parses that as *browser-local*, which quietly
+ * reinterprets a UTC instant as local wall-clock and shifts it by the
+ * difference. For a user in Asia/Manila this moved an assignment posted at
+ * 9:56 PM to 1:56 PM - eight hours wrong, and wrong by exactly the UTC offset,
+ * which is what made it look like a bad stored value rather than a formatting
+ * bug.
+ *
+ * Appending Z states what the string already means.
+ *
+ * Do NOT use this for wall-clock columns - a due date, due time, class start or
+ * end. Those are the user's local intent, not instants, and shifting them would
+ * be the mirror-image error. They go through zonedDateTimeToDate.
+ *
+ * @returns {Date|null} null rather than an Invalid Date, so callers do not each
+ *   have to remember to check.
+ */
+export function parseServerTimestamp(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  const text = String(value).trim();
+
+  // Already carries an offset, or is a full ISO string with a zone. Let Date
+  // deal with it rather than reinterpreting what it already states.
+  if (/[Zz]$|[+-]\d{2}:?\d{2}$/.test(text)) {
+    const parsed = new Date(text);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (match) {
+    const [, year, month, day, hour = "00", minute = "00", second = "00"] = match;
+    return new Date(
+      Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second))
+    );
+  }
+
+  const fallback = new Date(text);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
+}
+
+/**
+ * Render a database timestamp in a user's timezone.
+ *
+ * The counterpart to parseServerTimestamp, for the display of "when did this
+ * happen". Kept here so the UTC reading and the formatting cannot drift apart
+ * the way two independent formatters did.
+ */
+export function formatServerTimestamp(value, timezone = DEFAULT_TIMEZONE, options) {
+  const instant = parseServerTimestamp(value);
+  if (!instant) return "";
+
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: isValidTimezone(timezone) ? timezone : DEFAULT_TIMEZONE,
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    ...options,
+  }).format(instant);
+}
+
 export function humanDate(dateValue, timezone = DEFAULT_TIMEZONE) {
   const dateKey = normalizeDateKey(dateValue);
   if (!dateKey) return "";

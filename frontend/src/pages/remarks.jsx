@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import teacherPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/remarks.module.css";
-import { getStoredUserTimezone } from "../utils/timezone.js";
+import { getStoredUserTimezone, parseServerTimestamp } from "../utils/timezone.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
@@ -24,10 +24,15 @@ const YEAR = 365 * DAY;
 
 // Purely arithmetic on epoch millis, so the user's timezone only affects the
 // absolute fallback text, never the "2 hours ago" result.
+//
+// created_at is UTC, so it is parsed as UTC. This is where the naive parse hurt
+// most: getTime() came out eight hours off for a Manila user, so a remark
+// posted moments ago rendered as "8 hours ago".
 function relativeTime(value, nowMs) {
   if (!value) return null;
-  const then = new Date(value).getTime();
-  if (Number.isNaN(then)) return null;
+  const parsed = parseServerTimestamp(value);
+  if (!parsed) return null;
+  const then = parsed.getTime();
 
   const elapsed = nowMs - then;
   // Clock skew or a slightly future timestamp - don't render "in -3 minutes".
@@ -53,8 +58,8 @@ export default function Remarks() {
 
   const formatDate = (value) => {
     if (!value) return null;
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return null;
+    const date = parseServerTimestamp(value);
+    if (!date) return null;
     return date.toLocaleDateString("en-US", {
       timeZone: getStoredUserTimezone(),
       month: "long",
@@ -68,8 +73,8 @@ export default function Remarks() {
   // a dash rather than printing "Invalid Date".
   const formatSubmittedAt = (value) => {
     if (!value) return "—";
-    const date = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(date.getTime())) return "—";
+    const date = parseServerTimestamp(value);
+    if (!date) return "—";
 
     const timeZone = getStoredUserTimezone();
     const dateText = date.toLocaleDateString("en-US", {

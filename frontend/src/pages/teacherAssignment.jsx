@@ -5,6 +5,7 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { addLocalNotification } from "../utils/localNotificationStore.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { getStoredUserTimezone, parseServerTimestamp } from "../utils/timezone.js";
 import { apiFetch } from "../utils/apiAuth.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import ModalPortal from "../utils/ModalPortal.jsx";
@@ -23,45 +24,30 @@ function getUserName(user) {
 }
 
 
-// The API returns submittedAt as a MySQL-formatted string
-// ("2026-08-27 16:14"), which is not valid ISO - new Date() parses it
-// inconsistently across browsers. Parse the parts explicitly and build a local
-// Date so the output is stable.
+// The API returns submittedAt / postedAt as a MySQL-formatted string
+// ("2026-08-27 16:14"), which is not valid ISO. These come from
+// CURRENT_TIMESTAMP columns and are therefore UTC. The previous version parsed
+// the parts into a local Date, which treated them as wall-clock and shifted
+// every timestamp by the UTC offset. See parseServerTimestamp.
 function formatSubmittedAt(value) {
   if (!value) return "Not submitted";
-  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
-  if (match) {
-    const [, year, month, day, hour, minute] = match;
-    const parsed = new Date(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      Number(hour),
-      Number(minute)
-    );
-    if (!Number.isNaN(parsed.getTime())) {
-      const dateText = parsed.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-      const timeText = parsed.toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-      });
-      return `${dateText} at ${timeText}`;
-    }
-  }
 
-  const fallback = new Date(value);
-  if (!Number.isNaN(fallback.getTime())) {
-    return fallback.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
-  return String(value);
+  const instant = parseServerTimestamp(value);
+  if (!instant) return String(value);
+
+  const zone = getStoredUserTimezone();
+  const dateText = instant.toLocaleDateString("en-US", {
+    timeZone: zone,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const timeText = instant.toLocaleTimeString("en-US", {
+    timeZone: zone,
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${dateText} at ${timeText}`;
 }
 
 function formatStudent(student) {
