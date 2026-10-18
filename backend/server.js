@@ -5642,6 +5642,14 @@ app.post("/api/student/contract-match-preview", requireSession, requireBodyIdent
             // distinguishable from a broken one instead of reading as silence.
             used: Boolean(recommendation.advisor.used),
             configured: Boolean(recommendation.advisor.configured),
+            // Which of the ways it failed, not just that it did. A bad key, a
+            // rate limit and an open circuit breaker all read identically as
+            // "could not be reached" and need three different fixes, so the card
+            // has to be able to say which one this was.
+            //
+            // Safe to send: a fixed enum string computed in teacherAdvisor.js,
+            // carrying nothing about the server or the key.
+            reason: recommendation.advisor.reason || "",
             summary: recommendation.advisor.summary || "",
             reasons: recommendation.advisor.reasons || {},
           }

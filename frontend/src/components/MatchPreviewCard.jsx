@@ -14,6 +14,42 @@
  * preview that reads like a booking would send the request expecting something
  * that has not happened.
  */
+/**
+ * Why the AI did not contribute, in words a student can act on.
+ *
+ * The backend already distinguishes these (teacherAdvisor.js), but until now the
+ * card collapsed all of them into "could not be reached", which is the least
+ * useful sentence in the file: it is true of a bad API key, a rate limit, a
+ * timeout, a retired model and an open circuit breaker, and each needs a
+ * different response. The one thing a student can do about all of them is send
+ * the request anyway, so the wording says that first and explains second.
+ *
+ * Unknown reasons fall through to the general line rather than being dropped -
+ * a new reason from the backend must not leave the card claiming the AI worked.
+ */
+const ADVISOR_UNAVAILABLE = {
+  "not-configured": "The AI is not set up on this server, so this is the rule-based match only.",
+  "bad-key": "The AI could not be reached because its API key was rejected. This is a rule-based match.",
+  "rate-limited": "The AI is being rate limited right now, so this is the rule-based match. Try again in a moment for the full one.",
+  "timed-out": "The AI took too long to answer, so this is the rule-based match. Try again in a moment.",
+  "temporarily-unavailable":
+    "The AI paused itself after repeated failures, so this is the rule-based match. It will come back on its own shortly.",
+  "no-candidates": "There were no teachers to compare, so this is a rule-based match.",
+  unreadable: "The AI answered in a form this could not read, so this is the rule-based match.",
+  "unusable-order": "The AI did not return a usable ranking, so this is the rule-based match.",
+};
+
+function describeAdvisorUnavailable(advisor) {
+  if (!advisor) return "The AI did not contribute to this match, so it is rule-based only.";
+  if (!advisor.configured) return "The AI is not set up on this server, so this is the rule-based match only.";
+
+  const specific = ADVISOR_UNAVAILABLE[advisor.reason];
+  return (
+    specific ||
+    "The AI could not be reached for this request, so this is the rule-based match only."
+  );
+}
+
 export default function MatchPreviewCard({ preview }) {
   if (!preview) return null;
 
@@ -87,14 +123,14 @@ export default function MatchPreviewCard({ preview }) {
         </p>
       )}
 
-      {/* Said whether or not the AI ran. A quiet model and a broken one look
-          identical from the outside, and the student should not have to guess
-          which produced the answer they are looking at. */}
+      {/* Said whether or not the AI ran, and why not when it didn't. A quiet
+          model, a rejected key and an open circuit breaker all look the same
+          from the outside, and the student cannot tell whether to try again or
+          whether anyone needs to fix something. Neither can the admin from the
+          same message - which is why this says the specific thing. */}
       {!advisor?.used && (
         <p style={{ margin: 0, fontSize: "0.84em", color: "#6b7d73", lineHeight: 1.5 }}>
-          {advisor?.configured
-            ? "The AI could not be reached, so this is the rule-based match only."
-            : "No AI key is configured, so this is the rule-based match only."}
+          {describeAdvisorUnavailable(advisor)}
         </p>
       )}
 

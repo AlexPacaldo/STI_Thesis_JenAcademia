@@ -3125,6 +3125,16 @@ export default function AdminDashboard() {
                           {aiRecommendation.advisor.configured
                             ? "The AI ranking was unavailable, so these are the rule-based scores instead."
                             : "The AI ranking is not configured, so these are the rule-based scores instead."}
+                          {/* The reason, because "unavailable" covers a rejected key,
+                              a rate limit, a timeout and an open breaker, and only
+                              one of those is an admin's problem to fix. Shown raw
+                              rather than reworded: this is the person who has to go
+                              and look at GOOGLE_GEMINI_API_KEY. */}
+                          {aiRecommendation.advisor.reason && (
+                            <div style={{ marginTop: "3px", fontSize: "0.85em" }}>
+                              Reason: <code>{aiRecommendation.advisor.reason}</code>
+                            </div>
+                          )}
                         </div>
                       )}
                       {aiRecommendation.teacher.reasons?.length > 0 && (
