@@ -30,13 +30,28 @@ export function normalizeModelId(value) {
     .trim();
 }
 
-// Retried once if the configured model 404s. A versioned name gets retired; the
-// rolling alias keeps pointing at the current flash model, so a stale setting
-// heals itself instead of failing every request until someone edits it. A 404
-// costs nothing - no generation happens - so the retry is free when the
-// configured model was right.
-const GEMINI_FALLBACK_MODEL = "gemini-flash-latest";
-const DEFAULT_MODEL = "gemini-2.5-flash";
+// Tried in order until one answers. The configured model goes first, because
+// an explicit GEMINI_MODEL is the operator's decision and should win whenever it
+// works; the rest are there so a name that has gone stale heals itself instead of
+// failing every request until someone edits a setting in production.
+//
+// A 404 costs nothing - no generation happens - so each extra candidate is free
+// on the happy path and only paid on the path that was already broken.
+//
+// Ordered by what is most likely to be reachable for any given key rather than
+// by capability. gemini-3.8-flash is the current flagship Flash; 3.5-flash-lite
+// is the cheapest and has the most generous rate limits, which makes it the one
+// most likely to still answer on a free key; gemini-flash-latest is the rolling
+// alias and is last only because it is the least specific - if it resolves, it
+// resolves to whatever is newest, which is not necessarily what was tested here.
+const MODEL_FALLBACKS = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"];
+
+// 2.5 was the default while it was current. Google now limits access to the 2.5
+// family to keys that have already used those models, so a key created for this
+// project gets a 404 on it and the advisor is dead until someone notices. Moving
+// to the 3.x family is what keeps it alive; the fallbacks cover the key being
+// older than the newest model instead.
+const DEFAULT_MODEL = "gemini-3.8-flash";
 
 // Read lazily rather than at module scope: server.js imports modules before it
 // calls dotenv.config(), so a top-level read would miss anything that only
@@ -48,6 +63,23 @@ const geminiModel = () => normalizeModelId(process.env.GEMINI_MODEL) || DEFAULT_
 
 export function isGeminiConfigured() {
   return Boolean(geminiApiKey());
+}
+
+/**
+ * Which models to try, in order, for one request.
+ *
+ * Exported rather than inlined so it can be tested. The behaviour that matters -
+ * configured model first, fallbacks after it, nothing asked for twice - is
+ * invisible from outside and would otherwise only be observable as "the AI
+ * stopped working one day when a model was renamed", which is not a symptom
+ * anyone can debug from a screenshot.
+ *
+ * @param {string} configured Already normalised, from GEMINI_MODEL or DEFAULT_MODEL.
+ */
+export function modelCandidates(configured) {
+  return [configured, ...MODEL_FALLBACKS].filter(
+    (model, index, all) => model && all.indexOf(model) === index
+  );
 }
 
 /**
@@ -69,8 +101,10 @@ export async function requestGeminiJson({ payload, timeoutMs = 60_000, timeoutMe
   }
 
   const configured = geminiModel();
-  const candidates =
-    configured === GEMINI_FALLBACK_MODEL ? [configured] : [configured, GEMINI_FALLBACK_MODEL];
+  // De-duplicated, configured first. If GEMINI_MODEL is already one of the
+  // fallbacks it is not tried twice, and a second identical attempt would spend
+  // a round trip to learn exactly what the first one already proved.
+  const candidates = modelCandidates(configured);
 
   let lastStatus = 0;
   let lastDetail = "";
@@ -113,13 +147,17 @@ export async function requestGeminiJson({ payload, timeoutMs = 60_000, timeoutMe
     if (response.status === 429) {
       throw new Error("Gemini rate limit reached. Try again in a moment.");
     }
-    // Anything else - a 404 above all - is worth one more try on the alias.
+    // Anything else - a 404 above all - is worth one more try on the next model.
   }
 
   // Gemini's own wording is appended, because the bare status is ambiguous: a
-  // 404 covers both "no such model" and "unsupported for this API version", and
-  // only the detail tells them apart.
+  // 404 covers both "no such model" and "not available to this key", and only the
+  // detail tells them apart. The model list is appended for the same reason from
+  // the other direction: if every candidate failed, knowing which ones were tried
+  // is the difference between "retired, pick a newer name" and "your key cannot
+  // reach this family at all".
   throw new Error(
-    `Gemini could not complete the request (${lastStatus})${lastDetail ? `: ${lastDetail}` : ""}`
+    `Gemini could not complete the request (${lastStatus}) after trying ` +
+      `${candidates.join(", ")}${lastDetail ? `: ${lastDetail}` : ""}`
   );
 }

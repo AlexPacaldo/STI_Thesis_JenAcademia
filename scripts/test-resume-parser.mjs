@@ -17,7 +17,7 @@ import {
 } from "../backend/teacherResumeParser.js";
 // normalizeModelId now lives in the shared Gemini client, with the resume
 // parser and the trial-notes insights feature as its two callers.
-import { normalizeModelId } from "../backend/geminiClient.js";
+import { normalizeModelId, modelCandidates } from "../backend/geminiClient.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -48,6 +48,73 @@ check("whitespace only", normalizeModelId("   "), "");
 check("undefined", normalizeModelId(undefined), "");
 check("null", normalizeModelId(null), "");
 check("dotted id kept", normalizeModelId("models/my.custom-model_v2"), "my.custom-model_v2");
+
+/* ------------------------------------------------- which models get tried, in order */
+
+/**
+ * Google limits access to the 2.5 family to keys that have already used those
+ * models, and renames models on a schedule. Both of those turn into "the AI
+ * silently stopped working", so the set of models tried, their order and the
+ * absence of duplicates are all pinned here.
+ *
+ * The order is the contract: whatever GEMINI_MODEL says goes first, because an
+ * explicit setting is the operator's decision, and the rest exist so a stale one
+ * heals itself instead of failing every request.
+ */
+check(
+  "configured model is tried first",
+  modelCandidates("gemini-2.5-flash")[0],
+  "gemini-2.5-flash"
+);
+check(
+  "a retired configured model is followed by current ones",
+  modelCandidates("gemini-2.5-flash").slice(1, 3),
+  ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
+);
+check(
+  "a configured model that is already a fallback is not tried twice",
+  modelCandidates("gemini-3.5-flash-lite"),
+  ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"]
+);
+check(
+  "the rolling alias is not asked for twice",
+  modelCandidates("gemini-flash-latest"),
+  ["gemini-flash-latest", "gemini-3.8-flash", "gemini-3.5-flash-lite"]
+);
+check("no candidate list is ever empty", modelCandidates("gemini-3.8-flash").length > 0, true);
+check(
+  "an empty configured model drops out rather than being requested",
+  modelCandidates("").includes(""),
+  false
+);
+check(
+  "an empty configured model still yields real models",
+  modelCandidates(""),
+  ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"]
+);
+
+// The built-in fallbacks must be models a key can actually reach, so none of them
+// may be from the access-restricted 2.5 family. Only the fallbacks are checked:
+// an explicitly configured 2.5 model is still honoured first, because that is the
+// operator's decision to make, and the fallbacks exist for when they did not.
+check(
+  "no fallback is an access-restricted 2.5 model",
+  modelCandidates("gemini-3.8-flash").slice(1).filter((m) => m.startsWith("gemini-2.5")),
+  []
+);
+check(
+  "and a stale configured model cannot drag one in behind it",
+  modelCandidates("gemini-2.5-flash").slice(1).filter((m) => m.startsWith("gemini-2.5")),
+  []
+);
+
+// A configured value must survive normalisation on its way into the request
+// path, prefix included - that prefix bug once produced models/models%2F...
+check(
+  "a prefixed configured model is normalised, not sent prefixed",
+  modelCandidates(normalizeModelId("models/gemini-2.5-flash"))[0],
+  "gemini-2.5-flash"
+);
 
 /* --------------------------------- country must match the form's own options */
 
