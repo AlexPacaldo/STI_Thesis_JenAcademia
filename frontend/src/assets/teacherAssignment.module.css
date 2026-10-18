@@ -277,10 +277,10 @@
 }
 
 /* Confirm dialog for posting an assignment.
-   This was a block of inline styles with hardcoded hex colours, which pinned it
-   to one palette: it ignored the tokens the rest of the app uses, so it could
-   not follow a theme change. Now identical to the student-side dialog in
-   assignmentsDropbox.module.css, so both read as the same component. */
+   Was inline styles with hardcoded hex, which pinned it to one palette. Now
+   matches account.module.css, which is the reference the rest of the app's
+   confirm dialogs follow - note the buttons carry no min-width there, so they
+   size to their label rather than to a fixed floor. */
 .modalBackdrop {
   position: fixed;
   inset: 0;
@@ -296,52 +296,62 @@
 }
 
 .confirmModal {
-  background: #fff;
+  width: min(440px, 100%);
+  background: var(--surface, #fff);
   border: 1px solid rgba(38, 66, 59, 0.12);
   border-radius: 24px;
-  padding: 24px;
-  max-width: 440px;
-  width: 100%;
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
+  padding: 24px;
   animation: scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.modalHeader h2 {
-  margin: 0 0 12px;
+.confirmModal h2 {
+  margin: 0;
+  color: var(--text);
   font-size: 1.2rem;
   font-weight: 800;
-  color: var(--text);
 }
 
-.modalBody {
-  margin: 0 0 20px;
+.confirmBody {
+  margin: 12px 0 20px;
   color: var(--muted);
   line-height: 1.6;
   font-size: 0.95rem;
 }
 
-.modalActions {
+.confirmActions {
   display: flex;
-  gap: 10px;
   justify-content: flex-end;
+  gap: 10px;
 }
 
-.textBtn,
-.primaryBtn {
-  min-width: 100px;
+.confirmActions button {
   min-height: 42px;
   padding: 10px 18px;
   border-radius: 14px;
   font-family: inherit;
   font-weight: 700;
-  cursor: pointer;
   border: 1px solid rgba(38, 66, 59, 0.14);
   background: #fff;
   color: var(--primary);
+  cursor: pointer;
+  transition: background 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
-.textBtn:hover {
+.confirmActions button:hover {
   background: var(--surface-raised);
+}
+
+/* Declared so the names resolve at all. A CSS module hands back undefined for a
+   class with no rule of its own, and React would then render class="undefined",
+   dropping the button styling entirely. The dialog's actual appearance comes
+   from .confirmActions above - which outranks these on specificity - matching
+   how the account page keeps the same two names for its other dialogs. */
+.primaryBtn,
+.textBtn {
+  border-radius: 14px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .primaryBtn {
@@ -350,7 +360,13 @@
   color: #fff;
 }
 
-.primaryBtn:hover {
+.confirmActions .primaryBtn {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.confirmActions .primaryBtn:hover {
   background: var(--primary-mid);
 }
 

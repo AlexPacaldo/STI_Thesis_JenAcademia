@@ -617,13 +617,9 @@ export default function AssignTask() {
       {confirmAction && (
         <div className={styles.modalBackdrop} onClick={closeConfirmAction}>
           <section className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <h2>{confirmAction.title}</h2>
-            </div>
-            <div className={styles.modalBody}>
-              <p>{confirmAction.message}</p>
-            </div>
-            <div className={styles.modalActions}>
+            <h2>{confirmAction.title}</h2>
+            <p className={styles.confirmBody}>{confirmAction.message}</p>
+            <div className={styles.confirmActions}>
               <button type="button" className={styles.textBtn} onClick={closeConfirmAction}>
                 Cancel
               </button>
