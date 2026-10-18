@@ -2373,6 +2373,33 @@
   white-space: nowrap;
 }
 
+/* Dormancy panel on the Account Management tab. Shaped like the other cards in
+   that column rather than the Overview tab's panels - it lives next to the
+   Restore button, not on a dashboard. */
+.dormancyPanel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+}
+
+.dormancyHead h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.dormancyHead p {
+  margin: 3px 0 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
 @media (max-width: 900px) {
   .Center {
     padding: 16px;

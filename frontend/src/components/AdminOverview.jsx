@@ -571,44 +571,6 @@ export default function AdminOverview({ onNavigateToTab }) {
       <section className={styles.overviewPanel}>
         <div className={styles.overviewPanelHead}>
           <div>
-            <h3>Archived by the Dormancy Rule</h3>
-            <p>
-              Closed automatically after going quiet
-              {overview?.autoArchived?.last30Days > 0
-                ? ` - ${overview.autoArchived.last30Days} in the last 30 days.`
-                : ". None in the last 30 days."}
-            </p>
-          </div>
-          <button className={styles.linkBtn} type="button" onClick={() => goToTab("archive")}>
-            Manage accounts
-          </button>
-        </div>
-
-        {overview?.autoArchived?.recent?.length ? (
-          <ul className={styles.overviewNameList}>
-            {overview.autoArchived.recent.map((row) => (
-              <li key={`auto-${row.user_id}`} className={styles.overviewNameRow}>
-                <span>
-                  {row.user_name}
-                  <span className={styles.overviewMeta}> &middot; {row.role}</span>
-                </span>
-                <span className={styles.overviewMeta}>
-                  {row.archived_at ? `${formatStamp(row.archived_at)} - ` : ""}
-                  {row.archived_reason}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className={styles.overviewEmpty}>
-            Nothing has been archived automatically. Every archived account was archived by you.
-          </div>
-        )}
-      </section>
-
-      <section className={styles.overviewPanel}>
-        <div className={styles.overviewPanelHead}>
-          <div>
             <h3>Newest Accounts</h3>
             <p>The last {overview?.recentSignups?.length || 0} people to join.</p>
           </div>

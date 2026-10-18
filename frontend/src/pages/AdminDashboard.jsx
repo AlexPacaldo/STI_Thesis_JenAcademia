@@ -509,6 +509,21 @@ export default function AdminDashboard() {
   const [aiRecommendation, setAiRecommendation] = useState(null);
   const [archiveRefresh, setArchiveRefresh] = useState(0); // bump to reload archived list
   const [archiveSearch, setArchiveSearch] = useState("");
+  // Lifted out of <ArchivedUsers> so the dormancy panel above it and the full
+  // list below read the same fetch. Two components hitting the same endpoint
+  // meant the panel could show a count the list contradicted - which is the
+  // exact failure this whole feature exists to avoid.
+  const [archivedUsers, setArchivedUsers] = useState([]);
+
+  useEffect(() => {
+    axios
+      .get(`${API}/api/admin/users?status=archived`)
+      .then((r) => setArchivedUsers(Array.isArray(r.data) ? r.data : []))
+      .catch((e) => {
+        console.error("Error loading archived users:", e);
+        setArchivedUsers([]);
+      });
+  }, [archiveRefresh]);
   const [requestFilter, setRequestFilter] = useState("all"); // 'all', 'pending', 'approved', 'declined'
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null); // { id, status, action }
@@ -3871,9 +3886,15 @@ export default function AdminDashboard() {
               </div>
             </div>
 
+            <AutoArchivedPanel users={archivedUsers} onRestore={requestRestoreUser} />
+
             <details className={styles.archivedBox}>
               <summary>Show Archived Users</summary>
-              <ArchivedUsers onUnarchive={requestRestoreUser} refresh={archiveRefresh} search={archiveSearch} />
+              <ArchivedUsers
+                users={archivedUsers}
+                onUnarchive={requestRestoreUser}
+                search={archiveSearch}
+              />
             </details>
           </section>
         )}
@@ -4995,15 +5016,86 @@ export default function AdminDashboard() {
   );
 }
 
-// Lazy subcomponent to list archived users
-function ArchivedUsers({ onUnarchive, refresh, search = "" }) {
-  const [items, setItems] = useState([]);
-  useEffect(() => {
-    axios
-      .get(`${API_BASE_URL}/api/admin/users?status=archived`)
-      .then((r) => setItems(r.data || []))
-      .catch(() => setItems([]));
-  }, [refresh]);
+/**
+ * The dormancy rule's output, on its own panel.
+ *
+ * Lives here rather than on the Overview tab because this is where the admin
+ * already goes to manage accounts, and a rule that closes accounts belongs next
+ * to the button that reopens them - not on a dashboard tab they may never visit
+ * again.
+ *
+ * A hand-archived account has `archived_at = NULL`; only the sweep writes it.
+ * That single column is the whole distinction, which is why this needs no extra
+ * request beyond the archived list it already shares.
+ */
+function AutoArchivedPanel({ users = [], onRestore }) {
+  const autoArchived = users
+    .filter((user) => user.archived_at)
+    .sort((a, b) => new Date(b.archived_at).getTime() - new Date(a.archived_at).getTime());
+
+  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const recentCount = autoArchived.filter(
+    (user) => new Date(user.archived_at).getTime() >= thirtyDaysAgo
+  ).length;
+
+  return (
+    <div className={styles.dormancyPanel}>
+      <div className={styles.dormancyHead}>
+        <div>
+          <h3>Archived by the Dormancy Rule</h3>
+          <p>
+            Closed automatically after going quiet.
+            {autoArchived.length > 0
+              ? ` ${recentCount} in the last 30 days.`
+              : " None in the last 30 days."}
+          </p>
+        </div>
+      </div>
+
+      {autoArchived.length > 0 ? (
+        <ul className={styles.list}>
+          {autoArchived.slice(0, 6).map((user) => (
+            <li key={`auto-${user.user_id}`} className={styles.listRow}>
+              <span className={styles.archiveIdentity}>
+                <span className={styles.archiveName}>
+                  {user.first_name} {user.last_name} - {user.email} ({user.role})
+                </span>
+                <span className={styles.archiveMeta}>
+                  <span className={styles.autoBadge}>Auto-archived</span>
+                  <span>
+                    {formatDateTime(user.archived_at)}
+                    {user.archived_reason ? ` · ${user.archived_reason}` : ""}
+                  </span>
+                </span>
+              </span>
+              <div>
+                <button className={styles.approve} type="button" onClick={() => onRestore(user.user_id)}>
+                  Restore
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className={styles.overviewEmpty}>
+          Nothing has been archived automatically. Every archived account was archived by you.
+        </div>
+      )}
+
+      {autoArchived.length > 6 && (
+        <p className={styles.archivedSummary}>
+          Showing the 6 most recent of {autoArchived.length}. The full list is under Show
+          Archived Users below.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Lists archived users. Takes them as a prop so this panel and the dormancy
+// panel above it cannot disagree about how many there are.
+function ArchivedUsers({ users = [], onUnarchive, search = "" }) {
+  const items = users;
 
   const searchTerm = search.trim().toLowerCase();
   const filteredItems = items.filter((user) => {
