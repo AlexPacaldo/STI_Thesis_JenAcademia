@@ -1295,8 +1295,31 @@ async function getStudentPackageAvailability(connection, studentId) {
     [studentId]
   );
 
+  // The most recent package whatever its status.
+  //
+  // !! The `active` filter above is load-bearing: an expired package must not be
+  // !! bookable, and every booking calculation is derived from `package`. But
+  // !! returning null for it meant a student whose contract had just run out saw
+  // !! NO contract anywhere - not on the Dashboard, not on the Calendar, not on
+  // !! their own account page. An expired contract and a student who never had
+  // !! one became indistinguishable, which is the opposite of what the expiry
+  // !! work was for.
+  // !!
+  // !! So the booking package stays exactly as it was, and this is returned
+  // !! alongside it purely for display. Nothing here feeds a booking decision.
+  const [latestRows] = await db.query(
+    `SELECT package_id, total_classes, classes_used, classes_left, status, created_at, expires_at
+     FROM student_class_packages
+     WHERE student_id = ?
+     ORDER BY created_at DESC, package_id DESC
+     LIMIT 1`,
+    [studentId]
+  );
+
+  const latestPackage = latestRows[0] || null;
+
   if (!packageRows.length) {
-    return { package: null, bookedClasses: 0, bookableClasses: 0 };
+    return { package: null, latestPackage, bookedClasses: 0, bookableClasses: 0 };
   }
 
   const packageInfo = packageRows[0];
@@ -1322,6 +1345,7 @@ async function getStudentPackageAvailability(connection, studentId) {
 
   return {
     package: packageInfo,
+    latestPackage,
     bookedClasses,
     bookableClasses: Math.max(0, classesLeft - bookedClasses),
   };
@@ -3892,12 +3916,29 @@ app.get("/api/users/:id", requireSession, async (req, res) => {
         `SELECT sp.proficiency_level, sp.assigned_teacher_id, sp.trial_notes,
                 c.course_id, c.course_name, c.description AS course_description, c.duration AS course_duration,
                 t.first_name AS teacher_first_name, t.last_name AS teacher_last_name, t.email AS teacher_email,
-                scp.total_classes, scp.classes_used, scp.classes_left, scp.status AS package_status,
-             scp.expires_at AS package_expires_at
+                scp.total_classes, scp.classes_used, scp.classes_left, scp.class_duration,
+                scp.status AS package_status, scp.expires_at AS package_expires_at
          FROM student_profiles sp
          LEFT JOIN courses c ON c.course_id = sp.course_id
          LEFT JOIN users t ON t.user_id = sp.assigned_teacher_id
-         LEFT JOIN student_class_packages scp ON scp.student_id = sp.user_id AND scp.status = 'active'
+         // The most recent package, preferring an active one.
+         //
+         // !! This used to join on scp.status = 'active', which meant a student
+         // !! whose contract had run out got no package fields at all - no
+         // !! classes count, and above all no expiry. Their own account page
+         // !! could not tell them their contract had ended, which is the single
+         // !! thing that page most needs to say. Same resolution the teacher's
+         // !! Students page already uses, so both agree on what "this student's
+         // //! contract" means.
+         LEFT JOIN student_class_packages scp
+           ON scp.student_id = sp.user_id
+          AND scp.package_id = (
+            SELECT latest.package_id
+            FROM student_class_packages latest
+            WHERE latest.student_id = sp.user_id
+            ORDER BY latest.status = 'active' DESC, latest.created_at DESC, latest.package_id DESC
+            LIMIT 1
+          )
          WHERE sp.user_id = ?
          LIMIT 1`,
         [req.params.id]
@@ -7133,10 +7174,18 @@ app.get("/api/calendar/student-package/:student_id", requireSession, async (req,
     const { student_id } = req.params;
     await expireFinishedPackages();
 
-    const { package: packageInfo, bookedClasses, bookableClasses } = await getStudentPackageAvailability(pool, student_id);
+    const { package: packageInfo, latestPackage, bookedClasses, bookableClasses } =
+      await getStudentPackageAvailability(pool, student_id);
 
     if (!packageInfo) {
-      return res.status(404).json({ message: "No package found" });
+      // An expired or cancelled contract is still a contract, and the student
+      // needs to see that it ran out rather than being told there is nothing
+      // here. latest_package is display-only; booking still requires an active
+      // package, which is why this is a 404 for anyone who had none at all.
+      return res.status(404).json({
+        message: latestPackage ? "No active package" : "No package found",
+        latest_package: latestPackage,
+      });
     }
 
     res.json({
@@ -7144,7 +7193,8 @@ app.get("/api/calendar/student-package/:student_id", requireSession, async (req,
         ...packageInfo,
         booked_classes: bookedClasses,
         bookable_classes: bookableClasses,
-      }
+      },
+      latest_package: latestPackage,
     });
   } catch (err) {
     console.error(err);

@@ -5,7 +5,7 @@ import styles from "../assets/account.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
-import { describeContractExpiry } from "../utils/contractExpiry.js";
+import { describeStudentContract } from "../utils/contractExpiry.js";
 import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
 import { formatTimezoneLabel, getTimezoneOptions, getUserTimezone } from "../utils/timezone.js";
 import { API_BASE_URL } from "../utils/api.js";
@@ -208,12 +208,29 @@ export default function Account() {
   }, []);
 
   const details = user?.roleDetails || {};
-  // A contract has two limits - classes and time, so the deadline is shown even
-  // while classes remain. The wording and the "how many days" maths come from the
-  // shared util, so this page cannot drift from the other four that show one.
-  const contractExpiry = useMemo(
-    () => describeContractExpiry(details.package_expires_at),
-    [details.package_expires_at]
+  // The contract summary the student sees on their own page.
+  //
+  // Two limits, not one: classes and time. Classes can be plentiful while the
+  // contract is nearly over, so the deadline is shown on its own rather than
+  // implied by the remaining count.
+  //
+  // The status/date decision lives in contractExpiry.js rather than here, so
+  // the cancelled and expired cases are decided in one tested place instead of
+  // once per page that needs to answer the question.
+  const contract = useMemo(
+    () =>
+      describeStudentContract({
+        packageId: details.package_id,
+        status: details.package_status,
+        expiresAt: details.package_expires_at,
+        totalClasses: details.total_classes,
+        classesUsed: details.classes_used,
+        classesLeft: details.classes_left,
+      }),
+    [
+      details.package_id, details.package_status, details.package_expires_at,
+      details.total_classes, details.classes_used, details.classes_left,
+    ]
   );
   // Seeded from the profile so the control reflects the stored value. Kept as
   // local state because it saves on change rather than through Save Changes -
@@ -713,38 +730,134 @@ export default function Account() {
     }
   }
 
-  function renderRolePanel() {
-    if (user.role === "student") {
-      const classesLeft = details.classes_left ?? (
-        details.total_classes != null && details.classes_used != null
-          ? Math.max(0, Number(details.total_classes) - Number(details.classes_used))
-          : null
-      );
-
+  function renderContractSummary() {
+    if (contract.state === "none") {
+      // Said explicitly rather than left blank. A missing row reads as a page
+      // that failed to load; this states the fact, which is different and
+      // actionable - it is what the contract request button is for.
       return (
         <section className={styles.card}>
           <div className={styles.cardHeader}>
-            <h2>Learning Profile</h2>
+            <h2>Contract</h2>
             <span>Student</span>
           </div>
-          <div className={styles.statsGrid}>
-            <Stat label="Course" value={details.course_name} />
-            <Stat label="Teacher" value={details.teacher_first_name ? `${details.teacher_first_name} ${details.teacher_last_name || ""}`.trim() : details.teacher_name} />
-            <Stat label="Classes Left" value={classesLeft} />
-            <Stat label="Classes Used" value={`${formatValue(details.classes_used, "0")} / ${formatValue(details.total_classes, "0")}`} />
-            {contractExpiry.state !== "none" && (
-              <Stat
-                label={contractExpiry.state === "expired" ? "Contract expired" : "Contract expires"}
-                value={contractExpiry.detail.replace(/^Contract ends /, "")}
-              />
-            )}
+          <p style={{ margin: 0, color: "#5b6b64", fontSize: "0.92em", lineHeight: 1.5 }}>
+            You do not have a class contract yet. Once one is set up, its length,
+            what you have used and the date it ends will be shown here.
+          </p>
+        </section>
+      );
+    }
+
+    const tone = {
+      expired: { bg: "#fdecec", border: "#e5a3a3", text: "#8c2020" },
+      soon: { bg: "#fdf3e3", border: "#e0b872", text: "#7a5210" },
+      ok: { bg: "#eef5f0", border: "#a9c9b4", text: "#2f5a43" },
+      cancelled: { bg: "#f1f2f4", border: "#c9ced6", text: "#4a5260" },
+    }[contract.state] || { bg: "#f1f2f4", border: "#c9ced6", text: "#4a5260" };
+
+    const headline = {
+      expired: "Contract expired",
+      soon: "Contract ends soon",
+      ok: "Contract ends",
+      cancelled: "Contract cancelled",
+    }[contract.state] || "Contract";
+
+    const explanation = {
+      expired:
+        "This contract has run out. Classes you have not booked before the end date are no longer available. Ask for a new contract to continue.",
+      soon: `Your contract ends ${contract.expiry.when}. Any classes you have not booked by then will be lost.`,
+      ok: "Book classes before the end date. Anything left unused when the contract ends is lost.",
+      cancelled:
+        "This contract was cancelled, so the end date below is the date it was set to end on rather than one you can rely on.",
+    }[contract.state] || "";
+
+    const progressPct =
+      contract.total > 0 ? Math.min(100, Math.round((contract.used / contract.total) * 100)) : 0;
+
+    // Shown only when the stored value exists. A package with no duration on
+    // record leaves this blank rather than claiming a number - a plausible guess
+    // here is worse than an empty cell, because the student would book against it.
+    const classDuration = details.class_duration != null ? `${details.class_duration} min` : null;
+
+    return (
+      <section className={styles.card}>
+        <div className={styles.cardHeader}>
+          <h2>Contract</h2>
+          <span>Student</span>
+        </div>
+
+        <div
+          style={{
+            border: `1px solid ${tone.border}`,
+            background: tone.bg,
+            borderRadius: 12,
+            padding: "14px 16px",
+            display: "grid",
+            gap: 10,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <strong style={{ color: tone.text, fontSize: "1.02em" }}>{headline}</strong>
+            {/* The same badge the Dashboard, Calendar, Students page and admin
+                Contracts page use, so the colour rules cannot drift apart. It was
+                imported on this page from the start and never rendered. */}
+            <ContractExpiryBadge
+              expiresAt={details.package_expires_at}
+              size="sm"
+            />
           </div>
-          {contractExpiry.state === "soon" && (
-            <p style={{ margin: "10px 0 0", color: "#8a5a1f", fontSize: "0.9em", lineHeight: 1.45 }}>
-              Your contract ends {contractExpiry.when}. Any classes you have not booked by then will be lost.
+
+          {explanation && (
+            <p style={{ margin: 0, color: tone.text, fontSize: "0.9em", lineHeight: 1.5 }}>
+              {explanation}
             </p>
           )}
-        </section>
+
+          <div className={styles.statsGrid}>
+            <Stat label="Class duration" value={classDuration} />
+            <Stat label="Classes in contract" value={contract.total || null} />
+            <Stat label="Classes used" value={contract.used || 0} />
+            <Stat label="Classes left" value={contract.state === "cancelled" ? null : contract.left} />
+            <Stat label="Ends on" value={contract.expiry.detail?.replace(/^Contract ends /, "") || null} />
+          </div>
+
+          {contract.total > 0 && contract.state !== "cancelled" && (
+            <div>
+              <div style={{ height: 8, background: "rgba(0,0,0,0.07)", borderRadius: 8, overflow: "hidden" }}>
+                <div style={{ width: `${progressPct}%`, height: "100%", background: tone.text, opacity: 0.7 }} />
+              </div>
+              <div style={{ marginTop: 6, fontSize: "0.84em", color: tone.text }}>
+                {contract.used} of {contract.total} classes used ({progressPct}%)
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  function renderRolePanel() {
+    if (user.role === "student") {
+      return (
+        <>
+          <section className={styles.card}>
+            <div className={styles.cardHeader}>
+              <h2>Learning Profile</h2>
+              <span>Student</span>
+            </div>
+            <div className={styles.statsGrid}>
+              <Stat label="Course" value={details.course_name} />
+              <Stat label="Teacher" value={details.teacher_first_name ? `${details.teacher_first_name} ${details.teacher_last_name || ""}`.trim() : details.teacher_name} />
+              <Stat label="Proficiency" value={details.proficiency_level} />
+            </div>
+          </section>
+          {/* Contract lives in its own card rather than as another stat in the
+              profile. It needs the progress bar, the badge and a sentence of
+              explanation, and cramming all that into a stat grid cell is what
+              made the earlier version read as one more number nobody looks at. */}
+          {renderContractSummary()}
+        </>
       );
     }
 

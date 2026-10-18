@@ -181,6 +181,7 @@ export default function Dashboard({ mode }) {
     assignments: [],
     books: [],
     package: null,
+    latest_package: null,
     lessonProgress: [],
     assignedTeacher: null,
     teachers: [],
@@ -331,6 +332,9 @@ export default function Dashboard({ mode }) {
             assignments: dashboard.assignments || [],
             books: dashboard.books || [],
             package: dashboard.package || null,
+            // Carried alongside `package`, which is null once a contract has
+            // run out. Display only - no booking decision reads this.
+            latest_package: dashboard.latest_package || null,
             lessonProgress: dashboard.progress || [],
             assignedTeacher: dashboard.assignedTeacher || null,
             teachers,
@@ -363,18 +367,27 @@ export default function Dashboard({ mode }) {
     }
 
     const openAssignments = studentData.assignments.filter(isOpenAssignment);
+
+    // The expiry comes from the most recent package, not the active one, so a
+    // student whose contract has run out still sees that it did. `package` is
+    // null in that case and stays null - nothing here makes an expired contract
+    // bookable - but silence would read as "no contract", not "contract ended".
+    const contractExpiryAt =
+      studentData.package?.expires_at ?? studentData.latest_package?.expires_at ?? null;
+    const contractIsOver = !studentData.package && studentData.latest_package?.expires_at;
+
     return [
       {
         label: "Classes Left",
         value: String(studentData.package?.classes_left ?? 0),
         icon: "book",
-        hint: studentData.package?.expires_at ? (
+        hint: contractExpiryAt ? (
           <span style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-            <span>Current package</span>
-            <ContractExpiryBadge expiresAt={studentData.package.expires_at} size="sm" />
+            <span>{contractIsOver ? "Contract ended" : "Current package"}</span>
+            <ContractExpiryBadge expiresAt={contractExpiryAt} size="sm" />
           </span>
         ) : (
-          "Current package"
+          "No contract"
         ),
       },
       { label: "Open Assignments", value: String(openAssignments.length), hint: "Waiting on you", icon: "file" },

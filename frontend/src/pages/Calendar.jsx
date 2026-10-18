@@ -551,6 +551,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [availability, setAvailability] = useState({});
   const [classesCache, setClassesCache] = useState({}); // map date->classes array
   const [studentPackage, setStudentPackage] = useState(null);
+  // The most recent package whatever its status. Display only: every booking
+  // decision reads `studentPackage`, which stays null once a contract ends.
+  const [latestStudentPackage, setLatestStudentPackage] = useState(null);
   const [calendarRefreshToken, setCalendarRefreshToken] = useState(0);
   const [isUserReady, setIsUserReady] = useState(false);
   const [isInitialCalendarLoading, setIsInitialCalendarLoading] = useState(true);
@@ -1046,12 +1049,25 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   }, [year, month, localRole, localUserId, teacherId, assignedTeacherId, calendarRefreshToken]);
 
   // fetch student package when we know student id
+  //
+  // A 404 here is not necessarily "nothing". The endpoint answers 404 both for a
+  // student who never had a package and for one whose contract has run out, and
+  // the second case still carries the deadline in its body. Discarding the error
+  // the way this did - setStudentPackage(null) and nothing else - made an ended
+  // contract indistinguishable from an absent one on the one screen that tells
+  // a student how many classes they have left.
   useEffect(() => {
     if (localRole === "student" && localUserId) {
       axios
         .get(`${API}/api/calendar/student-package/${localUserId}`)
-        .then(r => setStudentPackage(r.data.package))
-        .catch(() => setStudentPackage(null));
+        .then(r => {
+          setStudentPackage(r.data.package);
+          setLatestStudentPackage(r.data.latest_package ?? r.data.package ?? null);
+        })
+        .catch((err) => {
+          setStudentPackage(null);
+          setLatestStudentPackage(err?.response?.data?.latest_package ?? null);
+        });
     }
   }, [localRole, localUserId, calendarRefreshToken]);
 
@@ -3113,6 +3129,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     return Math.max(0, Number(effectiveClassesLeft || 0) - activeBookedClasses);
   })();
   const effectivePercent = effectiveClassesLimit > 0 ? Math.min(100, Math.round((effectiveClassesLeft / effectiveClassesLimit) * 100)) : 0;
+  // The contract's deadline, from the active package when there is one and the
+  // most recent package when there is not. `studentPackage` stays null once a
+  // contract runs out - that is deliberate and every booking check depends on it -
+  // so the deadline has to be able to survive its absence.
+  const contractExpiresAt =
+    studentPackage?.expires_at ?? latestStudentPackage?.expires_at ?? null;
   const hasNoActiveStudentPackage = localRole === "student" && !studentPackage;
   const hasNoBookableClasses = localRole === "student" && Number(effectiveBookableClasses) <= 0;
   const contractExhausted = localRole === "student" && !!studentPackage && Number(effectiveClassesLeft) <= 0;
@@ -6072,7 +6094,12 @@ $5padding: 20,
                           Available to book: {effectiveBookableClasses}
                         </div>
                         <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}>
-                          <ContractExpiryBadge expiresAt={studentPackage?.expires_at} />
+                          {/* Falls back to the most recent package so an expired
+                              contract still shows its deadline here. The panel
+                              below already distinguishes "no active contract"
+                              from "contract ended" - this keeps the badge
+                              agreeing with it rather than going blank. */}
+                          <ContractExpiryBadge expiresAt={contractExpiresAt} showDate />
                         </div>
                         <div style={{ marginTop: 8 }}>
                           <div style={{ height: 8, background: "#eef2ff", borderRadius: 8, overflow: "hidden" }}>

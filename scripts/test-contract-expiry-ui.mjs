@@ -2,6 +2,7 @@ import {
   EXPIRY_SOON_DAYS,
   describeContractBalance,
   describeContractExpiry,
+  describeStudentContract,
 } from "../frontend/src/utils/contractExpiry.js";
 
 let passed = 0;
@@ -89,6 +90,119 @@ check("a negative balance clamps", describeContractBalance({ classesLeft: -5 }, 
 check("a string number still works", describeContractBalance({ classesLeft: "3" }, NOW).classesLeft, 3);
 
 /* ------------------------------------------------------------------ done */
+
+/* --------------------------------------------------- the whole contract object */
+
+// describeStudentContract exists because the status can contradict the date, and
+// deciding that per page means deciding it differently per page. These are the
+// combinations that made the account page able to say a cancelled contract had a
+// deadline it was never going to keep to.
+
+check(
+  "no package at all is its own state",
+  describeStudentContract({}, NOW).state,
+  "none"
+);
+check(
+  "no package reports no numbers",
+  describeStudentContract({}, NOW).left,
+  null
+);
+check(
+  "a package with no expiry date is still a package",
+  describeStudentContract({ packageId: 1 }, NOW).state,
+  "ok"
+);
+
+check(
+  "active with time left",
+  describeStudentContract({ packageId: 1, status: "active", expiresAt: inDays(60) }, NOW).state,
+  "ok"
+);
+check(
+  "active inside the warning window",
+  describeStudentContract({ packageId: 1, status: "active", expiresAt: inDays(9) }, NOW).state,
+  "soon"
+);
+check(
+  "ending today reads as soon, not as a third state to handle",
+  describeStudentContract({ packageId: 1, status: "active", expiresAt: inDays(0.2) }, NOW).state,
+  "soon"
+);
+
+// The server's sweep normally prevents an active package whose date has passed,
+// but if it happens the date is the truth and the student is told.
+check(
+  "active with a deadline already past reads as expired",
+  describeStudentContract({ packageId: 1, status: "active", expiresAt: inDays(-3) }, NOW).state,
+  "expired"
+);
+
+// Status wins over the date. Marked early or otherwise, an expired package must
+// not tell a student they have time they do not have.
+check(
+  "expired wins over a future deadline",
+  describeStudentContract({ packageId: 1, status: "expired", expiresAt: inDays(60) }, NOW).state,
+  "expired"
+);
+
+// A cancelled contract's deadline is not something to plan around, so the number
+// of days is dropped rather than merely styled down.
+check(
+  "cancelled is its own state",
+  describeStudentContract({ packageId: 1, status: "cancelled", expiresAt: inDays(60) }, NOW).state,
+  "cancelled"
+);
+check(
+  "a cancelled contract claims no days left on the clock",
+  describeStudentContract({ packageId: 1, status: "cancelled", expiresAt: inDays(60) }, NOW).expiry.daysLeft,
+  null
+);
+check(
+  "and no classes left to book",
+  describeStudentContract({ packageId: 1, status: "cancelled", totalClasses: 10, classesUsed: 4 }, NOW).left,
+  null
+);
+
+// The two class counts, which are independent of the date.
+check(
+  "classes left is derived when not stored",
+  describeStudentContract({ packageId: 1, totalClasses: 12, classesUsed: 5 }, NOW).left,
+  7
+);
+check(
+  "a stored classes_left wins over the derived figure",
+  describeStudentContract({ packageId: 1, totalClasses: 12, classesUsed: 5, classesLeft: 2 }, NOW).left,
+  2
+);
+check(
+  "an expired contract still reports what was left",
+  describeStudentContract({ packageId: 1, status: "expired", totalClasses: 6, classesUsed: 0 }, NOW).left,
+  6
+);
+check(
+  "a negative classes_left cannot go negative",
+  describeStudentContract({ packageId: 1, classesLeft: -4 }, NOW).left,
+  0
+);
+check(
+  "unknown totals stay unknown rather than becoming zero",
+  describeStudentContract({ packageId: 1, classesUsed: 3 }, NOW).total,
+  null
+);
+
+// A status the database should never hold falls back to reading the date rather
+// than throwing or pretending.
+check(
+  "an unrecognised status falls back to the date",
+  describeStudentContract({ packageId: 1, status: "paused", expiresAt: inDays(60) }, NOW).state,
+  "ok"
+);
+check(
+  "a missing status is treated as active",
+  describeStudentContract({ packageId: 1, expiresAt: inDays(-1) }, NOW).state,
+  "expired"
+);
 
 if (failures.length) {
   console.log(`\n${passed}/${passed + failures.length} checks passed.`);

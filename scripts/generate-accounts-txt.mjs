@@ -321,6 +321,27 @@ STEP 6 - Sign in as ben.martin@jenacademia.local and open the Students page.
     Two students, and the expiry badge is on THEIR view too. The teacher can see
     whether those classes are still bookable.
 
+STEP 6b - THE STUDENT'S OWN VIEW, which is the one that matters most. Sign in as
+    danica.pope@student.jenacademia.local / JEN2026!:
+
+      Dashboard          Classes Left tile reads "Contract ended" in red, not
+                         "Current package", and not a silent blank.
+      Calendar           The Classes Left panel shows the expiry date under the
+                         count, so an ended contract is visibly ended.
+      Account > Contract A card of its own: headline, a sentence saying what
+                         happens to unbooked classes, the five numbers
+                         (duration, total, used, left, end date) and a usage bar.
+
+    Then sign in as carlos.mendoza@student.jenacademia.local and show the same
+    three screens in amber - 11 days left, with a warning notification already in
+    the bell. Same three surfaces, one shared badge, so the colour cannot differ
+    between them.
+
+    Worth saying aloud: an expired contract is still shown, never hidden. Three
+    of those screens read the most recent package rather than only the active
+    one, so "my contract ended" is never mistaken for "I never had one" - while
+    booking still requires an active package, so nothing ended is ever bookable.
+
 STEP 7 - Create Kyla Bautista, 16, Conversational English, Learning Goal set to
     "School Support" - only Rafael's profile touches that at all. Analyze.
     >>> THE CARD SHOULD READ, IN RED:
