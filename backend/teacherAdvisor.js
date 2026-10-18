@@ -169,9 +169,39 @@ function buildSchema(candidateIds) {
         items: { type: "STRING", enum: candidateIds },
       },
       reasons: {
-        type: "OBJECT",
-        description: "One short sentence per teacher id explaining why they sit where they do.",
-        additionalProperties: { type: "STRING" },
+        type: "ARRAY",
+        description:
+          "One entry per teacher worth explaining, best match first. Empty is allowed when the ranking speaks for itself.",
+        // A list of {id, text} pairs rather than an object keyed by teacher id.
+        //
+        // The natural spelling is an object with additionalProperties, which is
+        // how OpenAPI says "arbitrary string keys" - and Gemini's Schema type has
+        // no such field. It answers a 400 that names the offending path:
+        //   Unknown name "additionalProperties" at
+        //   'generation_config.response_schema.properties[1].value'
+        // and because a 400 means the key was fine and the models answered, that
+        // failure looks exactly like a bad model, a bad key or an unreachable
+        // API. It is also unrecoverable by retrying: every model in the fallback
+        // chain rejects the same payload.
+        //
+        // This shape is unambiguously supported, and it is stricter - the id is
+        // an enum on every item, where a free-form object had no way to say which
+        // keys were allowed.
+        items: {
+          type: "OBJECT",
+          properties: {
+            teacherId: {
+              type: "STRING",
+              enum: candidateIds,
+              description: "The candidate this explanation is about.",
+            },
+            reason: {
+              type: "STRING",
+              description: "One short sentence on why this teacher sits where they do.",
+            },
+          },
+          required: ["teacherId", "reason"],
+        },
       },
       summary: {
         type: "STRING",
@@ -337,10 +367,17 @@ export async function adviseTeacherRanking({
 
     // Reasons are the admin's only account of WHY, so keep only ones we can
     // attribute to a real candidate.
+    //
+    // Read as a list of {teacherId, reason} pairs and flattened back into a map
+    // keyed by id, because that is the shape every caller already reads. The
+    // enum is enforced per item by the schema; this drops anything that slipped
+    // past it rather than trusting it.
     const reasons = {};
-    for (const [id, text2] of Object.entries(parsed?.reasons || {})) {
-      if (allowed.has(String(id)) && String(text2 || "").trim()) {
-        reasons[String(id)] = String(text2).trim().slice(0, 240);
+    for (const item of Array.isArray(parsed?.reasons) ? parsed.reasons : []) {
+      const id = String(item?.teacherId ?? "");
+      const text2 = String(item?.reason || "").trim();
+      if (allowed.has(id) && text2) {
+        reasons[id] = text2.slice(0, 240);
       }
     }
 
