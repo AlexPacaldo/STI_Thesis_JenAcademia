@@ -159,8 +159,7 @@
   opacity: 1;
 }
 
-/* Free-text box revealed by the "Others" chip. Scoped under .field for the same
-   reason the chip rules are: `.form input` is class+type and would win. */
+/* The chip's visible label text. */
 .field .chipText {
   min-width: 0;
   /* Reset the global overflow-wrap:anywhere so a long label breaks at spaces
@@ -168,6 +167,46 @@
   overflow-wrap: normal;
   word-break: normal;
   white-space: nowrap;
+}
+
+/* The "Others" text box.
+   !! These rules were deleted during a cleanup of an "Others" dialog that was
+   !! then reverted, while the component went on referencing this class. The input
+   !! fell back to UA defaults and rendered as a narrow pill about as wide as its
+   !! placeholder, with the text visibly cut off - a CSS-module class silently
+   !! deleted is invisible until someone looks at the rendered width.
+   !!
+   !! Full width of the field's content box, not its intrinsic size. An input
+   !! sizes to its `size` attribute by default, which is why it came out narrow
+   !! rather than merely unstyled. */
+.customInput {
+  margin-top: 10px;
+}
+
+.field .customInput input,
+.field .customInput input:focus {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-mid, #d0d0d0);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text, #1f2937);
+  font-family: inherit;
+  font-size: 0.92em;
+  line-height: 1.4;
+  box-sizing: border-box;
+}
+
+.field .customInput input::placeholder {
+  color: var(--text-mid, #9aa3a0);
+}
+
+.field .customInput input:focus {
+  border-color: var(--primary, #2f4d3e);
+  box-shadow: 0 0 0 4px rgba(47, 77, 62, 0.1);
+  outline: none;
 }
 
 .srOnly {
