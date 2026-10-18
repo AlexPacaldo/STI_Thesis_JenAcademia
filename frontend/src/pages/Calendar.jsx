@@ -614,17 +614,19 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [contractCourseId, setContractCourseId] = useState("");
   const [contractClassCount, setContractClassCount] = useState("10");
   const [contractClassDuration, setContractClassDuration] = useState("50");
-  const [contractTrialNotes, setContractTrialNotes] = useState("");
+
   // Every criterion is multi-select. Matches the Create Student form and the
   // vocabulary the matcher compares against.
   const [contractAiCriteria, setContractAiCriteria] = useState(() => createEmptyCriteria());
   const [contractRequestError, setContractRequestError] = useState("");
   const [contractRequests, setContractRequests] = useState([]);
   const [isSubmittingContractRequest, setIsSubmittingContractRequest] = useState(false);
-  // Only the extension form uses this. Kept separate from contractTrialNotes
-  // because that one is attached to a new-contract request as AI matching
-  // criteria, and an extension has no teacher to match - it is a request for
-  // time on a contract that already exists.
+  // The extension's "why do you need longer" box, and the only free text left in
+  // either form. A new-contract request no longer has a notes field at all: it
+  // carries four structured criteria (each with an Others box), a preferred
+  // schedule, a course and a class count, which is what the matcher reads. A
+  // free-text box beside those invited the question of what belonged in which,
+  // and an answer of "either" is not an answer.
   const [contractExtensionNote, setContractExtensionNote] = useState("");
   // Set when the student explicitly asks for a new contract despite having an
   // extension route available.
@@ -3570,7 +3572,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         course_id: contractCourseId,
         requested_classes: contractClassCount,
         class_duration: contractClassDuration,
-        trial_notes: contractTrialNotes,
+
         // The "Others" free text is merged in here, by the same function the
         // admin's Create Student form uses. Sending contractAiCriteria raw would
         // carry the __custom__ sentinel to the scorer, where it matches nothing
@@ -3589,7 +3591,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       // contract form to a student who should only be offered an extension.
       setRequestingNewContract(false);
       setContractClassDuration("50");
-      setContractTrialNotes("");
+
       setContractAiCriteria(createEmptyCriteria());
       setContractCriteriaOther({ learningGoal: "", focusArea: "", learningStyle: "", pace: "" });
       setContractPreferredSchedule(createEmptyPreferredSchedule());
@@ -6650,16 +6652,6 @@ $5padding: 20,
                                   )}
                                 </div>
 
-                                <div>
-                                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Request Notes</label>
-                                  <textarea
-                                    value={contractTrialNotes}
-                                    onChange={(e) => setContractTrialNotes(e.target.value)}
-                                    rows={3}
-                                    placeholder="Add updated goals, focus areas, or notes for teacher matching..."
-                                    style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }}
-                                  />
-                                </div>
                                 <div>
                                   <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Class Duration</label>
                                   <select
