@@ -340,14 +340,38 @@ const isoDate = (d) =>
 async function seedAvailability() {
   let rows = 0;
 
+  // !! Clear each teacher's rows ONCE, before inserting anything.
+  // !!
+  // !! This DELETE used to sit inside the loop over WEEKLY_AVAILABILITY, so a
+  // !! teacher's second pattern deleted the rows their first pattern had just
+  // !! inserted. Five of the six demo teachers have two patterns, so the effect
+  // !! was that only the LAST pattern survived for each of them: 15 rows landed
+  // !! where 31 were written, and the script cheerfully reported 35.
+  // !!
+  // !! That is not a cosmetic shortfall. The Saturday patterns are the ones the
+  // !! whole Ava scenario rests on - Rafael Santos is seeded as the single
+  // !! candidate who can take her Saturday 09:00-11:00 slot, and Dario as the
+  // !! exact fit on paper whose Saturdays are all booked. Both had those
+  // !! Saturdays deleted by their weekday pattern. The availability columns on
+  // !! the recommendation card would have shown the opposite of the demo.
+  const cleared = new Set();
   for (const slot of WEEKLY_AVAILABILITY) {
     const teacherId = byKey[slot.key];
     if (!teacherId) throw new Error(`Availability references unknown teacher "${slot.key}"`);
+    if (cleared.has(slot.key)) continue;
 
-    // Idempotent: replace this teacher's demo rows rather than accumulating.
-    await db.execute(
-      "DELETE FROM teacher_availability WHERE teacher_id = ?", [teacherId]
-    );
+    cleared.add(slot.key);
+    await db.execute("DELETE FROM teacher_availability WHERE teacher_id = ?", [teacherId]);
+  }
+
+  // What each teacher should end up with, so the count can be checked below.
+  const expected = {};
+  for (const slot of WEEKLY_AVAILABILITY) {
+    expected[slot.key] = (expected[slot.key] || 0) + slot.weeks;
+  }
+
+  for (const slot of WEEKLY_AVAILABILITY) {
+    const teacherId = byKey[slot.key];
 
     for (const date of upcomingWeekdays(slot.days, slot.weeks)) {
       await db.execute(
@@ -366,10 +390,19 @@ async function seedAvailability() {
     if (!teacherId || !studentId) {
       throw new Error(`Booked class references an unknown account: ${booked.teacher}/${booked.student}`);
     }
+
+    // !! Actually clear the previous run's rows. The comment here used to claim
+    // !! this was done "for the same reason as availability above" while no
+    // !! DELETE existed anywhere near it, so a second run of the seed appended a
+    // !! duplicate set of classes instead of replacing them.
+    // !! Targeted on this class name and teacher rather than clearing the table,
+    // !! so seeding cannot quietly delete someone's real bookings.
+    await db.execute(
+      "DELETE FROM classes WHERE teacher_id = ? AND class_name = ?",
+      [teacherId, booked.className]
+    );
+
     for (const date of upcomingWeekdays(booked.days, booked.weeks)) {
-      // class_name is UNIQUE-keyed per row only by id, so re-running the seed
-      // would duplicate classes. Cleared first for the same reason as
-      // availability above.
       await db.execute(
         `INSERT INTO classes
            (class_name, teacher_id, student_id, scheduled_date, start_time, end_time, status)
@@ -378,6 +411,67 @@ async function seedAvailability() {
       );
       rows += 1;
     }
+  }
+
+  // Count what is actually in the database and compare. The number this script
+  // reports is how many INSERTs it issued, which stays correct even when the
+  // table ends up holding something else - which is exactly how 31 written rows
+  // were reported as a healthy 35 while 15 sat in the table. Read the table back
+  // instead of counting statements.
+  const [actual] = await db.query(
+    `SELECT u.email, COUNT(*) n
+       FROM teacher_availability a JOIN users u ON u.user_id = a.teacher_id
+      GROUP BY u.email`
+  );
+  const byEmailCount = Object.fromEntries(actual.map((r) => [r.email, Number(r.n)]));
+  const shortfalls = [];
+  for (const [key, want] of Object.entries(expected)) {
+    const teacher = TEACHERS.find((t) => t.key === key);
+    const got = byEmailCount[teacher?.email] ?? 0;
+    if (got !== want) shortfalls.push(`${teacher?.email}: expected ${want} rows, found ${got}`);
+  }
+
+  if (shortfalls.length) {
+    throw new Error(
+      `Availability did not land as expected, so the demo would not behave as\n` +
+        `documented:\n${shortfalls.map((s) => `  - ${s}`).join("\n")}`
+    );
+  }
+
+  // Same for the booked classes: expected count comes from the data, not a
+  // literal. Hardcoding 4 here would quietly pass if someone widened `weeks`.
+  const expectedClasses = {};
+  for (const booked of BOOKED_CLASSES) {
+    const id = `${booked.teacher}/${booked.className}`;
+    expectedClasses[id] = (expectedClasses[id] || 0) + booked.weeks;
+  }
+
+  const [classRows] = await db.query(
+    `SELECT u.email, c.class_name, COUNT(*) n
+       FROM classes c JOIN users u ON u.user_id = c.teacher_id
+      GROUP BY u.email, c.class_name`
+  );
+  const classShortfalls = [];
+  for (const booked of BOOKED_CLASSES) {
+    const teacher = TEACHERS.find((t) => t.key === booked.teacher);
+    const id = `${booked.teacher}/${booked.className}`;
+    const row = classRows.find(
+      (r) => r.email === teacher?.email && r.class_name === booked.className
+    );
+    const got = Number(row?.n ?? 0);
+    if (got !== expectedClasses[id]) {
+      classShortfalls.push(
+        `${teacher?.email} "${booked.className}": expected ${expectedClasses[id]}, found ${got}`
+      );
+    }
+  }
+
+  if (classShortfalls.length) {
+    throw new Error(
+      `Booked classes did not land as expected, so the seed is not idempotent:\n${classShortfalls
+        .map((s) => `  - ${s}`)
+        .join("\n")}`
+    );
   }
 
   return rows;
