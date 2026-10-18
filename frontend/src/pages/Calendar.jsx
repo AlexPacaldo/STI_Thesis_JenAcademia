@@ -16,6 +16,7 @@ import {
   toggleValue,
 } from "../utils/matchingCriteria.js";
 import CriteriaChipField from "../components/CriteriaChipField.jsx";
+import ModalPortal from "../utils/ModalPortal.jsx";
 import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/studentSchedule.module.css";
 import { API_BASE_URL } from "../utils/api.js";
@@ -6370,7 +6371,7 @@ $5padding: 20,
                             className={styles.slotBtn}
                             onClick={() => {
                               setRequestingNewContract(true);
-                              setContractRequestOpen(false);
+                              setContractRequestOpen(true);
                               setContractExtensionNote("");
                               setContractRequestError("");
                               updateContractCourse(studentProfile?.course_id || "");
@@ -6400,164 +6401,225 @@ $5padding: 20,
                         )}
                       </div>
                     )}
-                    {(canRequestNewContract || requestingNewContract) && (
-                      <div style={{ marginTop: 12, padding: 12, border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff" }}>
-                        {/* The consequence, stated here rather than assumed. This
-                            form only appears alongside the extension route when the
-                            student has deliberately chosen it, which is the one
-                            moment losing the balance is a decision rather than a
-                            surprise. */}
-                        {requestingNewContract && !canRequestNewContract && latestStudentPackage && (
-                          <div style={{ marginBottom: 10, padding: 10, border: "1px solid #e5a3a3", borderRadius: 8, background: "#fdecec", fontSize: 12, color: "#8c2020", lineHeight: 1.45 }}>
-                            A new contract replaces your current one, so the{" "}
-                            {latestStudentPackage.classes_left} unused class
-                            {Number(latestStudentPackage.classes_left) === 1 ? "" : "es"} on it will not carry over.
-                            If you would rather keep them, close this and ask for
-                            an extension instead.
-                          </div>
-                        )}
-                        {contractRequests[0] && (
-                          <div style={{ marginBottom: 10, fontSize: 12, color: "#4b5563" }}>
-                            Latest request: <strong style={{ textTransform: "capitalize" }}>{contractRequests[0].status}</strong>
-                            {contractRequests[0].course_name ? ` - ${contractRequests[0].course_name}` : ""}
-                            {contractRequests[0].requested_classes ? ` (${contractRequests[0].requested_classes} classes)` : ""}
-                            {contractRequests[0].class_duration ? ` - ${contractRequests[0].class_duration} min` : ""}
-                          </div>
-                        )}
-                        {!contractRequestOpen ? (
-                          <button
-                            type="button"
-                            className={styles.slotBtn}
-                            onClick={() => {
-                              setContractRequestOpen(true);
-                              setContractRequestError("");
-                              updateContractCourse(studentProfile?.course_id || "");
-                            }}
-                            style={{ width: "100%", textAlign: "center", background: "#111827", color: "#fff" }}
-                          >
-                            Request New Contract
-                          </button>
-                        ) : (
-                          <div style={{ display: "grid", gap: 10 }}>
-                            <div>
-                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Desired Course</label>
-                              <select
-                                value={contractCourseId}
-                                onChange={(e) => updateContractCourse(e.target.value)}
-                                style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit" }}
+                    {canRequestNewContract && !contractRequestOpen && !requestingNewContract && (
+                      <button
+                        type="button"
+                        className={styles.slotBtn}
+                        onClick={() => {
+                          setContractRequestOpen(true);
+                          setContractRequestError("");
+                          updateContractCourse(studentProfile?.course_id || "");
+                        }}
+                        style={{ width: "100%", padding: "10px 12px", border: "none", borderRadius: 8, background: "#111827", color: "#fff", fontWeight: 700, cursor: "pointer" }}
+                      >
+                        Request a new contract
+                      </button>
+                    )}
+                    {contractRequestOpen && (canRequestNewContract || requestingNewContract) && (
+                          /* Lifted out of the sidebar and into a window.
+
+                             !! It was rendering inline in a ~300px column, which made
+                             !! every field in it cramped: the criteria chips wrapped onto
+                             !! three lines, the notes box was a few characters wide, and the
+                             !! course dropdown and the two numeric pickers fought for the
+                             !! same strip. An earlier attempt put only the "Others" text box
+                             !! in a dialog, which fixed one field and left its four siblings
+                             !! looking like they belonged to a different screen. The form is
+                             !! the unit that needed moving.
+
+                             !! Through ModalPortal rather than rendered in place: anything
+                             !! position: fixed inside .content-area is positioned against the
+                             !! content column, not the viewport, so an in-place overlay covers
+                             !! the page but not the sidebar - which is exactly the window this is
+                             !! supposed to escape. */
+                          <ModalPortal>
+                            <div
+                              onClick={() => {
+                                // Both flags, not just the override. The dialog is
+                                // gated on contractRequestOpen, so clearing only
+                                // requestingNewContract would have left it open for
+                                // anyone who arrived without that override - the
+                                // normal case - and clicking the backdrop would have
+                                // done nothing at all.
+                                setContractRequestOpen(false);
+                                setRequestingNewContract(false);
+                                setContractRequestError("");
+                              }}
+                              style={{
+                                position: "fixed",
+                                inset: 0,
+                                zIndex: 1200,
+                                background: "rgba(15, 25, 20, 0.45)",
+                                display: "grid",
+                                placeItems: "center",
+                                padding: 20,
+                                overflowY: "auto",
+                              }}
+                            >
+                              <div
+                                role="dialog"
+                                aria-modal="true"
+                                aria-label="Request a new contract"
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                  width: "100%",
+                                  maxWidth: 620,
+                                  maxHeight: "calc(100vh - 40px)",
+                                  overflowY: "auto",
+                                  background: "#fff",
+                                  borderRadius: 14,
+                                  border: "1px solid #d9e2d9",
+                                  padding: "24px 24px 20px",
+                                  boxShadow: "0 18px 44px rgba(0, 0, 0, 0.22)",
+                                }}
                               >
-                                <option value="">Select course</option>
-                                {courses.map((course) => (
-                                  <option key={course.course_id} value={course.course_id}>
-                                    {course.course_name}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            <CriteriaChipField
-                              legend="Learning Goal"
-                              options={contractLearningGoalOptions}
-                              selected={contractAiCriteria.learningGoal}
-                              onToggle={(value) => toggleContractAiCriterionValue("learningGoal", value)}
-                              emptyMessage="Select a course to show matching goals."
-                              name="contract-learning-goal"
-                              allowCustom
-                              customValue={contractCriteriaOther.learningGoal}
-                              onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, learningGoal: text }))}
-                            />
-                            <CriteriaChipField
-                              legend="Focus Area"
-                              options={contractFocusAreaOptions}
-                              selected={contractAiCriteria.focusArea}
-                              onToggle={(value) => toggleContractAiCriterionValue("focusArea", value)}
-                              emptyMessage="Select a course to show matching focus areas."
-                              name="contract-focus-area"
-                              allowCustom
-                              customValue={contractCriteriaOther.focusArea}
-                              onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, focusArea: text }))}
-                            />
-                            <CriteriaChipField
-                              legend="Learning Style"
-                              options={STUDENT_CRITERIA_OPTIONS.learningStyle}
-                              selected={contractAiCriteria.learningStyle}
-                              onToggle={(value) => toggleContractAiCriterionValue("learningStyle", value)}
-                              name="contract-learning-style"
-                              allowCustom
-                              customValue={contractCriteriaOther.learningStyle}
-                              onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, learningStyle: text }))}
-                            />
-                            <CriteriaChipField
-                              legend="Learning Pace"
-                              options={STUDENT_CRITERIA_OPTIONS.pace}
-                              selected={contractAiCriteria.pace}
-                              onToggle={(value) => toggleContractAiCriterionValue("pace", value)}
-                              name="contract-pace"
-                              allowCustom
-                              customValue={contractCriteriaOther.pace}
-                              onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, pace: text }))}
-                            />
-                            <div>
-                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Request Notes</label>
-                              <textarea
-                                value={contractTrialNotes}
-                                onChange={(e) => setContractTrialNotes(e.target.value)}
-                                rows={3}
-                                placeholder="Add updated goals, focus areas, or notes for teacher matching..."
-                                style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }}
-                              />
-                            </div>
-                            <div>
-                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Class Duration</label>
-                              <select
-                                value={contractClassDuration}
-                                onChange={(e) => setContractClassDuration(e.target.value)}
-                                style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit" }}
-                              >
-                                <option value="25">25 minutes</option>
-                                <option value="50">50 minutes</option>
-                              </select>
-                            </div>
-                            <div>
-                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Number of Classes</label>
-                              <select
-                                value={contractClassCount}
-                                onChange={(e) => setContractClassCount(e.target.value)}
-                                style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit" }}
-                              >
-                                <option value="10">10 classes</option>
-                                <option value="15">15 classes</option>
-                                <option value="20">20 classes</option>
-                              </select>
-                            </div>
-                            {contractRequestError && (
-                              <div style={{ padding: 8, border: "1px solid #fecaca", borderRadius: 8, background: "#fef2f2", color: "#b91c1c", fontSize: 12 }}>
-                                {contractRequestError}
+                                <h3 style={{ margin: "0 0 4px 0", fontSize: "1.15rem", fontWeight: 800, color: "#1d3a2c" }}>
+                                  Request a new contract
+                                </h3>
+                            {/* The consequence, stated here rather than assumed. This
+                                form only appears alongside the extension route when the
+                                student has deliberately chosen it, which is the one
+                                moment losing the balance is a decision rather than a
+                                surprise. */}
+                            {requestingNewContract && !canRequestNewContract && latestStudentPackage && (
+                              <div style={{ marginBottom: 10, padding: 10, border: "1px solid #e5a3a3", borderRadius: 8, background: "#fdecec", fontSize: 12, color: "#8c2020", lineHeight: 1.45 }}>
+                                A new contract replaces your current one, so the{" "}
+                                {latestStudentPackage.classes_left} unused class
+                                {Number(latestStudentPackage.classes_left) === 1 ? "" : "es"} on it will not carry over.
+                                If you would rather keep them, close this and ask for
+                                an extension instead.
                               </div>
                             )}
-                            <div style={{ display: "flex", gap: 8 }}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                          setContractRequestOpen(false);
-                          setRequestingNewContract(false);
-                        }}
-                                disabled={isSubmittingContractRequest}
-                                style={{ flex: 1, padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                onClick={submitContractRequest}
-                                disabled={isSubmittingContractRequest}
-                                style={{ flex: 1, padding: "9px 10px", border: "none", borderRadius: 8, background: "#111827", color: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
-                              >
-                                {isSubmittingContractRequest ? "Sending..." : "Send Request"}
-                              </button>
-                            </div>
+                            {contractRequests[0] && (
+                              <div style={{ marginBottom: 10, fontSize: 12, color: "#4b5563" }}>
+                                Latest request: <strong style={{ textTransform: "capitalize" }}>{contractRequests[0].status}</strong>
+                                {contractRequests[0].course_name ? ` - ${contractRequests[0].course_name}` : ""}
+                                {contractRequests[0].requested_classes ? ` (${contractRequests[0].requested_classes} classes)` : ""}
+                                {contractRequests[0].class_duration ? ` - ${contractRequests[0].class_duration} min` : ""}
+                              </div>
+                            )}
+                              <div style={{ display: "grid", gap: 10 }}>
+                                <div>
+                                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Desired Course</label>
+                                  <select
+                                    value={contractCourseId}
+                                    onChange={(e) => updateContractCourse(e.target.value)}
+                                    style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit" }}
+                                  >
+                                    <option value="">Select course</option>
+                                    {courses.map((course) => (
+                                      <option key={course.course_id} value={course.course_id}>
+                                        {course.course_name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <CriteriaChipField
+                                  legend="Learning Goal"
+                                  options={contractLearningGoalOptions}
+                                  selected={contractAiCriteria.learningGoal}
+                                  onToggle={(value) => toggleContractAiCriterionValue("learningGoal", value)}
+                                  emptyMessage="Select a course to show matching goals."
+                                  name="contract-learning-goal"
+                                  allowCustom
+                                  customValue={contractCriteriaOther.learningGoal}
+                                  onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, learningGoal: text }))}
+                                />
+                                <CriteriaChipField
+                                  legend="Focus Area"
+                                  options={contractFocusAreaOptions}
+                                  selected={contractAiCriteria.focusArea}
+                                  onToggle={(value) => toggleContractAiCriterionValue("focusArea", value)}
+                                  emptyMessage="Select a course to show matching focus areas."
+                                  name="contract-focus-area"
+                                  allowCustom
+                                  customValue={contractCriteriaOther.focusArea}
+                                  onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, focusArea: text }))}
+                                />
+                                <CriteriaChipField
+                                  legend="Learning Style"
+                                  options={STUDENT_CRITERIA_OPTIONS.learningStyle}
+                                  selected={contractAiCriteria.learningStyle}
+                                  onToggle={(value) => toggleContractAiCriterionValue("learningStyle", value)}
+                                  name="contract-learning-style"
+                                  allowCustom
+                                  customValue={contractCriteriaOther.learningStyle}
+                                  onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, learningStyle: text }))}
+                                />
+                                <CriteriaChipField
+                                  legend="Learning Pace"
+                                  options={STUDENT_CRITERIA_OPTIONS.pace}
+                                  selected={contractAiCriteria.pace}
+                                  onToggle={(value) => toggleContractAiCriterionValue("pace", value)}
+                                  name="contract-pace"
+                                  allowCustom
+                                  customValue={contractCriteriaOther.pace}
+                                  onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, pace: text }))}
+                                />
+                                <div>
+                                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Request Notes</label>
+                                  <textarea
+                                    value={contractTrialNotes}
+                                    onChange={(e) => setContractTrialNotes(e.target.value)}
+                                    rows={3}
+                                    placeholder="Add updated goals, focus areas, or notes for teacher matching..."
+                                    style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Class Duration</label>
+                                  <select
+                                    value={contractClassDuration}
+                                    onChange={(e) => setContractClassDuration(e.target.value)}
+                                    style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit" }}
+                                  >
+                                    <option value="25">25 minutes</option>
+                                    <option value="50">50 minutes</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Number of Classes</label>
+                                  <select
+                                    value={contractClassCount}
+                                    onChange={(e) => setContractClassCount(e.target.value)}
+                                    style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit" }}
+                                  >
+                                    <option value="10">10 classes</option>
+                                    <option value="15">15 classes</option>
+                                    <option value="20">20 classes</option>
+                                  </select>
+                                </div>
+                                {contractRequestError && (
+                                  <div style={{ padding: 8, border: "1px solid #fecaca", borderRadius: 8, background: "#fef2f2", color: "#b91c1c", fontSize: 12 }}>
+                                    {contractRequestError}
+                                  </div>
+                                )}
+                                <div style={{ display: "flex", gap: 8 }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                              setContractRequestOpen(false);
+                              setRequestingNewContract(false);
+                            }}
+                                    disabled={isSubmittingContractRequest}
+                                    style={{ flex: 1, padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={submitContractRequest}
+                                    disabled={isSubmittingContractRequest}
+                                    style={{ flex: 1, padding: "9px 10px", border: "none", borderRadius: 8, background: "#111827", color: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
+                                  >
+                                    {isSubmittingContractRequest ? "Sending..." : "Send Request"}
+                                  </button>
+                                </div>
+                              </div>
+
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      </ModalPortal>
                     )}
                     <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
                       <button
