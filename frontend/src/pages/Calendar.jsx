@@ -3171,16 +3171,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     latestPackage: latestStudentPackage,
   });
   const endedContractWithUnusedClasses = contractAsk === "extend";
-  // A decline has to leave a way forward, so this decides what the card offers
-  // rather than the component re-deriving it. An approval opens nothing - there
-  // is nothing left to ask for once the extension has been granted.
-  const extensionOutcome = describeCanReRequest(extensionRequestResolved);
-  const canAskAgain = extensionOutcome.canReRequest;
-  const canRequestExtension = contractAsk === "extend" || canAskAgain;
-  // Suppressed rather than shown alongside: two different asks for the same
-  // situation, and the one that silently throws their balance away should not be
-  // the one sitting next to the button that does not.
-  const canRequestNewContract = contractAsk === "new";
 
   // The student's own most recent request of the kind they are being offered.
   // Matching on request_type is the point: an approved new-contract request from
@@ -3193,6 +3183,25 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   const extensionRequestResolved = contractRequests.find(
     (r) => r.request_type === "extension" && r.status !== "pending"
   );
+
+  // !! Everything below reads extensionRequestResolved, so it has to be declared
+  // !! below that. These were originally above it and the Calendar crashed on
+  // !! every render with "Cannot access 'ht' before initialization" - the
+  // !! temporal dead zone. Nothing catches it: the bundler builds clean, and the
+  // !! tests pass, because they exercise contractExpiry.js directly and never
+  // !! evaluate the component's declaration order. Only the browser can see it.
+  //
+  // A decline has to leave a way forward, so this decides what the card offers
+  // rather than the component re-deriving it. An approval opens nothing - there
+  // is nothing left to ask for once the extension has been granted.
+  const extensionOutcome = describeCanReRequest(extensionRequestResolved);
+  const canAskAgain = extensionOutcome.canReRequest;
+  const canRequestExtension = contractAsk === "extend" || canAskAgain;
+  // Suppressed rather than shown alongside: two different asks for the same
+  // situation, and the one that silently throws their balance away should not be
+  // the one sitting next to the button that does not.
+  const canRequestNewContract = contractAsk === "new";
+
   const hasNoClassesLeft = hasNoBookableClasses;
   const studentBookingLimit = Math.max(0, Number(effectiveBookableClasses || 0));
   const studentBookingSelectionFull = studentBookingLimit > 0 && studentBookingSelections.length >= studentBookingLimit;

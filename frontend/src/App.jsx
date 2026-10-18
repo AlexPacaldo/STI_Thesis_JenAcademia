@@ -5,6 +5,7 @@ import Footer from './components/Footer'
 import Sidebar from './components/Sidebar'
 
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { useNotification } from "./components/NotificationContainer.jsx";
 import { clearStoredUser, readStoredUser } from "./utils/sessionUser.js";
 import { clearSessionToken } from "./utils/apiAuth.js";
@@ -286,7 +287,18 @@ function App() {
           <main className={`content-area ${isFullBleedPath ? 'full-bleed' : ''}`}>
             <div className={`content-inner ${isFullBleedPath ? 'full-bleed' : ''}`}>
               <div key={location.pathname} style={{ animation: 'fadeIn 0.32s cubic-bezier(0.22,1,0.36,1) both' }}>
-                <Outlet />
+                {/* Wraps the routed page, not the whole app, so a crash on one
+                    screen leaves the header, sidebar and every other route
+                    usable. resetKey is the pathname, which means navigating away
+                    clears the error automatically - without it a student who hit
+                    a broken page would still be looking at the error after
+                    choosing somewhere else. */}
+                <ErrorBoundary
+                  resetKey={location.pathname}
+                  onBack={() => navigate(-1)}
+                >
+                  <Outlet />
+                </ErrorBoundary>
               </div>
             </div>
           </main>
