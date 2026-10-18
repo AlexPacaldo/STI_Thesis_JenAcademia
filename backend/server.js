@@ -301,7 +301,15 @@ function smtpConfigured() {
   return Boolean(process.env.RESEND_API_KEY);
 }
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy, so a missing key can never crash the server at startup. Resend's
+// constructor throws synchronously when called without a key, and this module
+// is imported unconditionally - so the old eager construction here took the
+// whole app down with it whenever RESEND_API_KEY was unset. That is the entire
+// reason this is a factory rather than a constant.
+function getResend() {
+  if (!process.env.RESEND_API_KEY) return null;
+  return new Resend(process.env.RESEND_API_KEY);
+}
 
 const RESEND_TEST_EMAIL = "alexpacaldo1105@gmail.com";
 
@@ -316,6 +324,15 @@ async function sendSmtpMail({ to, subject, text }) {
   const actualText = to !== RESEND_TEST_EMAIL
     ? `[DEV] Originally addressed to: ${to}\n\n${text}`
     : text;
+
+  const resend = getResend();
+  if (!resend) {
+    // smtpConfigured() is false only when the key is missing, and getResend
+    // returns null in that case too, so this is belt-and-braces against a race
+    // where the env is cleared between the check above and here.
+    console.warn("Resend is not configured; email was not sent.");
+    return { sent: false, skipped: true };
+  }
 
   const { error } = await resend.emails.send({ from, to: actualTo, subject, text: actualText });
   if (error) throw new Error(error.message);
@@ -4479,8 +4496,17 @@ app.post("/api/admin/recommend-teacher", requireAdminSession, limitMatchInsights
       advisor: recommendation.advisor,
     });
   } catch (err) {
+    // Swallowing the message here is what turns "bad schema" into "the AI is
+    // down" - the caller gets a 500 with no cause and has to go read the log
+    // to find out whether the key is wrong, the model is retired, or a payload
+    // was malformed. Surfacing it costs nothing in production (the message is
+    // never secret) and saves three minutes of blank-eyed debugging every
+    // time. Hidden behind NODE_ENV so a hostile environment cannot ask for it.
     console.error("POST /api/admin/recommend-teacher error:", err);
-    res.status(500).json({ message: "Error recommending teacher" });
+    res.status(500).json({
+      message: "Error recommending teacher",
+      ...(process.env.NODE_ENV !== "production" ? { error: err.message } : {}),
+    });
   }
 });
 
@@ -5680,7 +5706,10 @@ app.post("/api/student/contract-match-preview", requireSession, requireBodyIdent
     });
   } catch (err) {
     console.error("POST /api/student/contract-match-preview error:", err);
-    res.status(500).json({ message: "Could not work out a match right now." });
+    res.status(500).json({
+      message: "Could not work out a match right now.",
+      ...(process.env.NODE_ENV !== "production" ? { error: err.message } : {}),
+    });
   }
 });
 
