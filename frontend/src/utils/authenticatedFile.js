@@ -124,15 +124,50 @@ export function useAuthenticatedFileUrl(path) {
   };
 }
 
-/** Open a stored file in a new tab, through the session. */
+/**
+ * Open a stored file in a new tab, through the session.
+ *
+ * Two things had to be right here, and both were wrong before.
+ *
+ * The tab is opened BEFORE the first await. Firefox and Safari only honour
+ * window.open when it runs in the same task as the click that triggered it, and
+ * awaiting the fetch first throws that user-gesture context away - the call is
+ * then treated as a pop-up and blocked. So the file is fetched into the tab
+ * afterwards, rather than the tab being opened onto the finished URL.
+ *
+ * It is opened WITHOUT the noopener feature, because noopener makes window.open
+ * return null by spec, and that null was being read as "pop-ups are blocked" -
+ * so this navigated the current tab on every browser, not just the ones that
+ * actually block. opener is cleared by hand instead, which is the same
+ * protection without the unusable return value.
+ */
 export async function openAuthenticatedFile(path) {
-  const objectUrl = await fetchObjectUrl(path);
-  const tab = window.open(objectUrl, "_blank", "noopener,noreferrer");
-  if (!tab) {
-    // Pop-up blocked: fall back to navigating the current tab rather than
-    // silently doing nothing.
-    window.location.assign(objectUrl);
+  const tab = window.open("", "_blank");
+  if (tab) tab.opener = null;
+
+  let objectUrl;
+  try {
+    objectUrl = await fetchObjectUrl(path);
+  } catch (err) {
+    // Don't leave a blank tab behind for a file that was never going to load.
+    tab?.close();
+    throw err;
   }
+
+  if (tab) {
+    tab.location.href = objectUrl;
+  } else {
+    // Pop-ups genuinely blocked, so there is no tab to fill and no way to reach
+    // one. Hand the file over as a download instead: it keeps the student on the
+    // assignment page, which is the whole point of not navigating away here.
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = "";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
   setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }
 
