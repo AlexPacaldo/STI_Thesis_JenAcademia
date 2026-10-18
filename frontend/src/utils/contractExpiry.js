@@ -203,6 +203,39 @@ export function describeExtensionEligibility({ activePackage = null, latestPacka
 }
 
 /**
+ * What the extension card should offer, given the student's last request.
+ *
+ * !! A decline used to be a dead end. Any resolved request removed the form, so a
+ * !! student whose extension was turned down had no button to press and no
+ * !! explanation of what else they could do - the answer was simply final.
+ * !!
+ * !! Only a decline reopens anything, and both routes appear together because
+ * !! that is the one moment the student has a real choice to make: ask again, or
+ * !! give up on the unused classes and buy a new contract instead.
+ *
+ * An approval has nothing left to ask for, so it opens nothing. Inviting more
+ * from a student who has just been given everything they asked for would be
+ * noise.
+ *
+ * @param {{status: string}|null} request the student's most recent request
+ */
+export function describeCanReRequest(request) {
+  if (!request) {
+    return { showOutcome: false, canReRequest: false, canRequestNewContract: false };
+  }
+
+  const declined = String(request.status || "").toLowerCase() === "declined";
+
+  return {
+    // The outcome line reads "your last request was declined". Before there was
+    // ever a request, there is no outcome to report.
+    showOutcome: true,
+    canReRequest: declined,
+    canRequestNewContract: declined,
+  };
+}
+
+/**
  * Classes still available, and whether they are at risk of being lost.
  *
  * The two limits are independent, so this answers "how much can they still book"

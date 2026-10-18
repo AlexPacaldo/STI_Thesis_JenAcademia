@@ -2,6 +2,7 @@ import {
   EXPIRY_SOON_DAYS,
   describeContractBalance,
   describeContractExpiry,
+  describeCanReRequest,
   describeExtensionEligibility,
   describeStudentContract,
 } from "../frontend/src/utils/contractExpiry.js";
@@ -271,6 +272,39 @@ check(
   describeExtensionEligibility({ activePackage: null, latestPackage: { classes_left: null } }),
   "new"
 );
+
+/* ------------------------------------------------- what a resolved request allows */
+
+// A decline must not be a dead end, and an approval must not offer more to ask
+// for. Anything else is either a student stuck with nowhere to go, or the UI
+// inviting a request that has nothing left to request.
+
+check("no request yet means there is nothing resolved", describeCanReRequest(null), {
+  showOutcome: false, canReRequest: false, canRequestNewContract: false,
+});
+
+check("a pending request is still being decided", describeCanReRequest({ status: "pending" }), {
+  showOutcome: true, canReRequest: false, canRequestNewContract: false,
+});
+
+check("a declined request can be asked again", describeCanReRequest({ status: "declined" }), {
+  showOutcome: true, canReRequest: true, canRequestNewContract: true,
+});
+
+check("an approved request has nothing left to ask for", describeCanReRequest({ status: "approved" }), {
+  showOutcome: true, canReRequest: false, canRequestNewContract: false,
+});
+
+check("an unrecognised status is not treated as a decline", describeCanReRequest({ status: "withdrawn" }), {
+  showOutcome: true, canReRequest: false, canRequestNewContract: false,
+});
+
+// Both routes appear together on a decline, because that is the only moment the
+// student has a genuine choice to make.
+const declined = describeCanReRequest({ status: "declined" });
+check("a decline offers both routes at once", [declined.canReRequest, declined.canRequestNewContract], [true, true]);
+
+check("an approval never opens the new-contract route", describeCanReRequest({ status: "approved" }).canRequestNewContract, false);
 
 if (failures.length) {
   console.log(`\n${passed}/${passed + failures.length} checks passed.`);

@@ -1,6 +1,6 @@
 import { openSseStream } from "../utils/sseClient.js";
 import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
-import { describeExtensionEligibility } from "../utils/contractExpiry.js";
+import { describeCanReRequest, describeExtensionEligibility } from "../utils/contractExpiry.js";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
@@ -620,6 +620,16 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   // criteria, and an extension has no teacher to match - it is a request for
   // time on a contract that already exists.
   const [contractExtensionNote, setContractExtensionNote] = useState("");
+  // Set when the student explicitly asks for a new contract despite having an
+  // extension route available.
+  //
+  // describeExtensionEligibility deliberately suppresses "new" while "extend"
+  // applies, because approving a new contract discards the unused balance. That
+  // stays the default - the safe choice is the offered one. But a student whose
+  // extension was declined is entitled to change their mind, so this lets them
+  // through explicitly, with the consequence stated on the form rather than
+  // hidden behind a rule they cannot overrule.
+  const [requestingNewContract, setRequestingNewContract] = useState(false);
   const [currentTimeTick, setCurrentTimeTick] = useState(() => Date.now());
   const isAdmin = localRole === "admin"; // helper for rendering
   const viewerTimezone = useMemo(() => getUserTimezone(me), [me]);
@@ -3161,7 +3171,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     latestPackage: latestStudentPackage,
   });
   const endedContractWithUnusedClasses = contractAsk === "extend";
-  const canRequestExtension = contractAsk === "extend";
+  // A decline has to leave a way forward, so this decides what the card offers
+  // rather than the component re-deriving it. An approval opens nothing - there
+  // is nothing left to ask for once the extension has been granted.
+  const extensionOutcome = describeCanReRequest(extensionRequestResolved);
+  const canAskAgain = extensionOutcome.canReRequest;
+  const canRequestExtension = contractAsk === "extend" || canAskAgain;
   // Suppressed rather than shown alongside: two different asks for the same
   // situation, and the one that silently throws their balance away should not be
   // the one sitting next to the button that does not.
@@ -3511,6 +3526,10 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
       notify?.("Contract request sent to the admin.", "success");
       setContractRequestOpen(false);
+      // Cleared so the form does not linger next time. The extension route is
+      // hidden while this is set, and a leftover `true` would keep showing a new
+      // contract form to a student who should only be offered an extension.
+      setRequestingNewContract(false);
       setContractClassDuration("50");
       setContractTrialNotes("");
       setContractAiCriteria(createEmptyCriteria());
@@ -6209,7 +6228,56 @@ $5padding: 20,
                                 ? ". Your unused classes remain on the expired contract."
                                 : "."}
                           </div>
-                        ) : !contractRequestOpen ? (
+                        ) : null}
+
+                        {/* A decline is a decision, not a dead end. Previously any
+                            resolved request removed the form entirely, so a student
+                            whose extension was turned down had nowhere to go from
+                            here - the answer was final and unexplained.
+                            An approval genuinely has nothing to ask for, so this
+                            is shown only on a decline. */}
+                        {canAskAgain && !contractRequestOpen && !requestingNewContract && (
+                          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                            <div style={{ fontSize: 12, color: "#6b5a3c", lineHeight: 1.45 }}>
+                              You can ask again, or start a new contract instead.
+                            </div>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setContractRequestOpen(true);
+                                  setContractRequestError("");
+                                }}
+                                style={{ flex: 1, padding: "9px 10px", border: "1px solid #d9b477", borderRadius: 8, background: "#fff", cursor: "pointer" }}
+                              >
+                                Ask again
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRequestingNewContract(true);
+                                  setContractRequestError("");
+                                  updateContractCourse(studentProfile?.course_id || "");
+                                }}
+                                style={{ flex: 1, padding: "9px 10px", border: "1px solid #9aa3ae", borderRadius: 8, background: "#fff", color: "#374151", cursor: "pointer" }}
+                              >
+                                New contract instead
+                              </button>
+                            </div>
+                            {/* The consequence stated before they choose it, not
+                                after. A new contract supersedes the old package
+                                and the unused classes go with it, so this is the
+                                one place that has to be said plainly. */}
+                            <div style={{ fontSize: 11, color: "#8c2020", lineHeight: 1.45 }}>
+                              Note: a new contract replaces this one. Your{" "}
+                              {latestStudentPackage.classes_left} unused class
+                              {Number(latestStudentPackage.classes_left) === 1 ? "" : "es"} would not
+                              carry over.
+                            </div>
+                          </div>
+                        )}
+
+                        {!extensionRequestPending && !extensionRequestResolved && !contractRequestOpen && (
                           <button
                             type="button"
                             className={styles.slotBtn}
@@ -6221,7 +6289,9 @@ $5padding: 20,
                           >
                             Request an extension
                           </button>
-                        ) : (
+                        )}
+
+                        {!extensionRequestPending && contractRequestOpen && (
                           <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
                             <textarea
                               value={contractExtensionNote}
@@ -6260,8 +6330,22 @@ $5padding: 20,
                         )}
                       </div>
                     )}
-                    {canRequestNewContract && (
+                    {(canRequestNewContract || requestingNewContract) && (
                       <div style={{ marginTop: 12, padding: 12, border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff" }}>
+                        {/* The consequence, stated here rather than assumed. This
+                            form only appears alongside the extension route when the
+                            student has deliberately chosen it, which is the one
+                            moment losing the balance is a decision rather than a
+                            surprise. */}
+                        {requestingNewContract && !canRequestNewContract && latestStudentPackage && (
+                          <div style={{ marginBottom: 10, padding: 10, border: "1px solid #e5a3a3", borderRadius: 8, background: "#fdecec", fontSize: 12, color: "#8c2020", lineHeight: 1.45 }}>
+                            A new contract replaces your current one, so the{" "}
+                            {latestStudentPackage.classes_left} unused class
+                            {Number(latestStudentPackage.classes_left) === 1 ? "" : "es"} on it will not carry over.
+                            If you would rather keep them, close this and ask for
+                            an extension instead.
+                          </div>
+                        )}
                         {contractRequests[0] && (
                           <div style={{ marginBottom: 10, fontSize: 12, color: "#4b5563" }}>
                             Latest request: <strong style={{ textTransform: "capitalize" }}>{contractRequests[0].status}</strong>
@@ -6371,7 +6455,10 @@ $5padding: 20,
                             <div style={{ display: "flex", gap: 8 }}>
                               <button
                                 type="button"
-                                onClick={() => setContractRequestOpen(false)}
+                                onClick={() => {
+                          setContractRequestOpen(false);
+                          setRequestingNewContract(false);
+                        }}
                                 disabled={isSubmittingContractRequest}
                                 style={{ flex: 1, padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
                               >
