@@ -10,6 +10,7 @@ import mysql from "mysql2/promise";
 import path from "path";
 import { Resend } from "resend";
 import { assessClassEvidence } from "./classEvidence.js";
+import { fetchAdminOverview } from "./adminOverview.js";
 import { createDbStore, ensureRateLimitsTable } from "./dbRateLimit.js";
 import {
   DB_CONNECTION_LIMIT,
@@ -5398,6 +5399,29 @@ app.get("/api/admin/student-contracts", requireAdminSession, async (_req, res) =
   } catch (err) {
     console.error("GET /api/admin/student-contracts error:", err);
     res.status(500).json({ message: "Error fetching student contracts" });
+  }
+});
+
+/**
+ * Everything the admin Overview tab shows, read as one snapshot.
+ *
+ * Deliberately a single route rather than the browser calling the eight existing
+ * admin routes it needs. See the note at the top of adminOverview.js: separate
+ * requests produced numbers on screen that did not agree with each other, because
+ * they were true at different moments.
+ */
+app.get("/api/admin/overview", requireAdminSession, async (_req, res) => {
+  try {
+    // Same housekeeping the Contracts tab does. A package that ran out between the
+    // last visit and this one should read as expired here too, or the dashboard
+    // contradicts the tab the admin clicks through to.
+    await expireFinishedPackages();
+
+    const overview = await fetchAdminOverview(pool);
+    res.json({ overview });
+  } catch (err) {
+    console.error("GET /api/admin/overview error:", err);
+    res.status(500).json({ message: "Error loading the admin overview" });
   }
 });
 
