@@ -2334,7 +2334,9 @@ export default function AdminDashboard() {
                             {needsAdminReview
                               ? (
                                   reviewReasons.length
-                                    ? reviewReasons.map((reason) => <span key={reason}>{reason}</span>)
+                                    ? reviewReasons.map((reason, index) => (
+                                        <span key={`${reason}-${index}`}>{reason}</span>
+                                      ))
                                     : <span>Manual admin review required</span>
                                 )
                               : <span>{hasRequiredEvidence ? "Evidence complete" : missingItems.join(", ")}</span>}
@@ -4218,8 +4220,8 @@ export default function AdminDashboard() {
               </p>
               {adminConfirmLines.length > 0 && (
                 <div style={{ border: "1px solid rgba(38, 66, 59, 0.1)", borderRadius: 16, background: "#f8fbf9", padding: 12, marginBottom: 20 }}>
-                  {adminConfirmLines.map((line) => (
-                    <div key={line} style={{ fontSize: "0.9rem", color: "#26423b", marginBottom: 6, wordBreak: "break-word" }}>
+                  {adminConfirmLines.map((line, index) => (
+                    <div key={`${line}-${index}`} style={{ fontSize: "0.9rem", color: "#26423b", marginBottom: 6, wordBreak: "break-word" }}>
                       {line}
                     </div>
                   ))}

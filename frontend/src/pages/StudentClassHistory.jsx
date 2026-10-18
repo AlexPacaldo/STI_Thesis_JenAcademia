@@ -455,8 +455,8 @@ export default function StudentClassHistory({ mode = "student" }) {
                           <div className={styles.reviewReasonBox}>
                             <strong>Review reason</strong>
                             {reviewReasons.length
-                              ? reviewReasons.map((reason) => (
-                                  <span key={reason}>{reason}</span>
+                              ? reviewReasons.map((reason, index) => (
+                                  <span key={`${reason}-${index}`}>{reason}</span>
                                 ))
                               : <span>Manual review required</span>}
                           </div>

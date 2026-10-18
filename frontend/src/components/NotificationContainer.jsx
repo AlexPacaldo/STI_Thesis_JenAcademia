@@ -4,11 +4,27 @@ import styles from "../assets/notificationContainer.module.css";
 
 export const NotificationContext = React.createContext();
 
+// NOT Date.now().
+//
+// These ids are React keys and the handle removeNotification matches on, and a
+// clock is not unique: several notifications raised in the same millisecond get
+// the same id. That is easy to hit - a page that fires four loads on mount and
+// has all four fail (an outage, a CORS failure) raises all four in one tick, and
+// the console fills with "Encountered two children with the same key".
+//
+// It is worse than console noise. With a duplicated key React reconciles against
+// the wrong node, so dismissing one toast can make a different one vanish, and an
+// exit animation can remove the wrong element.
+//
+// A counter is unique by construction. Nothing reads the id as a timestamp.
+let nextNotificationId = 0;
+
 export function NotificationProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
 
   const addNotification = useCallback((message, type = "info", duration = 4000) => {
-    const id = Date.now();
+    nextNotificationId += 1;
+    const id = nextNotificationId;
     setNotifications((prev) => [...prev, { id, message, type, duration }]);
     return id;
   }, []);
