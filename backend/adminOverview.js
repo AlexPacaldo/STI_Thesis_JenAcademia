@@ -256,6 +256,8 @@ export async function fetchAdminOverview(pool, { now = new Date() } = {}) {
     signupsRows,
     expiringRows,
     lowBalanceRows,
+    autoArchivedRows,
+    autoArchivedCountRows,
     trendRows,
   ] = await Promise.all([
     // Headcounts and the account states that decide whether somebody can sign in.
@@ -388,6 +390,34 @@ export async function fetchAdminOverview(pool, { now = new Date() } = {}) {
       [OVERVIEW_LOW_BALANCE_THRESHOLD, OVERVIEW_LIST_LIMIT]
     ),
 
+    // What the dormancy sweep has done recently, and how many accounts it took in
+    // the last month.
+    //
+    // Archived automatically is the one thing in this app that happens with nobody
+    // watching, so it is the one thing that most needs an audit trail the admin
+    // can actually see. `archived_at IS NOT NULL` is what separates a sweep from
+    // a person: an admin who archives someone by hand leaves it NULL.
+    pool.query(
+      `SELECT u.user_id,
+              CONCAT(u.first_name, ' ', u.last_name) AS user_name,
+              u.role,
+              DATE_FORMAT(u.archived_at, '%Y-%m-%d %H:%i') AS archived_at,
+              u.archived_reason
+       FROM users u
+       WHERE u.status = 'archived' AND u.archived_at IS NOT NULL
+       ORDER BY u.archived_at DESC
+       LIMIT ?`,
+      [OVERVIEW_LIST_LIMIT]
+    ),
+
+    pool.query(
+      `SELECT COUNT(*) AS total
+       FROM users
+       WHERE status = 'archived'
+         AND archived_at IS NOT NULL
+         AND archived_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)`
+    ),
+
     // The trend window. Issued last, and allowed to fail on its own.
     //
     // !! This is the only query in the payload using a recursive CTE, and it is
@@ -470,6 +500,10 @@ export async function fetchAdminOverview(pool, { now = new Date() } = {}) {
     recentSignups: signupsRows[0],
     expiringContracts: expiringRows[0],
     lowBalanceStudents: lowBalanceRows[0],
+    autoArchived: {
+      last30Days: Number(autoArchivedCountRows[0]?.[0]?.total || 0),
+      recent: autoArchivedRows[0],
+    },
   };
 }
 
