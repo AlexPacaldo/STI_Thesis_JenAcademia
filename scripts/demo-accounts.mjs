@@ -364,6 +364,67 @@ export const BOOKED_CLASSES = [
 /** Days left remaining on the 90-day term for a package of a given age. */
 export const daysLeftFrom = (createdDaysAgo) => 90 - createdDaysAgo;
 
+/**
+ * Check every cross-reference in this file, and report ALL of them at once.
+ *
+ * !! This exists because a dangling reference used to surface hundreds of
+ * !! database writes later. BOOKED_CLASSES named a student, only teachers were in
+ * !! the seeder's lookup map, and the mismatch threw from inside the booked
+ * !! classes loop - by which time twelve accounts and two hundred availability
+ * !! rows were already committed. The seed had to be re-run to find out whether
+ * !! anything else was broken too.
+ * !!
+ * !! These are plain data in a plain file, so a wrong key is a typo and not a
+ * !! runtime condition. It is checkable in microseconds against nothing at all,
+ * !! and should be, rather than discovered halfway through writing to a live
+ * !! database.
+ *
+ * Returns a list of problem strings; empty means the data is self-consistent.
+ * The caller decides whether that is fatal.
+ */
+export function validateDemoAccounts() {
+  const problems = [];
+  const teacherKeys = new Set(TEACHERS.map((t) => t.key));
+  const studentKeys = new Set(STUDENTS.map((s) => s.key));
+
+  const checkDuplicates = (list, label) => {
+    const seen = new Set();
+    for (const entry of list) {
+      if (seen.has(entry.key)) problems.push(`duplicate ${label} key "${entry.key}"`);
+      seen.add(entry.key);
+    }
+  };
+  checkDuplicates(TEACHERS, "teacher");
+  checkDuplicates(STUDENTS, "student");
+
+  // A student assigned to a teacher they name must exist as a teacher.
+  for (const s of STUDENTS) {
+    if (s.teacher && !teacherKeys.has(s.teacher)) {
+      problems.push(`student "${s.key}" is assigned to unknown teacher "${s.teacher}"`);
+    }
+  }
+
+  for (const slot of WEEKLY_AVAILABILITY) {
+    if (!teacherKeys.has(slot.key)) {
+      problems.push(`availability for unknown teacher "${slot.key}"`);
+    }
+  }
+
+  for (const booked of BOOKED_CLASSES) {
+    if (!teacherKeys.has(booked.teacher)) {
+      problems.push(`booked class has unknown teacher "${booked.teacher}"`);
+    }
+    // Students have to be looked up here too. They are a separate namespace from
+    // teachers, so a teacher key must not satisfy this and vice versa - that
+    // confusion is exactly how the original bug stayed invisible for so long.
+    if (!studentKeys.has(booked.student)) {
+      problems.push(`booked class has unknown student "${booked.student}"`);
+    }
+  }
+
+  return problems;
+}
+
 /** A readable age on the date the seed runs, for the reference table. */
 export function ageOn(birthDate, on = new Date()) {
   if (!birthDate) return null;

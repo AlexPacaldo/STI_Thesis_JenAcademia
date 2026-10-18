@@ -42,6 +42,7 @@ import { DB_PASSWORD, describeDbConfig } from "./dbConfig.js";
 import {
   ADMIN, ALL_COURSES, BOOKED_CLASSES, COUNTRY, PASSWORD, STUDENTS, TEACHERS,
   TIMEZONE, WEEKLY_AVAILABILITY, aiBio, criteriaNotes, daysLeftFrom,
+  validateDemoAccounts,
 } from "../scripts/demo-accounts.mjs";
 
 // The app loads backend/.env. Load it the same way so one set of credentials
@@ -144,6 +145,21 @@ if (process.env.ALLOW_WRONG_DB_SEED !== "1" && !/^jen_academia$|^railway$/i.test
     `NOTE: the database name is "${target.database}", not "jen_academia".\n` +
       `If that is not the database your deployment uses, stop here.\n`
   );
+}
+
+// Validate the demo data BEFORE connecting. These are typos in a plain data
+// file, and this check costs nothing and needs no database - so discovering one
+// by connecting to Railway and committing 200 rows is not a reasonable way to
+// learn about a mistyped key. Every problem is reported at once, because fixing
+// them one run at a time means one database round trip per typo.
+const dataProblems = validateDemoAccounts();
+if (dataProblems.length) {
+  console.error(
+    `\nThe demo data is internally inconsistent. Nothing was written.\n\n` +
+      dataProblems.map((p) => `  - ${p}`).join("\n") +
+      `\n\nFix scripts/demo-accounts.mjs and run it again.\n`
+  );
+  process.exit(1);
 }
 
 const db = await mysql.createConnection({
@@ -325,7 +341,7 @@ async function seedAvailability() {
   let rows = 0;
 
   for (const slot of WEEKLY_AVAILABILITY) {
-    const teacherId = byEmail[slot.key];
+    const teacherId = byKey[slot.key];
     if (!teacherId) throw new Error(`Availability references unknown teacher "${slot.key}"`);
 
     // Idempotent: replace this teacher's demo rows rather than accumulating.
@@ -345,8 +361,8 @@ async function seedAvailability() {
   }
 
   for (const booked of BOOKED_CLASSES) {
-    const teacherId = byEmail[booked.teacher];
-    const studentId = byEmail[booked.student];
+    const teacherId = byKey[booked.teacher];
+    const studentId = byKey[booked.student];
     if (!teacherId || !studentId) {
       throw new Error(`Booked class references an unknown account: ${booked.teacher}/${booked.student}`);
     }
@@ -378,14 +394,18 @@ await upsertUser(ADMIN);
 console.log(`  admin      ${ADMIN.email}`);
 
 /* ---------------------------------------------------------------- teachers */
-const byEmail = {};
+// Keyed by the short `key`, NOT by email. It was called byEmail, which is what
+// made the next bug take so long to find: every lookup below passes a key like
+// "alvarez", so reading "byEmail" made those lookups look wrong when they were
+// not.
+const byKey = {};
 
 for (const t of TEACHERS) {
   const id = await upsertUser({
     email: t.email, firstName: t.firstName, lastName: t.lastName,
     role: "teacher", birthDate: t.birthDate, contact: t.contact,
   });
-  byEmail[t.key] = id;
+  byKey[t.key] = id;
 
   await upsertTeacherProfile(id, {
     bio: t.notes
@@ -408,10 +428,20 @@ for (const s of STUDENTS) {
     email: s.email, firstName: s.firstName, lastName: s.lastName,
     role: "student", birthDate: s.birthDate, contact: s.contact,
   });
+  // !! Students have to go in this map too, and were not.
+  // !! Only teachers were registered, so the availability loop passed - it
+  // !! references teachers alone - and the very next loop, the booked classes,
+  // !! threw `Booked class references an unknown account: lim/alvarez` because
+  // !! byKey["alvarez"] was undefined. A dozen accounts and two hundred
+  // !! availability rows were already in the database by then.
+  // !! Students appear in BOOKED_CLASSES, so this map is not teachers-only
+  // !! despite being built in the teachers block.
+  byKey[s.key] = id;
+
   await upsertStudentProfile(id, {
     courseId: C[s.course],
     level: s.level,
-    teacherId: byEmail[s.teacher] ?? null,
+    teacherId: byKey[s.teacher] ?? null,
     // Notes plus the criteria block appended, exactly as the create endpoint
     // stores them.
     trialNotes: [s.notes, criteriaNotes(s.criteria)].filter(Boolean).join("\n\n"),
