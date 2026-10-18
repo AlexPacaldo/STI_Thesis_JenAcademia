@@ -88,6 +88,43 @@
   overflow-wrap: anywhere;
 }
 
+/* Shortcut to the worksheet a teacher attached, shown beneath the assignment
+   text. Kept visually subordinate to the title - it is a shortcut, not the
+   main action, which is still the View button at the end of the row. */
+.attachmentBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border: 1px solid rgba(38, 66, 59, 0.14);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--primary);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.attachmentBadge:hover {
+  border-color: var(--accent);
+  background: #fff;
+}
+
+.attachmentBadge:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.attachmentBadge span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dateCell {
   color: var(--muted);
   font-size: 0.88rem;

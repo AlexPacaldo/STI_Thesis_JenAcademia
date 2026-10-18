@@ -182,6 +182,48 @@ function getAttemptsUsed(assignment) {
   return Number(assignment?.attemptsUsed ?? assignment?.attemptCount ?? 0);
 }
 
+/**
+ * The worksheet the teacher attached to the task, as a link that opens in a new
+ * tab.
+ *
+ * Deliberately a button driving openAuthenticatedFile rather than an <a href>.
+ * /uploads sits behind the session token, and a plain link cannot send the
+ * Authorization header, so the raw href would come back 401. That helper fetches
+ * the file with the header and hands the blob: URL to window.open instead.
+ *
+ * Opening in a new tab (rather than previewing inline) keeps the instructions
+ * and the submit box on screen, which is where a student needs to stay while
+ * working through the attached material.
+ */
+function AssignmentAttachment({ url, name, onError }) {
+  if (!url) return null;
+
+  const label = name || getFileName(url);
+
+  return (
+    <a
+      href="#"
+      className={styles.attachmentLink}
+      onClick={(event) => {
+        event.preventDefault();
+        // Rejects when the file cannot be fetched, which a bare href would
+        // surface as an unstyled error tab or a silent no-op behind a
+        // pop-up blocker. Either way the student needs to know why nothing
+        // happened.
+        openAuthenticatedFile(url).catch(onError);
+      }}
+      title={`Open ${label} in a new tab`}
+    >
+      <i className="bi bi-paperclip" aria-hidden="true" />
+      <span className={styles.attachmentLinkText}>
+        <strong>{label}</strong>
+        <span>Open in a new tab</span>
+      </span>
+      <i className="bi bi-box-arrow-up-right" aria-hidden="true" />
+    </a>
+  );
+}
+
 function getAttemptLimit(assignment) {
   const limit = Number(assignment?.attemptLimit);
   return Number.isInteger(limit) && limit > 0 ? limit : null;
@@ -510,6 +552,13 @@ export default function AssignmentsDropbox() {
                       <div className={styles.instructionText}>
                         {assignmentInstructions || "No instructions were provided for this assignment."}
                       </div>
+                      <AssignmentAttachment
+                        url={selectedAssignment?.attachmentUrl}
+                        name={selectedAssignment?.attachmentName}
+                        onError={() =>
+                          notify?.("That file could not be opened. Please try again.", "error")
+                        }
+                      />
                     </section>
                   </div>
                 ) : null}

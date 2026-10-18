@@ -471,6 +471,57 @@
   overflow-wrap: anywhere;
 }
 
+/* The teacher's attachment, sitting directly under the instruction text it
+   belongs with. Reads as a card rather than a bare link so it is obviously
+   something to open, and is sized as a target - it is the whole point of a
+   task that has one. */
+.attachmentLink {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(38, 66, 59, 0.14);
+  border-radius: 18px;
+  background: var(--surface-raised);
+  color: var(--primary);
+  text-decoration: none;
+  transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
+}
+
+.attachmentLink:hover {
+  border-color: var(--accent);
+  background: #fff;
+  transform: translateY(-1px);
+}
+
+.attachmentLink:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.attachmentLinkText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.attachmentLinkText strong {
+  font-size: 0.92rem;
+  font-weight: 700;
+  /* Filenames are user-supplied and unbounded, so this is what stops a long
+     one from pushing the card's arrow icon off the right edge. */
+  overflow-wrap: anywhere;
+}
+
+.attachmentLinkText span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .teacherImg {
   width: 56px;
   height: 56px;

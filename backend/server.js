@@ -418,6 +418,44 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+
+// An optional single "file" field, on a route that may not be multipart at all.
+//
+// Shared by the two file-bearing assignment routes: the worksheet a teacher
+// attaches when posting a task, and the work a student sends back. Both files
+// are optional - a task can be instructions only, and a submission can be a
+// written answer with nothing attached - so this passes through when no file
+// part is present rather than rejecting the request.
+//
+// Multipart is detected instead of assumed because both routes are also reached
+// with a plain JSON body, and handing that to multer throws.
+const optionalFileUpload = (req, res, next) => {
+  if (!req.is("multipart/form-data")) {
+    next();
+    return;
+  }
+
+  upload.single("file")(req, res, (err) => {
+    if (err) {
+      console.error("Upload error:", err);
+      res.status(500).json({ message: "Error uploading file" });
+      return;
+    }
+    next();
+  });
+};
+
+// Build the public URL for a file just written by multer.
+//
+// Built from the request rather than a configured base URL so the value stays
+// correct behind the Railway TLS hop, and from req.file.filename rather than
+// the client's name so a traversal attempt in the name cannot escape the
+// uploads directory.
+function uploadedFileUrl(req, file) {
+  if (!file) return null;
+  return `${req.protocol}://${req.get("host")}/uploads/assignments/${encodeURIComponent(file.filename)}`;
+}
+
 const profileStorage = multer.diskStorage({
   destination: profileUploadDir,
   filename: (req, file, cb) => {
@@ -1748,6 +1786,23 @@ async function ensureAssignmentAttemptColumns() {
   }
 }
 
+// The worksheet a teacher attaches to a task.
+//
+// Stored separately from assignment_submissions.file_url on purpose: those are
+// files coming back *from* the student, this is the material going out *to*
+// them, and only one side can own the name. Keeping a separate original-name
+// column matters because the stored filename is a timestamp prefix plus the
+// sanitised original, so the on-disk name is not something to show a student.
+async function ensureAssignmentAttachmentColumns() {
+  if (!(await columnExists("assignments", "attachment_url"))) {
+    await pool.query("ALTER TABLE assignments ADD COLUMN attachment_url VARCHAR(1000) DEFAULT NULL AFTER attempt_limit");
+  }
+
+  if (!(await columnExists("assignments", "attachment_name"))) {
+    await pool.query("ALTER TABLE assignments ADD COLUMN attachment_name VARCHAR(255) DEFAULT NULL AFTER attachment_url");
+  }
+}
+
 async function ensureBooksColumns() {
   if (!(await columnExists("books", "teacher_id"))) {
     await pool.query("ALTER TABLE books ADD COLUMN teacher_id INT DEFAULT NULL AFTER course_id");
@@ -2486,6 +2541,7 @@ async function encryptExistingPlaintextMessages() {
  */
 const SCHEMA_STEPS = [
   ["assignment attempt columns", ensureAssignmentAttemptColumns],
+  ["assignment attachment columns", ensureAssignmentAttachmentColumns],
   ["books columns", ensureBooksColumns],
   ["remark columns", ensureRemarkColumns],
   ["lessons columns", ensureLessonsColumns],
@@ -3235,6 +3291,8 @@ const assignmentSelect = `
          DATE_FORMAT(a.due_date, '%Y-%m-%d') AS dueDate,
          TIME_FORMAT(a.due_time, '%H:%i') AS dueTime,
          a.attempt_limit AS attemptLimit,
+         a.attachment_url AS attachmentUrl,
+         a.attachment_name AS attachmentName,
          CASE
            WHEN a.due_time IS NULL THEN DATE_FORMAT(a.due_date, '%Y-%m-%d')
            ELSE CONCAT(DATE_FORMAT(a.due_date, '%Y-%m-%d'), 'T', TIME_FORMAT(a.due_time, '%H:%i'))
@@ -9780,7 +9838,7 @@ app.get("/api/assignments/:assignment_id", requireSession, async (req, res) => {
   }
 });
 
-app.post("/api/assignments", requireSession, async (req, res) => {
+app.post("/api/assignments", requireSession, optionalFileUpload, async (req, res) => {
   try {
     const {
       teacherId,
@@ -9795,6 +9853,10 @@ app.post("/api/assignments", requireSession, async (req, res) => {
       course_id,
       attemptLimit,
       attempt_limit,
+      attachmentUrl,
+      attachment_url,
+      attachmentName,
+      attachment_name,
     } = req.body;
     const resolvedTeacherId = teacherId ?? teacher_id;
     const resolvedStudentId = studentId ?? student_id;
@@ -9808,6 +9870,15 @@ app.post("/api/assignments", requireSession, async (req, res) => {
     const parsedAttemptLimit =
       rawAttemptLimit === null || rawAttemptLimit === "" ? null : Number(rawAttemptLimit);
     let resolvedCourseId = courseId ?? course_id ?? null;
+    // An uploaded worksheet wins over anything in the body: the file is what was
+    // actually put in the uploads folder, so trusting a URL sent alongside it
+    // would let a caller point an assignment at somebody else's file, or at
+    // nothing at all after a successful upload.
+    const uploadedAttachmentUrl = uploadedFileUrl(req, req.file);
+    const resolvedAttachmentUrl = uploadedAttachmentUrl ?? attachmentUrl ?? attachment_url ?? null;
+    const resolvedAttachmentName = (
+      uploadedAttachmentUrl ? req.file.originalname : attachmentName ?? attachment_name
+    ) || null;
 
     if (!resolvedTeacherId || !resolvedStudentId || !assignmentTitle || !assignmentInstructions) {
       return res.status(400).json({
@@ -9839,8 +9910,8 @@ app.post("/api/assignments", requireSession, async (req, res) => {
     }
 
     const [result] = await pool.query(
-      `INSERT INTO assignments (teacher_id, student_id, course_id, title, instructions, due_date, due_time, attempt_limit)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO assignments (teacher_id, student_id, course_id, title, instructions, due_date, due_time, attempt_limit, attachment_url, attachment_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         resolvedTeacherId,
         resolvedStudentId,
@@ -9850,6 +9921,8 @@ app.post("/api/assignments", requireSession, async (req, res) => {
         dueDate,
         dueTime,
         parsedAttemptLimit,
+        resolvedAttachmentUrl,
+        resolvedAttachmentName,
       ]
     );
 
@@ -9873,26 +9946,19 @@ app.post("/api/assignments", requireSession, async (req, res) => {
 
     res.status(201).json({ assignment: decryptFields(rows[0], ["instructions", "description", "comments", "feedback"]), message: "Assignment created" });
   } catch (err) {
+    // Same reasoning as the advisor routes: a bare "Error creating assignment"
+    // cannot be told apart from a missing column, a bad request, or a database
+    // outage without reading the Railway log. The message is not secret, so it
+    // is attached outside production only.
     console.error("POST /api/assignments error:", err);
-    res.status(500).json({ message: "Error creating assignment" });
+    res.status(500).json({
+      message: "Error creating assignment",
+      ...(process.env.NODE_ENV !== "production" ? { error: err.message } : {}),
+    });
   }
 });
 
-const submissionUploader = (req, res, next) => {
-  if (req.is("multipart/form-data")) {
-    upload.single("file")(req, res, (err) => {
-      if (err) {
-        console.error("Upload error:", err);
-        return res.status(500).json({ message: "Error uploading file" });
-      }
-      next();
-    });
-  } else {
-    next();
-  }
-};
-
-app.post("/api/assignments/:assignment_id/submissions", requireSession, submissionUploader, async (req, res) => {
+app.post("/api/assignments/:assignment_id/submissions", requireSession, optionalFileUpload, async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {
@@ -9902,7 +9968,7 @@ app.post("/api/assignments/:assignment_id/submissions", requireSession, submissi
     // someone's behalf. Ignores a forged studentId in the body.
     const resolvedStudentId = sessionIdentity(req).studentId ?? studentId ?? student_id;
     const text = (submissionText ?? comments ?? "").trim();
-    const uploadedFile = req.file ? `${req.protocol}://${req.get("host")}/uploads/assignments/${encodeURIComponent(req.file.filename)}` : null;
+    const uploadedFile = uploadedFileUrl(req, req.file);
     const finalFileUrl = uploadedFile ?? fileUrl ?? file_url ?? null;
 
     if (!resolvedStudentId || (!text && !finalFileUrl)) {
@@ -9999,7 +10065,10 @@ app.post("/api/assignments/:assignment_id/submissions", requireSession, submissi
       await conn.rollback();
     }
     console.error("POST /api/assignments/:assignment_id/submissions error:", err);
-    res.status(500).json({ message: "Error submitting assignment" });
+    res.status(500).json({
+      message: "Error submitting assignment",
+      ...(process.env.NODE_ENV !== "production" ? { error: err.message } : {}),
+    });
   } finally {
     conn.release();
   }

@@ -6,6 +6,8 @@ import { getStoredUserTimezone } from "../utils/timezone.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { apiFetch } from "../utils/apiAuth.js";
+import { openAuthenticatedFile } from "../utils/authenticatedFile.js";
+import { useNotification } from "../components/NotificationContainer.jsx";
 
 const API = API_BASE_URL;
 
@@ -68,6 +70,7 @@ function hasDueDate(row) {
 }
 
 export default function Assignments() {
+  const { notify } = useNotification() || {};
   const [rows, setRows] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -159,6 +162,24 @@ export default function Assignments() {
                     <span className={styles.assignmentTitle}>
                       {getAssignmentDisplayText(r)}
                     </span>
+                    {/* Shortcut to the teacher's worksheet. A button rather than
+                        an <a href> because /uploads needs the session token, which
+                        a plain link cannot carry. */}
+                    {r.attachmentUrl ? (
+                      <button
+                        type="button"
+                        className={styles.attachmentBadge}
+                        onClick={() =>
+                          openAuthenticatedFile(r.attachmentUrl).catch(() =>
+                            notify?.("That file could not be opened. Please try again.", "error")
+                          )
+                        }
+                        title={`Open ${r.attachmentName || "the attached file"} in a new tab`}
+                      >
+                        <i className="bi bi-paperclip" aria-hidden="true" />
+                        <span>{r.attachmentName || "Attachment"}</span>
+                      </button>
+                    ) : null}
                   </td>
                   <td>
                     <time className={styles.dateCell} dateTime={r.postedAt || r.createdAt || undefined}>

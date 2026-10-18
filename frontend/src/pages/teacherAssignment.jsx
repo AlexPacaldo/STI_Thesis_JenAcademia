@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/teacherAssignment.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
@@ -14,15 +14,6 @@ import {
 } from "../utils/authenticatedFile.js";
 
 const API = API_BASE_URL;
-
-function normalizeFileUrl(url) {
-  if (!url) return "";
-  const cleaned = String(url).replace(/\\/g, "/");
-  if (/^https?:\/\//i.test(cleaned)) return cleaned;
-  if (cleaned.startsWith("/uploads/")) return `${API}${cleaned}`;
-  if (cleaned.startsWith("uploads/")) return `${API}/${cleaned}`;
-  return cleaned;
-}
 
 function getUserName(user) {
   return user.firstName || user.first_name
@@ -166,6 +157,7 @@ export default function AssignTask() {
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [due, setDue] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [attachmentFile, setAttachmentFile] = useState(null);
   const [hasAttemptLimit, setHasAttemptLimit] = useState(false);
   const [attemptLimit, setAttemptLimit] = useState("1");
   const [activeTab, setActiveTab] = useState("assign");
@@ -175,6 +167,7 @@ export default function AssignTask() {
   const [submissions, setSubmissions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
+  const fileInputRef = useRef(null);
 
   const currentUser = useMemo(() => readStoredUser() || {}, []);
 
@@ -188,33 +181,45 @@ export default function AssignTask() {
       return;
     }
     const selectedStudentName = selectedStudent?.name || "selected student";
+    const attachmentNote = attachmentFile ? ` with the attached file "${attachmentFile.name}"` : "";
     setConfirmAction({
       type: "create-assignment",
       title: `Give assignment to ${selectedStudentName}?`,
-      message: `Are you sure you want to post this assignment for ${selectedStudentName}?`,
+      message: `Are you sure you want to post this assignment for ${selectedStudentName}${attachmentNote}?`,
       confirmLabel: "Post Assignment"
     });
   };
 
   const createAssignment = async () => {
     try {
+      // Sent as multipart rather than JSON so the worksheet rides along with the
+      // assignment in one request. Content-Type is left to fetch, which has to
+      // supply the multipart boundary itself - setting it by hand produces a
+      // body the server cannot parse.
+      const formData = new FormData();
+      formData.append("teacherId", currentTeacherId);
+      formData.append("studentId", selectedStudent.id);
+      formData.append("courseId", selectedStudent.courseId ?? "");
+      formData.append("title", `Task for ${selectedStudent.name}`);
+      formData.append("instructions", instructions);
+      formData.append("due", due);
+      formData.append("attemptLimit", hasAttemptLimit ? Number(attemptLimit) : "");
+      if (attachmentFile) {
+        formData.append("file", attachmentFile, attachmentFile.name);
+      }
+
       const res = await apiFetch(`${API}/api/assignments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          teacherId: currentTeacherId,
-          studentId: selectedStudent.id,
-          courseId: selectedStudent.courseId,
-          title: `Task for ${selectedStudent.name}`,
-          instructions,
-          due,
-          attemptLimit: hasAttemptLimit ? Number(attemptLimit) : null,
-        }),
+        body: formData,
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "Could not create assignment");
+        // data.error is the server-side cause, attached outside production. It
+        // is preferred over data.message so the toast names the real problem -
+        // a missing column, a bad multipart body - rather than a generic string
+        // that sends you to the Railway log to find out what actually broke.
+        throw new Error(data.error || data.message || "Could not create assignment");
       }
 
       setTeacherAssignments((prev) => [data.assignment, ...prev]);
@@ -234,6 +239,10 @@ export default function AssignTask() {
       setDue("");
       setHasAttemptLimit(false);
       setAttemptLimit("1");
+      setAttachmentFile(null);
+      // Cleared directly rather than via a controlled input: the element is
+      // uncontrolled, so React will not reset the visible file name on its own.
+      if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err) {
       console.error("Create assignment error:", err);
       notify?.(err.message || "Could not create assignment.", "error");
@@ -499,6 +508,23 @@ export default function AssignTask() {
                         value={instructions}
                         onChange={(e) => setInstructions(e.target.value)}
                       />
+                      <div className={styles.Attachment}>
+                        <label htmlFor="attachment" className={styles.label}>
+                          <b>Attach a file (optional):</b>
+                        </label>
+                        <input
+                          id="attachment"
+                          ref={fileInputRef}
+                          type="file"
+                          className={styles.fileInput}
+                          onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)}
+                        />
+                        {attachmentFile ? (
+                          <p className={styles.fileInfo}>
+                            Attached: {attachmentFile.name}
+                          </p>
+                        ) : null}
+                      </div>
                       <button type="button" className={styles.submitComment} onClick={onSubmit}>
                         Create Assignment
                       </button>
@@ -589,72 +615,24 @@ export default function AssignTask() {
         </div>
       </div>
       {confirmAction && (
-        <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(15, 23, 42, 0.48)",
-              backdropFilter: "blur(8px)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 1200,
-              padding: "20px",
-              animation: "fadeInFast 0.18s ease-out",
-            }}
-            onClick={closeConfirmAction}
-          >
-            <div
-              style={{
-                background: "#fff",
-                border: "1px solid rgba(38, 66, 59, 0.12)",
-                borderRadius: "24px",
-                padding: "24px",
-                maxWidth: "440px",
-                width: "100%",
-                boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
-                animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 style={{ margin: "0 0 12px", fontSize: "1.2rem", fontWeight: 800, color: "#13251f" }}>{confirmAction.title}</h3>
-              <p style={{ margin: "0 0 20px", color: "#5e7268", lineHeight: 1.6, fontSize: "0.95rem" }}>{confirmAction.message}</p>
-              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  onClick={closeConfirmAction}
-                  style={{
-                    minHeight: "42px",
-                    padding: "10px 18px",
-                    borderRadius: "14px",
-                    border: "1px solid rgba(38, 66, 59, 0.14)",
-                    background: "#fff",
-                    color: "#26423b",
-                    cursor: "pointer",
-                    fontWeight: 700,
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={performConfirmAction}
-                  style={{
-                    minHeight: "42px",
-                    padding: "10px 18px",
-                    borderRadius: "14px",
-                    border: "none",
-                    background: "#26423b",
-                    color: "#fff",
-                    cursor: "pointer",
-                    fontWeight: 700,
-                  }}
-                >
-                  {confirmAction.confirmLabel}
-                </button>
-              </div>
+        <div className={styles.modalBackdrop} onClick={closeConfirmAction}>
+          <section className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h2>{confirmAction.title}</h2>
             </div>
-          </div>
+            <div className={styles.modalBody}>
+              <p>{confirmAction.message}</p>
+            </div>
+            <div className={styles.modalActions}>
+              <button type="button" className={styles.textBtn} onClick={closeConfirmAction}>
+                Cancel
+              </button>
+              <button type="button" className={styles.primaryBtn} onClick={performConfirmAction}>
+                {confirmAction.confirmLabel}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );

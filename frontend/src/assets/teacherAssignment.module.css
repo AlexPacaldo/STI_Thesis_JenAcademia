@@ -226,6 +226,134 @@
   flex-wrap: wrap;
 }
 
+/* The worksheet a teacher hands over with the task. Matches the stacked
+   field-label-then-control layout of .Date above, since it sits between
+   that and the instructions box and would otherwise read as a third
+   label line rather than a field. */
+.Attachment {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.fileInput {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid rgba(38, 66, 59, 0.14);
+  border-radius: 18px;
+  background: #fff;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  box-shadow: inset 0 1px 2px rgba(18, 34, 30, 0.04);
+}
+
+.fileInput:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(145, 167, 154, 0.18);
+}
+
+.fileInput::file-selector-button {
+  margin-right: 12px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(145, 167, 154, 0.18);
+  color: var(--primary);
+  padding: 8px 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.fileInfo {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+/* Confirm dialog for posting an assignment.
+   This was a block of inline styles with hardcoded hex colours, which pinned it
+   to one palette: it ignored the tokens the rest of the app uses, so it could
+   not follow a theme change. Now identical to the student-side dialog in
+   assignmentsDropbox.module.css, so both read as the same component. */
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  padding: 20px;
+  animation: fadeInFast 0.18s ease-out;
+}
+
+.confirmModal {
+  background: #fff;
+  border: 1px solid rgba(38, 66, 59, 0.12);
+  border-radius: 24px;
+  padding: 24px;
+  max-width: 440px;
+  width: 100%;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
+  animation: scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.modalHeader h2 {
+  margin: 0 0 12px;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.modalBody {
+  margin: 0 0 20px;
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 0.95rem;
+}
+
+.modalActions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.textBtn,
+.primaryBtn {
+  min-width: 100px;
+  min-height: 42px;
+  padding: 10px 18px;
+  border-radius: 14px;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid rgba(38, 66, 59, 0.14);
+  background: #fff;
+  color: var(--primary);
+}
+
+.textBtn:hover {
+  background: var(--surface-raised);
+}
+
+.primaryBtn {
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.primaryBtn:hover {
+  background: var(--primary-mid);
+}
+
 .label {
   display: block;
   color: var(--primary);
