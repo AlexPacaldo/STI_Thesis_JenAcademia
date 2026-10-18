@@ -1,0 +1,53 @@
+/* One contract badge, five surfaces. Defined here rather than inline in each
+   component so the admin's table, the teacher's list and the student's own pages
+   cannot drift apart in wording or colour. */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.78em;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.sm {
+  font-size: 0.72em;
+  padding: 2px 8px;
+}
+
+.ok {
+  background: #eef4f0;
+  color: #26423b;
+  border-color: #d5e2da;
+}
+
+/* Inside the 14-day warning window, which is the same window the student is
+   notified in, so the number on screen and the notification they already got
+   agree with each other. */
+.warn {
+  background: #fdf3e7;
+  color: #8a5a1f;
+  border-color: #f0dcc0;
+}
+
+.danger {
+  background: #fdecea;
+  color: #8a2f2f;
+  border-color: #f5cdc7;
+}
+
+.muted {
+  background: #f3f4f6;
+  color: #6b7280;
+  border-color: #e5e7eb;
+}
+
+.date {
+  font-weight: 400;
+  opacity: 0.85;
+}

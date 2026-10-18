@@ -1,4 +1,5 @@
 import axios from "axios";
+import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
 import { useEffect, useMemo, useState } from "react";
 import styles from "../assets/AdminDashboard.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
@@ -220,6 +221,9 @@ export default function TeacherStudents() {
                             </div>
                             <div style={{ fontSize: "0.8em", color: "#667085", marginTop: 3 }}>
                               {student.class_duration ? `${student.class_duration} min per class` : "Duration not set"}
+                            </div>
+                            <div style={{ marginTop: 6 }}>
+                              <ContractExpiryBadge expiresAt={student.expires_at} size="sm" />
                             </div>
                           </td>
                           <td data-label="Classes">

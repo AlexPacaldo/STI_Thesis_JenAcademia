@@ -1315,7 +1315,7 @@ async function getStudentPackageAvailability(connection, studentId) {
   const db = connection || pool;
   await autoMarkPastClassesAsNoShow(db);
   const [packageRows] = await db.query(
-    `SELECT package_id, student_id, total_classes, classes_used, classes_left, class_duration, status, created_at
+    `SELECT package_id, student_id, total_classes, classes_used, classes_left, class_duration, status, created_at, expires_at
      FROM student_class_packages
      WHERE student_id = ? AND status = 'active'
      ORDER BY created_at DESC
@@ -5000,7 +5000,7 @@ app.get("/api/admin/student-contracts", requireAdminSession, async (_req, res) =
               sp.course_id, c.course_name, sp.assigned_teacher_id,
               CONCAT(t.first_name, ' ', t.last_name) AS teacher_name,
               scp.package_id, scp.total_classes, scp.classes_used, scp.classes_left, scp.class_duration,
-              scp.status AS package_status
+              scp.status AS package_status, scp.expires_at
        FROM users u
        LEFT JOIN student_profiles sp ON sp.user_id = u.user_id
        LEFT JOIN courses c ON c.course_id = sp.course_id
@@ -9021,7 +9021,7 @@ app.get("/api/teacher/:teacher_id/students", requireSession, async (req, res) =>
               scp.classes_used,
               scp.classes_left,
               scp.class_duration,
-              scp.status AS package_status
+              scp.status AS package_status, scp.expires_at
        FROM users u
        JOIN student_profiles sp ON u.user_id = sp.user_id
        LEFT JOIN courses c ON c.course_id = sp.course_id
@@ -9059,6 +9059,10 @@ app.get("/api/teacher/:teacher_id/students", requireSession, async (req, res) =>
       classes_left: student.classes_left,
       class_duration: student.class_duration,
       package_status: student.package_status,
+      // The teacher sees the same deadline the student does. Without it a teacher
+      // can see a student has classes left and has no way to know whether those
+      // classes are still bookable.
+      expires_at: student.expires_at,
       trial_notes: decryptNullableText(student.trial_notes),
     }));
 

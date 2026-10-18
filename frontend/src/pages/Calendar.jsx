@@ -1,4 +1,5 @@
 import { openSseStream } from "../utils/sseClient.js";
+import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
@@ -6060,6 +6061,9 @@ $5padding: 20,
                         </div>
                         <div style={{ marginTop: 6, color: "#374151", fontSize: 14, fontWeight: 600 }}>
                           Available to book: {effectiveBookableClasses}
+                        </div>
+                        <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}>
+                          <ContractExpiryBadge expiresAt={studentPackage?.expires_at} />
                         </div>
                         <div style={{ marginTop: 8 }}>
                           <div style={{ height: 8, background: "#eef2ff", borderRadius: 8, overflow: "hidden" }}>

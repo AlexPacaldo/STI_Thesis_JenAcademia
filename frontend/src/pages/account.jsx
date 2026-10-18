@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import styles from "../assets/account.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
+import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
+import { describeContractExpiry } from "../utils/contractExpiry.js";
 import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
 import { formatTimezoneLabel, getTimezoneOptions, getUserTimezone } from "../utils/timezone.js";
 import { API_BASE_URL } from "../utils/api.js";
@@ -206,22 +208,13 @@ export default function Account() {
   }, []);
 
   const details = user?.roleDetails || {};
-  // A contract has two limits - classes and time - so the deadline is shown even
-  // while classes remain, and turns into an explicit "expired" once it passes.
-  // Not rendered at all when there is no deadline, rather than as "Not set",
-  // because a missing date and no contract look the same in this data.
-  const contractExpiry = useMemo(() => {
-    const raw = details.package_expires_at;
-    if (!raw) return null;
-    const when = new Date(raw);
-    if (Number.isNaN(when.getTime())) return null;
-    const days = Math.ceil((when.getTime() - Date.now()) / 86400000);
-    return {
-      when: when.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
-      expired: days < 0,
-      soon: days >= 0 && days <= 14,
-    };
-  }, [details.package_expires_at]);
+  // A contract has two limits - classes and time, so the deadline is shown even
+  // while classes remain. The wording and the "how many days" maths come from the
+  // shared util, so this page cannot drift from the other four that show one.
+  const contractExpiry = useMemo(
+    () => describeContractExpiry(details.package_expires_at),
+    [details.package_expires_at]
+  );
   // Seeded from the profile so the control reflects the stored value. Kept as
   // local state because it saves on change rather than through Save Changes -
   // it is a statement about what work you will take, not a profile field, and
@@ -739,14 +732,14 @@ export default function Account() {
             <Stat label="Teacher" value={details.teacher_first_name ? `${details.teacher_first_name} ${details.teacher_last_name || ""}`.trim() : details.teacher_name} />
             <Stat label="Classes Left" value={classesLeft} />
             <Stat label="Classes Used" value={`${formatValue(details.classes_used, "0")} / ${formatValue(details.total_classes, "0")}`} />
-            {contractExpiry && (
+            {contractExpiry.state !== "none" && (
               <Stat
-                label={contractExpiry.expired ? "Contract expired" : "Contract expires"}
-                value={contractExpiry.when}
+                label={contractExpiry.state === "expired" ? "Contract expired" : "Contract expires"}
+                value={contractExpiry.detail.replace(/^Contract ends /, "")}
               />
             )}
           </div>
-          {contractExpiry?.soon && (
+          {contractExpiry.state === "soon" && (
             <p style={{ margin: "10px 0 0", color: "#8a5a1f", fontSize: "0.9em", lineHeight: 1.45 }}>
               Your contract ends {contractExpiry.when}. Any classes you have not booked by then will be lost.
             </p>

@@ -26,6 +26,7 @@ import {
   toggleValue,
 } from "../utils/matchingCriteria.js";
 import CriteriaChipField, { CUSTOM_OPTION_VALUE } from "../components/CriteriaChipField.jsx";
+import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import ModalPortal from "../utils/ModalPortal.jsx";
 import Calendar from "./Calendar.jsx"; // admin calendar view
@@ -3456,6 +3457,7 @@ export default function AdminDashboard() {
                       <th>Total</th>
                       <th>Used</th>
                       <th>Left</th>
+                      <th>Expires</th>
                       <th>Status</th>
                       <th>Actions</th>
                     </tr>
@@ -3540,6 +3542,9 @@ export default function AdminDashboard() {
                             }}>
                               {classesLeft}
                             </span>
+                          </td>
+                          <td data-label="Expires">
+                            <ContractExpiryBadge expiresAt={row.expires_at} size="sm" />
                           </td>
                           <td data-label="Status">
                             <select

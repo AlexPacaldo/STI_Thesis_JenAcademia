@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import styles from "../assets/Dashboard.module.css";
@@ -363,7 +364,19 @@ export default function Dashboard({ mode }) {
 
     const openAssignments = studentData.assignments.filter(isOpenAssignment);
     return [
-      { label: "Classes Left", value: String(studentData.package?.classes_left ?? 0), hint: "Current package", icon: "book" },
+      {
+        label: "Classes Left",
+        value: String(studentData.package?.classes_left ?? 0),
+        icon: "book",
+        hint: studentData.package?.expires_at ? (
+          <span style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+            <span>Current package</span>
+            <ContractExpiryBadge expiresAt={studentData.package.expires_at} size="sm" />
+          </span>
+        ) : (
+          "Current package"
+        ),
+      },
       { label: "Open Assignments", value: String(openAssignments.length), hint: "Waiting on you", icon: "file" },
       { label: "Books", value: String(studentData.books.length), hint: "Available lessons", icon: "book" },
     ];
