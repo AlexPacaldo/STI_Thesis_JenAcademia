@@ -8,13 +8,11 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
 import { PROFICIENCY_LEVEL_OPTIONS, formatProficiencyLevel } from "../utils/proficiencyLevels.js";
 import {
-  CUSTOM_OPTION_VALUE,
   createEmptyCriteria,
   criteriaWithCustom,
   filterOptionsForCourses,
   pruneSelectionToCourses,
   STUDENT_CRITERIA_OPTIONS,
-  toCriteriaSlug,
   toggleValue,
 } from "../utils/matchingCriteria.js";
 import CriteriaChipField from "../components/CriteriaChipField.jsx";
@@ -3634,17 +3632,18 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   };
 
   const toggleContractAiCriterionValue = (key, value) => {
-    setContractAiCriteria((current) => {
-      const next = { ...current, [key]: toggleValue(current?.[key], value) };
-      // Ticking "Others" opens a box that may stay empty. If the sentinel were
-      // left in the selection it would be sent to the scorer as a criterion no
-      // teacher can ever match, and it would show up as a permanent miss. Drop it
-      // until something is actually typed - the same rule the admin form uses.
-      if (next?.[key]?.includes(CUSTOM_OPTION_VALUE) && !toCriteriaSlug(contractCriteriaOther[key])) {
-        next[key] = next[key].filter((item) => item !== CUSTOM_OPTION_VALUE);
-      }
-      return next;
-    });
+    // Plain toggle. An earlier version stripped the "__custom__" sentinel here if
+    // the matching Others box was empty, which was a guard against the inline
+    // input's empty box leaving a selection behind. The box is a dialog now and
+    // cannot be saved empty, and the strip created a real bug: the component
+    // commits the text and then asks to add the tick, so this handler read a text
+    // state that had not been applied yet and removed the selection it was just
+    // given. criteriaWithCustom still strips the sentinel on submit, which is the
+    // right place for that guarantee - once, for every form.
+    setContractAiCriteria((current) => ({
+      ...current,
+      [key]: toggleValue(current?.[key], value),
+    }));
   };
 
   const submitStudentBooking = async () => {

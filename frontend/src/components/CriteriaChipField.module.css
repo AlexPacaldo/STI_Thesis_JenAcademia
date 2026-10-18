@@ -161,31 +161,6 @@
 
 /* Free-text box revealed by the "Others" chip. Scoped under .field for the same
    reason the chip rules are: `.form input` is class+type and would win. */
-.customInput {
-  margin-top: 10px;
-}
-
-.field .customInput input,
-.field .customInput input:focus {
-  width: 100%;
-  min-height: 40px;
-  padding: 9px 12px;
-  border: 1px solid var(--border-mid, #d0d0d0);
-  border-radius: 10px;
-  background: #fff;
-  color: var(--text, #1f2937);
-  font: inherit;
-  font-size: 0.9em;
-  outline: 0;
-  box-shadow: none;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-
-.field .customInput input:focus {
-  border-color: var(--primary, #2f4d3e);
-  box-shadow: 0 0 0 4px rgba(47, 77, 62, 0.1);
-}
-
 .field .chipText {
   min-width: 0;
   /* Reset the global overflow-wrap:anywhere so a long label breaks at spaces
