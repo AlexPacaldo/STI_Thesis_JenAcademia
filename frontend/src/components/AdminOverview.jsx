@@ -255,20 +255,26 @@ export default function AdminOverview({ onNavigateToTab }) {
 
   return (
     <div className={styles.overview}>
+      {/* No refresh button. AdminDashboard renders this only while its tab is
+          active, so switching away unmounts the component and coming back mounts
+          it again - the fetch runs on every visit, and the timestamp below says
+          how fresh the numbers are. A button that did what changing tabs already
+          did was just one more thing to aim at.
+
+          The "Try again" on the error banner is a different matter and stays: a
+          failed load has no automatic retry, so without it a transient network
+          error would strand the admin on stale numbers. */}
       <div className={styles.overviewPanelHead}>
         <div>
           <h3>Admin Overview</h3>
           <p>
             {loading
-              ? "Refreshing..."
+              ? "Loading..."
               : overview?.generatedAt
                 ? `Updated ${formatStamp(overview.generatedAt)}`
                 : "Live snapshot of the academy"}
           </p>
         </div>
-        <button className={styles.secondaryBtn} type="button" onClick={loadOverview} disabled={loading}>
-          <i className="bi bi-arrow-clockwise" aria-hidden="true" /> Refresh
-        </button>
       </div>
 
       {error && (
