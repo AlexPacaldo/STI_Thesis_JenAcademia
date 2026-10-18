@@ -209,7 +209,16 @@ const getClassRange = (classObj) => {
 };
 
 // Helper: calculate end time from start time and duration in minutes
-const getEndTime = (startTime, durationMins) => {
+//
+// `explicitEnd` is the class's own end_time, and it wins when present. Most
+// panels here used to derive the end from `duration` alone, so a row with no
+// duration rendered as "9:30 AM - " - a dangling dash that looks like the data
+// is missing rather than like the display gave up. The app always writes both,
+// but a class inserted by any other route may have only one, and the end of a
+// class is the one thing on this panel that should never silently vanish.
+const getEndTime = (startTime, durationMins, explicitEnd) => {
+  const fromExplicitEnd = humanTime(explicitEnd);
+  if (fromExplicitEnd) return fromExplicitEnd;
   if (!startTime || !durationMins) return "";
   const start = timeToMinutes(startTime);
   const duration = parseInt(durationMins, 10);
@@ -4283,7 +4292,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     </div>
                     <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
                       <div><strong>Time:</strong></div>
-                      <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration)}</div>
+                      <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration, selectedClass.end_time)}</div>
                     </div>
                   </div>
                   {renderVerificationPanel()}
@@ -4520,7 +4529,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         >
                           <div><strong>{cls.className || cls.name || "Untitled"}</strong></div>
                           <div style={{ fontSize: "0.85em", marginTop: "4px" }}>
-                            {cls.time || cls.startTime || ""} - {getEndTime(cls.time || cls.startTime, cls.duration) || ""}
+                            {cls.time || cls.startTime || ""} - {getEndTime(cls.time || cls.startTime, cls.duration, cls.end_time) || ""}
                           </div>
                           {cls.studentName && <div style={{ fontSize: "0.85em", color: "#666" }}>Student: {cls.studentName}</div>}
                           {(cls.teacherFullName || cls.teacherName || cls.teacher) && (
@@ -5384,7 +5393,7 @@ $5padding: 20,
                     <div className={styles.slotList}>
                       <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
                         <div><strong>{selectedClass.className}</strong></div>
-                        <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration)}</div>
+                        <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration, selectedClass.end_time)}</div>
                       </div>
                       {selectedTeacherFullName && (
                         <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
@@ -5649,7 +5658,7 @@ $5padding: 20,
                           >
                             <div><strong>{cls.className || cls.name || "Untitled"}</strong></div>
                             <div style={{ fontSize: "0.85em", marginTop: "4px" }}>
-                              {cls.time || cls.startTime || ""} - {getEndTime(cls.time || cls.startTime, cls.duration) || ""}
+                              {cls.time || cls.startTime || ""} - {getEndTime(cls.time || cls.startTime, cls.duration, cls.end_time) || ""}
                             </div>
                             {(cls.teacherFullName || cls.teacherName || cls.teacher) && (
                               <div style={{ fontSize: "0.85em", color: "#666" }}>
@@ -6300,7 +6309,7 @@ $5padding: 20,
             </div>
             <div>
               <span>Time</span>
-              <strong>{humanTime(selectedClass.start_time || selectedClass.time)} - {humanTime(selectedClass.end_time) || getEndTime(selectedClass.start_time || selectedClass.time, selectedClass.duration)}</strong>
+              <strong>{humanTime(selectedClass.start_time || selectedClass.time)} - {getEndTime(selectedClass.start_time || selectedClass.time, selectedClass.duration, selectedClass.end_time)}</strong>
             </div>
           </div>
 
@@ -6794,7 +6803,7 @@ $5padding: 20,
             </div>
             <div style={{ fontSize: "0.85rem", color: "#4b5563" }}>
               {selectedClass.studentName ? `${selectedClass.studentName} - ` : ""}
-              {selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration)}
+              {selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration, selectedClass.end_time)}
             </div>
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
@@ -6892,7 +6901,7 @@ $5padding: 20,
               {selectedClass.studentName || "Selected student"}
             </div>
             <div style={{ fontSize: "0.85rem", color: "#4b5563" }}>
-              {selectedClass.className || "Class"} - {selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration)}
+              {selectedClass.className || "Class"} - {selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration, selectedClass.end_time)}
             </div>
           </div>
           <div style={{ marginBottom: 14 }}>

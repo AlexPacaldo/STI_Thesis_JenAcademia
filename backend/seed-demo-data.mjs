@@ -39,6 +39,9 @@
 import bcrypt from "bcryptjs";
 import mysql from "mysql2/promise";
 import { DB_PASSWORD, describeDbConfig } from "./dbConfig.js";
+// Reused rather than reimplemented, so "09:30" means the same thing here as it
+// does in the matching code that compares availability against these slots.
+import { toMinutes } from "./teacherMatching.js";
 import {
   ADMIN, ALL_COURSES, BOOKED_CLASSES, COUNTRY, PASSWORD, STUDENTS, TEACHERS,
   TIMEZONE, WEEKLY_AVAILABILITY, aiBio, criteriaNotes, daysLeftFrom,
@@ -403,11 +406,29 @@ async function seedAvailability() {
     );
 
     for (const date of upcomingWeekdays(booked.days, booked.weeks)) {
+      // duration is written here because the app always writes it, and a row the
+      // app would never create is a poor thing to demo with.
+      //
+      // !! Omitting it left duration NULL, and every calendar panel derives the
+      // !! end of a class from duration rather than reading end_time - so the
+      // !! demo class rendered as "9:30 AM -" with nothing after the dash, on a
+      // !! row whose end_time was sitting in the database the whole time.
+      const durationMins = Math.max(
+        0,
+        (toMinutes(booked.end) ?? 0) - (toMinutes(booked.start) ?? 0)
+      );
+      if (!durationMins) {
+        throw new Error(
+          `Booked class "${booked.className}" has an unusable time range: ` +
+            `${booked.start} - ${booked.end}`
+        );
+      }
+
       await db.execute(
         `INSERT INTO classes
-           (class_name, teacher_id, student_id, scheduled_date, start_time, end_time, status)
-         VALUES (?, ?, ?, ?, ?, ?, 'scheduled')`,
-        [booked.className, teacherId, studentId, isoDate(date), booked.start, booked.end]
+           (class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled')`,
+        [booked.className, teacherId, studentId, isoDate(date), booked.start, booked.end, durationMins]
       );
       rows += 1;
     }
