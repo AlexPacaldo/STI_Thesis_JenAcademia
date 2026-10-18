@@ -6329,6 +6329,7 @@ $5padding: 20,
                         {!requestingNewContract && (
                           <button
                             type="button"
+                            className={styles.slotBtn}
                             onClick={() => {
                               setRequestingNewContract(true);
                               setContractRequestOpen(false);
@@ -6337,19 +6338,26 @@ $5padding: 20,
                               updateContractCourse(studentProfile?.course_id || "");
                             }}
                             style={{
-                              marginTop: 10,
-                              padding: 0,
-                              border: "none",
-                              background: "none",
-                              color: "#7a5210",
-                              fontSize: 12,
+                              marginTop: 8,
+                              width: "100%",
+                              padding: "9px 10px",
+                              // Same class and metrics as the primary button, so
+                              // the two line up exactly. Only the border and text
+                              // differ - neutral rather than amber - which keeps
+                              // this visibly the secondary choice without making
+                              // it look like body text. It was an underlined link
+                              // before, which read as a caption rather than
+                              // something you can press.
+                              border: "1px solid #c3cbd5",
+                              borderRadius: 8,
+                              background: "#fff",
+                              color: "#374151",
+                              fontSize: 13,
                               fontWeight: 600,
-                              textDecoration: "underline",
                               cursor: "pointer",
-                              textAlign: "left",
                             }}
                           >
-                            Or let this contract go and request a new one
+                            Request a new contract instead
                           </button>
                         )}
                       </div>
