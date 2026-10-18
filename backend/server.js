@@ -21,6 +21,7 @@ import {
   assertDbPasswordPresent,
   describeDbConfig,
 } from "./dbConfig.js";
+import { CONTRACT_EXPIRY_WARNING_DAYS, CONTRACT_TERM_MONTHS } from "./contractTerms.js";
 import { createRateLimiter } from "./rateLimit.js";
 import { readBearerToken, signSessionToken, verifySessionToken } from "./sessionToken.js";
 import { deleteRecordingFromDrive, extractDriveFileId, isGoogleDriveConfigured, uploadRecordingToDrive } from "./googleDrive.js";
@@ -2852,17 +2853,15 @@ async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNo
 
 // A contract runs for a fixed term as well as for a fixed number of classes.
 // Both limits apply and whichever runs out first ends it, so a student who takes
-// one class a month still finishes inside three months, and one who attends
 // weekly finishes on the class count first.
 //
 // The term runs from purchase. created_at IS the purchase moment for every
 // package in the system, which is why no separate start date is stored: one
 // timestamp, and the deadline is derived from it.
-const CONTRACT_TERM_MONTHS = 3;
 
-// How far ahead of the deadline the student is told. Long enough to actually
+
 // book the classes they have left, short enough that it is still news.
-const CONTRACT_EXPIRY_WARNING_DAYS = 14;
+
 
 function packageStatusFromUsage(status, totalClasses, classesUsed, expiresAt = null) {
   const normalizedStatus = ["active", "expired", "cancelled"].includes(status) ? status : "active";

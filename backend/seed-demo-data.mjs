@@ -42,6 +42,7 @@ import { DB_PASSWORD, describeDbConfig } from "./dbConfig.js";
 // Reused rather than reimplemented, so "09:30" means the same thing here as it
 // does in the matching code that compares availability against these slots.
 import { toMinutes } from "./teacherMatching.js";
+import { CONTRACT_TERM_MONTHS } from "./contractTerms.js";
 import {
   ADMIN, ALL_COURSES, BOOKED_CLASSES, COUNTRY, PASSWORD, STUDENTS, TEACHERS,
   TIMEZONE, WEEKLY_AVAILABILITY, aiBio, criteriaNotes, daysLeftFrom,
@@ -273,20 +274,38 @@ async function upsertPackage(userId, { total, createdDaysAgo, classDuration = 50
   );
   const created = new Date();
   created.setDate(created.getDate() - createdDaysAgo);
+
+  // Derived in SQL with the same rule the server's boot pass uses, so the value
+  // is identical either way and neither copy can drift.
+  //
+  // !! expires_at used to be written as NULL on re-seed, on the reasoning that
+  // !! the server derives it on the next boot. That left the Contracts tab
+  // !! showing an empty Expires column for every student until someone
+  // !! redeployed - the one step the demo depends on most, and the easiest to
+  // !! forget. Worse, re-seeding actively cleared a deadline the server had
+  // !! already set, so running the seed twice undid the thing it was meant to
+  // !! establish.
+  //
+  // The deadline is plain derivable data, so it is seeded. What is NOT seeded is
+  // status: expiry still happens on the server's own sweep, so the transition
+  // remains the real mechanism rather than a hand-edited value.
+  const expiry = "DATE_ADD(?, INTERVAL ? MONTH)";
+
   if (existing) {
     await db.execute(
       `UPDATE student_class_packages
           SET total_classes = ?, classes_used = 0, class_duration = ?, status = 'active',
-              created_at = ?, expires_at = NULL, expiry_notified_at = NULL
+              created_at = ?, expires_at = ${expiry}, expiry_notified_at = NULL
         WHERE package_id = ?`,
-      [total, classDuration, created, existing.package_id]
+      [total, classDuration, created, created, CONTRACT_TERM_MONTHS, existing.package_id]
     );
     return;
   }
   await db.execute(
-    `INSERT INTO student_class_packages (student_id, total_classes, classes_used, class_duration, status, created_at)
-     VALUES (?, ?, 0, ?, 'active', ?)`,
-    [userId, total, classDuration, created]
+    `INSERT INTO student_class_packages
+       (student_id, total_classes, classes_used, class_duration, status, created_at, expires_at)
+     VALUES (?, ?, 0, ?, 'active', ?, ${expiry})`,
+    [userId, total, classDuration, created, created, CONTRACT_TERM_MONTHS]
   );
 }
 
@@ -567,7 +586,7 @@ for (const s of STUDENTS) {
 
   const left = daysLeftFrom(s.createdDaysAgo);
   console.log(
-    `  student    ${s.email.padEnd(44)}${String(left).padStart(4)} days left${left <= 0 ? "  (will expire on boot)" : ""}`
+    `  student    ${s.email.padEnd(44)}${String(left).padStart(4)} days left${left <= 0 ? "  (expires on the next server sweep)" : ""}`
   );
 }
 
@@ -575,7 +594,47 @@ for (const s of STUDENTS) {
 const availRows = await seedAvailability();
 console.log(`  availability  ${availRows} rows across ${WEEKLY_AVAILABILITY.length} weekly patterns`);
 
+/* ------------------------------------------------------- read it all back */
+
+// The seeder used to finish on trust. It now checks the deadline it just wrote,
+// because a blank Expires column on the Contracts tab looks identical to a
+// feature that was never built - and the previous version of this script wrote
+// expires_at as NULL deliberately, so nothing else would have caught it.
+const [deadlines] = await db.query(
+  `SELECT u.email, p.status, p.expires_at, DATEDIFF(p.expires_at, NOW()) days_left
+     FROM student_class_packages p JOIN users u ON u.user_id = p.student_id`
+);
+const missingDeadline = deadlines.filter((d) => d.expires_at === null);
+if (missingDeadline.length) {
+  console.error(
+    `\nWARNING: ${missingDeadline.length} package(s) have no expiry date, so the\n` +
+      `Expires column will be blank for:\n` +
+      missingDeadline.map((d) => `  - ${d.email}`).join("\n") +
+      `\n`
+  );
+} else {
+  const overdue = deadlines.filter((d) => d.days_left <= 0);
+  console.log(`\n  deadlines   all ${deadlines.length} set`);
+  for (const d of deadlines.sort((a, b) => a.days_left - b.days_left)) {
+    const when =
+      d.days_left < 0 ? `${Math.abs(d.days_left)} days ago`
+      : d.days_left === 0 ? "today"
+      : `in ${d.days_left} days`;
+    const flag = d.days_left <= 0 ? " (expired)" : d.days_left <= 14 ? " (warning)" : "";
+    console.log(`    ${String(when).padStart(12)}  ${d.email}${flag}`);
+  }
+  if (overdue.length) {
+    console.log(
+      `\n  ${overdue.length} package(s) are already past their term. The running\n` +
+        `  server flips those to "expired" on its next sweep, within a minute -\n` +
+        `  no redeploy needed.`
+    );
+  }
+}
+
 await db.end();
-console.log("\nDone. Start the server ONCE so it derives expires_at, encrypts the");
-console.log("notes, and expires anything past its term. Then sign in as:");
+console.log("\nDone. The Expires column is populated now. Anything past its term is");
+console.log("flipped by the running server's own sweep, so the expiry you show in");
+console.log("the demo is the real mechanism rather than an edited value.");
+console.log("Sign in as:");
 console.log(`  ${ADMIN.email}  /  ${PASSWORD}\n`);

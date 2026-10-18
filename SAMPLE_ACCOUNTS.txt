@@ -458,6 +458,26 @@ STEP 8 - THE FALLBACK. This is the one that wins the argument.
 
      It is safe to re-run - it updates the same rows rather than duplicating.
 
+     !! No server restart is needed afterwards, and this used to be the most
+     !! easily missed step in the whole demo. The Expires column on this page
+     !! stays blank until every package has a deadline on it, and a blank
+     !! column is indistinguishable from a feature that was never built. The
+     !! seed used to write expires_at as NULL on purpose, expecting the server
+     !! to derive it on its next boot - so it depended on a redeploy happening,
+     !! and re-running the seed actively cleared a deadline the server had
+     !! already set.
+
+     The seed now writes the deadline itself, using the same rule the server
+     would, and then reads every package back and prints a table of them. If a
+     deadline is ever missing again it says so loudly rather than finishing on
+     trust.
+
+     What is NOT seeded is the status. A package past its term is flipped to
+     "expired" by the running server's own 60-second sweep, so the expiry you
+     demonstrate is the real mechanism rather than an edited value. Expect
+     Danica to read "expired" and Carlos to carry the warning within a minute
+     of seeding, with no redeploy.
+
   3. START THE SERVER ONCE, then stop it.
 
      This matters. The first boot is what:
