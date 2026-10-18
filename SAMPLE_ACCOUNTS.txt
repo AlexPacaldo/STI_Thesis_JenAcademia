@@ -12,68 +12,102 @@
  1. THE ACCOUNTS
 --------------------------------------------------------------------------------
 
+  All accounts: country PHILIPPINES, timezone Asia/Manila, password JEN2026!
+
+  Every birthday is exactly as stored. Two consequences worth knowing:
+    - Dates are stored ENCRYPTED. After the first server boot they will not be
+      readable in the database, only in the UI. That is the point of the field,
+      but it means if something looks wrong, check the profile page, not the SQL.
+    - Noah Garcia deliberately has none. That is a demo step, not a mistake.
+
+  ROLE      BIRTHDAY      COUNTRY       CONTACT          EMAIL
+  --------  ------------  -----------  ---------------  --------------------------------
+  Admin     1987-04-08    Philippines  +63917 555 0001  admin@jenacademia.local
+  Teacher   1988-03-22    Philippines  +63917 555 0100  maia.cruz@jenacademia.local
+  Teacher   1993-07-09    Philippines  +63917 555 0100  rafael.santos@jenacademia.local
+  Teacher   1985-11-18    Philippines  +63917 555 0100  gina.delacruz@jenacademia.local
+  Teacher   1990-05-30    Philippines  +63917 555 0100  ben.martin@jenacademia.local
+  Teacher   2001-09-14    Philippines  +63917 555 0100  clara.reyes@jenacademia.local
+  Teacher   1996-01-25    Philippines  +63917 555 0100  dario.lim@jenacademia.local
+  Student   1998-02-14    Philippines  +63917 555 0200  beatrice.alvarez@student.jenacademia.local
+  Student   1992-07-30    Philippines  +63917 555 0200  carlos.mendoza@student.jenacademia.local
+  Student   2004-05-19    Philippines  +63917 555 0200  danica.pope@student.jenacademia.local
+  Student   1996-11-02    Philippines  +63917 555 0200  evan.torres@student.jenacademia.local
+  Student   (none)        Philippines  +63917 555 0200  noah.garcia@student.jenacademia.local
+
+  And the one you CREATE during the demo:
+  Student   2015-03-12    Philippines  (you type it)  Ava Reyes
+                          -> 11 years old at the time of writing. This is the
+                             one that matters: it is what makes her a child.
+
 ADMIN
-  admin@jenacademia.local              Jennifer Santos
+  admin@jenacademia.local              Jennifer Santos, 1987-04-08
 
   You drive the whole demo from this account.
 
 
 TEACHERS  (all password JEN2026!)
 
-  maia.cruz@jenacademia.local           Maia Cruz
+  maia.cruz@jenacademia.local           Maia Cruz, born 1988-03-22
       Conversational English, Travel English
       !! DECLINES CHILDREN - this is the important one. She is the strongest
          conversational fit in the whole school, so the AI will rank her FIRST
          for a shy child. The age rule then overrules the AI. That is the
          single most persuasive thing in this data set.
 
-  rafael.santos@jenacademia.local       Rafael Santos
+  rafael.santos@jenacademia.local       Rafael Santos, born 1993-07-09
       Conversational English, Online English
       Kids and novice English, structured and visual, slow pace, 6 years.
       THE CORRECT ANSWER for a shy child - and he wins on the rule alone.
 
-  gina.delacruz@jenacademia.local       Gina Dela Cruz
+  gina.delacruz@jenacademia.local       Gina Dela Cruz, born 1985-11-18
       IELTS, TOEIC
       12 years, exam preparation, review-heavy. The clean STRONG MATCH.
 
-  ben.martin@jenacademia.local          Ben Martin
+  ben.martin@jenacademia.local          Ben Martin, born 1990-05-30
       Conversational English, IELTS
       !! AT THE 2-STUDENT LIMIT. Loads the workload rule so it has to act.
 
-  clara.reyes@jenacademia.local         Clara Reyes
+  clara.reyes@jenacademia.local         Clara Reyes, born 2001-09-14
       Online English only
       !! DELIBERATELY THIN PROFILE - no specialisation, no style, no pace.
          Ranks last in every pool. This is what makes "Closest available, not a
          strong match" appear on screen when the best available is still poor.
 
-  dario.lim@jenacademia.local           Dario Lim
+  dario.lim@jenacademia.local           Dario Lim, born 1996-01-25
       ALL NINE COURSES
       The generalist. Always in the pool, always a credible second answer.
 
 
 STUDENTS  (already created, all password JEN2026!)
 
-  beatrice.alvarez@student...          Beatrice Alvarez, 28, IELTS
+  beatrice.alvarez@student...          Beatrice Alvarez
+      Born 1998-02-14, IELTS
       12 classes, bought 10 days ago          -> ~80 days left   (green badge)
       Assigned to Gina Dela Cruz
 
-  carlos.mendoza@student...            Carlos Mendoza, 34, Conversational
+  carlos.mendoza@student...            Carlos Mendoza
+      Born 1992-07-30, Conversational English
       8 classes, bought 81 days ago           ->   ~9 days left   (AMBER badge)
       Assigned to Ben Martin
       This student would ALREADY have received the expiry warning notification.
 
-  danica.pope@student...               Danica Pope, 22, TOEIC
+  danica.pope@student...               Danica Pope
+      Born 2004-05-19, TOEIC
       6 classes, bought 100 days ago          -> EXPIRED          (red badge)
       Assigned to Gina Dela Cruz
       The server flips this to expired by itself on the next sweep - it is not
       hand-edited, so the demo is showing the real rule running.
 
-  evan.torres@student...               Evan Torres, 26, Conversational
+  evan.torres@student...               Evan Torres
+      Born 1996-11-02, Conversational English
       10 classes, bought 4 days ago           -> ~86 days left
       Assigned to Ben Martin
       Ben's SECOND student. He is now exactly on the 2-student limit.
 
-  noah.garcia@student...               Noah Garcia, Travel English
+  noah.garcia@student...               Noah Garcia
+      NO BIRTHDAY ON FILE - this is deliberate, see above.
+      Travel English
       !! NO BIRTHDAY ON FILE.
       Assigned to Maia Cruz
       Creates the "no birthday on file, so teachers who decline children could

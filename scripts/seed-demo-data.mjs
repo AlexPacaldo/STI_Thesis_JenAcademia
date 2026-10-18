@@ -258,6 +258,8 @@ await upsertUser({
   lastName: "Santos",
   role: "admin",
   country: "Philippines",
+  birthDate: "1987-04-08",
+  contact: "+63917 555 0001",
 });
 console.log("  admin      admin@jenacademia.local");
 
@@ -268,6 +270,7 @@ console.log("  admin      admin@jenacademia.local");
 const TEACHERS = [
   {
     key: "cruz",
+    birthDate: "1988-03-22",
     email: "maia.cruz@jenacademia.local",
     firstName: "Maia", lastName: "Cruz",
     // The one the AI will like most for a shy child, and the one the age rule
@@ -290,6 +293,7 @@ const TEACHERS = [
   },
   {
     key: "santos",
+    birthDate: "1993-07-09",
     email: "rafael.santos@jenacademia.local",
     firstName: "Rafael", lastName: "Santos",
     // The correct answer for a shy child. Beats Maia on the age rule alone.
@@ -309,6 +313,7 @@ const TEACHERS = [
   },
   {
     key: "delacruz",
+    birthDate: "1985-11-18",
     email: "gina.delacruz@jenacademia.local",
     firstName: "Gina", lastName: "Dela Cruz",
     // Clean strong match for the IELTS student. The easy, obvious win.
@@ -328,6 +333,7 @@ const TEACHERS = [
   },
   {
     key: "martin",
+    birthDate: "1990-05-30",
     email: "ben.martin@jenacademia.local",
     firstName: "Ben", lastName: "Martin",
     // Loaded to exactly the 2-student limit, so the workload rule has to act.
@@ -346,6 +352,7 @@ const TEACHERS = [
   },
   {
     key: "reyes",
+    birthDate: "2001-09-14",
     email: "clara.reyes@jenacademia.local",
     firstName: "Clara", lastName: "Reyes",
     // Deliberately thin profile. Ranks last and is never the answer, which is
@@ -358,6 +365,7 @@ const TEACHERS = [
   },
   {
     key: "lim",
+    birthDate: "1996-01-25",
     email: "dario.lim@jenacademia.local",
     firstName: "Dario", lastName: "Lim",
     // The generalist: teaches everything, so he is always in the pool and always
@@ -381,7 +389,7 @@ const TEACHERS = [
 for (const t of TEACHERS) {
   const id = await upsertUser({
     email: t.email, firstName: t.firstName, lastName: t.lastName,
-    role: "teacher", contact: "+63917 555 0100",
+    role: "teacher", contact: "+63917 555 0100", birthDate: t.birthDate,
   });
   byEmail[t.key] = id;
   await upsertTeacherProfile(id, {
