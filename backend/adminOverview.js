@@ -59,6 +59,41 @@ export function emptyDayCounts() {
 }
 
 /**
+ * Normalise whatever the driver produced for a DATE column into "YYYY-MM-DD".
+ *
+ * !! mysql2 does not hand back a string for a DATE column - it builds a
+ * !! JavaScript Date. String()ing one gives "Fri Oct 16 2026 00:00:00 GMT+0800",
+ * !! whose first ten characters are "Fri Oct 16": not a date, not sortable, and
+ * !! indistinguishable from a real value at a glance. Truncating one and moving
+ * !! on put three future days on the chart and shuffled it out of order, and the
+ * !! array still looked completely well-formed.
+ * !!
+ * !! The trend query formats with DATE_FORMAT so this is a guard rather than the
+ * !! main path - but a guard that keeps a later simplification of that query
+ * !! honest is worth more than the two lines it costs.
+ */
+export function toIsoDay(value) {
+  if (value == null) return "";
+  if (typeof value === "string") {
+    const trimmed = value.trim().slice(0, 10);
+    // Only a real YYYY-MM-DD is passed through. Returning any ten characters would
+    // let a malformed value become a chart key, and the chart would then draw a
+    // perfectly ordinary-looking bar for a day that does not exist.
+    return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : "";
+  }
+  if (value instanceof Date) {
+    // The driver constructs DATE columns in local time, so the local parts are the
+    // ones that agree with what MySQL stored. Reading UTC parts instead would
+    // shift the day backwards for everyone west of Greenwich.
+    if (Number.isNaN(value.getTime())) return "";
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${value.getFullYear()}-${month}-${day}`;
+  }
+  return "";
+}
+
+/**
  * One row per (date, status) -> one ordered day per date.
  *
  * Dates come from the rows themselves, so this function only guarantees that
@@ -75,11 +110,13 @@ export function emptyDayCounts() {
  * cancelled classes in the colour meant for completed ones.
  */
 export function buildTrendSeries(rows) {
-  const dates = [...new Set(rows.map((row) => String(row.day).slice(0, 10)))].sort();
+  const days = rows.map((row) => toIsoDay(row.day));
+  const dates = [...new Set(days)].sort();
   const byDate = new Map(dates.map((date) => [date, { date, ...emptyDayCounts() }]));
 
-  for (const row of rows) {
-    const day = byDate.get(String(row.day).slice(0, 10));
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i];
+    const day = byDate.get(days[i]);
     if (!day) continue;
 
     // "no-show" is not a valid identifier, so it is mapped rather than used raw.
@@ -366,7 +403,7 @@ export async function fetchAdminOverview(pool, { now = new Date() } = {}) {
            UNION ALL
            SELECT DATE_ADD(day, INTERVAL 1 DAY) FROM days WHERE day < CURDATE()
          )
-         SELECT d.day AS day,
+         SELECT DATE_FORMAT(d.day, '%Y-%m-%d') AS day,
                 c.status AS status,
                 COUNT(c.class_id) AS class_count
          FROM days d
