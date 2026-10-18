@@ -6246,43 +6246,17 @@ $5padding: 20,
                             An approval genuinely has nothing to ask for, so this
                             is shown only on a decline. */}
                         {canAskAgain && !contractRequestOpen && !requestingNewContract && (
-                          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                            <div style={{ fontSize: 12, color: "#6b5a3c", lineHeight: 1.45 }}>
-                              You can ask again, or start a new contract instead.
-                            </div>
-                            <div style={{ display: "flex", gap: 8 }}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setContractRequestOpen(true);
-                                  setContractRequestError("");
-                                }}
-                                style={{ flex: 1, padding: "9px 10px", border: "1px solid #d9b477", borderRadius: 8, background: "#fff", cursor: "pointer" }}
-                              >
-                                Ask again
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setRequestingNewContract(true);
-                                  setContractRequestError("");
-                                  updateContractCourse(studentProfile?.course_id || "");
-                                }}
-                                style={{ flex: 1, padding: "9px 10px", border: "1px solid #9aa3ae", borderRadius: 8, background: "#fff", color: "#374151", cursor: "pointer" }}
-                              >
-                                New contract instead
-                              </button>
-                            </div>
-                            {/* The consequence stated before they choose it, not
-                                after. A new contract supersedes the old package
-                                and the unused classes go with it, so this is the
-                                one place that has to be said plainly. */}
-                            <div style={{ fontSize: 11, color: "#8c2020", lineHeight: 1.45 }}>
-                              Note: a new contract replaces this one. Your{" "}
-                              {latestStudentPackage.classes_left} unused class
-                              {Number(latestStudentPackage.classes_left) === 1 ? "" : "es"} would not
-                              carry over.
-                            </div>
+                          <div style={{ marginTop: 10 }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setContractRequestOpen(true);
+                                setContractRequestError("");
+                              }}
+                              style={{ width: "100%", padding: "9px 10px", border: "1px solid #d9b477", borderRadius: 8, background: "#fff", cursor: "pointer" }}
+                            >
+                              Ask again
+                            </button>
                           </div>
                         )}
 
@@ -6336,6 +6310,47 @@ $5padding: 20,
                               extended — they will agree a new end date with you.
                             </div>
                           </div>
+                        )}
+
+                        {/* !! Always available, not only after a decline.
+                          !!
+                          !! This was gated on having been declined first, so a student
+                          !! who simply decided they did not want to wait for an
+                          !! extension had no way to start a new contract at all - the
+                          !! card read as though extending were the only outcome
+                          !! available. Hiding a legitimate route is worse than offering
+                          !! both: the new-contract form states plainly that the unused
+                          !! classes do not carry over, which is the same warning the
+                          !! decline path gives. Warned, never blocked.
+                          !!
+                          !! Placed below the primary action so the hierarchy reads
+                          !! correctly - extending is what this card is for, and this is
+                          !! the way out for someone who has decided otherwise. */}
+                        {!requestingNewContract && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRequestingNewContract(true);
+                              setContractRequestOpen(false);
+                              setContractExtensionNote("");
+                              setContractRequestError("");
+                              updateContractCourse(studentProfile?.course_id || "");
+                            }}
+                            style={{
+                              marginTop: 10,
+                              padding: 0,
+                              border: "none",
+                              background: "none",
+                              color: "#7a5210",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              textDecoration: "underline",
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                          >
+                            Or let this contract go and request a new one
+                          </button>
                         )}
                       </div>
                     )}
