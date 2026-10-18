@@ -7,6 +7,7 @@ import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { apiFetch } from "../utils/apiAuth.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
+import ModalPortal from "../utils/ModalPortal.jsx";
 import {
   downloadAuthenticatedFile,
   openAuthenticatedFile,
@@ -615,20 +616,22 @@ export default function AssignTask() {
         </div>
       </div>
       {confirmAction && (
-        <div className={styles.modalBackdrop} onClick={closeConfirmAction}>
-          <section className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
-            <h2>{confirmAction.title}</h2>
-            <p className={styles.confirmBody}>{confirmAction.message}</p>
-            <div className={styles.confirmActions}>
-              <button type="button" className={styles.textBtn} onClick={closeConfirmAction}>
-                Cancel
-              </button>
-              <button type="button" className={styles.primaryBtn} onClick={performConfirmAction}>
-                {confirmAction.confirmLabel}
-              </button>
-            </div>
-          </section>
-        </div>
+        <ModalPortal>
+          <div className={styles.modalBackdrop} onClick={closeConfirmAction}>
+            <section className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
+              <h2>{confirmAction.title}</h2>
+              <p className={styles.confirmBody}>{confirmAction.message}</p>
+              <div className={styles.confirmActions}>
+                <button type="button" className={styles.textBtn} onClick={closeConfirmAction}>
+                  Cancel
+                </button>
+                <button type="button" className={styles.primaryBtn} onClick={performConfirmAction}>
+                  {confirmAction.confirmLabel}
+                </button>
+              </div>
+            </section>
+          </div>
+        </ModalPortal>
       )}
     </div>
   );

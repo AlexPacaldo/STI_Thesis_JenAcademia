@@ -14,6 +14,7 @@ import {
   useAuthenticatedFileUrl,
 } from "../utils/authenticatedFile.js";
 import { compressFileIfImage } from "../utils/imageCompression.js";
+import ModalPortal from "../utils/ModalPortal.jsx";
 
 const API = API_BASE_URL;
 
@@ -700,24 +701,26 @@ export default function AssignmentsDropbox() {
         </div>
       </div>
       {confirmAction && (
-        <div className={styles.modalBackdrop} onClick={closeConfirmAction}>
-          <section className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <h2>{confirmAction.title}</h2>
-            </div>
-            <div className={styles.modalBody}>
-              <p>{confirmAction.message}</p>
-            </div>
-            <div className={styles.modalActions}>
-              <button type="button" className={styles.textBtn} onClick={closeConfirmAction}>
-                Cancel
-              </button>
-              <button type="button" className={styles.primaryBtn} onClick={performConfirmAction}>
-                {confirmAction.confirmLabel}
-              </button>
-            </div>
-          </section>
-        </div>
+        <ModalPortal>
+          <div className={styles.modalBackdrop} onClick={closeConfirmAction}>
+            <section className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
+              <div className={styles.modalHeader}>
+                <h2>{confirmAction.title}</h2>
+              </div>
+              <div className={styles.modalBody}>
+                <p>{confirmAction.message}</p>
+              </div>
+              <div className={styles.modalActions}>
+                <button type="button" className={styles.textBtn} onClick={closeConfirmAction}>
+                  Cancel
+                </button>
+                <button type="button" className={styles.primaryBtn} onClick={performConfirmAction}>
+                  {confirmAction.confirmLabel}
+                </button>
+              </div>
+            </section>
+          </div>
+        </ModalPortal>
       )}
     </div>
   );
