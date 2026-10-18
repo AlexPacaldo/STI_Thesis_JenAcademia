@@ -19,6 +19,7 @@ import {
 import {
   adviseTeacherRanking,
   advisorCircuitOpen,
+  advisorCircuitStatus,
   recordAdvisorFailure,
   resetAdvisorCircuit,
 } from "../backend/teacherAdvisor.js";
@@ -267,12 +268,19 @@ ok("the breaker starts closed", advisorCircuitOpen() === false);
 
 const T0 = 1_700_000_000_000;
 
-recordAdvisorFailure(T0);
+// Timestamp goes third, after the reason and detail, because that is the order
+// the production call site reads in. Every call below therefore passes "" "" -
+// dropping them would silently pass the clock as the failure reason and leave
+// lastFailureAt at the real current time, which still trips the threshold but
+// never ages out. The cooldown checks below are what catch that.
+const fail = (at, reason = "", detail = "") => recordAdvisorFailure(reason, detail, at);
+
+fail(T0);
 ok("one failure does not open it", advisorCircuitOpen(T0) === false);
-recordAdvisorFailure(T0 + 10);
+fail(T0 + 10);
 ok("two failures do not open it", advisorCircuitOpen(T0 + 10) === false);
 
-recordAdvisorFailure(T0 + 20);
+fail(T0 + 20);
 ok("three in a row opens it", advisorCircuitOpen(T0 + 20) === true);
 
 // While open, the caller short-circuits, so the cooldown is measured from the
@@ -286,9 +294,37 @@ ok("reset closes the breaker", advisorCircuitOpen() === false);
 
 // And the threshold is not crossed by a long-ago failure that has since aged out.
 resetAdvisorCircuit();
-recordAdvisorFailure(T0);
-recordAdvisorFailure(T0);
+fail(T0);
+fail(T0);
 ok("a third failure long ago no longer opens it", advisorCircuitOpen(T0 + 60 * 60_000) === false);
+
+/* --------------------------------------------- the breaker keeps the cause */
+
+// This is the whole point of recording a reason. Without it the first failure -
+// the one carrying Gemini's status, model and message - is replaced by
+// "temporarily unavailable" for the whole cooldown, and the diagnosis exists
+// only in the log.
+resetAdvisorCircuit();
+fail(T0, "bad-key", "Gemini rejected the API key. Check GOOGLE_GEMINI_API_KEY on the backend.");
+fail(T0 + 10, "bad-key", "Gemini rejected the API key. Check GOOGLE_GEMINI_API_KEY on the backend.");
+fail(T0 + 20, "bad-key", "Gemini rejected the API key. Check GOOGLE_GEMINI_API_KEY on the backend.");
+
+const openStatus = advisorCircuitStatus(T0 + 20);
+ok("an open breaker is open", openStatus.open === true);
+ok("it still knows why it opened", openStatus.lastFailureReason === "bad-key");
+ok("it still has Gemini's own message", /rejected the API key/i.test(openStatus.lastFailureDetail));
+ok("it reports roughly how long is left", openStatus.retryInMs > 0 && openStatus.retryInMs <= 5 * 60_000);
+ok("it counts its consecutive failures", openStatus.consecutiveFailures === 3);
+
+// A failure with no reason of its own must not erase one we already know.
+fail(T0 + 30, "", "");
+ok("a reasonless failure keeps the previous reason", advisorCircuitStatus(T0 + 30).lastFailureReason === "bad-key");
+
+// And a success clears it, so a healthy advisor cannot go on reporting a failure
+// that no longer applies.
+resetAdvisorCircuit();
+ok("reset clears the last reason", advisorCircuitStatus().lastFailureReason === "");
+ok("reset clears the last detail", advisorCircuitStatus().lastFailureDetail === "");
 
 // The breaker must not fire on things that are not Gemini's fault. These two
 // checks are structural, because the branch order is what guarantees it.
@@ -297,7 +333,15 @@ const source = await (await import("node:fs/promises")).readFile(
   "utf8"
 );
 ok("no-candidates is decided before the breaker", source.indexOf('"no-candidates"') < source.indexOf("advisorCircuitOpen())"));
-ok("only the catch block records a failure", (source.match(/recordAdvisorFailure\(\);/g) || []).length === 1);
+// One call site, and it is the catch: every other reason is decided before the
+// call is attempted. Matched without the argument list so this keeps testing the
+// invariant rather than the shape of one line, and with a lookbehind so the
+// declaration of the function is not counted as a call.
+ok(
+  "only the catch block records a failure",
+  (source.match(/(?<!function )recordAdvisorFailure\(/g) || []).length === 1
+);
+ok("the failure is recorded with its reason and detail", /recordAdvisorFailure\(reason, err\.message\)/.test(source));
 
 /* ------------------------------------------------------------------------ done */
 

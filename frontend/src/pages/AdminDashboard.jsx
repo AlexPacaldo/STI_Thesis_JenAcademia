@@ -3135,6 +3135,36 @@ export default function AdminDashboard() {
                               Reason: <code>{aiRecommendation.advisor.reason}</code>
                             </div>
                           )}
+                          {/* An open breaker reports "temporarily-unavailable"
+                              whatever actually went wrong, so the cause behind it
+                              is the line that matters. Shown verbatim because this
+                              is where an admin should be able to finish the
+                              diagnosis without going to the deployment logs. */}
+                          {aiRecommendation.advisor.lastFailureReason &&
+                            aiRecommendation.advisor.lastFailureReason !== aiRecommendation.advisor.reason && (
+                              <div style={{ marginTop: "3px", fontSize: "0.85em" }}>
+                                Last real failure:{" "}
+                                <code>{aiRecommendation.advisor.lastFailureReason}</code>
+                              </div>
+                            )}
+                          {aiRecommendation.advisor.lastFailureDetail && (
+                            <div
+                              style={{
+                                marginTop: "3px",
+                                fontSize: "0.82em",
+                                color: "#555",
+                                wordBreak: "break-word",
+                              }}
+                            >
+                              {aiRecommendation.advisor.lastFailureDetail}
+                            </div>
+                          )}
+                          {aiRecommendation.advisor.retryInMs > 0 && (
+                            <div style={{ marginTop: "3px", fontSize: "0.82em", color: "#666" }}>
+                              Retries in about {Math.ceil(aiRecommendation.advisor.retryInMs / 60000)} minute
+                              {Math.ceil(aiRecommendation.advisor.retryInMs / 60000) === 1 ? "" : "s"}.
+                            </div>
+                          )}
                         </div>
                       )}
                       {aiRecommendation.teacher.reasons?.length > 0 && (

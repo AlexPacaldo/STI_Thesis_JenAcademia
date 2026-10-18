@@ -59,23 +59,67 @@ const CIRCUIT_COOLDOWN_MS = 5 * 60_000;
 let consecutiveFailures = 0;
 let lastFailureAt = 0;
 
+// Why the last real failure happened, kept so the breaker can report it.
+//
+// The breaker used to record only the time. That made the one failure worth
+// reading - the first one, with Gemini's own status, model name and message -
+// disappear behind "temporarily unavailable" for the whole cooldown. The
+// diagnosis then existed only in the log, so the UI could say the AI was paused
+// but never why it was paused, and those two facts point at completely
+// different fixes: a rejected key is an operator action, a rate limit is a
+// wait, a model 404 is a config change.
+//
+// lastFailureDetail is Gemini's own error text, which is why it is surfaced on
+// the admin card only. It names the status, the models tried and what Google
+// objected to; it does not contain the key, but it is more than a student needs
+// and more than a student should be shown.
+let lastFailureReason = "";
+let lastFailureDetail = "";
+
 /** True while Gemini is considered down and the rules answer should be served directly. */
 export function advisorCircuitOpen(now = Date.now()) {
   if (consecutiveFailures < CIRCUIT_FAILURES_TO_OPEN) return false;
   return now - lastFailureAt < CIRCUIT_COOLDOWN_MS;
 }
 
+/**
+ * Everything the breaker knows, for diagnosis.
+ *
+ * Exported because "is the AI down, and if so why" is a question with one true
+ * answer that lives in this module's memory, and nothing outside could answer
+ * it. Worth stating plainly: the state is per process, so this describes the
+ * container that served the request.
+ */
+export function advisorCircuitStatus(now = Date.now()) {
+  const open = advisorCircuitOpen(now);
+  const remaining = open ? Math.max(0, CIRCUIT_COOLDOWN_MS - (now - lastFailureAt)) : 0;
+  return {
+    open,
+    consecutiveFailures,
+    lastFailureReason,
+    lastFailureDetail,
+    retryInMs: remaining,
+    failuresToOpen: CIRCUIT_FAILURES_TO_OPEN,
+  };
+}
+
 function recordAdvisorSuccess() {
   consecutiveFailures = 0;
   lastFailureAt = 0;
+  // Cleared on success so a healthy advisor cannot keep reporting a failure that
+  // no longer applies. Left behind, it would outlive the thing it describes.
+  lastFailureReason = "";
+  lastFailureDetail = "";
 }
 
 // Exported so the tests can drive the breaker without a network or a bad key.
 // The state machine is the unit under test, and a module that owns hidden state
 // is only testable by breaking it for real.
-export function recordAdvisorFailure(now = Date.now()) {
+export function recordAdvisorFailure(reason = "", detail = "", now = Date.now()) {
   consecutiveFailures += 1;
   lastFailureAt = now;
+  lastFailureReason = reason || lastFailureReason;
+  lastFailureDetail = detail || lastFailureDetail;
 }
 
 /** Clear the breaker. Exported for the tests, and for an operator who has fixed the key. */
@@ -212,7 +256,18 @@ export async function adviseTeacherRanking({
     return { ok: false, reason: "no-candidates" };
   }
   if (advisorCircuitOpen()) {
-    return { ok: false, reason: "temporarily-unavailable" };
+    // Carries the cause of the failures that opened it. "Paused" on its own is
+    // the least actionable sentence in the system: it is equally true of a bad
+    // key, an exhausted quota and a model this key cannot reach, and it tells
+    // whoever is trying to fix it nothing about which one it is.
+    const status = advisorCircuitStatus();
+    return {
+      ok: false,
+      reason: "temporarily-unavailable",
+      lastFailureReason: status.lastFailureReason,
+      lastFailureDetail: status.lastFailureDetail,
+      retryInMs: status.retryInMs,
+    };
   }
 
   const candidateCount = scored.length;
@@ -304,7 +359,6 @@ export async function adviseTeacherRanking({
   } catch (err) {
     // The only place that trips the breaker. Reaching here means the call itself
     // did not work, as opposed to the call working and us not liking the answer.
-    recordAdvisorFailure();
     const reason = /not configured/i.test(err.message)
       ? "not-configured"
       : /api key/i.test(err.message)
@@ -314,6 +368,9 @@ export async function adviseTeacherRanking({
           : /too long/i.test(err.message)
             ? "timed-out"
             : "unavailable";
-    return { ok: false, reason, candidateCount };
+    // Gemini's own message goes to the breaker as well as the log, so the next
+    // request that arrives while the breaker is open can still say why.
+    recordAdvisorFailure(reason, err.message);
+    return { ok: false, reason, detail: err.message, candidateCount };
   }
 }

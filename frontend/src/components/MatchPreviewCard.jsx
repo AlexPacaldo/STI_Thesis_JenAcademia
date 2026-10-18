@@ -39,13 +39,56 @@ const ADVISOR_UNAVAILABLE = {
   "unusable-order": "The AI did not return a usable ranking, so this is the rule-based match.",
 };
 
+// The same causes as clauses rather than sentences, for the position after "the
+// last one was ...". Separate from the sentences above on purpose: reusing a
+// sentence there produces "the last one was the AI could not be reached because
+// its API key was rejected. This is a rule-based match. This is the rule-based
+// match."
+const ADVISOR_CAUSE_PHRASE = {
+  "bad-key": "its API key was rejected",
+  "rate-limited": "it was rate limited",
+  "timed-out": "it took too long to answer",
+  unavailable: "Gemini could not be reached",
+  "not-configured": "it is not set up on this server",
+};
+
+function minutesFromMs(ms) {
+  if (!ms || ms <= 0) return "";
+  const mins = Math.ceil(ms / 60000);
+  return mins >= 1 ? `about ${mins} minute${mins === 1 ? "" : "s"}` : "under a minute";
+}
+
+/**
+ * What to tell the student, given why the AI did not contribute.
+ *
+ * An open breaker reports "temporarily-unavailable" whatever actually went
+ * wrong, so the reason behind it is preferred when there is one. "Paused, and
+ * the last failure was a rejected key" is something a student can repeat to an
+ * admin; "paused" on its own is something they can only be confused by.
+ */
 function describeAdvisorUnavailable(advisor) {
   if (!advisor) return "The AI did not contribute to this match, so it is rule-based only.";
   if (!advisor.configured) return "The AI is not set up on this server, so this is the rule-based match only.";
 
-  const specific = ADVISOR_UNAVAILABLE[advisor.reason];
+  const cause = advisor.lastFailureReason || advisor.reason;
+
+  // Only when the breaker is the reported reason and something else caused it.
+  // Otherwise reason already IS the cause and the sentence below says it better.
+  if (advisor.reason === "temporarily-unavailable" && cause !== advisor.reason) {
+    const phrase = ADVISOR_CAUSE_PHRASE[cause];
+    const wait = minutesFromMs(advisor.retryInMs);
+    if (phrase) {
+      return (
+        `The AI paused itself after repeated failures - the last one was that ` +
+        `${phrase}.` +
+        (wait ? ` It will try again in ${wait}.` : "") +
+        " This is the rule-based match."
+      );
+    }
+  }
+
   return (
-    specific ||
+    ADVISOR_UNAVAILABLE[advisor.reason] ||
     "The AI could not be reached for this request, so this is the rule-based match only."
   );
 }

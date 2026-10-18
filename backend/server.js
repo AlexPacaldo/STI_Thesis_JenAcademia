@@ -2956,7 +2956,19 @@ async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNo
         candidateCount: advisor.candidateCount || 0,
         shortlistSize: advisor.shortlistSize || 0,
       }
-    : { used: false, configured: isTeacherAdvisorConfigured(), reason: advisor.reason || "" };
+    : {
+        used: false,
+        configured: isTeacherAdvisorConfigured(),
+        reason: advisor.reason || "",
+        // The cause of the failures that tripped the breaker, plus how long
+        // until it is worth trying again. Without these, an open breaker
+        // reported "temporarily unavailable" and hid the one failure worth
+        // reading - so the only way to find out why the AI was down was to go
+        // and read the server log.
+        lastFailureReason: advisor.lastFailureReason || advisor.reason || "",
+        lastFailureDetail: advisor.lastFailureDetail || advisor.detail || "",
+        retryInMs: advisor.retryInMs || 0,
+      };
 
   if (advisor.ok && advisor.shortlisted) {
     console.log(
@@ -5650,6 +5662,12 @@ app.post("/api/student/contract-match-preview", requireSession, requireBodyIdent
             // Safe to send: a fixed enum string computed in teacherAdvisor.js,
             // carrying nothing about the server or the key.
             reason: recommendation.advisor.reason || "",
+            // The underlying cause of a tripped breaker, and roughly how long
+            // until it retries. Both are enum-ish strings and a millisecond
+            // count - nothing about the server or the key is sent here. The
+            // human-readable detail is deliberately NOT sent to a student.
+            lastFailureReason: recommendation.advisor.lastFailureReason || "",
+            retryInMs: recommendation.advisor.retryInMs || 0,
             summary: recommendation.advisor.summary || "",
             reasons: recommendation.advisor.reasons || {},
           }
