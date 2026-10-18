@@ -1,0 +1,253 @@
+================================================================================
+ JEN ACADEMIA - DEMO ACCOUNTS FOR THE THESIS DEFENSE
+================================================================================
+
+ Password for EVERY account below:      JEN2026!
+
+ Prepared: 18 October 2026
+ Run after wiping the database. See "HOW TO RUN" at the bottom.
+
+
+--------------------------------------------------------------------------------
+ 1. THE ACCOUNTS
+--------------------------------------------------------------------------------
+
+ADMIN
+  admin@jenacademia.local              Jennifer Santos
+
+  You drive the whole demo from this account.
+
+
+TEACHERS  (all password JEN2026!)
+
+  maia.cruz@jenacademia.local           Maia Cruz
+      Conversational English, Travel English
+      !! DECLINES CHILDREN - this is the important one. She is the strongest
+         conversational fit in the whole school, so the AI will rank her FIRST
+         for a shy child. The age rule then overrules the AI. That is the
+         single most persuasive thing in this data set.
+
+  rafael.santos@jenacademia.local       Rafael Santos
+      Conversational English, Online English
+      Kids and novice English, structured and visual, slow pace, 6 years.
+      THE CORRECT ANSWER for a shy child - and he wins on the rule alone.
+
+  gina.delacruz@jenacademia.local       Gina Dela Cruz
+      IELTS, TOEIC
+      12 years, exam preparation, review-heavy. The clean STRONG MATCH.
+
+  ben.martin@jenacademia.local          Ben Martin
+      Conversational English, IELTS
+      !! AT THE 2-STUDENT LIMIT. Loads the workload rule so it has to act.
+
+  clara.reyes@jenacademia.local         Clara Reyes
+      Online English only
+      !! DELIBERATELY THIN PROFILE - no specialisation, no style, no pace.
+         Ranks last in every pool. This is what makes "Closest available, not a
+         strong match" appear on screen when the best available is still poor.
+
+  dario.lim@jenacademia.local           Dario Lim
+      ALL NINE COURSES
+      The generalist. Always in the pool, always a credible second answer.
+
+
+STUDENTS  (already created, all password JEN2026!)
+
+  beatrice.alvarez@student...          Beatrice Alvarez, 28, IELTS
+      12 classes, bought 10 days ago          -> ~80 days left   (green badge)
+      Assigned to Gina Dela Cruz
+
+  carlos.mendoza@student...            Carlos Mendoza, 34, Conversational
+      8 classes, bought 81 days ago           ->   ~9 days left   (AMBER badge)
+      Assigned to Ben Martin
+      This student would ALREADY have received the expiry warning notification.
+
+  danica.pope@student...               Danica Pope, 22, TOEIC
+      6 classes, bought 100 days ago          -> EXPIRED          (red badge)
+      Assigned to Gina Dela Cruz
+      The server flips this to expired by itself on the next sweep - it is not
+      hand-edited, so the demo is showing the real rule running.
+
+  evan.torres@student...               Evan Torres, 26, Conversational
+      10 classes, bought 4 days ago           -> ~86 days left
+      Assigned to Ben Martin
+      Ben's SECOND student. He is now exactly on the 2-student limit.
+
+  noah.garcia@student...               Noah Garcia, Travel English
+      !! NO BIRTHDAY ON FILE.
+      Assigned to Maia Cruz
+      Creates the "no birthday on file, so teachers who decline children could
+      not be ruled out" disclosure.
+
+
+--------------------------------------------------------------------------------
+ 2. THE DEMO - 8 STEPS, IN THIS ORDER
+--------------------------------------------------------------------------------
+
+STEP 1 - Sign in as admin. Open Create Student.
+    This is the centrepiece. Fill it in exactly:
+
+      Name            Ava Reyes
+      Birthday        2015-03-12        (11 years old - this matters)
+      Course          Conversational English
+      Level scores    score all five, beginner range
+
+      Learning Goal   Conversation
+      Focus Area      Speaking
+                      [x] Others  ->  "public speaking nerves"
+      Learning Style  Conversational Practice
+      Learning Pace   Balanced
+
+      Trial notes:
+        "Very shy. Froze when asked to describe her weekend. Understands
+         grammar well but will not speak unless she is asked directly by name."
+
+      Preferred schedule   Saturday, 09:00 - 11:00
+
+STEP 2 - Click ANALYZE. Let it load.
+
+    Point out, in order:
+      a) The AI read the trial notes and EXTRACTED criteria you did not type -
+         it turns "froze when asked to describe her weekend" into a speaking
+         focus area.
+      b) It ranked the candidates and gave a one-sentence reason for each.
+      c) Maia Cruz is ranked FIRST. She is the best conversational fit in the
+         school.
+      d) BUT the student is 11, and Maia has declined children. She is not
+         recommended.
+         >>> THIS IS THE POINT OF THE WHOLE SYSTEM. <<<
+         The AI's opinion is advisory. Eligibility is not. The computer decides
+         who is allowed; the AI only decides the order.
+      e) Rafael Santos is recommended instead - and he won on the RULE, not on
+         the AI's preference.
+
+STEP 3 - Look at the availability line. Ben Martin cannot do Saturday mornings
+    and has moved down. Availability is applied AFTER the AI too, so a model
+    that put him first does not get to keep him there.
+
+STEP 4 - Point out the match strength. Ava should read STRONG or PARTIAL with a
+    green/amber badge. Say plainly: "the computer tells the admin how good this
+    actually is, not just who it picked."
+
+STEP 5 - Contracts tab. Point at the Expires column and its three colours:
+      Beatrice   ~80 days   green    comfortable
+      Carlos       ~9 days  AMBER    warned already
+      Danica      expired    red      the rule ran by itself
+
+STEP 6 - Teacher students page. Sign in as ben.martin@..., open Students.
+    Two students, and the expiry badge is on THEIR view too. The teacher can see
+    whether those classes are still bookable.
+
+STEP 7 - Create Kyla Bautista, 16, Conversational English, and set criteria
+    that NOBODY in this school covers well. Set her Learning Goal to
+    "School Support" - only Rafael's Online English profile touches that.
+    Analyze.
+    >>> THE CARD SHOULD READ, IN RED:
+        "Closest available, not a strong match. 1 of the 4 criteria you set are
+         covered by this teacher. Nobody here fits better."
+    This is the system being honest rather than pretending. Clara Reyes exists
+    in the data precisely so this case is demonstrable.
+
+STEP 8 - THE FALLBACK. This is the one that wins the argument.
+
+    In Railway (or your .env), set the Gemini key to anything invalid, e.g.
+        GOOGLE_GEMINI_API_KEY=not-a-real-key
+    and redeploy. Then analyze Ava again.
+
+    >>> The recommendation STILL APPEARS - and it is the old rule-based
+        ranking, unchanged. On the card it says plainly:
+        "The AI ranking was unavailable, so these are the rule-based scores
+         instead."
+
+    Then click ANALYZE three more times in a row.
+    >>> It now answers INSTANTLY. Three failures in a row trip a circuit
+        breaker, so it stops calling for five minutes instead of making you
+        wait 25 seconds per click to be handed the old answer.
+
+    Say: "The AI is an enhancement. It is never the only path to a result, and a
+    degraded result is never dressed up as a considered one."
+
+    RESET: put the real key back and redeploy.
+
+--------------------------------------------------------------------------------
+ 3. WHAT EACH PIECE DEMONSTRATES, IN ONE LINE EACH
+--------------------------------------------------------------------------------
+
+  AI reorders, never decides ....... Step 2d - Maia ranked first, not chosen
+  Hard constraint beats the AI .... Steps 2d, 3 - age rule, availability
+  Rules as the fallback ............. Step 8 - identical answer, no AI
+  Fast fallback, not a 25s hang ..... Step 8 - circuit breaker after 3 failures
+  AI reads what the admin did not type  Step 2a - notes become criteria
+  Free text ("Others") is honoured .. Step 2 - "public speaking nerves"
+  Honest when nothing fits well ..... Step 7 - "Closest available"
+  Unknown data is disclosed ......... Noah Garcia - no birthday on file
+  Workload is respected ............. Ben Martin - 2 students, rule acts
+  Contracts expire on time .......... Step 5 - 3 badge states
+  Explainable, every time ........... Rule scores shown beside the AI's reasons
+
+--------------------------------------------------------------------------------
+ 4. HOW TO RUN
+--------------------------------------------------------------------------------
+
+  1. Wipe the database.
+
+  2. Seed the accounts:
+
+         cd backend
+         node ../scripts/seed-demo-data.mjs
+
+     It reads backend/.env, so it uses the same credentials as the server.
+     It is safe to re-run - it updates the same rows rather than duplicating.
+
+  3. START THE SERVER ONCE, then stop it.
+
+     This matters. The first boot is what:
+       - derives each contract's expires_at from created_at (3 months)
+       - encrypts the seeded notes and birth dates
+       - flips Danica's package to 'expired', because the rule says so
+
+     Without that boot you will see no expiry dates.
+
+  4. Sign in as admin@jenacademia.local / JEN2026!
+
+  5. Work through section 2 in order.
+
+--------------------------------------------------------------------------------
+ 5. IF SOMETHING LOOKS WRONG
+--------------------------------------------------------------------------------
+
+  "No teachers matched" on Ava
+      Check Rafael and Maia are assigned to Conversational English
+      (Teacher Courses, admin side). The candidate pool is by COURSE.
+
+  No expiry dates anywhere
+      The server has not booted since you seeded. Do step 3.
+
+  "No active students found" on Contracts
+      The seed inserts students directly with profile_completed = TRUE. If you
+      created your own students through the form they are still FALSE until
+      they finish their setup invite, and this screen will not list them.
+
+  The AI section says nothing
+      GEMINI_API_KEY / GOOGLE_GEMINI_API_KEY is not set in production. The
+      rules-only path is working correctly - that is Step 8's fallback.
+
+  Clara Reyes looks like a bug
+      She is deliberate. A thin profile is the honest way to make the
+      "closest available, not a strong match" state reachable.
+
+--------------------------------------------------------------------------------
+ 6. A NOTE ON HONESTY
+--------------------------------------------------------------------------------
+
+  Every number in this demo is real, and every "state" is produced by the real
+  rule rather than typed into a field.
+
+  Danica's expired package was not marked expired by the seed. The seed gave her
+  a purchase date 100 days ago and the server worked out the rest. If you can
+  show that, the defense is stronger than if you had set the status by hand.
+
+  The same is true of Carlos's amber badge and the fact that a real notification
+  is sitting in his bell.
+
+================================================================================
