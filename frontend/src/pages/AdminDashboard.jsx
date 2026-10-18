@@ -405,18 +405,6 @@ export default function AdminDashboard() {
   const [me, setMe] = useState(null);
   const currentAdminId = me?.id || me?.user_id || me?.userId;
 
-  // Select the whole link the moment the fallback dialog opens, so Ctrl+C works
-  // straight away. Making the admin click into a field, drag across a URL and
-  // copy it by hand is the friction this dialog exists to remove - it is only
-  // reached when the automatic route has already failed.
-  useEffect(() => {
-    if (!inviteManualCopy) return;
-    const input = inviteCopyInputRef.current;
-    if (!input) return;
-    input.focus();
-    input.select();
-  }, [inviteManualCopy]);
-
   useEffect(() => {
     const requestedTab = new URLSearchParams(location.search).get("tab");
     const nextActive = getAdminTabFromSearch(location.search);
@@ -570,6 +558,25 @@ export default function AdminDashboard() {
   const [studentAccountLoading, setStudentAccountLoading] = useState(false);
   const [studentEmailDraft, setStudentEmailDraft] = useState("");
   const [studentAccountActionLoading, setStudentAccountActionLoading] = useState("");
+
+  // Select the whole link the moment the fallback dialog opens, so Ctrl+C works
+  // straight away. Making the admin click into a field, drag across a URL and
+  // copy it by hand is the friction this dialog exists to remove - it is only
+  // reached when the automatic route has already failed.
+  //
+  // !! This has to sit BELOW the declarations it reads. The dependency array is
+  // !! evaluated during render, and a `const` further down the function body is in
+  // !! its temporal dead zone until that line executes - so reading it here threw
+  // !! "Cannot access 'inviteManualCopy' before initialization" and took the
+  // !! whole admin dashboard down with it. Moving the hook after the useState is
+  // !! the fix; the array itself cannot be lazy.
+  useEffect(() => {
+    if (!inviteManualCopy) return;
+    const input = inviteCopyInputRef.current;
+    if (!input) return;
+    input.focus();
+    input.select();
+  }, [inviteManualCopy]);
   // ---- book library (admin is the only role that can author or distribute) ----
   const [books, setBooks] = useState([]);
   const [booksLoading, setBooksLoading] = useState(false);
