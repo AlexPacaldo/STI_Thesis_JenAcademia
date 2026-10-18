@@ -6251,9 +6251,10 @@ $5padding: 20,
                                 {isSubmittingContractRequest ? "Sending..." : "Send Request"}
                               </button>
                             </div>
-                            <div style={{ fontSize: 11, color: "#6b5a3c" }}>
-                              Payment is handled outside this system, so nothing is charged here. The
-                              admin decides how much longer the contract runs.
+                            <div style={{ fontSize: 11, color: "#6b5a3c", lineHeight: 1.5 }}>
+                              Payment is handled outside this system, so nothing is charged here.
+                              Talk to the admin about how long you would like your contract
+                              extended — they will agree a new end date with you.
                             </div>
                           </div>
                         )}
