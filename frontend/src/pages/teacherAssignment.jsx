@@ -149,6 +149,59 @@ function SubmissionFile({ url }) {
   );
 }
 
+/**
+ * Confirm before deleting an assignment, reached from a submission row.
+ *
+ * The wording differs from the My Assignments tab on purpose. That list shows
+ * one row per assignment and can count its submissions, but this panel shows
+ * only the selected student's work - so it under-reports. Saying "1 file would
+ * be deleted" here would quietly understate the damage when three of the
+ * teacher's students have answered the same task. So the count is phrased as
+ * what this view can actually see, and the fact that other students may also
+ * have work on it is stated outright rather than implied.
+ *
+ * Defined at module scope, so the two things it closes over are passed in
+ * rather than captured.
+ */
+function requestDeleteFromSubmission(assignment, knownSubmissions, selectedStudentId, setConfirmAction) {
+  if (!assignment) return;
+
+  const visible = knownSubmissions.filter(
+    (item) => String(item.assignmentId) === String(assignment.id)
+  );
+  const otherStudents = visible.filter(
+    (item) => String(item.studentId) !== String(selectedStudentId)
+  );
+
+  const lines = [
+    `"${assignment.name || "Assignment"}" will be deleted permanently.`,
+  ];
+
+  if (visible.length > 0) {
+    lines.push(
+      `This removes the submitted ${visible.length === 1 ? "file" : "files"} shown here${
+        visible[0].student ? ` from ${visible[0].student}` : ""
+      }.`
+    );
+  }
+
+  if (otherStudents.length > 0) {
+    lines.push(
+      `It also removes anything other students submitted for this same task.`
+    );
+  }
+
+  lines.push("This cannot be undone.");
+
+  setConfirmAction({
+    type: "delete-assignment",
+    assignment,
+    title: "Delete this assignment?",
+    message: lines.join(" "),
+    confirmLabel: "Delete",
+  });
+}
+
 function getAssignmentInstructions(submission, assignments) {
   if (submission.assignmentInstructions) return submission.assignmentInstructions;
   const assignment = assignments.find(
@@ -402,6 +455,14 @@ export default function AssignTask() {
   const currentSubmissions = submissions.filter(
     (item) => String(item.studentId) === String(selectedStudentId)
   );
+
+  // A submission carries only the assignment's id and title, but the delete
+  // endpoint needs the full row - most importantly the exact title to send back
+  // as its confirmation token. Looked up from the already-loaded list.
+  const findAssignment = (assignmentId) =>
+    teacherAssignments.find(
+      (item) => String(item.id ?? item.assignmentId) === String(assignmentId)
+    );
 
   // Newest first, so a mistake made moments ago is the first thing seen.
   const postedAssignments = useMemo(
@@ -661,6 +722,21 @@ export default function AssignTask() {
                                 }}
                               >
                                 {isExpanded ? "Hide" : "View"}
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.deleteBtn}
+                                onClick={() =>
+                                  requestDeleteFromSubmission(
+                                    findAssignment(item.assignmentId),
+                                    submissions,
+                                    selectedStudentId,
+                                    setConfirmAction
+                                  )
+                                }
+                                aria-label={`Delete ${item.assignmentName || "assignment"}`}
+                              >
+                                Delete
                               </button>
                             </div>
                           </div>

@@ -705,6 +705,16 @@
   white-space: nowrap;
 }
 
+/* Delete on a submission row. Sized to match .submissionAction next to it, but
+   outlined in the destructive colour rather than filled with the primary one -
+   a permanent action should not read as the same kind of control as "View". */
+.submissionActions .deleteBtn {
+  min-height: 36px;
+  padding: 0.5rem 1.05rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
 .submissionStatus {
   display: inline-flex;
   align-items: center;
