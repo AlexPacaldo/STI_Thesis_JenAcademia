@@ -3991,24 +3991,36 @@ app.get("/api/users/:id", requireSession, async (req, res) => {
     let roleDetails = {};
 
     if (u.role === "student") {
+      // The most recent package, preferring an active one.
+      //
+      // !! This used to join on scp.status = 'active', which meant a student
+      // !! whose contract had run out got no package fields at all - no
+      // !! classes count, and above all no expiry. Their own account page
+      // !! could not tell them their contract had ended, which is the single
+      // !! thing that page most needs to say. Same resolution the teacher's
+      // !! Students page already uses, so both agree on what "this student's
+      // !! contract" means.
+      //
+      // !! These notes have to live OUTSIDE the template literal. Written inside
+      // !! it they became part of the SQL text, and MySQL rejected the whole
+      // !! query with ER_PARSE_ERROR - which surfaced as a bare HTTP 500 and a
+      // !! student account page that silently rendered as though the student had
+      // !! no contract at all. Comments in a query string are not comments.
+      //
+      // !! scp.package_id is selected because the account page keys "does this
+      // !! student have a contract at all" off it. Without that column the page
+      // !! reported no contract for students who demonstrably had one - a quieter
+      // !! version of the same mistake, and the reason the "none" state is worth
+      // !! having but must never be reached by accident.
       const [studentRows] = await pool.query(
         `SELECT sp.proficiency_level, sp.assigned_teacher_id, sp.trial_notes,
                 c.course_id, c.course_name, c.description AS course_description, c.duration AS course_duration,
                 t.first_name AS teacher_first_name, t.last_name AS teacher_last_name, t.email AS teacher_email,
-                scp.total_classes, scp.classes_used, scp.classes_left, scp.class_duration,
+                scp.package_id, scp.total_classes, scp.classes_used, scp.classes_left, scp.class_duration,
                 scp.status AS package_status, scp.expires_at AS package_expires_at
          FROM student_profiles sp
          LEFT JOIN courses c ON c.course_id = sp.course_id
          LEFT JOIN users t ON t.user_id = sp.assigned_teacher_id
-         // The most recent package, preferring an active one.
-         //
-         // !! This used to join on scp.status = 'active', which meant a student
-         // !! whose contract had run out got no package fields at all - no
-         // !! classes count, and above all no expiry. Their own account page
-         // !! could not tell them their contract had ended, which is the single
-         // !! thing that page most needs to say. Same resolution the teacher's
-         // !! Students page already uses, so both agree on what "this student's
-         // //! contract" means.
          LEFT JOIN student_class_packages scp
            ON scp.student_id = sp.user_id
           AND scp.package_id = (
