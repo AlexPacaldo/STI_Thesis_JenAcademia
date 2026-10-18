@@ -2157,6 +2157,48 @@ async function removeStudentPackageDateColumns() {
   }
 }
 
+/**
+ * Give student_class_packages a deadline and a "we told them" marker.
+ *
+ * Named expires_at rather than the old package_end_date on purpose:
+ * removeStudentPackageDateColumns() drops package_start_date and
+ * package_end_date on every boot, so reusing either name would have the new
+ * column deleted at the next restart. That function stays as it is - it is still
+ * doing the job it was written to do.
+ *
+ * Backfilled from created_at, which is the purchase moment, so existing packages
+ * get the same 3-month term as new ones rather than quietly being exempt.
+ */
+async function ensureStudentClassPackageExpiryColumns() {
+  if (!(await columnExists("student_class_packages", "expires_at"))) {
+    await pool.query(
+      "ALTER TABLE student_class_packages ADD COLUMN expires_at DATETIME NULL DEFAULT NULL AFTER status"
+    );
+  }
+
+  if (!(await columnExists("student_class_packages", "expiry_notified_at"))) {
+    await pool.query(
+      "ALTER TABLE student_class_packages ADD COLUMN expiry_notified_at DATETIME NULL DEFAULT NULL AFTER expires_at"
+    );
+  }
+
+  // Re-runnable: only rows with no deadline get one, so a restart does not keep
+  // pushing an existing expiry further out.
+  await pool.query(
+    `UPDATE student_class_packages
+        SET expires_at = DATE_ADD(created_at, INTERVAL ? MONTH)
+      WHERE expires_at IS NULL
+        AND created_at IS NOT NULL`,
+    [CONTRACT_TERM_MONTHS]
+  );
+
+  try {
+    await pool.query("CREATE INDEX idx_packages_expiry ON student_class_packages (status, expires_at)");
+  } catch {
+    // Present already after the first boot. Not worth a noisy failure path.
+  }
+}
+
 async function ensureTeacherCoursesTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS teacher_courses (
@@ -2323,8 +2365,9 @@ async function prepareDatabase() {
   await encryptExistingPlaintextMessages();
   await encryptExistingSensitiveData();
   await removeStudentPackageDateColumns();
+  await ensureStudentClassPackageExpiryColumns();
   await ensureTeacherCoursesTable();
-  await expireDepletedPackages();
+  await expireFinishedPackages();
   await deletePastTeacherAvailability();
 }
 
@@ -2788,19 +2831,101 @@ async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNo
   return result;
 }
 
-function packageStatusFromUsage(status, totalClasses, classesUsed) {
+// A contract runs for a fixed term as well as for a fixed number of classes.
+// Both limits apply and whichever runs out first ends it, so a student who takes
+// one class a month still finishes inside three months, and one who attends
+// weekly finishes on the class count first.
+//
+// The term runs from purchase. created_at IS the purchase moment for every
+// package in the system, which is why no separate start date is stored: one
+// timestamp, and the deadline is derived from it.
+const CONTRACT_TERM_MONTHS = 3;
+
+// How far ahead of the deadline the student is told. Long enough to actually
+// book the classes they have left, short enough that it is still news.
+const CONTRACT_EXPIRY_WARNING_DAYS = 14;
+
+function packageStatusFromUsage(status, totalClasses, classesUsed, expiresAt = null) {
   const normalizedStatus = ["active", "expired", "cancelled"].includes(status) ? status : "active";
   const total = Math.max(0, parseInt(totalClasses, 10) || 0);
   const used = Math.max(0, parseInt(classesUsed, 10) || 0);
-  return total - used <= 0 ? "expired" : normalizedStatus;
+  if (total - used <= 0) return "expired";
+  // A cancelled or already-expired package stays that way. Only an ACTIVE one
+  // can be expired by the clock running out.
+  if (normalizedStatus !== "active") return normalizedStatus;
+  if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) return "expired";
+  return normalizedStatus;
 }
 
-async function expireDepletedPackages(db = pool) {
+/**
+ * End contracts that are finished, by either limit.
+ *
+ * Deliberately an UPDATE on the stored status rather than only a computed one,
+ * so every reader - the student's own page, the booking gate, the admin list -
+ * gets the same answer without each re-deriving the deadline for itself.
+ */
+async function expireFinishedPackages(db = pool) {
   await db.query(
     `UPDATE student_class_packages
-     SET status = 'expired'
-     WHERE status = 'active' AND classes_left <= 0`
+      SET status = 'expired'
+      WHERE status = 'active'
+        AND (classes_left <= 0 OR (expires_at IS NOT NULL AND expires_at <= NOW()))`
   );
+}
+
+/**
+ * Tell students whose contract is about to run out.
+ *
+ * Once per package, tracked by expiry_notified_at. Without that this re-sends on
+ * every sweep, and the sweep runs every minute - a student would get the same
+ * warning 960 times a day.
+ *
+ * Best-effort by design. A failed notification must never stop the sweep or
+ * block a booking; the contract expires on time regardless, and a student who
+ * misses the warning finds out when they try to book.
+ */
+async function notifyUpcomingContractExpirations(db = pool) {
+  const [rows] = await db.query(
+    `SELECT p.package_id, p.student_id, p.total_classes, p.classes_used, p.expires_at
+       FROM student_class_packages p
+       JOIN users u ON u.user_id = p.student_id
+      WHERE p.status = 'active'
+        AND p.expiry_notified_at IS NULL
+        AND p.expires_at IS NOT NULL
+        AND p.expires_at <= DATE_ADD(NOW(), INTERVAL ? DAY)
+        AND u.status = 'active'`,
+    [CONTRACT_EXPIRY_WARNING_DAYS]
+  );
+
+  for (const row of rows) {
+    const when = new Date(row.expires_at);
+    const pretty = Number.isNaN(when.getTime())
+      ? "soon"
+      : when.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    const left = Math.max(0, Number(row.total_classes || 0) - Number(row.classes_used || 0));
+
+    await db.query(
+      `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+       VALUES (?, 'general', ?, ?, ?, 'contract_expiry', '/Calendar')`,
+      [
+        row.student_id,
+        "Your contract expires soon",
+        encryptNullableText(
+          `Your contract expires on ${pretty}. You have ${left} of ${row.total_classes} classes left to book before then, or they will be lost.`
+        ),
+        row.package_id,
+      ]
+    );
+
+    // Flagged only after the notification is written. If the insert throws, the
+    // flag stays clear and the next sweep tries again, which is what we want.
+    await db.query(
+      "UPDATE student_class_packages SET expiry_notified_at = NOW() WHERE package_id = ?",
+      [row.package_id]
+    );
+  }
+
+  return rows.length;
 }
 
 const AUTO_MARK_PAST_CLASSES_INTERVAL_MS = 60 * 1000;
@@ -3749,7 +3874,8 @@ app.get("/api/users/:id", requireSession, async (req, res) => {
         `SELECT sp.proficiency_level, sp.assigned_teacher_id, sp.trial_notes,
                 c.course_id, c.course_name, c.description AS course_description, c.duration AS course_duration,
                 t.first_name AS teacher_first_name, t.last_name AS teacher_last_name, t.email AS teacher_email,
-                scp.total_classes, scp.classes_used, scp.classes_left, scp.status AS package_status
+                scp.total_classes, scp.classes_used, scp.classes_left, scp.status AS package_status,
+             scp.expires_at AS package_expires_at
          FROM student_profiles sp
          LEFT JOIN courses c ON c.course_id = sp.course_id
          LEFT JOIN users t ON t.user_id = sp.assigned_teacher_id
@@ -4819,7 +4945,7 @@ app.put("/api/admin/users/:userId/email", requireAdminSession, async (req, res) 
 
 app.get("/api/admin/student-contracts", requireAdminSession, async (_req, res) => {
   try {
-    await expireDepletedPackages();
+    await expireFinishedPackages();
 
     const [rows] = await pool.query(
       `SELECT u.user_id, u.first_name, u.last_name, u.email,
@@ -6987,7 +7113,7 @@ app.get("/api/calendar/student-package/:student_id", requireSession, async (req,
       return res.status(403).json({ message: "You can only view your own records." });
     }
     const { student_id } = req.params;
-    await expireDepletedPackages();
+    await expireFinishedPackages();
 
     const { package: packageInfo, bookedClasses, bookableClasses } = await getStudentPackageAvailability(pool, student_id);
 
@@ -8734,7 +8860,10 @@ app.get("/api/student/profile/:student_id", requireSession, async (req, res) => 
     }
 
     const [packageRows] = await pool.query(
-      `SELECT * FROM student_class_packages WHERE student_id = ? AND status = 'active'`,
+      `SELECT * FROM student_class_packages
+        WHERE student_id = ?
+          AND status = 'active'
+          AND (expires_at IS NULL OR expires_at > NOW())`,
       [student_id]
     );
 
@@ -11636,9 +11765,12 @@ reportUploadPersistence();
 const runClassStatusSweep = async () => {
   try {
     await Promise.all([
-      expireDepletedPackages(pool),
+      expireFinishedPackages(pool),
       autoMarkPastClassesAsNoShow(pool),
       cleanupExpiredClassRecordings(pool),
+      // After the expiry pass, so a package that has just expired is not warned
+      // about on its way out.
+      notifyUpcomingContractExpirations(pool),
     ]);
   } catch (err) {
     console.error("Class status sweep error:", err);
