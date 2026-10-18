@@ -6,7 +6,7 @@ import { getStoredUserTimezone } from "../utils/timezone.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { apiFetch } from "../utils/apiAuth.js";
-import { openAuthenticatedFile } from "../utils/authenticatedFile.js";
+import { openAssignmentFile } from "../utils/authenticatedFile.js";
 import { useNotification } from "../components/NotificationContainer.jsx";
 
 const API = API_BASE_URL;
@@ -170,7 +170,7 @@ export default function Assignments() {
                         type="button"
                         className={styles.attachmentBadge}
                         onClick={() =>
-                          openAuthenticatedFile(r.attachmentUrl).catch(() =>
+                          openAssignmentFile(r.attachmentUrl).catch(() =>
                             notify?.("That file could not be opened. Please try again.", "error")
                           )
                         }

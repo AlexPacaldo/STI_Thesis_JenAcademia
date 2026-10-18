@@ -171,6 +171,51 @@ export async function openAuthenticatedFile(path) {
   setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }
 
+/**
+ * Open an assignment attachment in a new tab, titled with its real filename.
+ *
+ * openAuthenticatedFile cannot do this. It has to work through a blob: URL,
+ * because /uploads is behind the session token and a tab navigation cannot
+ * send the header - and a blob URL's path is a random ID the browser uses as
+ * the filename, so the PDF viewer titles the tab "3463429d-9273-..." instead of
+ * the teacher's filename. So this asks the backend for a short-lived signed URL
+ * that carries the name in its last segment. See backend/fileLink.js.
+ *
+ * The filename is deliberately not sent from here: the server reads it from the
+ * database, so what the tab ends up called cannot be decided by the caller.
+ *
+ * The tab is still opened before the first await, for the same pop-up reason as
+ * above - minting the link needs a round trip.
+ */
+export async function openAssignmentFile(path) {
+  const tab = window.open("", "_blank");
+  if (tab) tab.opener = null;
+
+  let link;
+  try {
+    const res = await apiFetch(`${API_BASE_URL}/api/assignment-attachments/link`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: path }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Could not open that file");
+    link = data.url;
+  } catch (err) {
+    // No point leaving an empty tab behind.
+    tab?.close();
+    throw err;
+  }
+
+  if (!tab) {
+    throw new Error(
+      "Your browser is blocking pop-ups for this site. Allow them for this site to open the file in a new tab."
+    );
+  }
+
+  tab.location.href = link;
+}
+
 /** Save a stored file, through the session. */
 export async function downloadAuthenticatedFile(path, filename) {
   const objectUrl = await fetchObjectUrl(path);

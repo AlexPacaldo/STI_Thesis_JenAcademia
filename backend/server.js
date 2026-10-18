@@ -24,6 +24,7 @@ import {
 import { CONTRACT_EXPIRY_WARNING_DAYS, CONTRACT_TERM_MONTHS } from "./contractTerms.js";
 import { createRateLimiter } from "./rateLimit.js";
 import { readBearerToken, signSessionToken, verifySessionToken } from "./sessionToken.js";
+import { signFileLink, verifyFileLink } from "./fileLink.js";
 import { deleteRecordingFromDrive, extractDriveFileId, isGoogleDriveConfigured, uploadRecordingToDrive } from "./googleDrive.js";
 import {
   buildLevelEvaluationNotes,
@@ -455,6 +456,35 @@ function uploadedFileUrl(req, file) {
   if (!file) return null;
   return `${req.protocol}://${req.get("host")}/uploads/assignments/${encodeURIComponent(file.filename)}`;
 }
+
+// For GET /f, which streams a file off disk and so has no req.file.mimetype to
+// read. Without a correct type the browser downloads instead of rendering, which
+// is the one thing that route exists to avoid.
+const MIME_BY_EXTENSION = {
+  ".pdf": "application/pdf",
+  ".txt": "text/plain; charset=utf-8",
+  ".csv": "text/csv; charset=utf-8",
+  ".md": "text/markdown; charset=utf-8",
+  ".json": "application/json",
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xls": "application/vnd.ms-excel",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".ppt": "application/vnd.ms-powerpoint",
+  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".m4a": "audio/mp4",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+};
 
 const profileStorage = multer.diskStorage({
   destination: profileUploadDir,
@@ -9836,6 +9866,117 @@ app.get("/api/assignments/:assignment_id", requireSession, async (req, res) => {
     console.error("GET /api/assignments/:assignment_id error:", err);
     res.status(500).json({ message: "Error fetching assignment" });
   }
+});
+
+// Mint a short-lived link for opening an assignment attachment in a new tab.
+//
+// The caller names the file it wants; the database decides whether it gets it.
+// Resolving the row first is also what scopes the signed link to one
+// assignment, so a leaked link cannot be edited into a different file's.
+app.post("/api/assignment-attachments/link", requireSession, async (req, res) => {
+  try {
+    const { url } = req.body || {};
+    if (!url) {
+      return res.status(400).json({ message: "A file url is required" });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT assignment_id, attachment_name
+       FROM assignments
+       WHERE attachment_url = ?
+       LIMIT 1`,
+      [url]
+    );
+
+    const assignment = rows[0];
+    if (!assignment) {
+      return res.status(404).json({ message: "That file is no longer available." });
+    }
+    if (!(await sessionMayReadAssignment(req, assignment.assignment_id))) {
+      return res.status(403).json({ message: "You can only open files on your own assignments." });
+    }
+
+    const name = assignment.attachment_name || "Attachment";
+    const token = signFileLink(
+      { assignmentId: assignment.assignment_id, filename: name },
+      { secret: SESSION_SECRET }
+    );
+
+    res.json({
+      // The filename is a URL segment so the browser titles the tab with it.
+      // It is display only - nothing reads the file from it.
+      url: `${req.protocol}://${req.get("host")}/f/${token}/${encodeURIComponent(name)}`,
+      filename: name,
+    });
+  } catch (err) {
+    console.error("POST /api/assignment-attachments/link error:", err);
+    res.status(500).json({
+      message: "Could not open that file",
+      ...(process.env.NODE_ENV !== "production" ? { error: err.message } : {}),
+    });
+  }
+});
+
+/**
+ * Serve one assignment attachment by signed link, for viewing in a new tab.
+ *
+ * Deliberately NOT behind requireSession. A tab navigation cannot send an
+ * Authorization header - that is the entire reason the rest of the app fetches
+ * files and hands over a blob: URL - and a blob: URL's path is a random ID that
+ * the PDF viewer shows as the tab title instead of the real filename. The signed
+ * link is what stands in for the header here. See fileLink.js for what it does
+ * and does not authorise.
+ */
+app.get("/f/:token/:filename", async (req, res) => {
+  const link = verifyFileLink(req.params.token, { secret: SESSION_SECRET });
+  if (!link) {
+    return res.status(401).json({ message: "This link has expired. Please open the file again." });
+  }
+
+  const [rows] = await pool.query(
+    `SELECT attachment_url, attachment_name
+     FROM assignments
+     WHERE assignment_id = ?
+     LIMIT 1`,
+    [link.aid]
+  );
+  const assignment = rows[0];
+  if (!assignment?.attachment_url) {
+    return res.status(404).json({ message: "That file is no longer available." });
+  }
+
+  // Resolved from the stored path in the database, never from the :filename
+  // segment. The stored value is server-generated, and isInsidePath is a second
+  // guard, so nothing in the request can steer the read out of uploads.
+  const relative = String(assignment.attachment_url)
+    .replace(/^https?:\/\/[^/]+/i, "")
+    .replace(/^\/+/, "");
+  const absolute = path.join(UPLOAD_ROOT, relative);
+
+  if (!isInsidePath(absolute, UPLOAD_ROOT) || !fs.existsSync(absolute)) {
+    return res.status(404).json({ message: "That file is no longer available." });
+  }
+
+  // Prefer the database name; the signed copy is only a fallback for rows
+  // written before attachment_name existed.
+  const name = assignment.attachment_name || link.fn || "Attachment";
+  const ext = path.extname(name).toLowerCase();
+
+  res.setHeader("Content-Type", MIME_BY_EXTENSION[ext] || "application/octet-stream");
+  // Both forms of the header: the quoted one for older readers, RFC 5987's for
+  // names with spaces or non-ASCII characters, which is the common case here.
+  res.setHeader(
+    "Content-Disposition",
+    `inline; filename="${name.replace(/["\\\r\n]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(name)}`
+  );
+  res.setHeader("Cache-Control", "private, no-store");
+
+  const stream = fs.createReadStream(absolute);
+  stream.on("error", () => {
+    if (!res.headersSent) res.status(500);
+    res.end();
+  });
+  stream.pipe(res);
 });
 
 app.post("/api/assignments", requireSession, optionalFileUpload, async (req, res) => {

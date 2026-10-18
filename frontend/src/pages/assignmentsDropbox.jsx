@@ -10,6 +10,7 @@ import { API_BASE_URL } from "../utils/api.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { apiFetch } from "../utils/apiAuth.js";
 import {
+  openAssignmentFile,
   openAuthenticatedFile,
   useAuthenticatedFileUrl,
 } from "../utils/authenticatedFile.js";
@@ -211,7 +212,7 @@ function AssignmentAttachment({ url, name, onError }) {
         // surface as an unstyled error tab or a silent no-op behind a
         // pop-up blocker. Either way the student needs to know why nothing
         // happened.
-        openAuthenticatedFile(url).catch(onError);
+        openAssignmentFile(url).catch(onError);
       }}
       title={`Open ${label} in a new tab`}
     >
