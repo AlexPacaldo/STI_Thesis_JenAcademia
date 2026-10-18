@@ -486,6 +486,78 @@ check(
 
 
 
+/* ----------------------------------------------- free-text "Others" criteria */
+
+/**
+ * An "Others" value is slugged free text. It matches no catalogue entry by
+ * construction, so the structured half of the scorer gives it nothing. The only
+ * rule-side signal left is a whole-word hit in the teacher's own prose.
+ *
+ * That is precisely why coverage must count it: an "Others" value that IS in the
+ * bio has been satisfied, and reporting it as a miss would fire "closest
+ * available, not a strong match" on matches the advisor got exactly right.
+ */
+
+const prose = "I run sessions for adults who freeze when asked to speak. Public speaking drills.";
+
+const proseTeacher = teacher({
+  user_id: 95,
+  bio: prose,
+  specialization: "business english",
+});
+
+const customFocus = scoreTeacherForStudent(
+  proseTeacher,
+  { focusArea: ["public-speaking"], learningGoal: [], learningStyle: [], pace: [] },
+  "",
+  null,
+  ""
+);
+check("a stated custom criterion still counts", customFocus.criterionTotal, 1);
+check("free text found in the bio counts as covering it", customFocus.criterionMatched, 1);
+check("so it is not reported as a weak match", assessMatchStrength(customFocus).level, "strong");
+
+// Not in the bio: no rule-side signal exists at all. Still counted as a miss,
+// because pretending otherwise would be inventing a match the rules never found.
+const noProseTeacher = teacher({
+  user_id: 96,
+  bio: "Ten years teaching.",
+  specialization: "business english",
+});
+const unmatchedCustom = scoreTeacherForStudent(
+  noProseTeacher,
+  { focusArea: ["public-speaking"], learningGoal: [], learningStyle: [], pace: [] },
+  "",
+  null,
+  ""
+);
+check("a stated custom criterion still counts", unmatchedCustom.criterionTotal, 1);
+check("a custom criterion nothing matches is a miss", unmatchedCustom.criterionMatched, 0);
+check("and that reads as weak", assessMatchStrength(unmatchedCustom).level, "weak");
+
+// The structured signal must not be undone by the free-text pass. A criterion
+// matched on a specialisation stays matched even though the free-text loop runs
+// later and reports no hit for it.
+const structured = scoreTeacherForStudent(
+  teacher({ user_id: 97, specialization: "exam preparation", bio: "Ten years teaching." }),
+  { learningGoal: ["exam-prep"], focusArea: [], learningStyle: [], pace: [] },
+  "",
+  null,
+  ""
+);
+check("a structured match survives the free-text pass", structured.criterionMatched, 1);
+
+// A whole-word match only. Substring would let "read" match "reading" and
+// inflate coverage on prose it never really covered.
+const substringOnly = scoreTeacherForStudent(
+  teacher({ user_id: 98, bio: "Bread making is a hobby of mine.", specialization: "" }),
+  { focusArea: ["read"], learningGoal: [], learningStyle: [], pace: [] },
+  "",
+  null,
+  ""
+);
+check("a substring in prose is not a match", substringOnly.criterionMatched, 0);
+
 console.log(`\n${checks - failures}/${checks} checks passed.`);
 if (failures) {
   console.error(`${failures} check(s) FAILED.`);

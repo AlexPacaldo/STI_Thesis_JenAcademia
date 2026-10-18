@@ -431,6 +431,7 @@ export default function AdminDashboard() {
     country: "",
     birthDate: "",
     specialization: [],
+    specializationOther: "",
     experienceYears: "",
     teachingStyle: [],
     teachingStyleOther: "",
@@ -466,6 +467,13 @@ export default function AdminDashboard() {
     // Every criterion is multi-select so it mirrors the teacher's matching
     // profile. See utils/matchingCriteria.js.
     aiCriteria: createEmptyCriteria(),
+    // Free text typed into an "Others" box on each criteria field, slugified on
+    // submit and appended to that field's values. Held separately from the
+    // sentinel so an empty box contributes nothing.
+    learningGoalOther: "",
+    focusAreaOther: "",
+    learningStyleOther: "",
+    paceOther: "",
     preferredSchedule: createEmptyPreferredSchedule(),
   });
   const [showLevelHelp, setShowLevelHelp] = useState(false);
@@ -929,6 +937,7 @@ export default function AdminDashboard() {
         country: "",
         birthDate: "",
         specialization: [],
+        specializationOther: "",
         experienceYears: "",
         teachingStyle: [],
         teachingStyleOther: "",
@@ -954,7 +963,15 @@ export default function AdminDashboard() {
     try {
       // `levelScores` travels in the snapshot payload; the backend recomputes the
       // level from it and ignores anything the client claims the level is.
-      const payload = { ...payloadSource, role: "student", password: "student" };
+      // Same merge as the Analyze call. If these two ever read the criteria
+      // differently, the recommendation the admin approved would not describe
+      // the record that gets written.
+      const payload = {
+        ...payloadSource,
+        role: "student",
+        password: "student",
+        aiCriteria: studentCriteriaWithCustom(payloadSource.aiCriteria),
+      };
       const response = await axios.post(`${API}/api/admin/users`, payload); // creates student
       if (response.data?.inviteEmailSent) {
         notify("Student created and setup invite sent to their email.", "success");
@@ -974,6 +991,10 @@ export default function AdminDashboard() {
         classesAvailed: "",
         classDuration: "50",
         aiCriteria: createEmptyCriteria(),
+        learningGoalOther: "",
+        focusAreaOther: "",
+        learningStyleOther: "",
+        paceOther: "",
         preferredSchedule: createEmptyPreferredSchedule(),
       });
       setAiRecommendation(null);
@@ -1043,6 +1064,14 @@ export default function AdminDashboard() {
     setAiRecommendation(null);
   }
 
+  // Editing an "Others" box changes the criteria just as much as ticking a chip
+  // does, so it clears the recommendation for the same reason. Without this the
+  // card would sit there describing a match for criteria that no longer exist.
+  function setAiCriterionCustom(key, otherKey, text) {
+    setSForm((prev) => ({ ...prev, [otherKey]: text }));
+    setAiRecommendation(null);
+  }
+
 
   // Scoring a level-evaluation criterion. The level itself is derived from these
   // scores via computedLevel, so nothing else has to be updated here. The AI
@@ -1054,6 +1083,36 @@ export default function AdminDashboard() {
       return { ...prev, levelScores: { ...current, [key]: value } };
     });
     setAiRecommendation(null);
+  }
+
+  // Turn an "Others" box into a value the matcher can read.
+  //
+  // The sentinel and the raw text become one clean array: the sentinel is UI
+  // state and must not reach the scorer, and the text is slugified so it is
+  // stored and compared in the same shape as the fixed vocabulary. An empty box
+  // contributes nothing at all, so ticking Others and leaving it blank is a
+  // no-op rather than a criterion that can never be matched.
+  function criteriaWithCustom(values, otherText) {
+    const chosen = (Array.isArray(values) ? values : []).filter((v) => v !== CUSTOM_OPTION_VALUE);
+    const custom = toCriteriaSlug(otherText);
+    return custom ? [...chosen, custom] : chosen;
+  }
+
+  // Only replace the fields whose box has been filled. Touching every field
+  // would drop a selection the admin made but did not type anything under.
+  function studentCriteriaWithCustom(values) {
+    const next = { ...values };
+    for (const [key, otherKey] of [
+      ["learningGoal", "learningGoalOther"],
+      ["focusArea", "focusAreaOther"],
+      ["learningStyle", "learningStyleOther"],
+      ["pace", "paceOther"],
+    ]) {
+      if (toCriteriaSlug(sForm[otherKey])) {
+        next[key] = criteriaWithCustom(values?.[key], sForm[otherKey]);
+      }
+    }
+    return next;
   }
 
   function toggleTeacherSpecialization(value) {
@@ -1228,7 +1287,7 @@ export default function AdminDashboard() {
     try {
       const r = await axios.post(`${API}/api/admin/recommend-teacher`, {
         trialNotes: sForm.trialNotes,
-        criteria: sForm.aiCriteria,
+        criteria: studentCriteriaWithCustom(sForm.aiCriteria),
         courseId: sForm.courseId,
         courseName: courses.find((course) => String(course.course_id) === String(sForm.courseId))?.course_name || "",
         proficiencyLevel: computedLevel?.level || "",
@@ -1812,7 +1871,12 @@ export default function AdminDashboard() {
       message: "This will create the teacher account with the details you entered.",
       confirmLabel: "Create Teacher",
       tone: "primary",
-      payload: { ...tForm, teachingStyle, idealStudentPace },
+      payload: {
+        ...tForm,
+        teachingStyle,
+        idealStudentPace,
+        specialization: criteriaWithCustom(tForm.specialization, tForm.specializationOther),
+      },
     });
   }
 
@@ -2567,6 +2631,9 @@ export default function AdminDashboard() {
                       onToggle={toggleTeacherSpecialization}
                       emptyMessage={CRITERIA_EMPTY_MESSAGES.noCourse}
                       name="teacher-specialization"
+                      allowCustom
+                      customValue={tForm.specializationOther}
+                      onCustomChange={(text) => setTForm({ ...tForm, specializationOther: text })}
                     />
                     <CriteriaChipField
                       legend="Teaching Style"
@@ -2823,6 +2890,9 @@ export default function AdminDashboard() {
                       onToggle={(value) => toggleAiCriterionValue("learningGoal", value)}
                       emptyMessage={CRITERIA_EMPTY_MESSAGES.noCourse}
                       name="student-learning-goal"
+                      allowCustom
+                      customValue={sForm.learningGoalOther}
+                      onCustomChange={(text) => setAiCriterionCustom("learningGoal", "learningGoalOther", text)}
                     />
                     <CriteriaChipField
                       legend="Focus Area"
@@ -2832,6 +2902,9 @@ export default function AdminDashboard() {
                       onToggle={(value) => toggleAiCriterionValue("focusArea", value)}
                       emptyMessage={CRITERIA_EMPTY_MESSAGES.noCourse}
                       name="student-focus-area"
+                      allowCustom
+                      customValue={sForm.focusAreaOther}
+                      onCustomChange={(text) => setAiCriterionCustom("focusArea", "focusAreaOther", text)}
                     />
                     <CriteriaChipField
                       legend="Learning Style"
@@ -2840,6 +2913,9 @@ export default function AdminDashboard() {
                       selected={sForm.aiCriteria.learningStyle}
                       onToggle={(value) => toggleAiCriterionValue("learningStyle", value)}
                       name="student-learning-style"
+                      allowCustom
+                      customValue={sForm.learningStyleOther}
+                      onCustomChange={(text) => setAiCriterionCustom("learningStyle", "learningStyleOther", text)}
                     />
                     <CriteriaChipField
                       legend="Learning Pace"
@@ -2848,6 +2924,9 @@ export default function AdminDashboard() {
                       selected={sForm.aiCriteria.pace}
                       onToggle={(value) => toggleAiCriterionValue("pace", value)}
                       name="student-pace"
+                      allowCustom
+                      customValue={sForm.paceOther}
+                      onCustomChange={(text) => setAiCriterionCustom("pace", "paceOther", text)}
                     />
                   </div>
                 </div>

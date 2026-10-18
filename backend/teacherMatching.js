@@ -241,9 +241,18 @@ export function scoreTeacherForStudent(
   // Only criteria the admin actually set are counted. An unstated criterion is
   // not a miss; scoring against it would make every thin form look like a bad
   // match.
+  //
+  // Only ever upgraded, never overwritten. A criterion can be satisfied two
+  // ways - by a structured tag or by the teacher's own prose - and a criterion
+  // matched on the second must not be marked as a miss by a later call. That
+  // matters most for free text: an "Others" value matches no catalogue entry by
+  // construction, so without this every custom criterion the admin wrote would
+  // be reported as uncovered, and the "closest available, not a strong match"
+  // warning would fire on matches the advisor had got exactly right.
   const criterionMatches = {};
   const markCriterion = (key, hit) => {
-    if (asArray(criteria[key]).length) criterionMatches[key] = Boolean(hit);
+    if (!asArray(criteria[key]).length) return;
+    criterionMatches[key] = Boolean(criterionMatches[key] || hit);
   };
 
   const goalHits = intersectCount(
@@ -308,6 +317,10 @@ export function scoreTeacherForStudent(
     if (!values.length) continue;
     if (values.some((value) => freeTextHas(value))) {
       freeTextHits += 1;
+      // Counts as covering the criterion. This is the ONLY signal a free-text
+      // "Others" value can produce against the rules, so refusing to count it
+      // would make every custom criterion look like a miss.
+      markCriterion(key, true);
       if (freeTextHits >= SCORE_WEIGHTS.maxMatchesPerCriterion) break;
     }
   }
