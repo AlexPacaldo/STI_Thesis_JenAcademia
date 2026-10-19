@@ -1354,8 +1354,27 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     axios
       .get(`${API}/api/student/contract-requests/${localUserId}`)
       .then(r => {
-        setContractRequests(r.data?.requests || []);
-        setPendingContractRequests(r.data?.pending || []);
+        const requests = r.data?.requests || [];
+        setContractRequests(requests);
+
+        // The pending set, from the server's own field.
+        //
+        // !! Falling back to the history when the server does not send it.
+        // !! The frontend on Vercel and the backend on Railway deploy
+        // !! separately, so for a few minutes after a release the new
+        // !! frontend can be talking to the old backend - and the old
+        // !! backend sends only the last five requests. Without the
+        // !! fallback, `pending` would be empty for that window, the card
+        // !! would say "you have never asked" to a student who is waiting
+        // !! on an answer, and the withdraw button would be missing.
+        // !!
+        // !! The fallback is the old behaviour - read it off the history -
+        // !! so the worst case is exactly what shipped before, rather than
+        // !! worse than it.
+        const pending = Array.isArray(r.data?.pending)
+          ? r.data.pending
+          : requests.filter((request) => request?.status === "pending");
+        setPendingContractRequests(pending);
       })
       .catch(() => {
         setContractRequests([]);
