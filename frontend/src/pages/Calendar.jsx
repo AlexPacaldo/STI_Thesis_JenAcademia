@@ -16,6 +16,7 @@ import {
 import {
   REQUEST_KIND_EXTENSION,
   REQUEST_KIND_NEW,
+  describeAvailableRequests,
   describeBlockedByOtherRequest,
   describeRequestFlow,
 } from "../utils/contractRequestFlow.js";
@@ -3805,11 +3806,26 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   // rather than the component re-deriving it. An approval opens nothing -
   // there is nothing left to ask for once the extension has been granted.
   const canAskAgain = extensionFlow.canAskAgain;
-  const canRequestExtension = contractAsk === "extend" || canAskAgain;
+  // The rule, in one place.
+  //
+  // !! A student with a LIVE contract and classes left has nothing to ask
+  // !! for. The old page had this in its layout - the buttons were not
+  // !! there - and the rebuild with three permanent buttons lost it. Which
+  // !! matters most for the new plan: approving one expires the contract
+  // !! they are on and starts a fresh one at zero used, so the classes they
+  // !! paid for are thrown away. A button that says "Get a new plan" to a
+  // !! student with twelve unused classes is a button that can cost them
+  // !! twelve classes.
+  const { canRequestMoreTime, canRequestNewPlan } = describeAvailableRequests({
+    contractAsk,
+    canAskAgain,
+  });
+  // Kept under their old names too, because half the page reads them.
+  const canRequestExtension = canRequestMoreTime;
   // Suppressed rather than shown alongside: two different asks for the same
   // situation, and the one that silently throws their balance away should not be
   // the one sitting next to the button that does not.
-  const canRequestNewContract = contractAsk === "new";
+  const canRequestNewContract = canRequestNewPlan;
 
   const hasNoClassesLeft = hasNoBookableClasses;
   const studentBookingLimit = Math.max(0, Number(effectiveBookableClasses || 0));
@@ -3986,7 +4002,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return;
     }
     if (!studentBookingLimit) {
-      setStudentBookingError("You have no classes left to book. Contact the admin for a new contract.");
+      setStudentBookingError("You have no classes left. Please ask the admin for a new plan.");
       return;
     }
     if (studentBookingSelections.length >= studentBookingLimit) {
@@ -4335,7 +4351,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return;
     }
     if (hasNoClassesLeft) {
-      setStudentBookingError("You have no classes left to book. Contact the admin for a new contract.");
+      setStudentBookingError("You have no classes left. Please ask the admin for a new plan.");
       return;
     }
     if (slotsToBook.length > studentBookingLimit) {
@@ -4504,7 +4520,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return;
     }
     if (hasNoClassesLeft) {
-      setStudentBookingError("You have no classes left to book. Contact the admin for a new contract.");
+      setStudentBookingError("You have no classes left. Please ask the admin for a new plan.");
       return;
     }
     if (slotsToBook.length > studentBookingLimit) {
@@ -7041,10 +7057,10 @@ $5padding: 20,
                     {canRequestExtension && (
                       <div style={{ marginTop: 12, padding: 12, border: "1px solid #e0b872", borderRadius: 10, background: "#fdf9f1" }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: "#7a5210" }}>
-                          {MORE_TIME_CARD.heading(Number(latestStudentPackage.classes_left))}
+                          {MORE_TIME_CARD.heading}
                         </div>
                         <div style={{ marginTop: 4, fontSize: 12, color: "#6b5a3c", lineHeight: 1.45 }}>
-                          {MORE_TIME_CARD.body}
+                          {MORE_TIME_CARD.body(Number(latestStudentPackage.classes_left))}
                         </div>
                         {extensionFlow.isPending ? (
                           /* The request is with the admin. Say so, and offer the
@@ -7726,14 +7742,29 @@ $5padding: 20,
 
                       </RequestDialog>
                     )}
-                    {/* The three things a student can do.
+                    {/* What a student can do from here.
                         !!
-                        !! One big green button and two quiet ones. A student
-                        !! books a class; everything else is rare and should
-                        !! not compete with it for attention.
+                        !! Only ONE button, and only "Book a class". The other
+                        !! two asks are not always available, and they are not
+                        !! shown here.
                         !!
-                        !! "Jump to Today" went: there is no calendar on this
-                        !! page for it to jump to.
+                        !! "Ask for more time" belongs to a contract that has
+                        !! ENDED with classes still on it.
+                        !!
+                        !! "Get a new plan" belongs to a student with no live
+                        !! contract, or one they have used up. Offering it to a
+                        !! student with twelve unused classes is offering to
+                        !! throw the twelve classes away: approving a new plan
+                        !! expires the contract they are on and starts a fresh
+                        !! one at zero used.
+                        !!
+                        !! Both of those live in their own cards above, which
+                        !! were already rule-gated. The old page had the rule
+                        !! in its layout - the buttons were simply not there -
+                        !! and the rebuild with three permanent buttons lost
+                        !! it. So the buttons are gone again, and the rule is
+                        !! in describeAvailableRequests where a test can reach
+                        !! it.
                         */}
                     <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
                       <button
@@ -7752,55 +7783,6 @@ $5padding: 20,
                         }}
                       >
                         {PLAN.bookAClass}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setContractRequestOpen(true);
-                          setRequestingNewContract(false);
-                          setContractRequestEditing(false);
-                          setContractExtensionNote("");
-                          setContractRequestError("");
-                        }}
-                        style={{
-                          width: "100%",
-                          padding: "13px 12px",
-                          border: "1px solid #c3cbd5",
-                          borderRadius: 12,
-                          background: "#fff",
-                          color: "#374151",
-                          fontSize: "0.95rem",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {MORE_TIME_CARD.askForMoreTime}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setContractRequestOpen(true);
-                          setRequestingNewContract(true);
-                          setContractRequestEditing(false);
-                          setContractRequestError("");
-                          setShowContractExtraOptions(false);
-                          updateContractCourse(studentProfile?.course_id || "");
-                        }}
-                        style={{
-                          width: "100%",
-                          padding: "13px 12px",
-                          border: "1px solid #c3cbd5",
-                          borderRadius: 12,
-                          background: "#fff",
-                          color: "#374151",
-                          fontSize: "0.95rem",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {MORE_TIME_CARD.getNewPlan}
                       </button>
                     </div>
                     {!assignedTeacherId && (

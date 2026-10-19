@@ -72,9 +72,9 @@ export const PLAN_STATUS = {
 
 /** The amber card: the plan ended, but the classes are paid for. */
 export const MORE_TIME_CARD = {
-  heading: (count) => `You have ${count} class${count === 1 ? "" : "es"} left`,
-  body:
-    "Your plan ended, but you already paid for these classes. Ask the admin for more time and you can use them.",
+  heading: "Your plan has ended",
+  body: (count) =>
+    `You still have ${count} class${count === 1 ? "" : "es"} that you paid for. Ask the admin for more time and you can use them.`,
   askForMoreTime: "Ask for more time",
   changeMyAsk: "Change my ask",
   cancelMyAsk: "Cancel my ask",

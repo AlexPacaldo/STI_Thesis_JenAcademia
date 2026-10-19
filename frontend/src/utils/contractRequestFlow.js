@@ -169,6 +169,40 @@ export function describeRequestFlow({ pending = [], history = [], kind = REQUEST
 }
 
 /**
+ * What a student can ask for right now.
+ *
+ * !! THE RULE, and it is the rule the old page had.
+ * !!
+ * !! "Ask for more time" - only when the contract has ENDED and there are
+ * !! classes on it to keep. The server refuses it otherwise ("This contract
+ * !! has not ended yet, so there is nothing to extend"), and offering a
+ * !! button that can only fail is a button that teaches a student that the
+ * !! screen does not know what it is talking about.
+ * !!
+ * !! "Get a new plan" - only when there is no live contract, or every class
+ * !! on it has been used. A student with twelve unused classes must NOT be
+ * !! offered a new contract: approving one expires the contract they are on
+ * !! and starts a fresh one at zero used, so the twelve classes they paid
+ * !! for are thrown away. The old page had this rule in its LAYOUT - the
+ * !! buttons simply were not there - and it was lost when the page was
+ * !! rebuilt with three permanent buttons.
+ * !!
+ * !! The states come from describeExtensionEligibility, which already knows
+ * !! whether the contract is live, has ended, or is used up. A decline of an
+ * !! extension is the one case where a student may ask again.
+ *
+ * @param {object} options
+ * @param {"extend"|"new"|"none"} options.contractAsk what the contract state allows
+ * @param {boolean} [options.canAskAgain] their last extension was declined
+ */
+export function describeAvailableRequests({ contractAsk, canAskAgain = false } = {}) {
+  return {
+    canRequestMoreTime: contractAsk === "extend" || canAskAgain,
+    canRequestNewPlan: contractAsk === "new",
+  };
+}
+
+/**
  * The other kind of request, and whether it is in the way.
  *
  * The two kinds contradict each other: a new contract replaces the contract

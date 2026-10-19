@@ -14,6 +14,7 @@
 import {
   REQUEST_KIND_EXTENSION,
   REQUEST_KIND_NEW,
+  describeAvailableRequests,
   describeBlockedByOtherRequest,
   describeRequestFlow,
   findPendingRequest,
@@ -244,6 +245,63 @@ const extensionInTheWay = describeBlockedByOtherRequest({
 });
 check("a pending extension blocks the new contract", extensionInTheWay.isBlocked, true);
 check("and the hint names the extension", extensionInTheWay.hint.includes("ask for more time"), true);
+
+/* ------------------------------------------------- what can be asked for */
+
+// The rule the old page had in its layout, and the rebuild lost.
+//
+// A student with a live contract and classes left has nothing to ask for.
+// The dangerous one is the new plan: approving it expires the contract they
+// are on and starts a fresh one at zero used, so the classes they paid for
+// are thrown away.
+check(
+  "a live contract with classes left offers neither",
+  describeAvailableRequests({ contractAsk: "none" }),
+  { canRequestMoreTime: false, canRequestNewPlan: false }
+);
+
+check(
+  "an ended contract with classes left offers more time",
+  describeAvailableRequests({ contractAsk: "extend" }),
+  { canRequestMoreTime: true, canRequestNewPlan: false }
+);
+
+check(
+  "and NOT a new plan, because that would throw the classes away",
+  describeAvailableRequests({ contractAsk: "extend" }).canRequestNewPlan,
+  false
+);
+
+check(
+  "no contract at all offers a new plan",
+  describeAvailableRequests({ contractAsk: "new" }),
+  { canRequestMoreTime: false, canRequestNewPlan: true }
+);
+
+check(
+  "and not more time, because there is nothing to extend",
+  describeAvailableRequests({ contractAsk: "new" }).canRequestMoreTime,
+  false
+);
+
+// A decline is the one case where a student may ask for the same thing again.
+check(
+  "a declined extension can be asked for again",
+  describeAvailableRequests({ contractAsk: "none", canAskAgain: true }),
+  { canRequestMoreTime: true, canRequestNewPlan: false }
+);
+
+check(
+  "an unknown state offers nothing",
+  describeAvailableRequests({ contractAsk: "something-else" }),
+  { canRequestMoreTime: false, canRequestNewPlan: false }
+);
+
+check(
+  "no state at all offers nothing",
+  describeAvailableRequests({}),
+  { canRequestMoreTime: false, canRequestNewPlan: false }
+);
 
 /* ------------------------------------------------------------------ done */
 
