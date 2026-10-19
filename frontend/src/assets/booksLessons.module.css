@@ -502,6 +502,34 @@
 
   .AvailableLessons {
     grid-template-columns: 1fr;
+    /* On phones never stretch a card to fill the row height - that is what
+       turns a single book into a full-screen slab. */
+    align-items: start;
+  }
+
+  /* Keep a lone book stacked on phones: cover on top, content below, instead
+     of the desktop sideways layout that forces a 300px cover and stretches the
+     card to fill the viewport height. */
+  .AvailableLessons:has(> .LessonsCard:only-child) .LessonsCard {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .AvailableLessons:has(> .LessonsCard:only-child) .bookCover,
+  .AvailableLessons:has(> .LessonsCard:only-child) .bookImagePlaceholder {
+    flex: 0 0 auto;
+    width: 100%;
+    max-height: 240px;
+    height: auto;
+    aspect-ratio: 16 / 10;
+    align-self: stretch;
+  }
+
+  .AvailableLessons:has(> .LessonsCard:only-child) .LessonsCard button {
+    max-width: none;
+    width: 100%;
   }
 
   .bookActions,
