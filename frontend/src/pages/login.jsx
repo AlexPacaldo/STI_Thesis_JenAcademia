@@ -48,6 +48,7 @@ export default function Login() {
         firstName: data.user.firstName,
         lastName: data.user.lastName,
         role: data.user.role,
+        isSuperAdmin: data.user.isSuperAdmin,
         profileCompleted: data.user.profileCompleted,
         passwordChanged: data.user.passwordChanged,
         profileImageUrl: data.user.profileImageUrl,

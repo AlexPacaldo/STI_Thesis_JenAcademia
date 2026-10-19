@@ -66,6 +66,10 @@ const ADMIN_TABS = [
 // be first in the list.
 const getAdminTabFromSearch = (search) => {
   const requestedTab = new URLSearchParams(search).get("tab");
+  // Only the super administrator may open the Create Admin tab.
+  if (requestedTab === "createAdmin" && !me?.isSuperAdmin) {
+    return "overview";
+  }
   return ADMIN_TABS.includes(requestedTab) ? requestedTab : "overview";
 };
 
@@ -435,6 +439,7 @@ export default function AdminDashboard() {
    * !! whether they arrived by click or by the browser's Back button.
    */
   function goToTab(tab) {
+    if (tab === "createAdmin" && !me?.isSuperAdmin) return;
     if (!ADMIN_TABS.includes(tab)) return;
     setSearchParams({ tab });
   }
@@ -1489,6 +1494,15 @@ export default function AdminDashboard() {
     }
   }
   async function unarchiveUser(id) {
+    // The super administrator account cannot be archived, so it should never
+    // appear in the archived list - but guard here anyway in case the data is
+    // stale or the backend rule is bypassed.
+    const target = archivedUsers.find((u) => String(u.user_id) === String(id));
+    if (target?.is_super_admin) {
+      notify("The super administrator account cannot be restored.", "error");
+      return;
+    }
+
     try {
       await axios.put(`${API}/api/users/${id}/status`, { status: "active" });
       // optional: refetch archived lists; or ignore if not needed here
@@ -3547,7 +3561,7 @@ export default function AdminDashboard() {
           </section>
         )}
 
-        {active === "createAdmin" && (
+        {active === "createAdmin" && me?.isSuperAdmin && (
           <section className={styles.card}>
             <div className={styles.cardHead}>
               <h2>Create Admin Account</h2>
@@ -3990,7 +4004,7 @@ export default function AdminDashboard() {
                         >
                           View
                         </button>
-                        <button className={styles.warn} onClick={() => requestArchiveUser(s.user_id)}>Archive</button>
+                        <button className={styles.warn} onClick={() => requestArchiveUser(s.user_id)} disabled={s.is_super_admin}>Archive</button>
                       </div>
                     </li>
                   ))}
@@ -4029,7 +4043,7 @@ export default function AdminDashboard() {
                         >
                           View
                         </button>
-                        <button className={styles.warn} onClick={() => requestArchiveUser(t.user_id)}>Archive</button>
+                        <button className={styles.warn} onClick={() => requestArchiveUser(t.user_id)} disabled={t.is_super_admin}>Archive</button>
                       </div>
                     </li>
                   ))}
@@ -5383,7 +5397,13 @@ function ArchivedUsers({ users = [], onUnarchive, search = "" }) {
               </span>
             </span>
             <div>
-              <button className={styles.approve} onClick={() => onUnarchive(u.user_id)}>Restore</button>
+              <button
+                className={styles.approve}
+                onClick={() => onUnarchive(u.user_id)}
+                disabled={u.is_super_admin}
+              >
+                Restore
+              </button>
             </div>
           </li>
         ))}

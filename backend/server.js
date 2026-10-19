@@ -698,7 +698,7 @@ async function authenticateSession(req, res) {
 
   try {
     const [rows] = await pool.query(
-      `SELECT user_id, first_name, last_name, role, status
+      `SELECT user_id, first_name, last_name, role, status, is_super_admin
        FROM users
        WHERE user_id = ?
        LIMIT 1`,
@@ -717,6 +717,7 @@ async function authenticateSession(req, res) {
       role: account.role,
       firstName: account.first_name,
       lastName: account.last_name,
+      isSuperAdmin: Boolean(account.is_super_admin),
     };
     return req.session;
   } catch (err) {
@@ -817,6 +818,20 @@ async function requireAdminSession(req, res, next) {
 
   if (session.role !== "admin") {
     return res.status(403).json({ message: "Administrator access is required" });
+  }
+  next();
+}
+
+/**
+ * Require the super administrator - the original admin account. Limited
+ * administrators created through the UI cannot pass this gate.
+ */
+async function requireSuperAdminSession(req, res, next) {
+  const session = await authenticateSession(req, res);
+  if (!session) return;
+
+  if (session.role !== "admin" || !session.isSuperAdmin) {
+    return res.status(403).json({ message: "Super administrator access is required" });
   }
   next();
 }
@@ -2476,6 +2491,18 @@ async function ensureUserArchiveColumns() {
   }
 }
 
+async function ensureSuperAdminColumn() {
+  if (!(await columnExists("users", "is_super_admin"))) {
+    await pool.query("ALTER TABLE users ADD COLUMN is_super_admin TINYINT(1) DEFAULT 0 AFTER role");
+  }
+
+  // The original, first-created admin is the super admin. Every admin created
+  // afterward through the UI is a limited administrator - they can manage
+  // students, teachers, books and contracts, but cannot create other admins or
+  // touch the super admin's account.
+  await pool.query("UPDATE users SET is_super_admin = 1 WHERE role = 'admin' ORDER BY user_id ASC LIMIT 1");
+}
+
 /**
  * Give student_class_packages a deadline and a "we told them" marker.
  *
@@ -2705,6 +2732,7 @@ const SCHEMA_STEPS = [
   ["class package expiry columns", ensureStudentClassPackageExpiryColumns],
   // Before the dormancy sweep below, which writes to both of these columns.
   ["user archive audit columns", ensureUserArchiveColumns],
+  ["super admin flag", ensureSuperAdminColumn],
   ["teacher courses table", ensureTeacherCoursesTable],
   ["expire finished packages", expireFinishedPackages],
   ["delete past teacher availability", deletePastTeacherAvailability],
@@ -3953,7 +3981,7 @@ app.post("/api/login", limitLoginAttempts, async (req, res) => {
 
     // Look up the user by email
     const [rows] = await pool.query(
-      `SELECT user_id, first_name, last_name, email, contact_number AS contact, password_hash, role, status, profile_completed, password_changed, profile_image_url, country, birth_date, timezone
+      `SELECT user_id, first_name, last_name, email, contact_number AS contact, password_hash, role, status, profile_completed, password_changed, profile_image_url, country, birth_date, timezone, is_super_admin
        FROM users
        WHERE email = ?
        LIMIT 1`,
@@ -4020,6 +4048,7 @@ app.post("/api/login", limitLoginAttempts, async (req, res) => {
         email: user.email,
         contact: decryptNullableText(user.contact),
         role: user.role,
+        isSuperAdmin: Boolean(user.is_super_admin),
         country: user.country,
         birthDate: decryptNullableText(user.birth_date),
         timezone: normalizeTimezone(user.timezone),
@@ -4881,6 +4910,11 @@ app.post("/api/admin/users", requireAdminSession, async (req, res) => {
       preferredSchedule,
     } = req.body;
 
+    // Only the super administrator may create another administrator account.
+    if (role === "admin" && !req.session.isSuperAdmin) {
+      return res.status(403).json({ message: "Only a super administrator can create admin accounts" });
+    }
+
     const [exist] = await pool.query("SELECT user_id FROM users WHERE email = ?", [email]);
     if (exist.length) return res.status(409).json({ message: "Email already exists" });
 
@@ -5080,6 +5114,7 @@ app.get("/api/admin/users", requireAdminSession, async (req, res) => {
     const { role, status } = req.query;
     let query = `
       SELECT u.user_id, u.first_name, u.last_name, u.email, u.role, u.status,
+             u.is_super_admin,
              u.profile_completed, u.password_changed,
              u.profile_image_url,
              u.archived_at,
@@ -5132,6 +5167,7 @@ app.get("/api/admin/users/:userId/account", requireAdminSession, async (req, res
 
     const [rows] = await pool.query(
       `SELECT u.user_id, u.first_name, u.last_name, u.email,
+              u.is_super_admin,
               u.contact_number AS contact, u.country, u.birth_date, u.timezone,
               u.role, u.status, u.profile_completed, u.password_changed, u.created_at,
               sp.proficiency_level, sp.course_id, sp.assigned_teacher_id, sp.trial_notes,
@@ -5401,6 +5437,16 @@ app.put("/api/admin/users/:userId/email", requireAdminSession, async (req, res) 
 
     if (!isValidEmail(email)) {
       return res.status(400).json({ message: "Please enter a valid email address" });
+    }
+
+    // The super administrator's email cannot be changed from the UI - it is the
+    // recovery credential for the whole school.
+    const [superCheck] = await pool.query(
+      "SELECT is_super_admin FROM users WHERE user_id = ? LIMIT 1",
+      [userId]
+    );
+    if (superCheck.length && Boolean(superCheck[0].is_super_admin)) {
+      return res.status(403).json({ message: "The super administrator's email cannot be changed" });
     }
 
     await connection.beginTransaction();
@@ -6291,6 +6337,17 @@ app.put("/api/users/:userId/status", requireAdminSession, async (req, res) => {
     const validStatuses = ["active", "suspended", "archived"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: "Invalid status value" });
+    }
+
+    // The super administrator cannot be archived, suspended, or deactivated -
+    // they are the account that recovers the school if every other admin is
+    // locked out.
+    const [targetRows] = await pool.query(
+      "SELECT is_super_admin FROM users WHERE user_id = ? LIMIT 1",
+      [userId]
+    );
+    if (targetRows.length && Boolean(targetRows[0].is_super_admin)) {
+      return res.status(403).json({ message: "The super administrator account cannot be archived or suspended" });
     }
 
     const [result] = await pool.query(
