@@ -6575,16 +6575,33 @@ $5padding: 20,
                           </div>
                         )}
 
-                        {!extensionFlow.isPending && !extensionFlow.resolvedRequest && !contractRequestOpen && (
-                          <button
-                            type="button"
-                            className={styles.slotBtn}
-                            onClick={() => openExtensionRequestForm()}
-                            style={{ marginTop: 10, width: "100%", border: "1px solid #d9b477", borderRadius: 8, background: "#fff", cursor: "pointer" }}
-                          >
-                            Request an extension
-                          </button>
-                        )}
+                        {/* The button to ask, when there is nothing to ask about
+                            and nothing to wait for.
+                            !!
+                            !! It used to be gated on the student never having
+                            !! had a request of this kind, which made a WITHDRAWN
+                            !! request block the way forward. The student
+                            !! withdrew it in order to ask for something else,
+                            !! and was then left with no way to ask for it - the
+                            !! only way out was to withdraw something else
+                            !! first. Nothing was decided by the withdrawal, so
+                            !! nothing blocks the next question.
+                            !!
+                            !! An approval is the opposite: it is the thing they
+                            !! asked for, and there is nothing left to ask for. */}
+                        {extensionFlow.canRequest &&
+                          !canAskAgain &&
+                          !contractRequestOpen &&
+                          !requestingNewContract && (
+                            <button
+                              type="button"
+                              className={styles.slotBtn}
+                              onClick={() => openExtensionRequestForm()}
+                              style={{ marginTop: 10, width: "100%", border: "1px solid #d9b477", borderRadius: 8, background: "#fff", cursor: "pointer" }}
+                            >
+                              Request an extension
+                            </button>
+                          )}
 
                         {/* The form itself is in a window, not here. The card
                             says what is waiting and offers the three things a
@@ -6666,7 +6683,7 @@ $5padding: 20,
                             </button>
                           </div>
                         </div>
-                      ) : (
+                      ) : newContractFlow.canRequest ? (
                         <button
                           type="button"
                           className={styles.slotBtn}
@@ -6675,7 +6692,7 @@ $5padding: 20,
                         >
                           Request a new contract
                         </button>
-                      )
+                      ) : null
                     )}
                     {/* The extension request, in a window like the new-contract
                         one. Two forms that do the same kind of thing - ask the

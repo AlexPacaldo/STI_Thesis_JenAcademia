@@ -158,6 +158,40 @@ check("and says so", withdrawn.outcome.includes("withdrew"), true);
 check("and offers the request again", withdrawn.canSubmit, true);
 check("a withdrawn request is not a decline", withdrawn.canAskAgain, false);
 
+// The bug this exists for: the button was gated on "has this student ever
+// had a request", so withdrawing a request left the student with no way to
+// ask for the thing they withdrew it in order to ask for.
+check("and there is a button to press", withdrawn.canRequest, true);
+check("which asks for the request", withdrawn.actionLabel, "Request a new contract");
+
+const withdrawnExtension = describeRequestFlow({
+  pending: [],
+  history: [{ request_id: 6, request_type: "extension", status: "cancelled" }],
+  kind: REQUEST_KIND_EXTENSION,
+});
+
+check("a withdrawn extension can be asked for again", withdrawnExtension.canRequest, true);
+check("and the button says so", withdrawnExtension.actionLabel, "Request an extension");
+check("and it is not an approval", withdrawnExtension.canAskAgain, false);
+
+// An approval is the one thing that closes the road, and only for the
+// extension: the contract runs again, so there is nothing left to extend.
+const approvedExtension = describeRequestFlow({
+  pending: [],
+  history: [{ request_id: 7, request_type: "extension", status: "approved" }],
+  kind: REQUEST_KIND_EXTENSION,
+});
+check("an approved extension has nothing left to ask for", approvedExtension.canRequest, false);
+
+// A new contract is a purchase. Running out of classes is not the end of
+// the road for asking for more.
+const approvedNewContract = describeRequestFlow({
+  pending: [],
+  history: [{ request_id: 8, request_type: "new", status: "approved" }],
+  kind: REQUEST_KIND_NEW,
+});
+check("but an approved new contract can be asked for again", approvedNewContract.canRequest, true);
+
 /* ------------------------------------------------- the two kinds are apart */
 
 // The bug the kind column exists for: a pending extension must not make a

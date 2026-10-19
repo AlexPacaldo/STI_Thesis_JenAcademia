@@ -85,6 +85,9 @@ export function describeRequestFlow({ pending = [], history = [], kind = REQUEST
       resolvedRequest,
       isPending: true,
       canSubmit: false,
+      // There is one in flight. The student changes it or takes it back -
+      // they do not send a second one.
+      canRequest: false,
       canEdit: true,
       canCancel: true,
       canAskAgain: false,
@@ -100,6 +103,24 @@ export function describeRequestFlow({ pending = [], history = [], kind = REQUEST
   if (resolvedRequest) {
     const outcome = describeOutcome(resolvedRequest, { isExtension });
     const reRequest = describeCanReRequest(resolvedRequest);
+    const status = String(resolvedRequest.status || "").toLowerCase();
+
+    // A withdrawal is not an answer.
+    //
+    // !! The student withdrew the request BECAUSE they wanted to ask for
+    // !! something else - and it left them with no way to ask for it. The
+    // !! button was gated on "has this student ever had a request", so a
+    // !! withdrawn request stood in the way exactly like a declined one, and
+    // !! the way out of a withdrawal was to have a second withdrawal first.
+    // !!
+    // !! Nothing was decided, so nothing blocks the next question.
+    //
+    // An approved extension is the one thing that does close the road: the
+    // contract runs again, and there is nothing left to extend - the server
+    // would say so. An approved new contract does not, because a student who
+    // has used all their classes can always ask for more.
+    const withdrawn = status === "cancelled";
+    const approved = status === "approved";
 
     return {
       kind,
@@ -107,13 +128,23 @@ export function describeRequestFlow({ pending = [], history = [], kind = REQUEST
       resolvedRequest,
       isPending: false,
       canSubmit: true,
+      // Is there a button to press? Yes for a withdrawal and for a decline
+      // (ask again). No for an approved extension - that is the thing they
+      // asked for, and there is nothing left to ask for.
+      canRequest: !(isExtension && approved),
       canEdit: false,
       canCancel: false,
       // A decline can be asked again. An approval has nothing left to ask for.
       canAskAgain: reRequest.canReRequest,
       banner: "",
       revisionLabel: "",
-      actionLabel: reRequest.canReRequest ? "Ask again" : outcome.actionLabel,
+      actionLabel: reRequest.canReRequest
+        ? "Ask again"
+        : withdrawn
+          ? isExtension
+            ? "Request an extension"
+            : "Request a new contract"
+          : outcome.actionLabel,
       outcome: outcome.text,
     };
   }
@@ -124,6 +155,7 @@ export function describeRequestFlow({ pending = [], history = [], kind = REQUEST
     resolvedRequest: null,
     isPending: false,
     canSubmit: true,
+    canRequest: true,
     canEdit: false,
     canCancel: false,
     canAskAgain: false,
@@ -150,7 +182,11 @@ function describeOutcome(request, { isExtension }) {
       text: isExtension
         ? `Your extension request was approved${response}.`
         : `Your contract request was approved${response}.`,
-      actionLabel: "Request another contract",
+      // An approved extension is the end of the road for that kind of
+      // request - the contract runs again, and there is nothing to extend.
+      // An approved new contract is not: a student who has used all their
+      // classes can ask for more.
+      actionLabel: isExtension ? "" : "Request another contract",
     };
   }
 
