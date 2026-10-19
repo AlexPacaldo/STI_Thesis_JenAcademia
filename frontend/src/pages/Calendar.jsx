@@ -670,7 +670,7 @@ function PendingRequestPanel({
  * !! It is also bigger than it was. The number is 44px rather than 22px,
  * !! because the number is the point of the card.
  */
-function ClassesLeftCard({ left, total, percent, readyToBook, badge }) {
+function ClassesLeftCard({ left, total, percent, readyToBook, badge, note }) {
   return (
     <div
       style={{
@@ -722,6 +722,17 @@ function ClassesLeftCard({ left, total, percent, readyToBook, badge }) {
           !! long line, and in a narrow column it ran off the edge. On its own
           !! row it has the whole card to sit in. */}
       <div>{badge}</div>
+
+      {/* What state the plan is in.
+          !! The old page said this in a line under the counter, and the
+          !! rebuild dropped it. The number says how many, this says what that
+          ;; MEANS - all used up, all already booked, the plan has ended. A
+          !! student with zero classes left and one with eight classes left
+          !! both show "0 of 12" for the ready-to-book part, and only this
+          ;; sentence tells them apart. */}
+      {note && (
+        <div style={{ fontSize: 12.5, color: "#5e7268", lineHeight: 1.45 }}>{note}</div>
+      )}
     </div>
   );
 }
@@ -3714,6 +3725,22 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   });
   const endedContractWithUnusedClasses = contractAsk === "extend";
 
+  // What state the plan is in, in one sentence.
+  //
+  // !! The old page had this as a line under the counter, and the rebuild
+  // !! dropped it. The number alone does not say it: a student with every
+  // !! class used up and a student with every class booked show the same
+  // !! "0 ready to book", and only this sentence tells them apart - one needs
+  // !! a new plan, the other needs to move a class.
+  const studentPlanStatusNote = (() => {
+    if (hasNoActiveStudentPackage) {
+      return endedContractWithUnusedClasses ? PLAN_STATUS.endedWithClasses : PLAN_STATUS.noPlan;
+    }
+    if (contractExhausted) return PLAN_STATUS.allUsed;
+    if (allRemainingClassesReserved) return PLAN_STATUS.allBooked;
+    return PLAN_STATUS.normal;
+  })();
+
   // The student's classes, as a list a person can read.
   //
   // !! The class rows carry dates in the teacher's timezone and times as
@@ -3749,10 +3776,18 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
   // The days a student can pick from.
   //
-  // !! Fourteen days is enough for booking and for moving a class, and it is
-  // !! short enough that the strip fits on a phone without becoming a wall.
+  // !! Fourteen days is enough for booking a class, which is usually soon.
+  // !! Moving a class is different: a student whose class was cancelled for
+  // !! a holiday in three weeks needs to pick a day three weeks out, and a
+  // !! strip that stops at two would quietly refuse them. So the two get
+  // !! different lengths.
   const simpleBookingDays = useMemo(
     () => buildDayChoices({ todayKey: viewerTodayKey, endKey: scheduleWindowEndKey }),
+    [viewerTodayKey, scheduleWindowEndKey]
+  );
+
+  const simpleRescheduleDays = useMemo(
+    () => buildDayChoices({ todayKey: viewerTodayKey, endKey: scheduleWindowEndKey, limit: 28 }),
     [viewerTodayKey, scheduleWindowEndKey]
   );
 
@@ -4557,6 +4592,54 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     } catch (error) {
       notify?.(error.response?.data?.message || "Unable to upload start screenshot.", "error");
     } finally { setIsUploadingStartProof(false); }
+  };
+
+  /**
+   * The student's own view of how a class went.
+   *
+   * !! The old page showed a student the whole evidence checklist - "Teacher
+   * !! start", "Start screenshot", "End screenshot", "Class summary", and a
+   * !! status pill that said "Needs Review". None of that is a student's
+   * !! business, and all of it is jargon. But the old page DID tell the
+   * !! student something - whether they were marked as being there, and
+   * !! whether the class was finished - and the rebuild dropped that too.
+   * !!
+   * !! So the information stays and the words change: one sentence saying
+   * !! where the class got to, in words a student would use.
+   */
+  const renderStudentClassStatus = () => {
+    if (!selectedClass || isSelectedClassCompleted) return null;
+
+    const sentences = {
+      verified: "Your teacher marked this class as done.",
+      student_confirmed: "You said you were here.",
+      in_progress: "This class is happening now.",
+      needs_review: "Your teacher is checking this class.",
+      incomplete: "This class needs more checking.",
+      pending: "This class has not been finished yet.",
+    };
+
+    return (
+      <div
+        style={{
+          marginTop: 12,
+          padding: "12px 14px",
+          border: "1px solid #dbe4ea",
+          borderRadius: 12,
+          background: "#f7fafc",
+          fontSize: "0.9rem",
+          color: "#374151",
+          lineHeight: 1.45,
+        }}
+      >
+        {sentences[selectedVerificationStatus] || sentences.pending}
+        {hasVerificationRecording && verificationRecordingExpiresAt && (
+          <div style={{ marginTop: 6, fontSize: "0.8rem", color: "#6b7d73" }}>
+            The recording is deleted on {formatVerificationTimestamp(verificationRecordingExpiresAt, true)}.
+          </div>
+        )}
+      </div>
+    );
   };
 
   const renderVerificationPanel = () => {
@@ -6323,16 +6406,18 @@ $5padding: 20,
                       </div>
                       )}
                     </div>
-                    {/* The evidence checklist.
+                    {/* How the class went.
+                        !! A student gets one plain sentence. They used to get
+                        !! the whole evidence checklist - "Teacher start",
+                        !! "Start screenshot", "Class summary" - which is the
+                        !! teacher's paperwork, not theirs, and which the
+                        !! rebuild replaced with nothing at all. The
+                        !! information comes back here, in words a student
+                        !! would use.
                         !!
-                        !! A student has no use for "Teacher start", "Start
-                        !! screenshot" and "Student attendance". They need to
-                        !! know when the class is and whether they can join
-                        !! it, and that is the two buttons below. The checklist
-                        !! is for the teacher and the admin, and they still
-                        !! get it.
-                        */}
-                    {!isSimpleStudentView && renderVerificationPanel()}
+                        !! A teacher and an admin still get the full panel:
+                        !! they are the ones who act on it. */}
+                    {isSimpleStudentView ? renderStudentClassStatus() : renderVerificationPanel()}
                     {canShowClassEntryAction && (
                       <button
                         disabled={isClassEntryDisabled}
@@ -6446,7 +6531,7 @@ $5padding: 20,
                             !! nothing to click. The strip says what each day
                             !! is, and the only thing to do is press one. */}
                         <DayPicker
-                          days={simpleBookingDays}
+                          days={simpleRescheduleDays}
                           selected={requestDate}
                           onPick={chooseRequestDate}
                           emptyMessage="No days to choose from."
@@ -6981,6 +7066,7 @@ $5padding: 20,
                           percent={effectivePercent}
                           readyToBook={Number(effectiveBookableClasses) || 0}
                           badge={<ContractExpiryBadge expiresAt={contractExpiresAt} showDate />}
+                          note={studentPlanStatusNote}
                         />
 
                         {studentUpcomingLoading && studentUpcomingClasses.length === 0 ? (
@@ -7040,18 +7126,8 @@ $5padding: 20,
                           percent={effectivePercent}
                           readyToBook={Number(effectiveBookableClasses) || 0}
                           badge={<ContractExpiryBadge expiresAt={contractExpiresAt} showDate />}
+                          note={studentPlanStatusNote}
                         />
-                        <div style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
-                          {hasNoActiveStudentPackage
-                            ? (endedContractWithUnusedClasses
-                                ? PLAN_STATUS.endedWithClasses
-                                : PLAN_STATUS.noPlan)
-                            : contractExhausted
-                              ? PLAN_STATUS.allUsed
-                              : allRemainingClassesReserved
-                                ? PLAN_STATUS.allBooked
-                                : PLAN_STATUS.normal}
-                        </div>
                       </>
                     )}
                     {canRequestExtension && (
