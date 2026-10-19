@@ -127,22 +127,23 @@
 
 ## Contract Request Flow
 
-A student can have **one pending request of each kind** - a new contract, or an
-extension. Asking again while one is pending is a **revision** of that request,
-not a second one.
+A student can have **one request with the admin at a time** - a new contract, or
+an extension. Asking again while one is pending is a **revision** of that request,
+not a second one. Asking for the **other kind** is refused, because the two
+contradict each other: a new contract replaces the contract the unused classes
+are on, so approving one undoes what the other is asking to preserve.
 
 | The student does | What happens |
 |---|---|
 | Sends a request | A pending request is created, and each admin is notified once |
 | Sends it again | The same request is revised. The earlier version is kept, the revision count goes up, and the admin's notification is updated in place - one bell entry, still unread |
-| Sends the other kind | A separate request, pending alongside the first one. They are different asks and do not overwrite each other |
+| Sends the other kind | **Refused.** The button for the other route is disabled, and the student is told to withdraw the request they already sent |
 | Withdraws it | The request is marked withdrawn, it leaves the queue, and the admin's notification is read rather than deleted |
 | The admin decides | The request is approved or declined. A decline can be asked again |
 
-The rule is enforced by the database - a unique key over a generated column -
-so two simultaneous submissions cannot both create a pending request. The
-student's row is locked for the length of the request, so the second one waits
-and then revises the first.
+The rule is enforced in three places, so it cannot be worked around: the
+database has a unique key over a generated column, the student's row is locked
+for the length of the request, and the route refuses a second kind outright.
 
 ### Checks
 

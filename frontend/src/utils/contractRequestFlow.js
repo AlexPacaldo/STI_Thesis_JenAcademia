@@ -167,6 +167,38 @@ export function describeRequestFlow({ pending = [], history = [], kind = REQUEST
 }
 
 /**
+ * The other kind of request, and whether it is in the way.
+ *
+ * The two kinds contradict each other: a new contract replaces the contract
+ * the unused classes are on, so approving one undoes what the other is
+ * asking to preserve. They cannot both be granted, and there is no version
+ * of them that can both be in flight and mean what the student says they
+ * mean.
+ *
+ * So the other route is closed while one of them is with the admin, and the
+ * student is told how to open it again: withdraw the one they already sent.
+ *
+ * @param {object} options
+ * @param {string} options.kind the kind the student is trying to ask for
+ * @param {string} options.otherKind the kind already in flight
+ * @param {boolean} options.otherIsPending whether it is
+ */
+export function describeBlockedByOtherRequest({ kind, otherKind, otherIsPending }) {
+  if (!otherIsPending) {
+    return { isBlocked: false, hint: "" };
+  }
+
+  const askedFor = kind === REQUEST_KIND_EXTENSION ? "an extension" : "a new contract";
+  const waitingFor =
+    otherKind === REQUEST_KIND_EXTENSION ? "an extension request" : "a contract request";
+
+  return {
+    isBlocked: true,
+    hint: `You already have a ${waitingFor} with the admin. Withdraw it first if you would rather ask for ${askedFor}.`,
+  };
+}
+
+/**
  * How an answered request reads.
  *
  * Silence after a decision is the same as never having asked, so the outcome

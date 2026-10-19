@@ -5938,6 +5938,44 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
     // exist yet, and a lock on a row that is not there locks nothing.
     await connection.query(`SELECT user_id FROM users WHERE user_id = ? FOR UPDATE`, [parsedStudentId]);
 
+    // One request in flight at a time, of either kind.
+    //
+    // !! The two kinds contradict each other. A new contract REPLACES the
+    // !! contract the unused classes are on, so a student with a new-contract
+    // !! request in flight who also asks for an extension is asking for two
+    // !! things where approving one throws away what the other is asking to
+    // !! preserve. The admin has no way to know that the second request
+    // !! undoes the first - they see two rows in a queue and a reason to
+    // !! pick one.
+    // !!
+    // !! So the second ask is refused, and the student is told how to get
+    // !! what they want: withdraw the first one. Which is what they would
+    // !! have to do anyway - there is no version of these two requests that
+    // !! can both be granted.
+    // !!
+    // !! Checked before the extension's own conditions, because the real
+    // !! problem is the other request, not the state of the contract. A
+    // !! student told "this contract has not ended yet" when what they need
+    // !! to know is "you already asked for something else" is being sent
+    // !! down the wrong path.
+    const [otherPending] = await connection.query(
+      `SELECT request_id, request_type
+         FROM student_contract_requests
+        WHERE student_id = ? AND status = 'pending' AND request_type <> ?
+        LIMIT 1`,
+      [parsedStudentId, parsedRequestType]
+    );
+
+    if (otherPending.length) {
+      await connection.rollback();
+      const otherIsExtension = otherPending[0].request_type === "extension";
+      return res.status(409).json({
+        message: otherIsExtension
+          ? "You already have an extension request with the admin. Withdraw it first if you would rather ask for a new contract."
+          : "You already have a contract request with the admin. Withdraw it first if you would rather ask for an extension.",
+      });
+    }
+
     // An extension is a request for more TIME on a contract that already ran
     // out, with classes on it they never used. Every one of those conditions is
     // checked here rather than trusted from the browser, because approving one

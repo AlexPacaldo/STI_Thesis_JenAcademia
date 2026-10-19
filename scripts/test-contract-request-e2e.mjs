@@ -266,8 +266,12 @@ try {
   );
   check("the database agrees there is one", Number(raceRows[0].total), 1);
 
-  /* ------------------------------------ the other kind is a different one */
+  /* ------------------------- the other kind cannot be asked for at the same time */
 
+  // A new contract REPLACES the contract the unused classes are on, so
+  // approving one throws away what the other is asking to preserve. There is
+  // no version of the two that can both be granted, so the second ask is
+  // refused and the student is told to withdraw the first.
   const newContract = await postRequest({
     student_id: studentId,
     course_id: courseId,
@@ -275,15 +279,19 @@ try {
     class_duration: 50,
   });
 
-  check("a new contract request is created alongside", newContract.status, 201);
-  check("and it has its own id", newContract.body?.request_id !== requestId, true);
+  check("a new contract request is refused while the extension is pending", newContract.status, 409);
+  report(
+    "and says which request is in the way",
+    String(newContract.body?.message || "").includes("extension request"),
+    newContract.body?.message
+  );
 
-  const bothPending = await getRequests();
-  check("there are two pending requests, one of each kind", bothPending.body?.pending?.length, 2);
+  const afterRefusal = await getRequests();
+  check("and nothing new is pending", afterRefusal.body?.pending?.length, 1);
   check(
-    "one of each",
-    bothPending.body?.pending?.map((r) => r.request_type).sort(),
-    ["extension", "new"]
+    "the one that is pending is still the extension",
+    afterRefusal.body?.pending?.[0]?.request_type,
+    "extension"
   );
 
   /* ------------------------------------------------------------ withdraw */
@@ -298,15 +306,22 @@ try {
   report("and says so", typeof withdrawnBody?.message === "string" && withdrawnBody.message.length > 0);
 
   const afterWithdraw = await getRequests();
-  check("it is no longer pending", afterWithdraw.body?.pending?.length, 1);
-  check(
-    "the one that is left is the new contract",
-    afterWithdraw.body?.pending?.[0]?.request_type,
-    "new"
-  );
+  check("it is no longer pending", afterWithdraw.body?.pending?.length, 0);
 
   const history = afterWithdraw.body?.requests?.find((r) => r.request_id === requestId);
   check("and the history records it as withdrawn", history?.status, "cancelled");
+
+  /* --------------------------- the other kind, once the first is out of the way */
+
+  const newContractAfter = await postRequest({
+    student_id: studentId,
+    course_id: courseId,
+    requested_classes: 8,
+    class_duration: 50,
+  });
+  check("the new contract request is accepted now", newContractAfter.status, 201);
+  check("and it has its own id", newContractAfter.body?.request_id !== requestId, true);
+  createdRequestIds.push(newContractAfter.body?.request_id);
 
   /* ------------------------------------- withdrawing twice is refused */
 
@@ -324,9 +339,23 @@ try {
     request_type: "extension",
     trial_notes: "Asking again, now that the first one is out of the way.",
   });
-  check("a fresh extension request is accepted", afterWithdrawal.status, 201);
-  check("and it is a new request, not the old one", afterWithdrawal.body?.request_id !== requestId, true);
-  createdRequestIds.push(afterWithdrawal.body?.request_id);
+  check("a fresh extension request is refused while the new contract is pending", afterWithdrawal.status, 409);
+
+  // Withdraw the new-contract request, and the extension is free to go.
+  await fetch(`${BASE}/api/student/contract-requests/${newContractAfter.body?.request_id}/cancel`, {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({ student_id: studentId }),
+  });
+
+  const finalExtension = await postRequest({
+    student_id: studentId,
+    request_type: "extension",
+    trial_notes: "Asking again, now that the first one is out of the way.",
+  });
+  check("and accepted once that is withdrawn", finalExtension.status, 201);
+  check("and it is a new request, not the old one", finalExtension.body?.request_id !== requestId, true);
+  createdRequestIds.push(finalExtension.body?.request_id);
 } catch (err) {
   failures.push(`  - the run threw: ${err?.stack || err}`);
 } finally {

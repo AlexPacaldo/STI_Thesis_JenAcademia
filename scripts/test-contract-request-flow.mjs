@@ -14,6 +14,7 @@
 import {
   REQUEST_KIND_EXTENSION,
   REQUEST_KIND_NEW,
+  describeBlockedByOtherRequest,
   describeRequestFlow,
   findPendingRequest,
   findResolvedRequest,
@@ -211,6 +212,38 @@ const extensionStillWaiting = describeRequestFlow({
 });
 check("and the extension is still waiting too", extensionStillWaiting.isPending, true);
 check("on its own request", extensionStillWaiting.pendingRequest?.request_id, 1);
+
+/* ------------------------------------------------ the other kind is in the way */
+
+// The two kinds cannot both be in flight: a new contract replaces the
+// contract the unused classes are on, so approving one undoes what the other
+// is asking to preserve.
+check(
+  "nothing is in the way when the other kind is not pending",
+  describeBlockedByOtherRequest({
+    kind: REQUEST_KIND_EXTENSION,
+    otherKind: REQUEST_KIND_NEW,
+    otherIsPending: false,
+  }).isBlocked,
+  false
+);
+
+const newContractInTheWay = describeBlockedByOtherRequest({
+  kind: REQUEST_KIND_EXTENSION,
+  otherKind: REQUEST_KIND_NEW,
+  otherIsPending: true,
+});
+check("a pending new contract blocks the extension", newContractInTheWay.isBlocked, true);
+check("and the hint says which request is in the way", newContractInTheWay.hint.includes("contract request"), true);
+check("and what to do about it", newContractInTheWay.hint.includes("Withdraw"), true);
+
+const extensionInTheWay = describeBlockedByOtherRequest({
+  kind: REQUEST_KIND_NEW,
+  otherKind: REQUEST_KIND_EXTENSION,
+  otherIsPending: true,
+});
+check("a pending extension blocks the new contract", extensionInTheWay.isBlocked, true);
+check("and the hint names the extension", extensionInTheWay.hint.includes("extension request"), true);
 
 /* ------------------------------------------------------------------ done */
 

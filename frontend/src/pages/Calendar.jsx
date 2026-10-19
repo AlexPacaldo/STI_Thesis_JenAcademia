@@ -4,6 +4,7 @@ import { describeExtensionEligibility } from "../utils/contractExpiry.js";
 import {
   REQUEST_KIND_EXTENSION,
   REQUEST_KIND_NEW,
+  describeBlockedByOtherRequest,
   describeRequestFlow,
 } from "../utils/contractRequestFlow.js";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
@@ -3437,6 +3438,27 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     kind: REQUEST_KIND_NEW,
   });
 
+  // The two kinds cannot both be in flight.
+  //
+  // !! A new contract replaces the contract the unused classes are on, so
+  // !! approving one throws away what the other is asking to preserve. There
+  // !! is no version of the two that can both be granted, so the other route
+  // !! is closed while one of them is with the admin - and the student is
+  // !! told that withdrawing the one they sent is the way to open it.
+  // !!
+  // !! The server refuses it too, so this is not a button that pretends:
+  // !! the rule is the same on both sides of the wire.
+  const extensionBlocked = describeBlockedByOtherRequest({
+    kind: REQUEST_KIND_EXTENSION,
+    otherKind: REQUEST_KIND_NEW,
+    otherIsPending: newContractFlow.isPending,
+  });
+  const newContractBlocked = describeBlockedByOtherRequest({
+    kind: REQUEST_KIND_NEW,
+    otherKind: REQUEST_KIND_EXTENSION,
+    otherIsPending: extensionFlow.isPending,
+  });
+
   // A decline has to leave a way forward, so the card offers to ask again
   // rather than the component re-deriving it. An approval opens nothing -
   // there is nothing left to ask for once the extension has been granted.
@@ -6637,14 +6659,30 @@ $5padding: 20,
                           !canAskAgain &&
                           !contractRequestOpen &&
                           !requestingNewContract && (
-                            <button
-                              type="button"
-                              className={styles.slotBtn}
-                              onClick={() => openExtensionRequestForm()}
-                              style={{ marginTop: 10, width: "100%", border: "1px solid #d9b477", borderRadius: 8, background: "#fff", cursor: "pointer" }}
-                            >
-                              Request an extension
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                className={styles.slotBtn}
+                                onClick={() => openExtensionRequestForm()}
+                                disabled={extensionBlocked.isBlocked}
+                                style={{
+                                  marginTop: 10,
+                                  width: "100%",
+                                  border: "1px solid #d9b477",
+                                  borderRadius: 8,
+                                  background: "#fff",
+                                  cursor: extensionBlocked.isBlocked ? "not-allowed" : "pointer",
+                                  opacity: extensionBlocked.isBlocked ? 0.55 : 1,
+                                }}
+                              >
+                                Request an extension
+                              </button>
+                              {extensionBlocked.isBlocked && (
+                                <div style={{ marginTop: 6, fontSize: 11, color: "#6b5a3c", lineHeight: 1.45 }}>
+                                  {extensionBlocked.hint}
+                                </div>
+                              )}
+                            </>
                           )}
 
                         {/* The form itself is in a window, not here. The card
@@ -6677,32 +6715,41 @@ $5padding: 20,
                               withdrawLabel="Withdraw this contract request"
                             />
                           ) : (
-                            <button
-                              type="button"
-                              className={styles.slotBtn}
-                              onClick={() => openNewContractForm()}
-                              style={{
-                                marginTop: 8,
-                                width: "100%",
-                                padding: "9px 10px",
-                                // Same class and metrics as the primary button, so
-                                // the two line up exactly. Only the border and text
-                                // differ - neutral rather than amber - which keeps
-                                // this visibly the secondary choice without making
-                                // it look like body text. It was an underlined link
-                                // before, which read as a caption rather than
-                                // something you can press.
-                                border: "1px solid #c3cbd5",
-                                borderRadius: 8,
-                                background: "#fff",
-                                color: "#374151",
-                                fontSize: 13,
-                                fontWeight: 600,
-                                cursor: "pointer",
-                              }}
-                            >
-                              Request a new contract instead
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                className={styles.slotBtn}
+                                onClick={() => openNewContractForm()}
+                                disabled={newContractBlocked.isBlocked}
+                                style={{
+                                  marginTop: 8,
+                                  width: "100%",
+                                  padding: "9px 10px",
+                                  // Same class and metrics as the primary button, so
+                                  // the two line up exactly. Only the border and text
+                                  // differ - neutral rather than amber - which keeps
+                                  // this visibly the secondary choice without making
+                                  // it look like body text. It was an underlined link
+                                  // before, which read as a caption rather than
+                                  // something you can press.
+                                  border: "1px solid #c3cbd5",
+                                  borderRadius: 8,
+                                  background: "#fff",
+                                  color: "#374151",
+                                  fontSize: 13,
+                                  fontWeight: 600,
+                                  cursor: newContractBlocked.isBlocked ? "not-allowed" : "pointer",
+                                  opacity: newContractBlocked.isBlocked ? 0.55 : 1,
+                                }}
+                              >
+                                Request a new contract instead
+                              </button>
+                              {newContractBlocked.isBlocked && (
+                                <div style={{ marginTop: 6, fontSize: 11, color: "#6b5a3c", lineHeight: 1.45 }}>
+                                  {newContractBlocked.hint}
+                                </div>
+                              )}
+                            </>
                           ))}
                       </div>
                     )}
@@ -6719,14 +6766,32 @@ $5padding: 20,
                           isCancelling={isCancellingContractRequest}
                         />
                       ) : newContractFlow.canRequest ? (
-                        <button
-                          type="button"
-                          className={styles.slotBtn}
-                          onClick={() => openNewContractForm()}
-                          style={{ width: "100%", padding: "10px 12px", border: "none", borderRadius: 8, background: "#111827", color: "#fff", fontWeight: 700, cursor: "pointer" }}
-                        >
-                          Request a new contract
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            className={styles.slotBtn}
+                            onClick={() => openNewContractForm()}
+                            disabled={newContractBlocked.isBlocked}
+                            style={{
+                              width: "100%",
+                              padding: "10px 12px",
+                              border: "none",
+                              borderRadius: 8,
+                              background: "#111827",
+                              color: "#fff",
+                              fontWeight: 700,
+                              cursor: newContractBlocked.isBlocked ? "not-allowed" : "pointer",
+                              opacity: newContractBlocked.isBlocked ? 0.55 : 1,
+                            }}
+                          >
+                            Request a new contract
+                          </button>
+                          {newContractBlocked.isBlocked && (
+                            <div style={{ marginTop: 6, fontSize: 11, color: "#6b5a3c", lineHeight: 1.45 }}>
+                              {newContractBlocked.hint}
+                            </div>
+                          )}
+                        </>
                       ) : null
                     )}
                     {/* The extension request, in a window like the new-contract
@@ -6785,12 +6850,13 @@ $5padding: 20,
                                !! admin may well decide the extension one
                                !! first. */
                             <div style={{ padding: 10, border: "1px solid #e5a3a3", borderRadius: 8, background: "#fdecec", fontSize: 12, color: "#8c2020", lineHeight: 1.45 }}>
-                              You also have a request for a new contract with the admin. If that one
-                              is approved it replaces your current contract, and your{" "}
+                              You also have a request for a new contract with the admin, and only one
+                              request can be with the admin at a time. If that one is approved it
+                              replaces your current contract, and your{" "}
                               {latestStudentPackage?.classes_left ?? 0} unused class
                               {Number(latestStudentPackage?.classes_left ?? 0) === 1 ? "" : "es"} will not
-                              carry over - the two cannot both happen. You can withdraw that request
-                              first if you would rather extend this contract.
+                              carry over. Withdraw that request first if you would rather extend this
+                              contract.
                             </div>
                           )}
 
@@ -6905,10 +6971,11 @@ $5padding: 20,
                                  !! this one throws away what the other is
                                  !! asking to preserve. */
                               <div style={{ marginBottom: 10, padding: 10, border: "1px solid #e5a3a3", borderRadius: 8, background: "#fdecec", fontSize: 12, color: "#8c2020", lineHeight: 1.45 }}>
-                                You also have an extension request with the admin, which is asking to
-                                keep the classes on your current contract. Approving this one replaces
-                                that contract instead. You can withdraw the extension request first if
-                                you would rather keep those classes.
+                                You also have an extension request with the admin, and only one request
+                                can be with the admin at a time. That one is asking to keep the classes
+                                on your current contract; approving this one replaces that contract
+                                instead. Withdraw the extension request first if you would rather keep
+                                those classes.
                               </div>
                             )}
                             {contractRequestEditing && (
