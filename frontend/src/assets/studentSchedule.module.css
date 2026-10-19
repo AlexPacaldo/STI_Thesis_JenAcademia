@@ -126,6 +126,17 @@
   gap: 20px;
 }
 
+/* The student's own page: one column, one thing at a time.
+   560 rather than the full width, because a class card with a day and a time
+   on it reads as a list, and a list stretched across a desktop screen is a
+   list with the words too far apart. */
+.simpleWrapper {
+  display: grid;
+  grid-template-columns: minmax(0, 560px);
+  justify-content: center;
+  gap: 16px;
+}
+
 .calendarCard {
   background: white;
   padding: 14px;

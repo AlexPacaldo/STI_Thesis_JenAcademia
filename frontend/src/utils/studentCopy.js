@@ -143,6 +143,7 @@ export const BOOKING = {
   howToBook: "How do you want to book?",
   singleTimes: "Pick single times",
   sameTimeEachWeek: "Same time each week",
+  whichDay: "Which day?",
   day: "Day",
   dayPlaceholder: "Pick a day on the calendar",
   tapDay: "Tap a day on the calendar",

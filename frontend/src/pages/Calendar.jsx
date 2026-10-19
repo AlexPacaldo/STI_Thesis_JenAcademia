@@ -19,6 +19,12 @@ import {
   describeBlockedByOtherRequest,
   describeRequestFlow,
 } from "../utils/contractRequestFlow.js";
+import {
+  addDaysToDateKey,
+  buildDayChoices,
+  dateKeyToLocalDate,
+  describeClassDay,
+} from "../utils/studentSchedule.js";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
@@ -530,22 +536,13 @@ const addSeconds = (time) => {
   return normalized ? `${normalized}:00` : "";
 };
 
-const addDaysToDateKey = (dateKey, days) => {
-  const match = String(dateKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return "";
-  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days);
-  return fmtDate(date);
-};
+// The date helpers live in utils/studentSchedule.js, where they are tested.
+// They were here before, and a day label that was wrong would have passed
+// every test in the repo, because no test could reach them.
 
 const nearbyDateKeys = (dateKey) => {
   const normalized = String(dateKey || "").slice(0, 10);
   return [addDaysToDateKey(normalized, -1), normalized, addDaysToDateKey(normalized, 1)].filter(Boolean);
-};
-
-const dateKeyToLocalDate = (dateKey) => {
-  const match = String(dateKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
 };
 
 const addMonthsClamped = (date, months) => {
@@ -656,6 +653,139 @@ function PendingRequestPanel({
           {isCancelling ? "Withdrawing..." : withdrawLabel}
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The days a student can pick from.
+ *
+ * !! This replaces the month grid for students. A month grid asks a child to
+ * !! read a calendar, count squares, and work out which one is today - three
+ * !! things, none of which is the thing they came to do. This asks them to
+ * !! press a day, and the day says what it is.
+ */
+function DayPicker({ days, selected, onPick, emptyMessage }) {
+  if (!days.length) {
+    return (
+      <div style={{ padding: 12, background: "#f4f6f8", borderRadius: 8, color: "#555" }}>
+        {emptyMessage}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 8,
+        overflowX: "auto",
+        paddingBottom: 6,
+        WebkitOverflowScrolling: "touch",
+      }}
+    >
+      {days.map((day) => {
+        const active = day.key === selected;
+        return (
+          <button
+            key={day.key}
+            type="button"
+            onClick={() => onPick(day.key)}
+            aria-pressed={active}
+            style={{
+              flex: "0 0 auto",
+              minWidth: 74,
+              padding: "10px 8px",
+              borderRadius: 12,
+              border: active ? "2px solid #26423b" : "1px solid #d0d0d0",
+              background: active ? "#26423b" : "#fff",
+              color: active ? "#fff" : "#333",
+              cursor: "pointer",
+              fontWeight: 700,
+              fontSize: "0.8rem",
+              lineHeight: 1.25,
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: "0.95rem" }}>{day.weekday}</div>
+            <div style={{ fontSize: "1.1rem", marginTop: 2 }}>{day.dayNumber}</div>
+            <div style={{ fontSize: "0.7rem", opacity: 0.85, marginTop: 2 }}>{day.month}</div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * One of the student's classes, as a big card.
+ *
+ * !! A class is a thing that happens at a time, so it is shown as a time and
+ * !! a day, in the biggest letters on the card. Everything else on it is
+ * !! smaller, because everything else on it is not what the student is looking
+ * !! for.
+ */
+function ClassCard({ classInfo, onOpen, actionLabel, actionDisabled }) {
+  const dayLabel = classInfo.dayLabel;
+  const timeLabel = classInfo.timeLabel;
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        alignItems: "center",
+        gap: 12,
+        padding: "14px 16px",
+        border: "1px solid #d7e5d9",
+        borderRadius: 16,
+        background: "#fff",
+      }}
+    >
+      <button
+        type="button"
+        onClick={onOpen}
+        style={{
+          border: "none",
+          background: "transparent",
+          padding: 0,
+          textAlign: "left",
+          cursor: "pointer",
+          minWidth: 0,
+        }}
+      >
+        <div style={{ fontSize: "0.8rem", fontWeight: 800, color: "#5e7268", letterSpacing: "0.04em" }}>
+          {dayLabel}
+        </div>
+        <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#10231d", lineHeight: 1.15, marginTop: 2 }}>
+          {timeLabel}
+        </div>
+        <div style={{ fontSize: "0.9rem", color: "#4b5563", marginTop: 4 }}>{classInfo.subtitle}</div>
+      </button>
+
+      {actionLabel && (
+        <button
+          type="button"
+          onClick={onOpen}
+          disabled={actionDisabled}
+          className={styles.bookBtn}
+          style={{
+            minHeight: 46,
+            padding: "12px 18px",
+            border: "none",
+            borderRadius: 12,
+            background: "#2e7d32",
+            color: "#fff",
+            fontWeight: 700,
+            fontSize: "0.95rem",
+            cursor: actionDisabled ? "not-allowed" : "pointer",
+            opacity: actionDisabled ? 0.5 : 1,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {actionLabel}
+        </button>
+      )}
     </div>
   );
 }
@@ -864,6 +994,22 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   };
   const [currentTimeTick, setCurrentTimeTick] = useState(() => Date.now());
   const isAdmin = localRole === "admin"; // helper for rendering
+
+  // The simple student page.
+  //
+  // !! A student on their own gets a page that is a list of their classes and
+  // !! three buttons. Not a month grid with a panel beside it.
+  // !!
+  // !! An admin looking AT a student's calendar keeps the old view - they are
+  // !! looking at a schedule, not using one, and they need the grid to read
+  // !! it. So this is only for a student using their own page.
+  const isSimpleStudentView =
+    localRole === "student" && !teacherId && !studentId && !isAdmin;
+
+  // The student's own upcoming classes, for the list on the home screen.
+  const [studentUpcomingClasses, setStudentUpcomingClasses] = useState([]);
+  const [studentUpcomingLoading, setStudentUpcomingLoading] = useState(false);
+
   const viewerTimezone = useMemo(() => getUserTimezone(me), [me]);
   const viewerTodayKey = useMemo(() => formatDateInTimezone(new Date(currentTimeTick), viewerTimezone), [viewerTimezone, currentTimeTick]);
   const viewerToday = useMemo(() => dateKeyToLocalDate(viewerTodayKey) || new Date(), [viewerTodayKey]);
@@ -908,7 +1054,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     ? (classesCache[selectedDate] || []).filter(cls => cls.verification_status !== "incomplete")
     : [];
   const selectedClass = selectedClassId
-    ? selectedClasses.find(cls => cls.id === selectedClassId)
+    ? (selectedClasses.find(cls => cls.id === selectedClassId)
+      // Also the list on the student's home screen. Those rows are not in the
+      // month cache - the month is a window, and "my next class" is not -
+      // so without this the card on the home screen opens nothing.
+      || studentUpcomingClasses.find(cls => String(cls.id) === String(selectedClassId))
+      || null)
     : null;
   const [classVerification, setClassVerification] = useState(null);
   const [evidenceChoice, setEvidenceChoice] = useState("screenshots");
@@ -1989,6 +2140,40 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     };
   }, [year, month, localRole, localUserId, teacherId, studentId, calendarRefreshToken, isUserReady]);
 
+  // The student's own upcoming classes, for the list on the simple home screen.
+  //
+  // !! The month query above cannot do this job: it returns one month, and a
+  // !! student asking "when is my next class?" needs the next few weeks
+  // !! whatever month that crosses.
+  useEffect(() => {
+    if (!isSimpleStudentView || !localUserId) return;
+
+    let active = true;
+    setStudentUpcomingLoading(true);
+
+    axios
+      .get(`${API}/api/calendar/upcoming-classes`, {
+        params: { student_id: localUserId, limit: 10 },
+      })
+      .then((r) => {
+        if (!active) return;
+        // Stored raw. They are put into the shape the rest of the page
+        // expects where they are used, so that this effect does not depend on
+        // a function that is rebuilt on every render.
+        setStudentUpcomingClasses(r.data?.classes || []);
+      })
+      .catch(() => {
+        if (active) setStudentUpcomingClasses([]);
+      })
+      .finally(() => {
+        if (active) setStudentUpcomingLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isSimpleStudentView, localUserId, calendarRefreshToken]);
+
   // Load teacher availability records for the visible month when teacher enters availability mode
   useEffect(() => {
     if (setAvailabilityMode && localRole === "teacher" && localUserId) {
@@ -2016,6 +2201,35 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     return fmtDate(d) < viewerTodayKey;
   };
 
+  // Choosing a day, in one place.
+  //
+  // !! Two ways of choosing a day now - a strip of days for students, and the
+  // !! month grid for teachers - so the rule about which days are allowed, and
+  // !! what happens when a day is chosen, is written once and used by both.
+  const chooseBookingDate = (chosen) => {
+    if (isOutsideScheduleWindow(chosen)) {
+      setStudentBookingDate(chosen);
+      setStudentBookingTime("");
+      setStudentBookingError(`Please pick a date from today up to ${SCHEDULE_WINDOW_MONTHS} months ahead.`);
+      return;
+    }
+    setStudentBookingDate(chosen);
+    setStudentBookingTime("");
+    setSelectedDate(null);
+    // preload teacher classes for the chosen date if we already know the teacher
+    if (assignedTeacherId) loadTeacherClassesForDate(chosen, assignedTeacherId);
+  };
+
+  const chooseRequestDate = (chosen) => {
+    setRequestDate(chosen);
+    setRequestTime("");
+    setRequestError("");
+    loadClassesForDate(chosen);
+    // attempt to preload teacher availability for the selected class/party
+    const teacherIdToLoad = selectedClass?.teacher_id || counterpartyId || assignedTeacherId || selectedClass?.teacher_id;
+    if (teacherIdToLoad) loadSpecificTeacherAvailability(teacherIdToLoad);
+  };
+
   const handleCellClick = (d) => {
     if (!d || isPastDate(d)) return;
     // If teacher is in availability manager, selecting a calendar cell chooses
@@ -2040,14 +2254,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     // If user is in reschedule request mode, selecting a calendar cell chooses
     // the requested date (works for both student and teacher sides).
     if (requestMode) {
-      const chosen = fmtDate(d);
-      setRequestDate(chosen);
-      setRequestTime("");
-      setRequestError("");
-      loadClassesForDate(chosen);
-      // attempt to preload teacher availability for the selected class/party
-      const teacherIdToLoad = selectedClass?.teacher_id || counterpartyId || assignedTeacherId || selectedClass?.teacher_id;
-      if (teacherIdToLoad) loadSpecificTeacherAvailability(teacherIdToLoad);
+      chooseRequestDate(fmtDate(d));
       return;
     }
 
@@ -2056,18 +2263,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     if (studentBookingMode) {
       // only allow selecting dates within the currently visible month
       if (d.getFullYear() !== year || d.getMonth() !== month) return;
-      const chosen = fmtDate(d);
-      if (isOutsideScheduleWindow(chosen)) {
-        setStudentBookingDate(chosen);
-        setStudentBookingTime("");
-        setStudentBookingError(`Please pick a date from today up to ${SCHEDULE_WINDOW_MONTHS} months ahead.`);
-        return;
-      }
-      setStudentBookingDate(chosen);
-      setStudentBookingTime("");
-      setSelectedDate(null);
-      // preload teacher classes for the chosen date if we already know the teacher
-      if (assignedTeacherId) loadTeacherClassesForDate(chosen, assignedTeacherId);
+      chooseBookingDate(fmtDate(d));
       return;
     }
 
@@ -3449,6 +3645,48 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   });
   const endedContractWithUnusedClasses = contractAsk === "extend";
 
+  // The student's classes, as a list a person can read.
+  //
+  // !! The class rows carry dates in the teacher's timezone and times as
+  // !! "HH:MM:SS" strings. A student needs "TODAY" and "3:00 PM", and the
+  // !! conversion happens here so that everything above this line is in
+  // !! words.
+  //
+  // !! Not memoised: the rows are put into shape by a function that is
+  // !! rebuilt on every render, so a memo would be rebuilt on every render
+  // !! anyway. Six rows, once a render.
+  const simpleStudentClasses = isSimpleStudentView
+    ? studentUpcomingClasses.map((raw) => {
+        const cls = formatClassForViewer(raw);
+        const viewerDate = normalizeDate(cls.scheduled_date);
+        const time = humanTime(cls.start_time || cls.time || "");
+        const endTime = humanTime(getEndTime(cls.start_time || cls.time, cls.duration, cls.end_time) || "");
+
+        return {
+          id: cls.id,
+          classInfo: cls,
+          dayLabel: describeClassDay({
+            viewerDate,
+            todayKey: viewerTodayKey,
+            tomorrowKey: addDaysToDateKey(viewerTodayKey, 1),
+          }),
+          timeLabel: time ? (endTime ? `${time} - ${endTime}` : time) : "Time to be decided",
+          subtitle: cls.className || studentProfile?.course_name || "Your class",
+          viewerDate,
+          time,
+        };
+      })
+    : [];
+
+  // The days a student can pick from.
+  //
+  // !! Fourteen days is enough for booking and for moving a class, and it is
+  // !! short enough that the strip fits on a phone without becoming a wall.
+  const simpleBookingDays = useMemo(
+    () => buildDayChoices({ todayKey: viewerTodayKey, endKey: scheduleWindowEndKey }),
+    [viewerTodayKey, scheduleWindowEndKey]
+  );
+
   // The student's own requests, and what they may do about them.
   //
   // Matching on request_type is the point: an approved new-contract request from
@@ -3794,14 +4032,15 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
   const openMonthlyBooking = () => {
     if (hasNoClassesLeft) {
-      setStudentBookingError("You have no classes left to book. Contact the admin for a new contract.");
+      setStudentBookingError("You have no classes left. Please ask the admin for a new plan.");
       return;
     }
 
     setYear(viewerToday.getFullYear());
     setMonth(viewerToday.getMonth());
     setStudentBookingMode(true);
-    // Clear date so user selects a day from the calendar cells
+    // No day chosen to start with. The student is offered a strip of days,
+    // and they pick the one they want.
     setStudentBookingDate("");
     setStudentBookingTime("");
     setStudentBookingSelections([]);
@@ -4659,7 +4898,20 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       <main className={styles.page}>
       <section className={styles.center}>
 
-        <div className={styles.wrapper}>
+        <div className={isSimpleStudentView ? styles.simpleWrapper : styles.wrapper}>
+          {/* The month grid.
+              !!
+              !! A student does not get one. A month grid asks a child to read
+              !! a calendar, count the squares and work out which one is today
+              !! - three things, none of which is the thing they came to do.
+              !! The student's page is a list of their classes and three
+              !! buttons, and when they need to pick a day they get a strip of
+              !! days that say what they are.
+              !!
+              !! Teachers and admins still get it, and so does an admin
+              !! looking at somebody else's calendar - they are reading a
+              !! schedule, not using one. */}
+          {!isSimpleStudentView && (
           <div className={styles.calendarCard}>
             <div className={styles.calHeader}>
               <button type="button" onClick={prevMonth} className={styles.navBtn} aria-label="Previous month">
@@ -4746,6 +4998,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
               })}
             </div>
           </div>
+          )}
 
           <aside className={styles.bookPanel}>
             {isTeacherOrAdmin ? (
@@ -5906,12 +6159,39 @@ $5padding: 20,
                 {selectedClass ? (
                   // Selected class detail for student
                   <>
-                    <div className={styles.legendTitle}>{CLASS_INFO.title}</div>
-                    <div className={styles.slotList}>
-                      <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                        <div><strong>{selectedClass.className}</strong></div>
-                        <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration, selectedClass.end_time)}</div>
+                    {/* The class, in the biggest letters on the page.
+                        !!
+                        !! The class name is a subject code the student has to
+                        !! decode, and the time is a small line under it. But
+                        !! the thing they came to see is WHEN - so the day and
+                        !! the time are the headline and the subject is the
+                        !! small print. */}
+                    <div className={styles.legendTitle}>
+                      {describeClassDay({
+                        viewerDate: normalizeDate(selectedClass.scheduled_date),
+                        todayKey: viewerTodayKey,
+                        tomorrowKey: addDaysToDateKey(viewerTodayKey, 1),
+                      })}
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: "2rem",
+                        fontWeight: 800,
+                        color: "#10231d",
+                        lineHeight: 1.1,
+                        marginBottom: 4,
+                      }}
+                    >
+                      {selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration, selectedClass.end_time)}
+                    </div>
+                    {selectedClass.className && (
+                      <div style={{ fontSize: "1rem", color: "#4b5563", marginBottom: 12 }}>
+                        {selectedClass.className}
                       </div>
+                    )}
+
+                    <div className={styles.slotList}>
                       {selectedTeacherFullName && (
                         <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -5959,7 +6239,16 @@ $5padding: 20,
                       </div>
                       )}
                     </div>
-                    {renderVerificationPanel()}
+                    {/* The evidence checklist.
+                        !!
+                        !! A student has no use for "Teacher start", "Start
+                        !! screenshot" and "Student attendance". They need to
+                        !! know when the class is and whether they can join
+                        !! it, and that is the two buttons below. The checklist
+                        !! is for the teacher and the admin, and they still
+                        !! get it.
+                        */}
+                    {!isSimpleStudentView && renderVerificationPanel()}
                     {canShowClassEntryAction && (
                       <button
                         disabled={isClassEntryDisabled}
@@ -6065,13 +6354,19 @@ $5padding: 20,
                         </div>
                       )}
                       <div style={{ marginBottom: 10 }}>
-                        <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{CLASS_INFO.newDay}</label>
-                        <div style={{ width: "100%", padding: "10px", fontSize: "0.95rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#fff", minHeight: "42px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                          <div style={{ color: requestDate ? "#111" : "#666" }}>
-                            {requestDate ? new Date(requestDate + "T00:00:00").toLocaleDateString() : BOOKING.dayPlaceholder}
-                          </div>
-                        </div>
-                        <div style={{ fontSize: "0.7rem", color: "#999", marginTop: 4 }}>{BOOKING.tapDay}</div>
+                        <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 6, color: "#333" }}>{CLASS_INFO.newDay}</label>
+                        {/* A strip of days, not a calendar.
+                            !!
+                            !! A student has no month grid on their page, so
+                            !! the old "click a day on the calendar" had
+                            !! nothing to click. The strip says what each day
+                            !! is, and the only thing to do is press one. */}
+                        <DayPicker
+                          days={simpleBookingDays}
+                          selected={requestDate}
+                          onPick={chooseRequestDate}
+                          emptyMessage="No days to choose from."
+                        />
                         {requestDate && (
                           <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
                             {getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? (
@@ -6151,13 +6446,20 @@ $5padding: 20,
                     <button
                       type="button"
                       className={styles.slotBtn}
-                      onClick={() => setSelectedClassId(null)}
+                      onClick={() => {
+                        setSelectedClassId(null);
+                        // A student on the simple page has no day view to go
+                        // back to - the list IS the page. Clearing the date
+                        // stops the old "classes on this day" panel taking
+                        // over when they close the class.
+                        if (isSimpleStudentView) setSelectedDate(null);
+                      }}
                       style={{ marginTop: "8px" }}
                     >
-                      {CLASS_INFO.backToClasses}
+                      {isSimpleStudentView ? "Back to my classes" : CLASS_INFO.backToClasses}
                     </button>
                   </>
-                ) : selectedDate ? (
+                ) : selectedDate && !isSimpleStudentView ? (
                   // Date selected view - clickable classes for student
                   <>
                     <div className={styles.legendTitle}>
@@ -6419,16 +6721,22 @@ $5padding: 20,
                         {studentBookingApplyMode === "manual" && (
                         <>
                         <div>
-                          <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{BOOKING.day}</label>
-<div style={{ width: "100%", padding: "10px", fontSize: "0.95rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#fff", minHeight: "42px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                             <div style={{ color: studentBookingDate ? "#111" : "#666" }}>
-                               {studentBookingDate ? new Date(studentBookingDate + "T00:00:00").toLocaleDateString() : BOOKING.dayPlaceholder}
-                             </div>
-                           </div>
-                           <div style={{ fontSize: "0.7rem", color: "#999", marginTop: 4 }}>{BOOKING.tapDay}</div>
-                         </div>
-                         <div>
-                          <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{BOOKING.times}</label>
+                          <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 6, color: "#333" }}>{BOOKING.whichDay}</label>
+                          {/* A strip of days, not a calendar.
+                              !!
+                              !! A student has no month grid on their page, so
+                              !! the old "click a day on the calendar" had
+                              !! nothing to click. The strip says what each day
+                              !! is, and the only thing to do is press one. */}
+                          <DayPicker
+                            days={simpleBookingDays}
+                            selected={studentBookingDate}
+                            onPick={chooseBookingDate}
+                            emptyMessage="No days to choose from."
+                          />
+                          </div>
+                          <div>
+                           <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{BOOKING.times}</label>
                           <div style={{ fontSize: "0.72rem", color: "#666", marginBottom: 6 }}>
                             {BOOKING.timesHelp}
                           </div>
@@ -6523,34 +6831,18 @@ $5padding: 20,
                             </div>
                           </div>
                         )}
-                        <div>
-                          <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{BOOKING.course}</label>
-                          <div style={{ width: "100%", padding: "12px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#f7fafc", color: "#111", minHeight: "42px", display: "flex", alignItems: "center" }}>
-                            {studentProfile?.course_name || "Not set yet"}
-                          </div>
-                        </div>
-                        <div>
-                          <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{BOOKING.classLength}</label>
-                          <div style={{ width: "100%", padding: "12px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#f7fafc", color: "#111", minHeight: "42px", display: "flex", alignItems: "center" }}>
-                            {studentBookingTime ? (
-                              <span style={{ fontWeight: 500 }}>
-                                {studentClassDuration} minutes ({humanTime(studentBookingTime)} - {humanTime(minutesToTime(timeToMinutes(studentBookingTime) + studentClassDuration))})
-                              </span>
-                            ) : studentBookingTime ? (
-                              <span style={{ fontWeight: 500 }}>
-                                {humanTime(studentBookingTime)} → {humanTime(`${String((Number(studentBookingTime.split(":")[0]) + 1)).padStart(2, "0")}:${studentBookingTime.split(":")[1]}`)}
-                              </span>
-                            ) : (
-                              <span style={{ color: "#999" }}>{BOOKING.pickTimeFirst}</span>
-                            )}
-                          </div>
-                        </div>
+                        {/* The course and the class length are not asked for
+                            here. They are shown in the confirmation the student
+                            reads before they book, which is where a student
+                            actually checks those two things - and a form
+                            that shows read-only boxes is a form that looks
+                            like it wants something the student did not give. */}
                         {studentBookingError && (
                           <div style={{ padding: 10, background: "#ffebee", border: "1px solid #ffcdd2", borderRadius: 6, color: "#c62828", fontSize: "0.85em" }}>
                             {studentBookingError}
                           </div>
                         )}
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                           <button
                             type="button"
                             onClick={() => {
@@ -6559,7 +6851,7 @@ $5padding: 20,
                               setStudentBookingSuggestions([]);
                             }}
                             disabled={isSubmittingStudentBooking}
-                            style={{ padding: "11px 16px", fontSize: "0.9em", border: "1px solid #d0d0d0", background: "#fff", borderRadius: 8, fontWeight: 700, cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer" }}
+                            style={{ flex: 1, padding: "13px 16px", fontSize: "0.95em", border: "1px solid #d0d0d0", background: "#fff", borderRadius: 10, fontWeight: 700, cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer" }}
                           >
                             {CONFIRM.cancel}
                           </button>
@@ -6567,7 +6859,7 @@ $5padding: 20,
                             type="button"
                             onClick={openStudentBookingConfirmation}
                             disabled={isSubmittingStudentBooking || studentBookingSelections.length === 0 || assignedTeacherId == null || hasNoClassesLeft}
-                            style={{ padding: "11px 16px", fontSize: "0.9em", border: "none", background: "#4CAF50", color: "#fff", borderRadius: 8, fontWeight: 700, cursor: (isSubmittingStudentBooking || studentBookingSelections.length === 0 || assignedTeacherId == null || hasNoClassesLeft) ? "not-allowed" : "pointer" }}
+                            style={{ flex: 2, padding: "13px 16px", fontSize: "1rem", border: "none", background: "#4CAF50", color: "#fff", borderRadius: 10, fontWeight: 700, cursor: (isSubmittingStudentBooking || studentBookingSelections.length === 0 || assignedTeacherId == null || hasNoClassesLeft) ? "not-allowed" : "pointer" }}
                           >
                             {isSubmittingStudentBooking
                               ? BOOKING.booking
@@ -6582,52 +6874,133 @@ $5padding: 20,
                 ) : (
                   // Student summary
                   <>
-                    {/* The one number that matters, first.
+                    {/* The student's own home screen: the classes they have,
+                        and how many are left. Nothing else.
                         !!
-                        !! It used to read "Classes Left 0/10" and then
-                        !! "Available to book: 0" underneath, which is the
-                        !! same fact twice in two different words. A student
-                        !! should be able to look at this and know how many
-                        !! classes they can book right now.
+                        !! A month grid went here, and the number of classes
+                        !! left went under it in a small card. A student
+                        !! opening the app does not want a calendar - they
+                        !! want to know when their next class is, and how many
+                        !! they have left. So the list is the page.
                         */}
-                    <div className={styles.legendTitle}>{PLAN.title}</div>
-                    <div className={styles.slotList}>
-                      <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", textAlign: "center" }}>
-                        <div style={{ fontSize: 14, color: "#666" }}>{PLAN.classesLeft}</div>
-                        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 3, fontSize: 22, fontWeight: 750, marginTop: 6, lineHeight: 1.15, letterSpacing: 0, color: "#5f7f70" }}>
-                          <span>{effectiveClassesLeft}</span>
-                          <span style={{ fontSize: 20, fontWeight: 500, color: "#5f7f70" }}>/</span>
-                          <span>{effectiveClassesLimit}</span>
+                    {isSimpleStudentView ? (
+                      <>
+                        <div className={styles.legendTitle}>My classes</div>
+
+                        {studentUpcomingLoading && studentUpcomingClasses.length === 0 ? (
+                          <div style={{ padding: 12, color: "#6b7280", fontSize: "0.9rem" }}>
+                            Loading your classes...
+                          </div>
+                        ) : simpleStudentClasses.length > 0 ? (
+                          <div className={styles.slotList}>
+                            {simpleStudentClasses.map((entry) => (
+                              <ClassCard
+                                key={entry.id}
+                                classInfo={entry}
+                                onOpen={() => {
+                                  setSelectedDate(entry.viewerDate);
+                                  setSelectedClassId(entry.id);
+                                }}
+                                actionLabel="Details"
+                              />
+                            ))}
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              padding: "16px 14px",
+                              border: "1px solid #d7e5d9",
+                              borderRadius: 16,
+                              background: "#fff",
+                              color: "#4b5563",
+                              fontSize: "0.95rem",
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            {/* Two different situations, and they need two
+                                different sentences. "You have no classes
+                                booked yet" and "you have no classes left" are
+                                the same words with opposite meanings, and
+                                only one of them is fixed by booking a class. */}
+                            {hasNoClassesLeft ? (
+                              "You have no classes left. Please ask the admin for a new plan."
+                            ) : (
+                              "You have no classes booked yet. Press the green button below to book one."
+                            )}
+                          </div>
+                        )}
+
+                        {/* How many are left, in one line.
+                            One number, one sentence. It used to be a card
+                            with the number, the total, a second number for
+                            "available to book", a badge and a progress bar -
+                            five ways of saying how many classes a student
+                            had, in a card the size of a postage stamp. */}
+                        <div
+                          style={{
+                            marginTop: 14,
+                            padding: "12px 14px",
+                            borderRadius: 14,
+                            background: "#f2f7f4",
+                            color: "#2f5a43",
+                            fontSize: "1rem",
+                            fontWeight: 700,
+                          }}
+                        >
+                          You have {effectiveClassesLeft} class
+                          {Number(effectiveClassesLeft) === 1 ? "" : "es"} left.
                         </div>
-                        <div style={{ marginTop: 6, color: "#374151", fontSize: 14, fontWeight: 600 }}>
-                          {PLAN.readyToBook}: {effectiveBookableClasses}
-                        </div>
-                        <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}>
-                          {/* Falls back to the most recent package so an expired
-                              plan still shows its deadline here. The panel
-                              below already distinguishes "no plan" from "plan
-                              ended" - this keeps the badge agreeing with it
-                              rather than going blank. */}
-                          <ContractExpiryBadge expiresAt={contractExpiresAt} showDate />
-                        </div>
-                        <div style={{ marginTop: 8 }}>
-                          <div style={{ height: 8, background: "#eef2ff", borderRadius: 8, overflow: "hidden" }}>
-                            <div style={{ width: `${effectivePercent}%`, height: "100%", background: "#5f7f70" }} />
+                      </>
+                    ) : (
+                      <>
+                        {/* The one number that matters, first.
+                            !!
+                            !! It used to read "Classes Left 0/10" and then
+                            !! "Available to book: 0" underneath, which is the
+                            !! same fact twice in two different words. A student
+                            !! should be able to look at this and know how many
+                            !! classes they can book right now.
+                            */}
+                        <div className={styles.legendTitle}>{PLAN.title}</div>
+                        <div className={styles.slotList}>
+                          <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", textAlign: "center" }}>
+                            <div style={{ fontSize: 14, color: "#666" }}>{PLAN.classesLeft}</div>
+                            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 3, fontSize: 22, fontWeight: 750, marginTop: 6, lineHeight: 1.15, letterSpacing: 0, color: "#5f7f70" }}>
+                              <span>{effectiveClassesLeft}</span>
+                              <span style={{ fontSize: 20, fontWeight: 500, color: "#5f7f70" }}>/</span>
+                              <span>{effectiveClassesLimit}</span>
+                            </div>
+                            <div style={{ marginTop: 6, color: "#374151", fontSize: 14, fontWeight: 600 }}>
+                              {PLAN.readyToBook}: {effectiveBookableClasses}
+                            </div>
+                            <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}>
+                              {/* Falls back to the most recent package so an expired
+                                  plan still shows its deadline here. The panel
+                                  below already distinguishes "no plan" from "plan
+                                  ended" - this keeps the badge agreeing with it
+                                  rather than going blank. */}
+                              <ContractExpiryBadge expiresAt={contractExpiresAt} showDate />
+                            </div>
+                            <div style={{ marginTop: 8 }}>
+                              <div style={{ height: 8, background: "#eef2ff", borderRadius: 8, overflow: "hidden" }}>
+                                <div style={{ width: `${effectivePercent}%`, height: "100%", background: "#5f7f70" }} />
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </div>
-                    <div style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
-                      {hasNoActiveStudentPackage
-                        ? (endedContractWithUnusedClasses
-                            ? PLAN_STATUS.endedWithClasses
-                            : PLAN_STATUS.noPlan)
-                        : contractExhausted
-                          ? PLAN_STATUS.allUsed
-                          : allRemainingClassesReserved
-                            ? PLAN_STATUS.allBooked
-                            : PLAN_STATUS.normal}
-                    </div>
+                        <div style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
+                          {hasNoActiveStudentPackage
+                            ? (endedContractWithUnusedClasses
+                                ? PLAN_STATUS.endedWithClasses
+                                : PLAN_STATUS.noPlan)
+                            : contractExhausted
+                              ? PLAN_STATUS.allUsed
+                              : allRemainingClassesReserved
+                                ? PLAN_STATUS.allBooked
+                                : PLAN_STATUS.normal}
+                        </div>
+                      </>
+                    )}
                     {canRequestExtension && (
                       <div style={{ marginTop: 12, padding: 12, border: "1px solid #e0b872", borderRadius: 10, background: "#fdf9f1" }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: "#7a5210" }}>
@@ -7316,14 +7689,16 @@ $5padding: 20,
 
                       </RequestDialog>
                     )}
-                    {/* The one thing a student came here to do.
+                    {/* The three things a student can do.
                         !!
-                        !! It was a white button at the bottom of a column, the
-                        !! same weight as "Jump to Today" and the same weight
-                        !! as everything else. On a screen a child has to
-                        !! read, one action has to look like the action.
+                        !! One big green button and two quiet ones. A student
+                        !! books a class; everything else is rare and should
+                        !! not compete with it for attention.
+                        !!
+                        !! "Jump to Today" went: there is no calendar on this
+                        !! page for it to jump to.
                         */}
-                    <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
                       <button
                         type="button"
                         className={styles.bookBtn}
@@ -7331,35 +7706,68 @@ $5padding: 20,
                         disabled={!assignedTeacherId || hasNoClassesLeft}
                         style={{
                           width: "100%",
-                          minHeight: 48,
-                          fontSize: "1rem",
+                          minHeight: 56,
+                          fontSize: "1.1rem",
                           textAlign: "center",
+                          borderRadius: 14,
                           opacity: !assignedTeacherId || hasNoClassesLeft ? 0.55 : 1,
                           cursor: !assignedTeacherId || hasNoClassesLeft ? "not-allowed" : "pointer",
                         }}
                       >
                         {PLAN.bookAClass}
                       </button>
+
                       <button
                         type="button"
-                        onClick={jumpToToday}
+                        onClick={() => {
+                          setContractRequestOpen(true);
+                          setRequestingNewContract(false);
+                          setContractRequestEditing(false);
+                          setContractExtensionNote("");
+                          setContractRequestError("");
+                        }}
                         style={{
                           width: "100%",
-                          padding: "8px 10px",
-                          border: "none",
-                          background: "transparent",
-                          color: "#4b5563",
-                          fontSize: "0.85rem",
+                          padding: "13px 12px",
+                          border: "1px solid #c3cbd5",
+                          borderRadius: 12,
+                          background: "#fff",
+                          color: "#374151",
+                          fontSize: "0.95rem",
                           fontWeight: 700,
-                          textDecoration: "underline",
                           cursor: "pointer",
                         }}
                       >
-                        {PLAN.today}
+                        {MORE_TIME_CARD.askForMoreTime}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setContractRequestOpen(true);
+                          setRequestingNewContract(true);
+                          setContractRequestEditing(false);
+                          setContractRequestError("");
+                          setShowContractExtraOptions(false);
+                          updateContractCourse(studentProfile?.course_id || "");
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: "13px 12px",
+                          border: "1px solid #c3cbd5",
+                          borderRadius: 12,
+                          background: "#fff",
+                          color: "#374151",
+                          fontSize: "0.95rem",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {MORE_TIME_CARD.getNewPlan}
                       </button>
                     </div>
                     {!assignedTeacherId && (
-                      <div style={{ marginTop: 10, fontSize: "0.8em", color: "#b65f00" }}>
+                      <div style={{ marginTop: 10, fontSize: "0.85em", color: "#b65f00" }}>
                         You do not have a teacher yet. Please contact support.
                       </div>
                     )}
@@ -7376,7 +7784,11 @@ $5padding: 20,
                 !! formally - they need to know which days they can press.
                 !! So it is folded away by default and the words are the ones
                 !! a student would use.
-                */}
+                !!
+                !! And a student on the simple page has no calendar at all,
+                !! so there is nothing for the key to explain. It is for the
+                !! people who still have a grid in front of them. */}
+            {!isSimpleStudentView && (
             <details className={styles.legendBlock}>
               <summary className={styles.guideTitle} style={{ cursor: "pointer" }}>
                 {LEGEND.title}
@@ -7409,6 +7821,7 @@ $5padding: 20,
 
               <div className={styles.guideHint}>{LEGEND.hint}</div>
             </details>
+            )}
           </aside>
         </div>
     </section>
