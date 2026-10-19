@@ -51,15 +51,9 @@ const formatTime = (value) => {
  * represents, and "today" would land under yesterday's bar.
  */
 const formatDayLabel = (value, { withWeekday = true } = {}) => {
-  const parts = String(value || "").slice(0, 10).split("-").map(Number);
-  if (parts.length !== 3 || parts.some(Number.isNaN)) return String(value || "");
-  const date = new Date(parts[0], parts[1] - 1, parts[2]);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString("en-US", {
-    ...(withWeekday ? { weekday: "short" } : {}),
-    month: "short",
-    day: "numeric",
-  });
+  const parts = formatDayParts(value);
+  if (!parts) return String(value || "");
+  return withWeekday ? `${parts.weekday}, ${parts.month} ${parts.day}` : `${parts.month} ${parts.day}`;
 };
 
 /** "2026-10-16 14:03:22" from MySQL -> a local "2:03 PM" style string. */
@@ -68,6 +62,37 @@ const formatStamp = (value) => {
   const parsed = new Date(String(value).replace(" ", "T"));
   if (Number.isNaN(parsed.getTime())) return String(value);
   return parsed.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+};
+
+/**
+ * "2026-10-16" -> { weekday: "Thu", month: "Oct", day: 16 }.
+ *
+ * Split into parts because the axis label is rendered as two lines - the
+ * weekday above the date - and on a phone the month comes off the label
+ * entirely (it is in the panel head instead).
+ */
+const formatDayParts = (value) => {
+  const parts = String(value || "").slice(0, 10).split("-").map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+  const date = new Date(parts[0], parts[1] - 1, parts[2]);
+  if (Number.isNaN(date.getTime())) return null;
+  return {
+    weekday: date.toLocaleDateString("en-US", { weekday: "short" }),
+    month: date.toLocaleDateString("en-US", { month: "short" }),
+    day: date.getDate(),
+  };
+};
+
+/**
+ * Format a date range like "Oct 13 – Oct 19" or "Oct 13–19" if same month.
+ */
+const formatRangeLabel = (from, to) => {
+  const a = formatDayParts(from);
+  const b = formatDayParts(to);
+  if (!a || !b) return "";
+  return a.month === b.month
+    ? `${a.month} ${a.day}–${b.day}`
+    : `${a.month} ${a.day} – ${b.month} ${b.day}`;
 };
 
 const fullName = (person) =>
@@ -240,6 +265,12 @@ export default function AdminOverview({ onNavigateToTab }) {
   );
 
   const trendLastDate = overview?.trend?.[overview.trend.length - 1]?.date || "";
+  const trendRange = overview?.trend?.length
+    ? formatRangeLabel(
+        overview.trend[0].date,
+        overview.trend[overview.trend.length - 1].date
+      )
+    : "";
   // The server's today, used for the timetable heading. Falls back to the last day
   // of the trend window, which is also built from the server's CURDATE(), and to
   // a bare "Today" if the trend query was the one thing that failed.
@@ -403,7 +434,10 @@ export default function AdminOverview({ onNavigateToTab }) {
           <div className={styles.overviewPanelHead}>
             <div>
               <h3>Last {overview?.trend?.length || 7} Days</h3>
-              <p>Classes by outcome.</p>
+              <p>
+                Classes by outcome.
+                {trendRange ? ` ${trendRange}.` : ""}
+              </p>
             </div>
             <span className={styles.overviewCount}>
               Peak {trendPeak} {trendPeak === 1 ? "class" : "classes"}
@@ -413,33 +447,44 @@ export default function AdminOverview({ onNavigateToTab }) {
           {overview?.trend?.length ? (
             <>
               <div className={styles.trend}>
-                {overview.trend.map((day) => (
-                  <div key={day.date} className={styles.trendDay}>
-                    <span className={styles.trendTotal}>{day.total || ""}</span>
-                    <div
-                      className={styles.trendTrack}
-                      role="img"
-                      aria-label={`${formatDayLabel(day.date)}: ${day.total} classes`}
-                    >
-                      {TREND_SEGMENT_ORDER.map((status) => {
-                        const count = Number(day[status === "no-show" ? "noShow" : status] || 0);
-                        if (count <= 0) return null;
-                        return (
-                          <div
-                            key={status}
-                            className={`${styles.trendBar} ${CLASS_STATUS_STYLE[status].className}`}
-                            style={{ height: `${(count / trendPeak) * 100}%` }}
-                          />
-                        );
-                      })}
+                {overview.trend.map((day) => {
+                  const parts = formatDayParts(day.date);
+                  return (
+                    <div key={day.date} className={styles.trendDay}>
+                      <span className={styles.trendTotal}>{day.total || ""}</span>
+                      <div
+                        className={styles.trendTrack}
+                        role="img"
+                        aria-label={`${formatDayLabel(day.date)}: ${day.total} classes`}
+                      >
+                        {TREND_SEGMENT_ORDER.map((status) => {
+                          const count = Number(day[status === "no-show" ? "noShow" : status] || 0);
+                          if (count <= 0) return null;
+                          return (
+                            <div
+                              key={status}
+                              className={`${styles.trendBar} ${CLASS_STATUS_STYLE[status].className}`}
+                              style={{ height: `${(count / trendPeak) * 100}%` }}
+                            />
+                          );
+                        })}
+                      </div>
+                      <span
+                        className={`${styles.trendLabel} ${day.date === trendLastDate ? styles.trendToday : ""}`}
+                      >
+                        <span className={styles.trendLabelDay}>
+                          {parts?.weekday || ""}
+                        </span>
+                        <span className={styles.trendLabelDate}>
+                          <span className={styles.trendLabelMonth}>
+                            {parts ? `${parts.month} ` : ""}
+                          </span>
+                          {parts ? parts.day : ""}
+                        </span>
+                      </span>
                     </div>
-                    <span
-                      className={`${styles.trendLabel} ${day.date === trendLastDate ? styles.trendToday : ""}`}
-                    >
-                      {formatDayLabel(day.date)}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className={styles.trendLegend}>
