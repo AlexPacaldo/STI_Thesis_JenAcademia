@@ -147,7 +147,7 @@ export default function Assignments() {
             ) : (
               rows.map((r) => (
                 <tr key={r.id}>
-                  <td>
+                  <td data-label="Assignment">
                     <span className={styles.assignmentTitle}>
                       {getAssignmentDisplayText(r)}
                     </span>
@@ -170,22 +170,22 @@ export default function Assignments() {
                       </button>
                     ) : null}
                   </td>
-                  <td>
+                  <td data-label="Date">
                     <time className={styles.dateCell} dateTime={r.postedAt || r.createdAt || undefined}>
                       {formatDateGiven(r)}
                     </time>
                   </td>
-                  <td>
+                  <td data-label="Due">
                     {hasDueDate(r) ? (
                       <span className={styles.duePill}>{formatDueDate(r)}</span>
                     ) : (
                       <span className={styles.noDue}>No due date</span>
                     )}
                   </td>
-                  <td>
+                  <td data-label="Subject">
                     <span className={styles.subjectPill}>{r.subject || "General"}</span>
                   </td>
-                  <td className={styles.actionCell}>
+                  <td data-label="Action" className={styles.actionCell}>
                     <Link
                       to={`/assignmentsDropbox?assignmentId=${r.id}`}
                       className={styles.submitButton}

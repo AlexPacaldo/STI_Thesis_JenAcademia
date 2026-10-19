@@ -355,4 +355,32 @@
   .LessonsCard {
     padding: 18px;
   }
+
+  /* Keep a lone book stacked on phones instead of the desktop sideways layout
+     that forces a 320px cover and stretches the card to fill the viewport. */
+  .AvailableLessons {
+    align-items: start;
+  }
+
+  .AvailableLessons:has(> .LessonsCard:only-child) .LessonsCard {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .AvailableLessons:has(> .LessonsCard:only-child) .bookCover,
+  .AvailableLessons:has(> .LessonsCard:only-child) .bookImagePlaceholder {
+    flex: 0 0 auto;
+    width: 100%;
+    max-height: 240px;
+    height: auto;
+    aspect-ratio: 16 / 10;
+    align-self: stretch;
+  }
+
+  .AvailableLessons:has(> .LessonsCard:only-child) .viewAction {
+    width: 100%;
+    min-width: auto;
+  }
 }

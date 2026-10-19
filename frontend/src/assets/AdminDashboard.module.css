@@ -2714,6 +2714,82 @@
   }
 }
 
+/* ===== BOOK LIBRARY — MOBILE =====
+   Phones stack the book header title above the + Add Book button, turn the
+   search + status filter into a single full-width column, render the book
+   grid as one column, and lay a lone card out vertically (cover on top)
+   instead of the wide side-by-side layout that overflows narrow viewports. */
+
+@media (max-width: 560px) {
+  .cardHead {
+    align-items: stretch;
+  }
+
+  .cardHeadActions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .cardHeadActions > * {
+    width: 100%;
+    white-space: normal;
+  }
+
+  .searchRow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .searchRow input,
+  .searchRow select {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 1 1 100% !important;
+  }
+
+  .bookGrid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .bookCard {
+    max-width: none;
+    flex-direction: column;
+  }
+
+  /* A single book falls back to a stacked card on phones: cover on top,
+     content below, actions full width. */
+  .bookGrid:has(> .bookCard:only-child) .bookCard {
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .bookGrid:has(> .bookCard:only-child) .bookCoverWrap,
+  .bookGrid:has(> .bookCard:only-child) .bookCover,
+  .bookGrid:has(> .bookCard:only-child) .bookCoverFallback {
+    width: 100%;
+    flex: 0 0 auto;
+    max-height: 170px;
+    aspect-ratio: 16 / 8;
+    align-self: stretch;
+  }
+
+  .bookCardActionRow {
+    grid-template-columns: 1fr;
+  }
+
+  .bookCardActionRow > *,
+  .bookCardActions > * {
+    width: 100%;
+  }
+}
+
 /* A checkbox sitting in a form, next to a sentence of explanation.
  *
  * The shared `.form input` rule above sets width: 100%, min-height and padding

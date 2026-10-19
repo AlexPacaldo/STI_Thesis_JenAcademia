@@ -244,13 +244,114 @@
 /* ---------- Responsive ---------- */
 
 @media (max-width: 760px) {
-  /* Needs both axes once the table is wider than the viewport. */
+  /* On phones the table collapses into stacked cards so nothing scrolls
+     sideways and every field keeps its label. Each `td` already carries a
+     `data-label` attribute rendered in assignments.jsx. */
   .tableWrap {
-    overflow-x: auto;
+    overflow-x: hidden;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
-  .table {
-    min-width: 620px;
+  .table,
+  .table thead,
+  .table tbody,
+  .table tr,
+  .table th,
+  .table td {
+    display: block;
+    width: 100%;
+  }
+
+  .table thead tr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    border: 0;
+    white-space: nowrap;
+  }
+
+  .table tbody tr {
+    display: flex;
+    flex-direction: column;
+    padding: 16px 18px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: #fff;
+    margin-bottom: 14px;
+    box-shadow: 0 8px 20px rgba(47, 77, 62, 0.06);
+    transition: transform 0.16s ease, box-shadow 0.16s ease;
+  }
+
+  .table tbody tr:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 28px rgba(47, 77, 62, 0.08);
+    border-color: rgba(145, 167, 154, 0.8);
+  }
+
+  .table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(38, 66, 59, 0.06);
+    border-top: 0;
+  }
+
+  .table td:last-child {
+    border-bottom: 0;
+  }
+
+  .table td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: left;
+  }
+
+  .table td:not([data-label])::before {
+    content: none;
+  }
+
+  .actionHeader,
+  .actionCell {
+    text-align: left;
+    white-space: normal;
+  }
+
+  .actionCell {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 0;
+  }
+
+  .actionCell::before {
+    content: none;
+  }
+
+  .submitButton {
+    width: auto;
+    min-height: 40px;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+  }
+
+  .attachmentBadge {
+    margin-top: 6px;
+    align-self: flex-start;
+  }
+
+  .dateCell {
+    white-space: normal;
   }
 }
