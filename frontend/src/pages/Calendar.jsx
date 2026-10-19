@@ -604,6 +604,50 @@ function RequestDialog({ title, onClose, children, maxWidth = 620 }) {
 }
 
 /**
+ * The panel that shows a request that is with the admin.
+ *
+ * !! One panel for both cards, because the two kinds of request have the same
+ * !! three states and the same three actions. It was written twice, and the
+ * !! copy of it on the extension card was the one that never appeared - so a
+ * !! student with a new-contract request in flight and an extension to ask
+ * !! for was shown no sign that the new-contract request existed, and no way
+ * !! to withdraw it. They could open the new-contract form and see that it
+ * !! said "Update Request", and otherwise the request was invisible.
+ */
+function PendingRequestPanel({
+  flow,
+  onEdit,
+  onWithdraw,
+  isCancelling,
+  editLabel,
+  withdrawLabel = "Withdraw this request",
+}) {
+  return (
+    <div style={{ marginTop: 12, padding: 12, border: "1px solid #d9e2d9", borderRadius: 10, background: "#f7faf8" }}>
+      <div style={{ fontSize: 12, color: "#2f5a43", lineHeight: 1.45 }}>{flow.banner}</div>
+      <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+        <button
+          type="button"
+          className={styles.slotBtn}
+          onClick={onEdit}
+          style={{ width: "100%", border: "1px solid #c3cbd5", borderRadius: 8, background: "#fff", fontWeight: 600, cursor: "pointer" }}
+        >
+          {editLabel || flow.actionLabel}
+        </button>
+        <button
+          type="button"
+          onClick={onWithdraw}
+          disabled={isCancelling}
+          style={{ width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", color: "#6b7280", fontSize: 12, cursor: isCancelling ? "not-allowed" : "pointer" }}
+        >
+          {isCancelling ? "Withdrawing..." : withdrawLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Calendar view for teachers and students. Data is loaded from the backend using
  * the SQL schema tables (teacher_availability, classes, student_class_packages).
  *
@@ -6608,50 +6652,58 @@ $5padding: 20,
                             student can do about it; the form belongs in a
                             dialog the size of a form. */}
 
-                        {/* !! Always available, not only after a decline.
+                        {/* The other route, and what is happening on it.
                           !!
-                          !! This was gated on having been declined first, so a student
-                          !! who simply decided they did not want to wait for an
-                          !! extension had no way to start a new contract at all - the
-                          !! card read as though extending were the only outcome
-                          !! available. Hiding a legitimate route is worse than offering
-                          !! both: the new-contract form states plainly that the unused
-                          !! classes do not carry over, which is the same warning the
-                          !! decline path gives. Warned, never blocked.
+                          !! A pending new-contract request used to be invisible
+                          !! here. The button below said "Request a new contract
+                          !! instead" and opened a form whose button said
+                          !! "Update Request" - which told the student a request
+                          !! existed only if they went looking for it, and
+                          !! offered no way to withdraw it. The request was
+                          !! with the admin and the student could neither see
+                          !! it nor take it back.
                           !!
-                          !! Placed below the primary action so the hierarchy reads
-                          !! correctly - extending is what this card is for, and this is
-                          !! the way out for someone who has decided otherwise. */}
-                        {!requestingNewContract && (
-                          <button
-                            type="button"
-                            className={styles.slotBtn}
-                            onClick={() => openNewContractForm({ editing: newContractFlow.isPending })}
-                            style={{
-                              marginTop: 8,
-                              width: "100%",
-                              padding: "9px 10px",
-                              // Same class and metrics as the primary button, so
-                              // the two line up exactly. Only the border and text
-                              // differ - neutral rather than amber - which keeps
-                              // this visibly the secondary choice without making
-                              // it look like body text. It was an underlined link
-                              // before, which read as a caption rather than
-                              // something you can press.
-                              border: "1px solid #c3cbd5",
-                              borderRadius: 8,
-                              background: "#fff",
-                              color: "#374151",
-                              fontSize: 13,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                            }}
-                          >
-                            {newContractFlow.isPending
-                              ? "Update your contract request instead"
-                              : "Request a new contract instead"}
-                          </button>
-                        )}
+                          !! So when there is one, it is shown as what it is:
+                          !! a request in flight, with the two things that can
+                          !! be done about it. */}
+                        {!requestingNewContract &&
+                          (newContractFlow.isPending ? (
+                            <PendingRequestPanel
+                              flow={newContractFlow}
+                              onEdit={() => openNewContractForm({ editing: true })}
+                              onWithdraw={() => cancelContractRequest(newContractFlow.pendingRequest?.request_id)}
+                              isCancelling={isCancellingContractRequest}
+                              editLabel="Update your contract request"
+                              withdrawLabel="Withdraw this contract request"
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              className={styles.slotBtn}
+                              onClick={() => openNewContractForm()}
+                              style={{
+                                marginTop: 8,
+                                width: "100%",
+                                padding: "9px 10px",
+                                // Same class and metrics as the primary button, so
+                                // the two line up exactly. Only the border and text
+                                // differ - neutral rather than amber - which keeps
+                                // this visibly the secondary choice without making
+                                // it look like body text. It was an underlined link
+                                // before, which read as a caption rather than
+                                // something you can press.
+                                border: "1px solid #c3cbd5",
+                                borderRadius: 8,
+                                background: "#fff",
+                                color: "#374151",
+                                fontSize: 13,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Request a new contract instead
+                            </button>
+                          ))}
                       </div>
                     )}
                     {canRequestNewContract && !contractRequestOpen && !requestingNewContract && (
@@ -6660,29 +6712,12 @@ $5padding: 20,
                          rather than offering a second "Request" that would
                          quietly replace the first. */
                       newContractFlow.isPending ? (
-                        <div style={{ marginTop: 12, padding: 12, border: "1px solid #d9e2d9", borderRadius: 10, background: "#f7faf8" }}>
-                          <div style={{ fontSize: 12, color: "#2f5a43", lineHeight: 1.45 }}>
-                            {newContractFlow.banner}
-                          </div>
-                          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                            <button
-                              type="button"
-                              className={styles.slotBtn}
-                              onClick={() => openNewContractForm({ editing: true })}
-                              style={{ width: "100%", border: "1px solid #c3cbd5", borderRadius: 8, background: "#fff", fontWeight: 600, cursor: "pointer" }}
-                            >
-                              {newContractFlow.actionLabel}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => cancelContractRequest(newContractFlow.pendingRequest?.request_id)}
-                              disabled={isCancellingContractRequest}
-                              style={{ width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", color: "#6b7280", fontSize: 12, cursor: isCancellingContractRequest ? "not-allowed" : "pointer" }}
-                            >
-                              {isCancellingContractRequest ? "Withdrawing..." : "Withdraw this request"}
-                            </button>
-                          </div>
-                        </div>
+                        <PendingRequestPanel
+                          flow={newContractFlow}
+                          onEdit={() => openNewContractForm({ editing: true })}
+                          onWithdraw={() => cancelContractRequest(newContractFlow.pendingRequest?.request_id)}
+                          isCancelling={isCancellingContractRequest}
+                        />
                       ) : newContractFlow.canRequest ? (
                         <button
                           type="button"
@@ -6731,6 +6766,31 @@ $5padding: 20,
                               <strong>{latestStudentPackage.classes_left}</strong> unused class
                               {Number(latestStudentPackage.classes_left) === 1 ? "" : "es"} on a contract that
                               ended. An extension keeps them - no new contract, nothing used is reset.
+                            </div>
+                          )}
+
+                          {newContractFlow.isPending && (
+                            /* The two requests contradict each other.
+                               !!
+                               !! A new contract REPLACES the contract these
+                               !! classes are on, so if the admin approves the
+                               !! new-contract request, the classes this
+                               !! extension is asking to keep are gone. The
+                               !! student can have both requests in flight, and
+                               !! the admin has no way to know that the second
+                               !! one quietly undoes the first.
+                               !!
+                               !! Warned, never blocked. The student may
+                               !! legitimately want the new contract, and the
+                               !! admin may well decide the extension one
+                               !! first. */
+                            <div style={{ padding: 10, border: "1px solid #e5a3a3", borderRadius: 8, background: "#fdecec", fontSize: 12, color: "#8c2020", lineHeight: 1.45 }}>
+                              You also have a request for a new contract with the admin. If that one
+                              is approved it replaces your current contract, and your{" "}
+                              {latestStudentPackage?.classes_left ?? 0} unused class
+                              {Number(latestStudentPackage?.classes_left ?? 0) === 1 ? "" : "es"} will not
+                              carry over - the two cannot both happen. You can withdraw that request
+                              first if you would rather extend this contract.
                             </div>
                           )}
 
@@ -6834,6 +6894,21 @@ $5padding: 20,
                                 {Number(latestStudentPackage.classes_left) === 1 ? "" : "es"} on it will not carry over.
                                 If you would rather keep them, close this and ask for
                                 an extension instead.
+                              </div>
+                            )}
+                            {extensionFlow.isPending && (
+                              /* The same contradiction, from the other side.
+                                 !! The extension request is asking to keep the
+                                 !! unused classes, and this form is asking for
+                                 !! the contract that would replace them. Both
+                                 !! can be with the admin at once, and approving
+                                 !! this one throws away what the other is
+                                 !! asking to preserve. */
+                              <div style={{ marginBottom: 10, padding: 10, border: "1px solid #e5a3a3", borderRadius: 8, background: "#fdecec", fontSize: 12, color: "#8c2020", lineHeight: 1.45 }}>
+                                You also have an extension request with the admin, which is asking to
+                                keep the classes on your current contract. Approving this one replaces
+                                that contract instead. You can withdraw the extension request first if
+                                you would rather keep those classes.
                               </div>
                             )}
                             {contractRequestEditing && (
