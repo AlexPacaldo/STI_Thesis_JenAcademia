@@ -49,8 +49,8 @@ export function describeContractExpiry(expiresAt, now = new Date()) {
     return {
       state: "expired",
       daysLeft,
-      label: "Expired",
-      detail: `Contract ended ${pretty}`,
+      label: "Ended",
+      detail: `Your plan ended on ${pretty}`,
       tone: "danger",
     };
   }
@@ -59,8 +59,8 @@ export function describeContractExpiry(expiresAt, now = new Date()) {
     return {
       state: "today",
       daysLeft,
-      label: "Expires today",
-      detail: `Contract ends ${pretty}`,
+      label: "Ends today",
+      detail: `Your plan ends on ${pretty}`,
       tone: "danger",
     };
   }
@@ -70,7 +70,7 @@ export function describeContractExpiry(expiresAt, now = new Date()) {
       state: "soon",
       daysLeft,
       label: "1 day left",
-      detail: `Contract ends ${pretty}`,
+      detail: `Your plan ends on ${pretty}`,
       tone: "warn",
     };
   }
@@ -80,7 +80,7 @@ export function describeContractExpiry(expiresAt, now = new Date()) {
       state: "soon",
       daysLeft,
       label: `${daysLeft} days left`,
-      detail: `Contract ends ${pretty}`,
+      detail: `Your plan ends on ${pretty}`,
       tone: "warn",
     };
   }
@@ -89,7 +89,7 @@ export function describeContractExpiry(expiresAt, now = new Date()) {
     state: "ok",
     daysLeft,
     label: `${daysLeft} days left`,
-    detail: `Contract ends ${pretty}`,
+    detail: `Your plan ends on ${pretty}`,
     tone: "ok",
   };
 }

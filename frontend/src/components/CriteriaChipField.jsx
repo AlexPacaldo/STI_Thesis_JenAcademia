@@ -97,7 +97,7 @@ export default function CriteriaChipField({
                 className={styles.input}
               />
               <span className={styles.mark} aria-hidden="true" />
-              <span className={styles.chipText}>Others</span>
+              <span className={styles.chipText}>Something else</span>
               <span className={styles.srOnly}>{customSelected ? ", selected" : ""}</span>
             </label>
           ) : null}
@@ -111,7 +111,7 @@ export default function CriteriaChipField({
             type="text"
             value={customValue}
             onChange={(e) => onCustomChange?.(e.target.value)}
-            placeholder="Describe it in your own words"
+            placeholder="Tell us in your own words"
             aria-label={`${legend}: other`}
             maxLength={MAX_CUSTOM_LENGTH}
           />

@@ -73,7 +73,9 @@ export function describeRequestFlow({ pending = [], history = [], kind = REQUEST
   const pendingRequest = findPendingRequest(pending, kind);
   const resolvedRequest = findResolvedRequest(history, kind);
 
-  const noun = isExtension ? "extension request" : "contract request";
+  // The student's words, not the system's. The database says "contract" and
+  // "extension"; a student has a class plan and needs more time.
+  const noun = isExtension ? "ask for more time" : "ask for a new plan";
 
   if (pendingRequest) {
     const revisionCount = Math.max(1, Number(pendingRequest.revision_count ?? 1) || 1);
@@ -92,10 +94,10 @@ export function describeRequestFlow({ pending = [], history = [], kind = REQUEST
       canCancel: true,
       canAskAgain: false,
       banner: changes > 0
-        ? `Your ${noun} is with the admin. You have changed it ${changes} time${changes === 1 ? "" : "s"} since you first sent it, and the admin sees the latest version.`
-        : `Your ${noun} is with the admin. You will be notified when it is answered.`,
-      revisionLabel: changes > 0 ? `Revised ${changes} time${changes === 1 ? "" : "s"}` : "",
-      actionLabel: "Update your request",
+        ? `Your ${noun} is with the admin. You changed it ${changes} time${changes === 1 ? "" : "s"}, and the admin sees the latest one.`
+        : `Your ${noun} is with the admin. We will let you know when it is answered.`,
+      revisionLabel: changes > 0 ? `Changed ${changes} time${changes === 1 ? "" : "s"}` : "",
+      actionLabel: "Change my ask",
       outcome: "",
     };
   }
@@ -142,8 +144,8 @@ export function describeRequestFlow({ pending = [], history = [], kind = REQUEST
         ? "Ask again"
         : withdrawn
           ? isExtension
-            ? "Request an extension"
-            : "Request a new contract"
+            ? "Ask for more time"
+            : "Get a new plan"
           : outcome.actionLabel,
       outcome: outcome.text,
     };
@@ -161,7 +163,7 @@ export function describeRequestFlow({ pending = [], history = [], kind = REQUEST
     canAskAgain: false,
     banner: "",
     revisionLabel: "",
-    actionLabel: isExtension ? "Request an extension" : "Request a new contract",
+    actionLabel: isExtension ? "Ask for more time" : "Get a new plan",
     outcome: "",
   };
 }
@@ -188,13 +190,13 @@ export function describeBlockedByOtherRequest({ kind, otherKind, otherIsPending 
     return { isBlocked: false, hint: "" };
   }
 
-  const askedFor = kind === REQUEST_KIND_EXTENSION ? "an extension" : "a new contract";
+  const askedFor = kind === REQUEST_KIND_EXTENSION ? "more time" : "a new plan";
   const waitingFor =
-    otherKind === REQUEST_KIND_EXTENSION ? "an extension request" : "a contract request";
+    otherKind === REQUEST_KIND_EXTENSION ? "ask for more time" : "ask for a new plan";
 
   return {
     isBlocked: true,
-    hint: `You already have a ${waitingFor} with the admin. Withdraw it first if you would rather ask for ${askedFor}.`,
+    hint: `You already asked the admin to ${waitingFor}. Cancel that one first if you would rather ask for ${askedFor}.`,
   };
 }
 
@@ -212,34 +214,34 @@ function describeOutcome(request, { isExtension }) {
   if (status === "approved") {
     return {
       text: isExtension
-        ? `Your extension request was approved${response}.`
-        : `Your contract request was approved${response}.`,
+        ? `The admin said yes to more time${response}.`
+        : `The admin said yes to your new plan${response}.`,
       // An approved extension is the end of the road for that kind of
-      // request - the contract runs again, and there is nothing to extend.
-      // An approved new contract is not: a student who has used all their
-      // classes can ask for more.
-      actionLabel: isExtension ? "" : "Request another contract",
+      // request - the plan runs again, and there is nothing left to extend.
+      // An approved new plan is not: a student who has used all their
+      // classes can always ask for more.
+      actionLabel: isExtension ? "" : "Get another plan",
     };
   }
 
   if (status === "declined") {
     return {
       text: isExtension
-        ? `Your last extension request was declined${response}. Your unused classes remain on the expired contract.`
-        : `Your last contract request was declined${response}.`,
+        ? `The admin said no to more time${response}. Your classes are still on your old plan.`
+        : `The admin said no to your new plan${response}.`,
       actionLabel: "Ask again",
     };
   }
 
   if (status === "cancelled") {
     return {
-      text: "You withdrew this request, so there is nothing waiting for the admin.",
-      actionLabel: isExtension ? "Request an extension" : "Request a new contract",
+      text: "You cancelled this ask, so the admin is not waiting for anything.",
+      actionLabel: isExtension ? "Ask for more time" : "Get a new plan",
     };
   }
 
   return {
-    text: `Your last request was ${status}${response}.`,
-    actionLabel: isExtension ? "Request an extension" : "Request a new contract",
+    text: `Your last ask was ${status}${response}.`,
+    actionLabel: isExtension ? "Ask for more time" : "Get a new plan",
   };
 }

@@ -15,24 +15,33 @@
  * An option is `[value, label]` or `[value, label, allowedCourseNames]`. The
  * third element scopes an option to specific courses; omit it to offer the
  * option for every course.
+ *
+ * !! The LABELS are written for students, and the shared vocabularies use the
+ * !! same words on both sides - a student who says "Step by step" and a
+ * !! teacher who says "Step by step" are talking about the same thing, and
+ * !! the admin comparing them should not have to translate.
+ * !!
+ * !! The VALUES are a different matter and are not ours to change: they are
+ * !! the contract with backend/teacherMatching.js, and the matcher's
+ * !! vocabulary tables are keyed on them.
  */
 
 export const STUDENT_CRITERIA_OPTIONS = {
   learningGoal: [
-    ["school-support", "School Support", ["Online English", "OPIc"]],
-    ["conversation", "Conversation", ["Conversational English", "Travel English", "Online English", "OPIc"]],
-    ["exam-prep", "Exam Preparation", ["IELTS", "TOEIC", "OPIc"]],
-    ["business", "Business English", ["Business English", "Job Interview", "TOEIC"]],
-    ["confidence", "Confidence Building", ["Conversational English", "Travel English", "Online English"]],
-    ["interview-readiness", "Interview Readiness", ["Job Interview", "Business English"]],
-    ["news-discussion", "News Discussion", ["News", "Conversational English"]],
+    ["school-support", "Help with school", ["Online English", "OPIc"]],
+    ["conversation", "Talking", ["Conversational English", "Travel English", "Online English", "OPIc"]],
+    ["exam-prep", "Exam prep", ["IELTS", "TOEIC", "OPIc"]],
+    ["business", "Work English", ["Business English", "Job Interview", "TOEIC"]],
+    ["confidence", "Feel more confident", ["Conversational English", "Travel English", "Online English"]],
+    ["interview-readiness", "Job interview", ["Job Interview", "Business English"]],
+    ["news-discussion", "Talk about news", ["News", "Conversational English"]],
   ],
   learningStyle: [
-    ["structured", "Structured Lessons"],
-    ["conversational", "Conversational Practice"],
-    ["visual", "Visual Activities"],
-    ["interactive", "Interactive Activities"],
-    ["independent", "Independent Practice"],
+    ["structured", "Step by step"],
+    ["conversational", "Talk a lot"],
+    ["visual", "Pictures"],
+    ["interactive", "Games"],
+    ["independent", "On my own"],
   ],
   focusArea: [
     ["speaking", "Speaking", ["Conversational English", "Travel English", "Online English", "OPIc", "Job Interview"]],
@@ -40,15 +49,15 @@ export const STUDENT_CRITERIA_OPTIONS = {
     ["reading", "Reading", ["IELTS", "TOEIC", "News", "Online English"]],
     ["writing", "Writing", ["IELTS", "Business English", "Online English", "Job Interview"]],
     ["listening", "Listening", ["IELTS", "TOEIC", "Conversational English", "OPIc", "News"]],
-    ["vocabulary", "Vocabulary", ["Business English", "Travel English", "News", "TOEIC", "IELTS"]],
-    ["pronunciation", "Pronunciation", ["Conversational English", "OPIc", "Travel English", "Online English"]],
-    ["interview-answers", "Interview Answers", ["Job Interview", "Business English"]],
+    ["vocabulary", "Words", ["Business English", "Travel English", "News", "TOEIC", "IELTS"]],
+    ["pronunciation", "Pronouncing", ["Conversational English", "OPIc", "Travel English", "Online English"]],
+    ["interview-answers", "Job interview answers", ["Job Interview", "Business English"]],
   ],
   pace: [
-    ["slow", "Slow and Guided"],
-    ["balanced", "Balanced"],
-    ["fast", "Fast-paced"],
-    ["review-heavy", "Review-heavy"],
+    ["slow", "Slow"],
+    ["balanced", "Just right"],
+    ["fast", "Fast"],
+    ["review-heavy", "Lots of review"],
   ],
 };
 
@@ -65,20 +74,22 @@ export const TEACHER_CRITERIA_OPTIONS = {
     ["kids and novice english", "Kids and Novice English", ["Online English"]],
   ],
   // Identical vocabulary to the student's learningStyle, so the matcher can
-  // compare them exactly.
+  // compare them exactly. Identical WORDS too - the admin is comparing a
+  // student's answer with a teacher's answer, and "Step by step" on one side
+  // and "Structured" on the other would be the admin doing the translating.
   teachingStyle: [
-    ["structured", "Structured"],
-    ["conversational", "Conversational"],
-    ["visual", "Visual"],
-    ["interactive", "Interactive"],
-    ["independent", "Independent Practice"],
+    ["structured", "Step by step"],
+    ["conversational", "Talk a lot"],
+    ["visual", "Pictures"],
+    ["interactive", "Games"],
+    ["independent", "On my own"],
   ],
   // Identical vocabulary to the student's pace.
   idealStudentPace: [
-    ["slow", "Slow and Guided"],
-    ["balanced", "Balanced"],
-    ["fast", "Fast-paced"],
-    ["review-heavy", "Review-heavy"],
+    ["slow", "Slow"],
+    ["balanced", "Just right"],
+    ["fast", "Fast"],
+    ["review-heavy", "Lots of review"],
   ],
 };
 

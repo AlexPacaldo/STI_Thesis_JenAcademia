@@ -110,23 +110,26 @@ export default function MatchPreviewCard({ preview }) {
           lineHeight: 1.5,
         }}
       >
-        <strong>Nobody matches this course yet.</strong>{" "}
+        <strong>No teacher for this course yet.</strong>{" "}
         {preview.noTeacherReason === "no-teachers"
           ? "There are no active teachers to match against."
           : "No active teacher currently teaches this course."}{" "}
-        You can still send the request - the admin will arrange a teacher.
+        You can still send the ask - the admin will find you a teacher.
       </div>
     );
   }
 
   const { teacher, matchStrength, advisor, availabilityConflict, availabilityReason, preferredScheduleEvaluated } = preview;
 
+  // The student's words. "Strong match" and "Rule scores" are the system's
+  // language; a student only needs to know whether this teacher is a good
+  // fit and what to do about it.
   const strength = {
-    strong: { bg: "#eef5f0", border: "#a9c9b4", text: "#2f5a43", label: "Strong match" },
-    partial: { bg: "#fdf6e8", border: "#e0c98a", text: "#7a5a10", label: "Partial match" },
-    weak: { bg: "#fdf1f1", border: "#e0b0b0", text: "#8c2020", label: "Closest available, not a strong match" },
-    unknown: { bg: "#f4f6f5", border: "#d0d7d3", text: "#4a5a52", label: "No criteria set yet" },
-  }[matchStrength?.level] || { bg: "#f4f6f5", border: "#d0d7d3", text: "#4a5a52", label: "Match" };
+    strong: { bg: "#eef5f0", border: "#a9c9b4", text: "#2f5a43", label: "Great fit" },
+    partial: { bg: "#fdf6e8", border: "#e0c98a", text: "#7a5a10", label: "Good fit" },
+    weak: { bg: "#fdf1f1", border: "#e0b0b0", text: "#8c2020", label: "Closest teacher we have" },
+    unknown: { bg: "#f4f6f5", border: "#d0d7d3", text: "#4a5a52", label: "We do not know yet" },
+  }[matchStrength?.level] || { bg: "#f4f6f5", border: "#d0d7d3", text: "#4a5a52", label: "Your teacher" };
 
   return (
     <div
@@ -149,8 +152,8 @@ export default function MatchPreviewCard({ preview }) {
 
       {matchStrength?.total > 0 && matchStrength.level !== "strong" && (
         <p style={{ margin: 0, fontSize: "0.86em", color: strength.text, lineHeight: 1.5 }}>
-          {matchStrength.matched} of the {matchStrength.total} criteria you set are covered by
-          this teacher.
+          This teacher covers {matchStrength.matched} of the {matchStrength.total} things you asked
+          for.
         </p>
       )}
 
@@ -179,21 +182,21 @@ export default function MatchPreviewCard({ preview }) {
 
       {teacher.reasons?.length > 0 && (
         <p style={{ margin: 0, fontSize: "0.82em", color: "#6b7d73" }}>
-          Rule scores: {teacher.reasons.join(", ")}
+          {teacher.reasons.join(", ")}
         </p>
       )}
 
       {preferredScheduleEvaluated && (
         <p style={{ margin: 0, fontSize: "0.84em", color: availabilityConflict ? "#8c2020" : "#2f5a43", lineHeight: 1.5 }}>
           {availabilityConflict
-            ? `Not free then - ${availabilityReason || "their availability does not cover it"}.`
+            ? `Not free then - ${availabilityReason || "their free times do not cover it"}.`
             : "Free at the times you chose."}
         </p>
       )}
 
       <p style={{ margin: "2px 0 0", fontSize: "0.8em", color: "#6b7d73", lineHeight: 1.45 }}>
-        This is who would most likely be matched. Nothing is assigned yet - the
-        admin reviews your request and decides.
+        This is the teacher we think fits you best. Nothing is decided yet - the
+        admin reads your ask and chooses.
       </p>
     </div>
   );

@@ -31,7 +31,7 @@ check("garbage is nothing, not a wrong number", describeContractExpiry("soon", N
 
 const gone = describeContractExpiry(inDays(-10), NOW);
 check("the past is expired", gone.state, "expired");
-check("and says so", gone.label, "Expired");
+check("and says so", gone.label, "Ended");
 check("with a negative count", gone.daysLeft, -10);
 check("and a danger tone", gone.tone, "danger");
 
@@ -56,7 +56,7 @@ check("not soon is calm", describeContractExpiry(inDays(15), NOW).tone, "ok");
 const far = describeContractExpiry(inDays(80), NOW);
 check("a long contract is fine", far.state, "ok");
 check("and still reports a count", far.label, "80 days left");
-check("and carries the date for the tooltip", far.detail.startsWith("Contract ends"), true);
+check("and carries the date for the tooltip", far.detail.startsWith("Your plan ends"), true);
 
 /* ---------------------------------------------------------------- balance */
 

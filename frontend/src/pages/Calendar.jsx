@@ -2,6 +2,18 @@ import { openSseStream } from "../utils/sseClient.js";
 import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
 import { describeExtensionEligibility } from "../utils/contractExpiry.js";
 import {
+  BOOKING,
+  CLASS_INFO,
+  CONFIRM,
+  LEGEND,
+  LOADING,
+  MORE_TIME_CARD,
+  MORE_TIME_WINDOW,
+  NEW_PLAN_WINDOW,
+  PLAN,
+  PLAN_STATUS,
+} from "../utils/studentCopy.js";
+import {
   REQUEST_KIND_EXTENSION,
   REQUEST_KIND_NEW,
   describeBlockedByOtherRequest,
@@ -744,6 +756,10 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   // True while the open form is editing a request that is already with the
   // admin, rather than sending a first one.
   const [contractRequestEditing, setContractRequestEditing] = useState(false);
+  // True while the student has opened the extra questions on the new-plan
+  // form. Closed by default: a form that opens with eight questions is a form
+  // a student gives up on, and the extra ones are genuinely optional.
+  const [showContractExtraOptions, setShowContractExtraOptions] = useState(false);
   const [isCancellingContractRequest, setIsCancellingContractRequest] = useState(false);
   const [isSubmittingContractRequest, setIsSubmittingContractRequest] = useState(false);
   // The extension's "why do you need longer" box, and the only free text left in
@@ -2175,8 +2191,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
   const getCounterpartyUnavailableMessage = () => {
     return localRole === "teacher"
-      ? "Student is not available at this time. Please choose another time."
-      : "Teacher is not available at this time. Please choose another time.";
+      ? "The student is not free at this time. Please pick another time."
+      : "Your teacher is not free at this time. Please pick another time.";
   };
 
   // Helper: Check if a time falls within teacher's break on the selected date
@@ -2771,7 +2787,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         reason: requestReason,
       });
       
-      notify("Reschedule request sent successfully! The teacher will review your request.", "success");
+      notify("Sent. Your teacher will say yes or no.", "success");
       setRequestConfirmOpen(false);
       setRequestMode(false);
       setRequestDate("");
@@ -2806,11 +2822,11 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return;
     }
     if (getRescheduleAvailabilityStatus(requestDate) !== "available") {
-      setRequestError("Please choose a date with available schedule.");
+      setRequestError("Please pick a day when your teacher is free.");
       return;
     }
     if (isRescheduleToSameDateTime(requestDate, requestTime)) {
-      setRequestError("Cannot reschedule to the same date and time. Please choose a different time.");
+      setRequestError("That is the same time. Please pick a different one.");
       return;
     }
     if (isTimeBookedForReschedule(requestDate, requestTime)) {
@@ -2822,11 +2838,11 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return;
     }
     if (isTimeConflictingWithTeacherBreak(requestDate, requestTime)) {
-      setRequestError(localRole === "teacher" ? "This time conflicts with your break. Please choose another time." : "This time conflicts with teacher's break. Please choose another time.");
+      setRequestError(localRole === "teacher" ? "This is your break. Please pick another time." : "Your teacher has a break then. Please pick another time.");
       return;
     }
     if (isTimeOutsideTeacherAvailability(requestDate, requestTime)) {
-      setRequestError(localRole === "teacher" ? "This time is outside your availability window. Please choose another time." : "This time is outside the teacher's availability window. Please choose another time.");
+      setRequestError(localRole === "teacher" ? "This is outside your free times. Please pick another time." : "Your teacher is not free then. Please pick another time.");
       return;
     }
 
@@ -2914,16 +2930,19 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     (localRole === "student" && !selectedClassStarted);
   const selectedClassEntryLabel = (() => {
     if (isUpdatingVerification) return "Saving...";
-    if (isSelectedClassCompleted) return "Class Done";
+    if (isSelectedClassCompleted) return "Class is done";
     if (localRole === "teacher" && !selectedClassStarted) return "Start & Join Class";
-    if (localRole === "student" && !selectedClassStarted) return "Waiting for Teacher";
-    if (localRole === "student" && !selectedClassStudentConfirmed) return "Join & Confirm Attendance";
-    return "Join Class";
+    // The student words. A student who is waiting for their teacher does not
+    // need to know that the class has not been "started" - they need to know
+    // that it is not their turn yet.
+    if (localRole === "student" && !selectedClassStarted) return CLASS_INFO.waitingForTeacher;
+    if (localRole === "student" && !selectedClassStudentConfirmed) return CLASS_INFO.joinAndHere;
+    return CLASS_INFO.joinClass;
   })();
   const selectedClassEntryTitle = (() => {
     if (isSelectedClassCompleted) return "This class is already done";
-    if (!isSelectedClassConfirmable) return "Available 30 mins before class starts";
-    if (localRole === "student" && !selectedClassStarted) return "The teacher must start the class first";
+    if (!isSelectedClassConfirmable) return "You can join 30 minutes before the class starts";
+    if (localRole === "student" && !selectedClassStarted) return "Your teacher has to start the class first";
     return "";
   })();
   const classEntryConfirmMode =
@@ -2944,14 +2963,31 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       }
     : {
         badge: "REC",
-        title: "Recording consent",
-        message: "This class may be recorded for attendance verification and can be viewed by the admin, teacher, and student.",
-        details: [
-          "The recording is used only for class verification.",
-          "The recording will be deleted after 7 days.",
-          "By continuing, you consent to join with recording verification.",
-        ],
-        confirmLabel: localRole === "teacher" && !selectedClassStarted ? "Consent & Start Class" : "Consent & Join Class",
+        // The student words. A teacher is signing off on evidence; a student
+        // is being asked whether they are happy to be recorded, and the
+        // sentence that matters to them is what happens to the recording.
+        title: localRole === "teacher" ? "Recording consent" : CONFIRM.recordingTitle,
+        message:
+          localRole === "teacher"
+            ? "This class may be recorded for attendance verification and can be viewed by the admin, teacher, and student."
+            : CONFIRM.recordingBody,
+        details:
+          localRole === "teacher"
+            ? [
+                "The recording is used only for class verification.",
+                "The recording will be deleted after 7 days.",
+                "By continuing, you consent to join with recording verification.",
+              ]
+            : [
+                "We keep the recording for 7 days, then it is deleted.",
+                "Only the admin, your teacher and you can watch it.",
+              ],
+        confirmLabel:
+          localRole === "teacher" && !selectedClassStarted
+            ? "Consent & Start Class"
+            : localRole === "teacher"
+              ? "Consent & Join Class"
+              : CONFIRM.yesJoin,
       };
 
   const refreshSelectedVerification = (verification) => {
@@ -2999,7 +3035,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return;
     }
     if (!isSelectedClassConfirmable) {
-      notify?.("You can confirm attendance 30 minutes before class starts until it ends.", "error");
+      notify?.("You can say you are here from 30 minutes before the class starts.", "error");
       return;
     }
 
@@ -3010,7 +3046,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         recording_consent: true,
       });
       refreshSelectedVerification(response.data?.verification);
-      notify?.("Attendance confirmed.", "success");
+      notify?.("Thank you. We marked you as here.", "success");
       return response.data?.verification || null;
     } catch (error) {
       notify?.(error.response?.data?.message || "Unable to confirm attendance.", "error");
@@ -3697,16 +3733,16 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
 
       if (!suggestions.length) {
-        setStudentBookingError("No available weekly suggestions found for the selected days and preferred time.");
+        setStudentBookingError("We could not find a free time on those days. Please try another day.");
         return;
       }
 
       setStudentBookingSuggestions(suggestions);
       setStudentBookingTime(preferredTime);
-      notify?.(`${suggestions.length} weekly suggestion${suggestions.length === 1 ? "" : "s"} found. You can add up to ${studentBookingLimit - studentBookingSelections.length}.`, "success");
+      notify?.(`We found ${suggestions.length} time${suggestions.length === 1 ? "" : "s"}. You can add up to ${studentBookingLimit - studentBookingSelections.length}.`, "success");
     } catch (err) {
       console.error(err);
-      setStudentBookingError("Unable to load weekly availability. Please try again.");
+      setStudentBookingError("We could not look up free times. Please try again.");
     }
   };
   const addStudentBookingSuggestions = () => {
@@ -3780,12 +3816,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     setContractRequestError("");
 
     if (!contractCourseId) {
-      setContractRequestError("Please choose your desired course.");
+      setContractRequestError("Please pick a course.");
       return;
     }
 
     if (!contractClassCount || Number(contractClassCount) <= 0) {
-      setContractRequestError("Please choose the number of classes.");
+      setContractRequestError("Please pick how many classes you want.");
       return;
     }
 
@@ -3808,14 +3844,14 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         preferred_schedule: toPreferredSchedulePayload(contractPreferredSchedule),
       });
 
-      // The server says whether this was a first request or a revision, and the
-      // student is told which. "Sent" and "updated" are different things, and
-      // a student who pressed Send twice deserves to know the second press
-      // changed the request rather than adding to it.
+      // The server says whether this was a first ask or a change to one, and
+      // the student is told which. "Sent" and "changed" are different things,
+      // and a student who pressed Send twice deserves to know the second
+      // press changed their ask rather than adding to it.
       notify?.(
         response.data?.isRevision
-          ? "Your request was updated. The admin sees the latest version."
-          : "Contract request sent to the admin.",
+          ? "Your ask was changed. The admin sees the latest one."
+          : "Sent to the admin. We will let you know when it is answered.",
         "success"
       );
       setContractRequestOpen(false);
@@ -3831,7 +3867,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       setContractPreferredSchedule(createEmptyPreferredSchedule());
       loadContractRequests();
     } catch (err) {
-      setContractRequestError(err?.response?.data?.message || "Unable to send contract request.");
+      setContractRequestError(err?.response?.data?.message || "We could not send your ask. Please try again.");
     } finally {
       setIsSubmittingContractRequest(false);
     }
@@ -3841,7 +3877,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     setContractRequestError("");
 
     if (!contractExtensionNote.trim()) {
-      setContractRequestError("Please tell the admin why you are asking for more time.");
+      setContractRequestError("Please tell the admin why you need more time.");
       return;
     }
 
@@ -3855,8 +3891,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
       notify?.(
         response.data?.isRevision
-          ? "Your extension request was updated. Your classes stay on the contract until it is resolved."
-          : "Extension request sent to the admin. Your classes stay on the contract until it is resolved.",
+          ? "Your ask was changed. Your classes stay safe until the admin answers."
+          : "Sent to the admin. Your classes stay safe until the admin answers.",
         "success"
       );
       setContractRequestOpen(false);
@@ -3864,7 +3900,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       setContractExtensionNote("");
       loadContractRequests();
     } catch (err) {
-      setContractRequestError(err?.response?.data?.message || "Unable to send extension request.");
+      setContractRequestError(err?.response?.data?.message || "We could not send your ask. Please try again.");
     } finally {
       setIsSubmittingContractRequest(false);
     }
@@ -3889,7 +3925,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         `${API}/api/student/contract-requests/${requestId}/cancel`,
         { student_id: localUserId }
       );
-      notify?.(response.data?.message || "Your request has been withdrawn.", "success");
+      notify?.(response.data?.message || "Your ask was cancelled.", "success");
       setContractRequestOpen(false);
       setContractRequestEditing(false);
       setContractExtensionNote("");
@@ -3933,6 +3969,9 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     setContractRequestOpen(true);
     setContractRequestEditing(editing);
     setContractRequestError("");
+    // The extra questions start closed every time. A student who opened them
+    // last time is not automatically someone who wants them this time.
+    setShowContractExtraOptions(false);
     updateContractCourse(studentProfile?.course_id || "");
   };
 
@@ -4588,8 +4627,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
             </div>
           </div>
           <div className={styles.loadingText}>
-            <h1>Loading calendar</h1>
-            <p>Preparing your schedule...</p>
+            <h1>{LOADING.title}</h1>
+            <p>{LOADING.body}</p>
           </div>
         </section>
       </main>
@@ -4680,15 +4719,15 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                 let tooltipText = "";
                 if (d) {
                   if (isPast) {
-                    tooltipText = "Past date";
+                    tooltipText = LEGEND.past;
                   } else if (status === "unavailable") {
-                    tooltipText = "Teacher unavailable";
+                    tooltipText = LEGEND.unavailable;
                   } else if (hasClasses) {
-                    tooltipText = "Classes scheduled";
+                    tooltipText = LEGEND.hasClasses;
                   } else if (status === "available") {
-                    tooltipText = "Teacher available";
+                    tooltipText = LEGEND.available;
                   } else if (!teacherHasSchedule) {
-                    tooltipText = "Teacher schedule not set";
+                    tooltipText = LEGEND.notSet;
                   }
                 }
                 
@@ -5867,7 +5906,7 @@ $5padding: 20,
                 {selectedClass ? (
                   // Selected class detail for student
                   <>
-                    <div className={styles.legendTitle}>Class Details</div>
+                    <div className={styles.legendTitle}>{CLASS_INFO.title}</div>
                     <div className={styles.slotList}>
                       <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
                         <div><strong>{selectedClass.className}</strong></div>
@@ -5889,7 +5928,7 @@ $5padding: 20,
                               }
                             />
                             <div>
-                              <div><strong>Teacher:</strong></div>
+                              <div><strong>{CLASS_INFO.teacher}</strong></div>
                               <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedTeacherFullName || selectedClass.teacherFullName || selectedClass.teacherName}</div>
                             </div>
                           </div>
@@ -5897,24 +5936,24 @@ $5padding: 20,
                       )}
                       {selectedClass.teacherEmail && (
                         <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                          <div><strong>Email:</strong></div>
+                          <div><strong>{CLASS_INFO.email}</strong></div>
                           <div style={{ fontSize: "0.75em", marginTop: "4px", wordBreak: "break-all" }}>{selectedClass.teacherEmail}</div>
                         </div>
                       )}
                   {latestRemark && (
                       <div style={remarkSectionStyle}>
-                        <div style={remarkHeadingStyle}>Latest Remark</div>
+                        <div style={remarkHeadingStyle}>{CLASS_INFO.teacherNote}</div>
                         <div style={remarkCardStyle}>
                           <div style={remarkTitleStyle}>
                             {latestRemark.class_name || "Class"}
                           </div>
                           <div style={remarkMetaStyle}>
                             {latestRemark.class_name || "Class"}{" "}
-                            {formatRemarkDate(latestRemark.scheduled_date) || "Date unavailable"}
+                            {formatRemarkDate(latestRemark.scheduled_date) || CLASS_INFO.dateMissing}
                             {latestRemark.start_time ? ` - ${humanTime(latestRemark.start_time)}` : ""}
                           </div>
                           <div style={remarkBodyStyle}>
-                            {latestRemark.remarks || "No remark text"}
+                            {latestRemark.remarks || CLASS_INFO.noNoteYet}
                           </div>
                         </div>
                       </div>
@@ -6009,15 +6048,15 @@ $5padding: 20,
                         }}
                         style={{ marginTop: "8px" }}
                       >
-                        Request for Reschedule
+                        {CLASS_INFO.changeTime}
                       </button>
                     )}
                     { requestMode && !selectedClassEnded && (
                       <div style={{ marginTop: 12, padding: 14, border: "1px solid #e0e0e0", borderRadius: 8, background: "#fafafa" }}>
                       <div style={{ marginBottom: 12 }}>
-                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#333" }}>Request Reschedule</h4>
+                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#333" }}>{CLASS_INFO.changeTimeTitle}</h4>
                         <p style={{ margin: 0, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
-                          Select your preferred date and time, and let your teacher know why you need the reschedule.
+                          {CLASS_INFO.changeTimeHelp}
                         </p>
                       </div>
                       {requestError && (
@@ -6026,35 +6065,35 @@ $5padding: 20,
                         </div>
                       )}
                       <div style={{ marginBottom: 10 }}>
-                        <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>New Date *</label>
+                        <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{CLASS_INFO.newDay}</label>
                         <div style={{ width: "100%", padding: "10px", fontSize: "0.95rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#fff", minHeight: "42px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                           <div style={{ color: requestDate ? "#111" : "#666" }}>
-                            {requestDate ? new Date(requestDate + "T00:00:00").toLocaleDateString() : "Select a date on the calendar"}
+                            {requestDate ? new Date(requestDate + "T00:00:00").toLocaleDateString() : BOOKING.dayPlaceholder}
                           </div>
                         </div>
-                        <div style={{ fontSize: "0.7rem", color: "#999", marginTop: 4 }}>Click a day on the calendar</div>
+                        <div style={{ fontSize: "0.7rem", color: "#999", marginTop: 4 }}>{BOOKING.tapDay}</div>
                         {requestDate && (
                           <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
                             {getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? (
-                              <p style={{ margin: 0, color: "#f44336" }}>Teacher is unavailable on this date</p>
+                              <p style={{ margin: 0, color: "#f44336" }}>Your teacher is busy on this day</p>
                             ) : getRescheduleAvailabilityStatus(requestDate) === "available" ? (
-                              <p style={{ margin: 0, color: "#4caf50" }}>Available on this date</p>
+                              <p style={{ margin: 0, color: "#4caf50" }}>Your teacher is free on this day</p>
                             ) : (
-                              <p style={{ margin: 0, color: "#999" }}>Availability not set</p>
+                              <p style={{ margin: 0, color: "#999" }}>No times set yet</p>
                             )}
                             {counterpartyBookedDates.filter(bd => normalizeDate(bd.scheduled_date) === normalizeDate(requestDate)).length > 0 && (
                               <p style={{ margin: "4px 0 0 0", color: "#ff9800" }}>
-                                Student booked: {counterpartyBookedDates.filter(bd => normalizeDate(bd.scheduled_date) === normalizeDate(requestDate)).map(bd => humanTime(bd.start_time)).join(", ")}
+                                Already booked: {counterpartyBookedDates.filter(bd => normalizeDate(bd.scheduled_date) === normalizeDate(requestDate)).map(bd => humanTime(bd.start_time)).join(", ")}
                               </p>
                             )}
                           </div>
                         )}
                       </div>
                       <div style={{ marginBottom: 10 }}>
-                        <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>New Time *</label>
+                        <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{CLASS_INFO.newTime}</label>
                         {requestDate && getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? (
                           <div style={{ padding: 12, background: "#fff3e0", borderRadius: 8, color: "#b65f00" }}>
-                            Teacher is unavailable on this date.
+                            Your teacher is busy on this day.
                           </div>
                         ) : rescheduleTimeSlots.length > 0 ? (
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
@@ -6068,13 +6107,13 @@ $5padding: 20,
                                     setRequestTime(time);
                                     setRequestError("");
                                     if (requestDate && isRescheduleToSameDateTime(requestDate, time)) {
-                                      setRequestError("Cannot reschedule to the same date and time. Please choose a different time.");
+                                      setRequestError("That is the same time. Please pick a different one.");
                                     } else if (requestDate && isCounterpartyDateTimeBooked(requestDate, time)) {
                                       setRequestError(getCounterpartyUnavailableMessage());
                                     } else if (requestDate && isTimeConflictingWithTeacherBreak(requestDate, time)) {
-                                      setRequestError("This time conflicts with teacher's break. Please choose another time.");
+                                      setRequestError("Your teacher has a break then. Please pick another time.");
                                     } else if (requestDate && isTimeOutsideTeacherAvailability(requestDate, time)) {
-                                      setRequestError("This time is outside the teacher's availability window. Please choose another time.");
+                                      setRequestError("Your teacher is not free then. Please pick another time.");
                                     }
                                   }}
                                   style={{ padding: "12px 14px", border: isSelected ? "2px solid #4CAF50" : "1px solid #d0d0d0", borderRadius: "8px", background: isSelected ? "#e8f5e9" : "#fff", color: "#111", cursor: "pointer", textAlign: "center" }}
@@ -6086,7 +6125,7 @@ $5padding: 20,
                           </div>
                         ) : (
                           <div style={{ padding: 12, background: "#f4f6f8", borderRadius: 8, color: "#555" }}>
-                            No available slots found for this date. Choose another day.
+                            No free times on this day. Please pick another day.
                           </div>
                         )}
                         {requestError && (
@@ -6096,15 +6135,15 @@ $5padding: 20,
                         )}
                       </div>
                       <div style={{ marginBottom: 12 }}>
-                        <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Reason *</label>
-                        <textarea rows={3} placeholder="Please explain why you need to reschedule (minimum 5 characters)" value={requestReason} onChange={e => { setRequestReason(e.target.value); setRequestError(""); }} style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }} />
+                        <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{CLASS_INFO.why}</label>
+                        <textarea rows={3} placeholder={CLASS_INFO.whyPlaceholder} value={requestReason} onChange={e => { setRequestReason(e.target.value); setRequestError(""); }} style={{ width: "100%", padding: "9px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }} />
                       </div>
                       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                        <button type="button" onClick={() => { setRequestMode(false); setRequestError(""); }} disabled={isSubmittingRequest} style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, cursor: isSubmittingRequest ? "not-allowed" : "pointer", opacity: isSubmittingRequest ? 0.6 : 1 }}>
-                          Cancel
+                        <button type="button" onClick={() => { setRequestMode(false); setRequestError(""); }} disabled={isSubmittingRequest} style={{ padding: "10px 16px", fontSize: "0.9rem", fontWeight: 700, border: "1px solid #d0d0d0", background: "#fff", borderRadius: 8, cursor: isSubmittingRequest ? "not-allowed" : "pointer", opacity: isSubmittingRequest ? 0.6 : 1 }}>
+                          {CONFIRM.cancel}
                         </button>
-                        <button type="button" onClick={openRequestConfirmation} disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError} style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}>
-                          {isSubmittingRequest ? "Sending..." : "Send Request"}
+                        <button type="button" onClick={openRequestConfirmation} disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError} style={{ padding: "10px 16px", fontSize: "0.9rem", fontWeight: 700, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 8, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}>
+                          {isSubmittingRequest ? CONFIRM.sending : CONFIRM.send}
                         </button>
                       </div>
                     </div>
@@ -6115,14 +6154,14 @@ $5padding: 20,
                       onClick={() => setSelectedClassId(null)}
                       style={{ marginTop: "8px" }}
                     >
-                      Back to Classes
+                      {CLASS_INFO.backToClasses}
                     </button>
                   </>
                 ) : selectedDate ? (
                   // Date selected view - clickable classes for student
                   <>
                     <div className={styles.legendTitle}>
-                      Classes on {new Date(selectedDate + "T00:00:00").toLocaleDateString()}
+                      {CLASS_INFO.classesOn(new Date(selectedDate + "T00:00:00").toLocaleDateString())}
                     </div>
                     <div className={styles.slotList}>
                       {selectedClasses && selectedClasses.length > 0 ? (
@@ -6140,14 +6179,14 @@ $5padding: 20,
                             </div>
                             {(cls.teacherFullName || cls.teacherName || cls.teacher) && (
                               <div style={{ fontSize: "0.85em", color: "#666" }}>
-                                Teacher: {cls.teacherFullName || cls.teacherName || cls.teacher}
+                                {CLASS_INFO.teacher}: {cls.teacherFullName || cls.teacherName || cls.teacher}
                               </div>
                             )}
                           </button>
                         ))
                       ) : (
                         <div style={{ padding: "12px", color: "#999", fontSize: "0.9em" }}>
-                          No classes scheduled for this day
+                          {CLASS_INFO.noClassesThatDay}
                         </div>
                       )}
                     </div>
@@ -6157,23 +6196,25 @@ $5padding: 20,
                       onClick={() => setSelectedDate(null)}
                       style={{ marginTop: "12px" }}
                     >
-                      Close
+                      {CLASS_INFO.close}
                     </button>
                   </>
                 ) : studentBookingMode ? (
                   <>
-                    <div className={styles.legendTitle}>Book Classes</div>
+                    <div className={styles.legendTitle}>{BOOKING.title}</div>
                     <div className={styles.slotList}>
                       <div style={{ padding: 12, color: "#333", fontSize: "0.95em" }}>
                         {assignedTeacherName ? (
-                          <p style={{ margin: 0 }}>Choose a date and time for {assignedTeacherName}. Dates are available from today up to 3 months ahead.</p>
+                          <p style={{ margin: 0 }}>{BOOKING.intro(assignedTeacherName)}</p>
                         ) : (
-                          <p style={{ margin: 0 }}>You don&apos;t have an assigned teacher yet. Contact support to enable booking.</p>
+                          <p style={{ margin: 0 }}>{BOOKING.noTeacher}</p>
                         )}
                       </div>
                       <div style={{ display: "grid", gap: 12 }}>
                         <div>
-                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Booking Mode *</label>
+                          <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 6, color: "#333" }}>
+                            {BOOKING.howToBook}
+                          </label>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                             <button
                               type="button"
@@ -6183,17 +6224,17 @@ $5padding: 20,
                               setStudentBookingSuggestions([]);
                             }}
                               style={{
-                                padding: "8px 10px",
+                                padding: "11px 10px",
                                 fontSize: "0.85rem",
                                 border: studentBookingApplyMode === "manual" ? "2px solid #4CAF50" : "1px solid #d0d0d0",
-                                borderRadius: 6,
+                                borderRadius: 8,
                                 background: studentBookingApplyMode === "manual" ? "#e8f5e9" : "#fff",
                                 color: studentBookingApplyMode === "manual" ? "#2E7D32" : "#555",
                                 cursor: "pointer",
-                                fontWeight: 600,
+                                fontWeight: 700,
                               }}
                             >
-                              Manual Slots
+                              {BOOKING.singleTimes}
                             </button>
                             <button
                               type="button"
@@ -6203,26 +6244,26 @@ $5padding: 20,
                               setStudentBookingSuggestions([]);
                             }}
                               style={{
-                                padding: "8px 10px",
+                                padding: "11px 10px",
                                 fontSize: "0.85rem",
                                 border: studentBookingApplyMode === "weekly" ? "2px solid #4CAF50" : "1px solid #d0d0d0",
-                                borderRadius: 6,
+                                borderRadius: 8,
                                 background: studentBookingApplyMode === "weekly" ? "#e8f5e9" : "#fff",
                                 color: studentBookingApplyMode === "weekly" ? "#2E7D32" : "#555",
                                 cursor: "pointer",
-                                fontWeight: 600,
+                                fontWeight: 700,
                               }}
                             >
-                              Weekly Pattern
+                              {BOOKING.sameTimeEachWeek}
                             </button>
                           </div>
                         </div>
 
                         {studentBookingApplyMode === "weekly" && studentBookingSelectionFull && (
                           <div style={{ display: "grid", gap: 6, padding: "10px 11px", border: "1px solid #d7e5d9", borderRadius: 8, background: "#f6fbf8", color: "#26423b" }}>
-                            <div style={{ fontSize: "0.82rem", fontWeight: 800 }}>Selection full</div>
+                            <div style={{ fontSize: "0.82rem", fontWeight: 800 }}>All done</div>
                             <div style={{ fontSize: "0.74rem", lineHeight: 1.35, color: "#5e7268" }}>
-                              You selected all {studentBookingLimit} bookable class{studentBookingLimit === 1 ? "" : "es"}. Remove a class or clear selected to search again.
+                              You picked all {studentBookingLimit} class{studentBookingLimit === 1 ? "" : "es"}. Take one away to look again.
                             </div>
                           </div>
                         )}
@@ -6233,7 +6274,7 @@ $5padding: 20,
                               <div style={{ display: "grid", gap: 8, padding: "10px 11px", border: "1px solid #d7e5d9", borderRadius: 6, background: "#fff" }}>
                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                                   <div style={{ minWidth: 0 }}>
-                                    <div style={{ color: "#5e7268", fontSize: "0.72rem", fontWeight: 700, lineHeight: 1.25 }}>Search Criteria</div>
+                                    <div style={{ color: "#5e7268", fontSize: "0.72rem", fontWeight: 700, lineHeight: 1.25 }}>{BOOKING.whatToLookFor}</div>
                                     <div style={{ color: "#10231d", fontSize: "0.86rem", fontWeight: 800, lineHeight: 1.3, marginTop: 3 }}>
                                       {studentBookingWeeklyWeekdays
                                         .map((weekday) => WEEKDAY_OPTIONS.find(([value]) => value === weekday)?.[1])
@@ -6249,19 +6290,19 @@ $5padding: 20,
                                     }}
                                     style={{ border: "1px solid #91a79a", background: "#fff", color: "#26423b", borderRadius: 6, padding: "6px 9px", cursor: "pointer", fontSize: "0.72rem", fontWeight: 700, whiteSpace: "nowrap" }}
                                   >
-                                    Edit Search
+                                    Change
                                   </button>
                                 </div>
                                 {studentBookingSelections.length > 0 && (
                                   <div style={{ color: "#66756e", fontSize: "0.72rem", lineHeight: 1.35 }}>
-                                    Suggestions skip times that overlap with selected classes.
+                                    We will not suggest a time that clashes with a class you already picked.
                                   </div>
                                 )}
                               </div>
                             ) : (
                               <>
                                 <div>
-                                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Weekdays *</label>
+                                  <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{BOOKING.whichDays}</label>
                                   <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 5 }}>
                                     {WEEKDAY_OPTIONS.map(([weekday, label]) => {
                                       const active = studentBookingWeeklyWeekdays.includes(weekday);
@@ -6288,7 +6329,7 @@ $5padding: 20,
                                   </div>
                                 </div>
                                 <div>
-                                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Preferred Time *</label>
+                                  <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{BOOKING.whatTime}</label>
                                   <input
                                     type="time"
                                     value={studentBookingWeeklyTime}
@@ -6299,23 +6340,23 @@ $5padding: 20,
                                     style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", background: "#fff" }}
                                   />
                                   <div style={{ fontSize: "0.7rem", color: "#666", marginTop: 4 }}>
-                                    The system will suggest the closest available teacher slot for each selected weekday.
+                                    We will find the closest time your teacher is free.
                                   </div>
                                 </div>
                                 <button
                                   type="button"
                                   onClick={applyStudentWeeklyPattern}
                                   disabled={isSubmittingStudentBooking || hasNoClassesLeft}
-                                  style={{ padding: "10px 12px", fontSize: "0.85rem", fontWeight: 700, border: "none", borderRadius: 6, background: "#2E7D32", color: "#fff", cursor: (isSubmittingStudentBooking || hasNoClassesLeft) ? "not-allowed" : "pointer", opacity: (isSubmittingStudentBooking || hasNoClassesLeft) ? 0.6 : 1 }}
+                                  style={{ padding: "11px 12px", fontSize: "0.9rem", fontWeight: 700, border: "none", borderRadius: 8, background: "#2E7D32", color: "#fff", cursor: (isSubmittingStudentBooking || hasNoClassesLeft) ? "not-allowed" : "pointer", opacity: (isSubmittingStudentBooking || hasNoClassesLeft) ? 0.6 : 1 }}
                                 >
-                                  Find Closest Slots
+                                  {BOOKING.findTimes}
                                 </button>
                                 <div style={{ fontSize: "0.72rem", color: "#666", lineHeight: 1.4 }}>
-                                  Finds matching teacher availability from today up to 3 months ahead, capped by your remaining classes.
+                                  {BOOKING.findTimesHelp}
                                 </div>
                                 {studentBookingSelections.length > 0 && (
                                   <div style={{ padding: "8px 10px", border: "1px solid #d7e5d9", borderRadius: 6, background: "#fff", color: "#5e7268", fontSize: "0.74rem", lineHeight: 1.35 }}>
-                                    New suggestions will skip times that overlap with your selected classes.
+                                    We will not suggest a time that clashes with a class you already picked.
                                   </div>
                                 )}
                               </>
@@ -6323,8 +6364,8 @@ $5padding: 20,
                             {studentBookingSuggestions.length > 0 && (
                               <div style={{ display: "grid", gap: 8, paddingTop: 4 }}>
                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 700, color: "#333" }}>
-                                    Suggested Slots ({studentBookingSuggestions.length})
+                                  <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, color: "#333" }}>
+                                    {BOOKING.timesThatWork(studentBookingSuggestions.length)}
                                   </label>
                                   <button
                                     type="button"
@@ -6332,7 +6373,7 @@ $5padding: 20,
                                     disabled={isSubmittingStudentBooking || hasNoClassesLeft}
                                     style={{ padding: "6px 9px", fontSize: "0.72rem", fontWeight: 700, border: "1px solid #4CAF50", borderRadius: 6, background: "#fff", color: "#2E7D32", cursor: (isSubmittingStudentBooking || hasNoClassesLeft) ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}
                                   >
-                                    Add Earliest
+                                    {BOOKING.addAll}
                                   </button>
                                 </div>
                                 <div style={{ display: "grid", gap: 7, maxHeight: 230, overflowY: "auto", paddingRight: 3 }}>
@@ -6364,7 +6405,7 @@ $5padding: 20,
                                           disabled={selected || limitReached}
                                           style={{ border: "1px solid #4CAF50", background: selected ? "#4CAF50" : "#fff", color: selected ? "#fff" : "#2E7D32", borderRadius: 6, padding: "6px 9px", cursor: (selected || limitReached) ? "not-allowed" : "pointer", fontSize: "0.74rem", fontWeight: 700, opacity: (!selected && limitReached) ? 0.55 : 1 }}
                                         >
-                                          {selected ? "Added" : "Add"}
+                                          {selected ? BOOKING.added : BOOKING.add}
                                         </button>
                                       </div>
                                     );
@@ -6378,22 +6419,22 @@ $5padding: 20,
                         {studentBookingApplyMode === "manual" && (
                         <>
                         <div>
-                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Date *</label>
+                          <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{BOOKING.day}</label>
 <div style={{ width: "100%", padding: "10px", fontSize: "0.95rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#fff", minHeight: "42px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                              <div style={{ color: studentBookingDate ? "#111" : "#666" }}>
-                               {studentBookingDate ? new Date(studentBookingDate + "T00:00:00").toLocaleDateString() : "Select a date on the calendar"}
+                               {studentBookingDate ? new Date(studentBookingDate + "T00:00:00").toLocaleDateString() : BOOKING.dayPlaceholder}
                              </div>
                            </div>
-                           <div style={{ fontSize: "0.7rem", color: "#999", marginTop: 4 }}>Click a day on the calendar</div>
+                           <div style={{ fontSize: "0.7rem", color: "#999", marginTop: 4 }}>{BOOKING.tapDay}</div>
                          </div>
                          <div>
-                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Available Times *</label>
+                          <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{BOOKING.times}</label>
                           <div style={{ fontSize: "0.72rem", color: "#666", marginBottom: 6 }}>
-                            Select one or more slots. Overlapping slots are blocked automatically.
+                            {BOOKING.timesHelp}
                           </div>
                           {availability[studentBookingDate] === "unavailable" ? (
                             <div style={{ padding: 12, background: "#fff3e0", borderRadius: 8, color: "#b65f00" }}>
-                              Teacher is unavailable on this date.
+                              Your teacher is busy on this day.
                             </div>
                           ) : availableTimeSlots && availableTimeSlots.length > 0 ? (
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
@@ -6428,7 +6469,7 @@ $5padding: 20,
                             </div>
                           ) : (
                             <div style={{ padding: 12, background: "#f4f6f8", borderRadius: 8, color: "#555" }}>
-                              No available slots found for this date. Choose another day within the scheduling window.
+                              No free times on this day. Please pick another day.
                             </div>
                           )}
                         </div>
@@ -6437,8 +6478,8 @@ $5padding: 20,
                         {studentBookingSelections.length > 0 && (
                           <div>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
-                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "#333" }}>
-                                Selected Classes ({studentBookingSelections.length}/{studentBookingLimit})
+                              <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, color: "#333" }}>
+                                {BOOKING.yourPicks(studentBookingSelections.length, studentBookingLimit)}
                               </label>
                               <button
                                 type="button"
@@ -6448,9 +6489,9 @@ $5padding: 20,
                                   setStudentBookingError("");
                                 }}
                                 disabled={isSubmittingStudentBooking}
-                                style={{ border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, padding: "4px 7px", cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer", fontSize: "0.72rem", fontWeight: 700, color: "#374151", whiteSpace: "nowrap" }}
+                                style={{ border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, padding: "5px 8px", cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer", fontSize: "0.75rem", fontWeight: 700, color: "#374151", whiteSpace: "nowrap" }}
                               >
-                                Clear Selected
+                                {BOOKING.clear}
                               </button>
                             </div>
                             <div style={{ display: "grid", gap: 8, maxHeight: 180, overflowY: "auto" }}>
@@ -6474,7 +6515,7 @@ $5padding: 20,
                                       onClick={() => toggleStudentBookingSelection(slot.date, slot.time)}
                                       style={{ border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, padding: "5px 8px", cursor: "pointer", fontSize: "0.75rem", fontWeight: 700 }}
                                     >
-                                      Remove
+                                      {BOOKING.remove}
                                     </button>
                                   </div>
                                 );
@@ -6483,13 +6524,13 @@ $5padding: 20,
                           </div>
                         )}
                         <div>
-                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Course</label>
+                          <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{BOOKING.course}</label>
                           <div style={{ width: "100%", padding: "12px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#f7fafc", color: "#111", minHeight: "42px", display: "flex", alignItems: "center" }}>
-                            {studentProfile?.course_name || "Course not set"}
+                            {studentProfile?.course_name || "Not set yet"}
                           </div>
                         </div>
                         <div>
-                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Class Duration</label>
+                          <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{BOOKING.classLength}</label>
                           <div style={{ width: "100%", padding: "12px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#f7fafc", color: "#111", minHeight: "42px", display: "flex", alignItems: "center" }}>
                             {studentBookingTime ? (
                               <span style={{ fontWeight: 500 }}>
@@ -6500,7 +6541,7 @@ $5padding: 20,
                                 {humanTime(studentBookingTime)} → {humanTime(`${String((Number(studentBookingTime.split(":")[0]) + 1)).padStart(2, "0")}:${studentBookingTime.split(":")[1]}`)}
                               </span>
                             ) : (
-                              <span style={{ color: "#999" }}>Choose a slot first.</span>
+                              <span style={{ color: "#999" }}>{BOOKING.pickTimeFirst}</span>
                             )}
                           </div>
                         </div>
@@ -6518,17 +6559,21 @@ $5padding: 20,
                               setStudentBookingSuggestions([]);
                             }}
                             disabled={isSubmittingStudentBooking}
-                            style={{ padding: "10px 16px", fontSize: "0.9em", border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer" }}
+                            style={{ padding: "11px 16px", fontSize: "0.9em", border: "1px solid #d0d0d0", background: "#fff", borderRadius: 8, fontWeight: 700, cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer" }}
                           >
-                            Cancel
+                            {CONFIRM.cancel}
                           </button>
                           <button
                             type="button"
                             onClick={openStudentBookingConfirmation}
                             disabled={isSubmittingStudentBooking || studentBookingSelections.length === 0 || assignedTeacherId == null || hasNoClassesLeft}
-                            style={{ padding: "10px 16px", fontSize: "0.9em", border: "none", background: "#4CAF50", color: "#fff", borderRadius: 6, cursor: (isSubmittingStudentBooking || studentBookingSelections.length === 0 || assignedTeacherId == null || hasNoClassesLeft) ? "not-allowed" : "pointer" }}
+                            style={{ padding: "11px 16px", fontSize: "0.9em", border: "none", background: "#4CAF50", color: "#fff", borderRadius: 8, fontWeight: 700, cursor: (isSubmittingStudentBooking || studentBookingSelections.length === 0 || assignedTeacherId == null || hasNoClassesLeft) ? "not-allowed" : "pointer" }}
                           >
-                            {isSubmittingStudentBooking ? "Booking..." : studentBookingSelections.length > 1 ? `Book ${studentBookingSelections.length} Classes` : "Book Class"}
+                            {isSubmittingStudentBooking
+                              ? BOOKING.booking
+                              : studentBookingSelections.length > 1
+                                ? BOOKING.bookMany(studentBookingSelections.length)
+                                : BOOKING.bookOne}
                           </button>
                         </div>
                       </div>
@@ -6537,24 +6582,32 @@ $5padding: 20,
                 ) : (
                   // Student summary
                   <>
-                    <div className={styles.legendTitle}>Your Classes</div>
+                    {/* The one number that matters, first.
+                        !!
+                        !! It used to read "Classes Left 0/10" and then
+                        !! "Available to book: 0" underneath, which is the
+                        !! same fact twice in two different words. A student
+                        !! should be able to look at this and know how many
+                        !! classes they can book right now.
+                        */}
+                    <div className={styles.legendTitle}>{PLAN.title}</div>
                     <div className={styles.slotList}>
                       <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", textAlign: "center" }}>
-                        <div style={{ fontSize: 14, color: "#666" }}>Classes Left</div>
+                        <div style={{ fontSize: 14, color: "#666" }}>{PLAN.classesLeft}</div>
                         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 3, fontSize: 22, fontWeight: 750, marginTop: 6, lineHeight: 1.15, letterSpacing: 0, color: "#5f7f70" }}>
                           <span>{effectiveClassesLeft}</span>
                           <span style={{ fontSize: 20, fontWeight: 500, color: "#5f7f70" }}>/</span>
                           <span>{effectiveClassesLimit}</span>
                         </div>
                         <div style={{ marginTop: 6, color: "#374151", fontSize: 14, fontWeight: 600 }}>
-                          Available to book: {effectiveBookableClasses}
+                          {PLAN.readyToBook}: {effectiveBookableClasses}
                         </div>
                         <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}>
                           {/* Falls back to the most recent package so an expired
-                              contract still shows its deadline here. The panel
-                              below already distinguishes "no active contract"
-                              from "contract ended" - this keeps the badge
-                              agreeing with it rather than going blank. */}
+                              plan still shows its deadline here. The panel
+                              below already distinguishes "no plan" from "plan
+                              ended" - this keeps the badge agreeing with it
+                              rather than going blank. */}
                           <ContractExpiryBadge expiresAt={contractExpiresAt} showDate />
                         </div>
                         <div style={{ marginTop: 8 }}>
@@ -6567,23 +6620,21 @@ $5padding: 20,
                     <div style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
                       {hasNoActiveStudentPackage
                         ? (endedContractWithUnusedClasses
-                            ? "This contract has ended. The classes you did not use are still on it."
-                            : "No active contract is available.")
+                            ? PLAN_STATUS.endedWithClasses
+                            : PLAN_STATUS.noPlan)
                         : contractExhausted
-                          ? "All classes in this contract have been used."
+                          ? PLAN_STATUS.allUsed
                           : allRemainingClassesReserved
-                            ? "All remaining classes are already scheduled. Reschedule or cancel a booked class to free a slot."
-                            : "Tip: Contact your teacher to add or reschedule classes."}
+                            ? PLAN_STATUS.allBooked
+                            : PLAN_STATUS.normal}
                     </div>
                     {canRequestExtension && (
                       <div style={{ marginTop: 12, padding: 12, border: "1px solid #e0b872", borderRadius: 10, background: "#fdf9f1" }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: "#7a5210" }}>
-                          You have {latestStudentPackage.classes_left} unused class
-                          {Number(latestStudentPackage.classes_left) === 1 ? "" : "es"} on this contract
+                          {MORE_TIME_CARD.heading(Number(latestStudentPackage.classes_left))}
                         </div>
                         <div style={{ marginTop: 4, fontSize: 12, color: "#6b5a3c", lineHeight: 1.45 }}>
-                          Your contract ended, but those classes were paid for and are still yours.
-                          Ask the admin to extend it and you can book them.
+                          {MORE_TIME_CARD.body}
                         </div>
                         {extensionFlow.isPending ? (
                           /* The request is with the admin. Say so, and offer the
@@ -6602,7 +6653,7 @@ $5padding: 20,
                                   onClick={() => openExtensionRequestForm({ editing: true })}
                                   style={{ width: "100%", border: "1px solid #d9b477", borderRadius: 8, background: "#fff", cursor: "pointer" }}
                                 >
-                                  {extensionFlow.actionLabel}
+                                  {MORE_TIME_CARD.changeMyAsk}
                                 </button>
                                 <button
                                   type="button"
@@ -6610,7 +6661,7 @@ $5padding: 20,
                                   disabled={isCancellingContractRequest}
                                   style={{ width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", color: "#6b5a3c", fontSize: 12, cursor: isCancellingContractRequest ? "not-allowed" : "pointer" }}
                                 >
-                                  {isCancellingContractRequest ? "Withdrawing..." : "Withdraw this request"}
+                                  {isCancellingContractRequest ? "..." : MORE_TIME_CARD.cancelMyAsk}
                                 </button>
                               </div>
                             )}
@@ -6634,9 +6685,9 @@ $5padding: 20,
                             <button
                               type="button"
                               onClick={() => openExtensionRequestForm()}
-                              style={{ width: "100%", padding: "9px 10px", border: "1px solid #d9b477", borderRadius: 8, background: "#fff", cursor: "pointer" }}
+                              style={{ width: "100%", padding: "9px 10px", border: "1px solid #d9b477", borderRadius: 8, background: "#fff", fontWeight: 700, cursor: "pointer" }}
                             >
-                              Ask again
+                              {MORE_TIME_CARD.askAgain}
                             </button>
                           </div>
                         )}
@@ -6671,11 +6722,12 @@ $5padding: 20,
                                   border: "1px solid #d9b477",
                                   borderRadius: 8,
                                   background: "#fff",
+                                  fontWeight: 700,
                                   cursor: extensionBlocked.isBlocked ? "not-allowed" : "pointer",
                                   opacity: extensionBlocked.isBlocked ? 0.55 : 1,
                                 }}
                               >
-                                Request an extension
+                                {MORE_TIME_CARD.askForMoreTime}
                               </button>
                               {extensionBlocked.isBlocked && (
                                 <div style={{ marginTop: 6, fontSize: 11, color: "#6b5a3c", lineHeight: 1.45 }}>
@@ -6711,8 +6763,8 @@ $5padding: 20,
                               onEdit={() => openNewContractForm({ editing: true })}
                               onWithdraw={() => cancelContractRequest(newContractFlow.pendingRequest?.request_id)}
                               isCancelling={isCancellingContractRequest}
-                              editLabel="Update your contract request"
-                              withdrawLabel="Withdraw this contract request"
+                              editLabel={MORE_TIME_CARD.changeMyAsk}
+                              withdrawLabel={MORE_TIME_CARD.cancelMyAsk}
                             />
                           ) : (
                             <>
@@ -6742,7 +6794,7 @@ $5padding: 20,
                                   opacity: newContractBlocked.isBlocked ? 0.55 : 1,
                                 }}
                               >
-                                Request a new contract instead
+                                {MORE_TIME_CARD.getNewPlanInstead}
                               </button>
                               {newContractBlocked.isBlocked && (
                                 <div style={{ marginTop: 6, fontSize: 11, color: "#6b5a3c", lineHeight: 1.45 }}>
@@ -6784,7 +6836,7 @@ $5padding: 20,
                               opacity: newContractBlocked.isBlocked ? 0.55 : 1,
                             }}
                           >
-                            Request a new contract
+                            {MORE_TIME_CARD.getNewPlan}
                           </button>
                           {newContractBlocked.isBlocked && (
                             <div style={{ marginTop: 6, fontSize: 11, color: "#6b5a3c", lineHeight: 1.45 }}>
@@ -6802,8 +6854,8 @@ $5padding: 20,
                       <RequestDialog
                         title={
                           contractRequestEditing
-                            ? "Update your extension request"
-                            : "Request an extension"
+                            ? MORE_TIME_WINDOW.titleEditing
+                            : MORE_TIME_WINDOW.title
                         }
                         onClose={() => {
                           setContractRequestOpen(false);
@@ -6816,58 +6868,45 @@ $5padding: 20,
                           {contractRequestEditing && (
                             /* The student is changing a request the admin is
                                holding. Say that this replaces it, because
-                               "Send Request" on a request that already exists
-                               reads as sending a second one. */
+                               "Send" on a request that already exists reads
+                               as sending a second one. */
                             <div style={{ padding: 10, border: "1px solid #c3cbd5", borderRadius: 8, background: "#f6f8f7", fontSize: 12, color: "#374151", lineHeight: 1.45 }}>
-                              You are changing the request the admin already has.
-                              Sending this replaces it - they will see this version,
-                              and the one before it stays in their history.
+                              {MORE_TIME_WINDOW.replacing}
                             </div>
                           )}
 
                           {latestStudentPackage && (
                             <div style={{ fontSize: 12, color: "#6b5a3c", lineHeight: 1.45 }}>
-                              You have{" "}
-                              <strong>{latestStudentPackage.classes_left}</strong> unused class
-                              {Number(latestStudentPackage.classes_left) === 1 ? "" : "es"} on a contract that
-                              ended. An extension keeps them - no new contract, nothing used is reset.
+                              {MORE_TIME_WINDOW.keeping}
                             </div>
                           )}
 
                           {newContractFlow.isPending && (
-                            /* The two requests contradict each other.
+                            /* The two asks contradict each other.
                                !!
-                               !! A new contract REPLACES the contract these
-                               !! classes are on, so if the admin approves the
-                               !! new-contract request, the classes this
-                               !! extension is asking to keep are gone. The
-                               !! student can have both requests in flight, and
-                               !! the admin has no way to know that the second
-                               !! one quietly undoes the first.
-                               !!
-                               !! Warned, never blocked. The student may
-                               !! legitimately want the new contract, and the
-                               !! admin may well decide the extension one
-                               !! first. */
+                               !! A new plan REPLACES the plan these classes
+                               !! are on, so if the admin says yes to the new
+                               !! plan, the classes this is asking to keep are
+                               !! gone. Warned, never blocked - the student may
+                               !! want the new plan, and the admin may decide
+                               !! this one first. */
                             <div style={{ padding: 10, border: "1px solid #e5a3a3", borderRadius: 8, background: "#fdecec", fontSize: 12, color: "#8c2020", lineHeight: 1.45 }}>
-                              You also have a request for a new contract with the admin, and only one
-                              request can be with the admin at a time. If that one is approved it
-                              replaces your current contract, and your{" "}
-                              {latestStudentPackage?.classes_left ?? 0} unused class
+                              You also asked for a new plan. Only one ask can wait for the admin at
+                              a time. A new plan replaces your old one, so your{" "}
+                              {latestStudentPackage?.classes_left ?? 0} class
                               {Number(latestStudentPackage?.classes_left ?? 0) === 1 ? "" : "es"} will not
-                              carry over. Withdraw that request first if you would rather extend this
-                              contract.
+                              carry over. Cancel that ask first if you would rather have more time.
                             </div>
                           )}
 
                           <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600 }}>
-                            Why do you need longer?
+                            {MORE_TIME_WINDOW.question}
                           </label>
                           <textarea
                             value={contractExtensionNote}
                             onChange={(e) => setContractExtensionNote(e.target.value)}
                             rows={5}
-                            placeholder="e.g. illness delayed my lessons."
+                            placeholder={MORE_TIME_WINDOW.placeholder}
                             style={{ width: "100%", padding: 9, border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit", resize: "vertical" }}
                           />
 
@@ -6886,28 +6925,26 @@ $5padding: 20,
                                 setContractExtensionNote("");
                               }}
                               disabled={isSubmittingContractRequest}
-                              style={{ flex: 1, padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
+                              style={{ flex: 1, padding: "11px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", fontWeight: 700, cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
                             >
-                              Cancel
+                              {MORE_TIME_WINDOW.cancel}
                             </button>
                             <button
                               type="button"
                               onClick={submitExtensionRequest}
                               disabled={isSubmittingContractRequest}
-                              style={{ flex: 1, padding: "9px 10px", border: "none", borderRadius: 8, background: "#7a5210", color: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
+                              style={{ flex: 1, padding: "11px 10px", border: "none", borderRadius: 8, background: "#7a5210", color: "#fff", fontWeight: 700, cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
                             >
                               {isSubmittingContractRequest
-                                ? "Sending..."
+                                ? MORE_TIME_WINDOW.sending
                                 : contractRequestEditing
-                                  ? "Update Request"
-                                  : "Send Request"}
+                                  ? MORE_TIME_WINDOW.update
+                                  : MORE_TIME_WINDOW.send}
                             </button>
                           </div>
 
                           <div style={{ fontSize: 11, color: "#6b5a3c", lineHeight: 1.5 }}>
-                            Payment is handled outside this system, so nothing is charged here.
-                            Talk to the admin about how long you would like your contract
-                            extended — they will agree a new end date with you.
+                            {MORE_TIME_WINDOW.note}
                           </div>
                         </div>
                       </RequestDialog>
@@ -6932,8 +6969,8 @@ $5padding: 20,
                       <RequestDialog
                         title={
                           contractRequestEditing
-                            ? "Update your contract request"
-                            : "Request a new contract"
+                            ? NEW_PLAN_WINDOW.titleEditing
+                            : NEW_PLAN_WINDOW.title
                         }
                         onClose={() => {
                           // Both flags, not just the override. The dialog is
@@ -6946,47 +6983,38 @@ $5padding: 20,
                           setRequestingNewContract(false);
                           setContractRequestEditing(false);
                           setContractRequestError("");
+                          setShowContractExtraOptions(false);
                         }}
                       >
                             {/* The consequence, stated here rather than assumed. This
-                                form only appears alongside the extension route when the
+                                form only appears alongside the more-time route when the
                                 student has deliberately chosen it, which is the one
                                 moment losing the balance is a decision rather than a
                                 surprise. */}
                             {requestingNewContract && !canRequestNewContract && latestStudentPackage && (
                               <div style={{ marginBottom: 10, padding: 10, border: "1px solid #e5a3a3", borderRadius: 8, background: "#fdecec", fontSize: 12, color: "#8c2020", lineHeight: 1.45 }}>
-                                A new contract replaces your current one, so the{" "}
-                                {latestStudentPackage.classes_left} unused class
-                                {Number(latestStudentPackage.classes_left) === 1 ? "" : "es"} on it will not carry over.
-                                If you would rather keep them, close this and ask for
-                                an extension instead.
+                                {NEW_PLAN_WINDOW.losesClasses(Number(latestStudentPackage.classes_left))}
                               </div>
                             )}
                             {extensionFlow.isPending && (
                               /* The same contradiction, from the other side.
-                                 !! The extension request is asking to keep the
+                                 !! The more-time ask is asking to keep the
                                  !! unused classes, and this form is asking for
-                                 !! the contract that would replace them. Both
-                                 !! can be with the admin at once, and approving
-                                 !! this one throws away what the other is
-                                 !! asking to preserve. */
+                                 !! the plan that would replace them. */
                               <div style={{ marginBottom: 10, padding: 10, border: "1px solid #e5a3a3", borderRadius: 8, background: "#fdecec", fontSize: 12, color: "#8c2020", lineHeight: 1.45 }}>
-                                You also have an extension request with the admin, and only one request
-                                can be with the admin at a time. That one is asking to keep the classes
-                                on your current contract; approving this one replaces that contract
-                                instead. Withdraw the extension request first if you would rather keep
-                                those classes.
+                                You also asked for more time. Only one ask can wait for the admin at a
+                                time. That one is asking to keep the classes on your current plan, and
+                                a new plan replaces it instead. Cancel that ask first if you would
+                                rather keep those classes.
                               </div>
                             )}
                             {contractRequestEditing && (
-                              /* The request already exists. Saying so is the
+                              /* The ask already exists. Saying so is the
                                  difference between a student who thinks they
-                                 sent two requests and one who knows they
-                                 changed one. */
+                                 sent two asks and one who knows they changed
+                                 one. */
                               <div style={{ marginBottom: 10, padding: 10, border: "1px solid #c3cbd5", borderRadius: 8, background: "#f6f8f7", fontSize: 12, color: "#374151", lineHeight: 1.45 }}>
-                                You already have a request with the admin. Sending this
-                                replaces it - they will see this version, and the one
-                                before it stays in their history.
+                                {NEW_PLAN_WINDOW.replacing}
                               </div>
                             )}
                             {newContractFlow.isPending && !contractRequestEditing && (
@@ -6996,22 +7024,39 @@ $5padding: 20,
                             )}
                             {contractRequests[0] && (
                               <div style={{ marginBottom: 10, fontSize: 12, color: "#4b5563" }}>
-                                Latest request: <strong style={{ textTransform: "capitalize" }}>{contractRequests[0].status}</strong>
+                                {NEW_PLAN_WINDOW.lastAsk}:{" "}
+                                <strong style={{ textTransform: "capitalize" }}>{contractRequests[0].status}</strong>
                                 {contractRequests[0].course_name ? ` - ${contractRequests[0].course_name}` : ""}
                                 {contractRequests[0].requested_classes ? ` (${contractRequests[0].requested_classes} classes)` : ""}
                                 {contractRequests[0].class_duration ? ` - ${contractRequests[0].class_duration} min` : ""}
-                                {contractRequests[0].revision_label ? ` - ${contractRequests[0].revision_label}` : ""}
                               </div>
                             )}
                               <div style={{ display: "grid", gap: 10 }}>
+                                {/* Three questions. That is the whole form.
+                                    !!
+                                    !! It used to be eight, four of them
+                                    !! multi-select with a paragraph of help
+                                    !! text under each. A student who cannot
+                                    !! read that is not a student who is
+                                    !! choosing - they are a student who is
+                                    !! guessing and pressing the first thing
+                                    !! they recognise.
+                                    !!
+                                    !! The rest is still here, and it still
+                                    !! goes to the admin. It is folded away,
+                                    !! because "you can skip these" is a
+                                    !! sentence a student can act on and
+                                    !! "Learning Goal" is not. */}
                                 <div>
-                                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Desired Course</label>
+                                  <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4 }}>
+                                    {NEW_PLAN_WINDOW.course}
+                                  </label>
                                   <select
                                     value={contractCourseId}
                                     onChange={(e) => updateContractCourse(e.target.value)}
-                                    style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit" }}
+                                    style={{ width: "100%", padding: "11px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit", fontSize: "0.95rem" }}
                                   >
-                                    <option value="">Select course</option>
+                                    <option value="">{NEW_PLAN_WINDOW.coursePlaceholder}</option>
                                     {courses.map((course) => (
                                       <option key={course.course_id} value={course.course_id}>
                                         {course.course_name}
@@ -7019,144 +7064,180 @@ $5padding: 20,
                                     ))}
                                   </select>
                                 </div>
-                                <CriteriaChipField
-                                  legend="Learning Goal"
-                                  options={contractLearningGoalOptions}
-                                  selected={contractAiCriteria.learningGoal}
-                                  onToggle={(value) => toggleContractAiCriterionValue("learningGoal", value)}
-                                  emptyMessage="Select a course to show matching goals."
-                                  name="contract-learning-goal"
-                                  allowCustom
-                                  customValue={contractCriteriaOther.learningGoal}
-                                  onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, learningGoal: text }))}
-                                />
-                                <CriteriaChipField
-                                  legend="Focus Area"
-                                  options={contractFocusAreaOptions}
-                                  selected={contractAiCriteria.focusArea}
-                                  onToggle={(value) => toggleContractAiCriterionValue("focusArea", value)}
-                                  emptyMessage="Select a course to show matching focus areas."
-                                  name="contract-focus-area"
-                                  allowCustom
-                                  customValue={contractCriteriaOther.focusArea}
-                                  onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, focusArea: text }))}
-                                />
-                                <CriteriaChipField
-                                  legend="Learning Style"
-                                  options={STUDENT_CRITERIA_OPTIONS.learningStyle}
-                                  selected={contractAiCriteria.learningStyle}
-                                  onToggle={(value) => toggleContractAiCriterionValue("learningStyle", value)}
-                                  name="contract-learning-style"
-                                  allowCustom
-                                  customValue={contractCriteriaOther.learningStyle}
-                                  onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, learningStyle: text }))}
-                                />
-                                <CriteriaChipField
-                                  legend="Learning Pace"
-                                  options={STUDENT_CRITERIA_OPTIONS.pace}
-                                  selected={contractAiCriteria.pace}
-                                  onToggle={(value) => toggleContractAiCriterionValue("pace", value)}
-                                  name="contract-pace"
-                                  allowCustom
-                                  customValue={contractCriteriaOther.pace}
-                                  onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, pace: text }))}
-                                />
-                                <div style={{ marginBottom: 4 }}>
-                                  <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 700, marginBottom: 4, color: "#1d3a2c" }}>
-                                    When can you take classes?{" "}
-                                    <span style={{ fontWeight: 400, color: "#6b7d73" }}>(optional)</span>
+                                <div>
+                                  <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4 }}>
+                                    {NEW_PLAN_WINDOW.classCount}
                                   </label>
-                                  <p style={{ margin: "0 0 10px 0", fontSize: "0.85em", color: "#4b5f55", lineHeight: 1.5 }}>
-                                    Teachers publish their own availability, so this lets the match
-                                    prefer someone who can actually teach you then. Leave it blank
-                                    and we match on teaching fit alone.
-                                  </p>
-
-                                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
-                                    {WEEKDAY_CHOICES.map(([value, label]) => {
-                                      const active = contractPreferredSchedule.days.includes(value);
-                                      return (
-                                        <button
-                                          key={value}
-                                          type="button"
-                                          aria-pressed={active}
-                                          onClick={() => {
-                                            const days = active
-                                              ? contractPreferredSchedule.days.filter((day) => day !== value)
-                                              : [...contractPreferredSchedule.days, value];
-                                            setContractPreferredSchedule((prev) => ({ ...prev, days }));
-                                          }}
-                                          style={{
-                                            padding: "5px 13px",
-                                            borderRadius: "999px",
-                                            border: `1px solid ${active ? "#26423b" : "#d0d0d0"}`,
-                                            background: active ? "#26423b" : "#fff",
-                                            color: active ? "#fff" : "#333",
-                                            cursor: "pointer",
-                                            fontSize: "0.88em",
-                                            fontWeight: 600,
-                                          }}
-                                        >
-                                          {label}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-
-                                  <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-                                    <label style={{ fontSize: "0.85em", color: "#555" }}>From</label>
-                                    <input
-                                      type="time"
-                                      value={contractPreferredSchedule.start}
-                                      onChange={(e) =>
-                                        setContractPreferredSchedule((prev) => ({ ...prev, start: e.target.value }))
-                                      }
-                                      style={{ padding: "7px 9px", border: "1px solid #cbd5cd", borderRadius: 8, fontFamily: "inherit" }}
-                                    />
-                                    <label style={{ fontSize: "0.85em", color: "#555" }}>To</label>
-                                    <input
-                                      type="time"
-                                      value={contractPreferredSchedule.end}
-                                      onChange={(e) =>
-                                        setContractPreferredSchedule((prev) => ({ ...prev, end: e.target.value }))
-                                      }
-                                      style={{ padding: "7px 9px", border: "1px solid #cbd5cd", borderRadius: 8, fontFamily: "inherit" }}
-                                    />
-                                  </div>
-
-                                  {/* Only when it is actually true. Warning on every
-                                      keystroke of an optional field is how a
-                                      helpful hint becomes noise people ignore. */}
-                                  {contractPreferredSchedule.days.length > 0 &&
-                                  !hasPreferredSchedule(contractPreferredSchedule) && (
-                                    <p style={{ margin: "8px 0 0", fontSize: "0.85em", color: "#7a5210" }}>
-                                      Pick a start and an end time too, otherwise this is ignored.
-                                    </p>
-                                  )}
-                                </div>
-
-                                <div>
-                                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Class Duration</label>
-                                  <select
-                                    value={contractClassDuration}
-                                    onChange={(e) => setContractClassDuration(e.target.value)}
-                                    style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit" }}
-                                  >
-                                    <option value="25">25 minutes</option>
-                                    <option value="50">50 minutes</option>
-                                  </select>
-                                </div>
-                                <div>
-                                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4 }}>Number of Classes</label>
                                   <select
                                     value={contractClassCount}
                                     onChange={(e) => setContractClassCount(e.target.value)}
-                                    style={{ width: "100%", padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit" }}
+                                    style={{ width: "100%", padding: "11px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit", fontSize: "0.95rem" }}
                                   >
                                     <option value="10">10 classes</option>
                                     <option value="15">15 classes</option>
                                     <option value="20">20 classes</option>
                                   </select>
+                                </div>
+                                <div>
+                                  <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4 }}>
+                                    {NEW_PLAN_WINDOW.classLength}
+                                  </label>
+                                  <select
+                                    value={contractClassDuration}
+                                    onChange={(e) => setContractClassDuration(e.target.value)}
+                                    style={{ width: "100%", padding: "11px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit", fontSize: "0.95rem" }}
+                                  >
+                                    <option value="25">25 minutes</option>
+                                    <option value="50">50 minutes</option>
+                                  </select>
+                                </div>
+
+                                {/* Everything else, folded away.
+                                    !!
+                                    !! The teacher match uses all of it, so it
+                                    !! cannot be thrown away - but a student
+                                    !! who has not answered it still gets a
+                                    !! good teacher, because the match falls
+                                    !! back to what it does know. */}
+                                <div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowContractExtraOptions((current) => !current)}
+                                    aria-expanded={showContractExtraOptions}
+                                    style={{
+                                      width: "100%",
+                                      padding: "11px 12px",
+                                      border: "1px solid #d1d5db",
+                                      borderRadius: 8,
+                                      background: "#fff",
+                                      color: "#374151",
+                                      fontWeight: 700,
+                                      fontSize: "0.9rem",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    {showContractExtraOptions
+                                      ? NEW_PLAN_WINDOW.lessOptions
+                                      : NEW_PLAN_WINDOW.moreOptions}
+                                  </button>
+
+                                  {showContractExtraOptions && (
+                                    <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                                      <CriteriaChipField
+                                        legend={NEW_PLAN_WINDOW.learningGoal}
+                                        options={contractLearningGoalOptions}
+                                        selected={contractAiCriteria.learningGoal}
+                                        onToggle={(value) => toggleContractAiCriterionValue("learningGoal", value)}
+                                        emptyMessage="Pick a course first."
+                                        name="contract-learning-goal"
+                                        allowCustom
+                                        customValue={contractCriteriaOther.learningGoal}
+                                        onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, learningGoal: text }))}
+                                      />
+                                      <CriteriaChipField
+                                        legend={NEW_PLAN_WINDOW.focusArea}
+                                        options={contractFocusAreaOptions}
+                                        selected={contractAiCriteria.focusArea}
+                                        onToggle={(value) => toggleContractAiCriterionValue("focusArea", value)}
+                                        emptyMessage="Pick a course first."
+                                        name="contract-focus-area"
+                                        allowCustom
+                                        customValue={contractCriteriaOther.focusArea}
+                                        onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, focusArea: text }))}
+                                      />
+                                      <CriteriaChipField
+                                        legend={NEW_PLAN_WINDOW.learningStyle}
+                                        options={STUDENT_CRITERIA_OPTIONS.learningStyle}
+                                        selected={contractAiCriteria.learningStyle}
+                                        onToggle={(value) => toggleContractAiCriterionValue("learningStyle", value)}
+                                        name="contract-learning-style"
+                                        allowCustom
+                                        customValue={contractCriteriaOther.learningStyle}
+                                        onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, learningStyle: text }))}
+                                      />
+                                      <CriteriaChipField
+                                        legend={NEW_PLAN_WINDOW.learningPace}
+                                        options={STUDENT_CRITERIA_OPTIONS.pace}
+                                        selected={contractAiCriteria.pace}
+                                        onToggle={(value) => toggleContractAiCriterionValue("pace", value)}
+                                        name="contract-pace"
+                                        allowCustom
+                                        customValue={contractCriteriaOther.pace}
+                                        onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, pace: text }))}
+                                      />
+                                      <div style={{ marginBottom: 4 }}>
+                                        <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#1d3a2c" }}>
+                                          {NEW_PLAN_WINDOW.freeTime}{" "}
+                                          <span style={{ fontWeight: 400, color: "#6b7d73" }}>({NEW_PLAN_WINDOW.freeTimeOptional})</span>
+                                        </label>
+                                        <p style={{ margin: "0 0 10px 0", fontSize: "0.85em", color: "#4b5f55", lineHeight: 1.5 }}>
+                                          {NEW_PLAN_WINDOW.freeTimeHelp}
+                                        </p>
+
+                                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
+                                          {WEEKDAY_CHOICES.map(([value, label]) => {
+                                            const active = contractPreferredSchedule.days.includes(value);
+                                            return (
+                                              <button
+                                                key={value}
+                                                type="button"
+                                                aria-pressed={active}
+                                                onClick={() => {
+                                                  const days = active
+                                                    ? contractPreferredSchedule.days.filter((day) => day !== value)
+                                                    : [...contractPreferredSchedule.days, value];
+                                                  setContractPreferredSchedule((prev) => ({ ...prev, days }));
+                                                }}
+                                                style={{
+                                                  padding: "7px 14px",
+                                                  borderRadius: "999px",
+                                                  border: `1px solid ${active ? "#26423b" : "#d0d0d0"}`,
+                                                  background: active ? "#26423b" : "#fff",
+                                                  color: active ? "#fff" : "#333",
+                                                  cursor: "pointer",
+                                                  fontSize: "0.88em",
+                                                  fontWeight: 600,
+                                                }}
+                                              >
+                                                {label}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+
+                                        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                                          <label style={{ fontSize: "0.85em", color: "#555" }}>{NEW_PLAN_WINDOW.from}</label>
+                                          <input
+                                            type="time"
+                                            value={contractPreferredSchedule.start}
+                                            onChange={(e) =>
+                                              setContractPreferredSchedule((prev) => ({ ...prev, start: e.target.value }))
+                                            }
+                                            style={{ padding: "7px 9px", border: "1px solid #cbd5cd", borderRadius: 8, fontFamily: "inherit" }}
+                                          />
+                                          <label style={{ fontSize: "0.85em", color: "#555" }}>{NEW_PLAN_WINDOW.to}</label>
+                                          <input
+                                            type="time"
+                                            value={contractPreferredSchedule.end}
+                                            onChange={(e) =>
+                                              setContractPreferredSchedule((prev) => ({ ...prev, end: e.target.value }))
+                                            }
+                                            style={{ padding: "7px 9px", border: "1px solid #cbd5cd", borderRadius: 8, fontFamily: "inherit" }}
+                                          />
+                                        </div>
+
+                                        {/* Only when it is actually true. Warning on every
+                                            keystroke of an optional field is how a
+                                            helpful hint becomes noise people ignore. */}
+                                        {contractPreferredSchedule.days.length > 0 &&
+                                        !hasPreferredSchedule(contractPreferredSchedule) && (
+                                          <p style={{ margin: "8px 0 0", fontSize: "0.85em", color: "#7a5210" }}>
+                                            {NEW_PLAN_WINDOW.fromToHelp}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                                 {/* Who this would match, before sending it.
                                     !! The same recommendTeacher the approval
@@ -7173,7 +7254,7 @@ $5padding: 20,
                                     disabled={previewingMatch || !contractCourseId}
                                     style={{
                                       width: "100%",
-                                      padding: "9px 12px",
+                                      padding: "11px 12px",
                                       border: "1px solid #26423b",
                                       borderRadius: 8,
                                       background: "#fff",
@@ -7184,10 +7265,10 @@ $5padding: 20,
                                     }}
                                   >
                                     {previewingMatch
-                                      ? "Working out a match..."
+                                      ? NEW_PLAN_WINDOW.findingTeacher
                                       : matchPreview
-                                        ? "Check again"
-                                        : "See who would match"}
+                                        ? NEW_PLAN_WINDOW.checkAgain
+                                        : NEW_PLAN_WINDOW.seeMyTeacher}
                                   </button>
 
                                   {matchPreviewError && (
@@ -7211,51 +7292,75 @@ $5padding: 20,
                               setContractRequestOpen(false);
                               setRequestingNewContract(false);
                               setContractRequestEditing(false);
+                              setShowContractExtraOptions(false);
                             }}
                                     disabled={isSubmittingContractRequest}
-                                    style={{ flex: 1, padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
+                                    style={{ flex: 1, padding: "11px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", fontWeight: 700, cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
                                   >
-                                    Cancel
+                                    {NEW_PLAN_WINDOW.cancel}
                                   </button>
                                   <button
                                     type="button"
                                     onClick={submitContractRequest}
                                     disabled={isSubmittingContractRequest}
-                                    style={{ flex: 1, padding: "9px 10px", border: "none", borderRadius: 8, background: "#111827", color: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
+                                    style={{ flex: 1, padding: "11px 10px", border: "none", borderRadius: 8, background: "#111827", color: "#fff", fontWeight: 700, cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
                                   >
                                     {isSubmittingContractRequest
-                                      ? "Sending..."
+                                      ? NEW_PLAN_WINDOW.sending
                                       : contractRequestEditing
-                                        ? "Update Request"
-                                        : "Send Request"}
+                                        ? NEW_PLAN_WINDOW.update
+                                        : NEW_PLAN_WINDOW.send}
                                   </button>
                                 </div>
                               </div>
 
                       </RequestDialog>
                     )}
+                    {/* The one thing a student came here to do.
+                        !!
+                        !! It was a white button at the bottom of a column, the
+                        !! same weight as "Jump to Today" and the same weight
+                        !! as everything else. On a screen a child has to
+                        !! read, one action has to look like the action.
+                        */}
                     <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
                       <button
                         type="button"
-                        className={styles.slotBtn}
+                        className={styles.bookBtn}
                         onClick={openMonthlyBooking}
                         disabled={!assignedTeacherId || hasNoClassesLeft}
                         style={{
                           width: "100%",
+                          minHeight: 48,
+                          fontSize: "1rem",
                           textAlign: "center",
                           opacity: !assignedTeacherId || hasNoClassesLeft ? 0.55 : 1,
                           cursor: !assignedTeacherId || hasNoClassesLeft ? "not-allowed" : "pointer",
                         }}
                       >
-                        Book Classes
+                        {PLAN.bookAClass}
                       </button>
-                      <button type="button" className={styles.slotBtn} onClick={jumpToToday}>
-                        Jump to Today
+                      <button
+                        type="button"
+                        onClick={jumpToToday}
+                        style={{
+                          width: "100%",
+                          padding: "8px 10px",
+                          border: "none",
+                          background: "transparent",
+                          color: "#4b5563",
+                          fontSize: "0.85rem",
+                          fontWeight: 700,
+                          textDecoration: "underline",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {PLAN.today}
                       </button>
                     </div>
                     {!assignedTeacherId && (
                       <div style={{ marginTop: 10, fontSize: "0.8em", color: "#b65f00" }}>
-                        Your assigned teacher is not available yet. Please contact support.
+                        You do not have a teacher yet. Please contact support.
                       </div>
                     )}
                   </>
@@ -7263,36 +7368,47 @@ $5padding: 20,
               </>
             )}
 
-            <div className={styles.legendBlock}>
-              <div className={styles.guideTitle}>Calendar Color Guide</div>
-              
+            {/* The colour key.
+                !!
+                !! It was five colours with five pieces of jargon, and it was
+                !! on screen for every student on every visit to the page. A
+                !! student does not need to know what "unavailable" means
+                !! formally - they need to know which days they can press.
+                !! So it is folded away by default and the words are the ones
+                !! a student would use.
+                */}
+            <details className={styles.legendBlock}>
+              <summary className={styles.guideTitle} style={{ cursor: "pointer" }}>
+                {LEGEND.title}
+              </summary>
+
               <div className={styles.legendRow}>
                 <span className={`${styles.legendDot} ${styles.legendAvail}`} />
-                <span>Available</span>
+                <span>{LEGEND.available}</span>
               </div>
 
               <div className={styles.legendRow}>
                 <span className={`${styles.legendDot} ${styles.legendClasses}`} />
-                <span>Classes Scheduled</span>
+                <span>{LEGEND.hasClasses}</span>
               </div>
 
               <div className={styles.legendRow}>
                 <span className={`${styles.legendDot} ${styles.legendUnavail}`} />
-                <span>Teacher Unavailable</span>
+                <span>{LEGEND.unavailable}</span>
               </div>
 
               <div className={styles.legendRow}>
                 <span className={`${styles.legendDot} ${styles.legendUnscheduled}`} />
-                <span>Schedule Not Set</span>
+                <span>{LEGEND.notSet}</span>
               </div>
 
               <div className={styles.legendRow}>
                 <span className={`${styles.legendDot} ${styles.legendPast}`} />
-                <span>Past Date</span>
+                <span>{LEGEND.past}</span>
               </div>
 
-              <div className={styles.guideHint}>Click a day to view details</div>
-            </div>
+              <div className={styles.guideHint}>{LEGEND.hint}</div>
+            </details>
           </aside>
         </div>
     </section>
@@ -7540,10 +7656,12 @@ $5padding: 20,
             RS
           </div>
           <h3 id="reschedule-confirm-title" style={{ margin: "0 0 8px", fontSize: "1.15rem", color: "#111827" }}>
-            Send reschedule request?
+            {localRole === "teacher" ? "Send reschedule request?" : CONFIRM.rescheduleTitle}
           </h3>
           <p style={{ margin: "0 0 16px", color: "#4b5563", lineHeight: 1.5, fontSize: "0.92rem" }}>
-            This will send the request to {localRole === "teacher" ? "the student" : "your teacher"} for review.
+            {localRole === "teacher"
+              ? "This will send the request to the student for review."
+              : CONFIRM.rescheduleHelp}
           </p>
           <div
             style={{
@@ -7560,19 +7678,19 @@ $5padding: 20,
               {selectedClass.className || "Selected class"}
             </div>
             <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-              Current: {selectedClass.scheduled_date ? new Date(selectedClass.scheduled_date + "T00:00:00").toLocaleDateString() : "Current date"} at {humanTime(selectedClass.start_time || selectedClass.time)}
+              {localRole === "teacher" ? "Current" : CONFIRM.now}: {selectedClass.scheduled_date ? new Date(selectedClass.scheduled_date + "T00:00:00").toLocaleDateString() : "Current date"} at {humanTime(selectedClass.start_time || selectedClass.time)}
             </div>
             <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-              Requested: {requestDate ? new Date(requestDate + "T00:00:00").toLocaleDateString() : "Not selected"} at {humanTime(requestTime)}{requestEndTime ? ` - ${humanTime(requestEndTime)}` : ""}
+              {localRole === "teacher" ? "Requested" : CONFIRM.new}: {requestDate ? new Date(requestDate + "T00:00:00").toLocaleDateString() : "Not selected"} at {humanTime(requestTime)}{requestEndTime ? ` - ${humanTime(requestEndTime)}` : ""}
             </div>
             <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-              Duration: {selectedClassDuration} minutes
+              {CONFIRM.minutesEach(selectedClassDuration)}
             </div>
             <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-              {localRole === "teacher" ? "Student" : "Teacher"}: {localRole === "teacher" ? selectedClass.studentName || selectedClass.studentFullName || "Student" : selectedTeacherFullName || "Teacher"}
+              {localRole === "teacher" ? "Student" : CLASS_INFO.teacher}: {localRole === "teacher" ? selectedClass.studentName || selectedClass.studentFullName || "Student" : selectedTeacherFullName || "Teacher"}
             </div>
             <div style={{ fontSize: "0.88rem", color: "#4b5563", borderTop: "1px solid #e5e7eb", paddingTop: 8 }}>
-              Reason: {requestReason.trim()}
+              {localRole === "teacher" ? "Reason" : CONFIRM.why}: {requestReason.trim()}
             </div>
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
@@ -7666,10 +7784,10 @@ $5padding: 20,
             OK
           </div>
           <h3 id="student-booking-confirm-title" style={{ margin: "0 0 8px", fontSize: "1.15rem", color: "#111827" }}>
-            Confirm class booking
+            {CONFIRM.bookingTitle}
           </h3>
           <p style={{ margin: "0 0 16px", color: "#4b5563", lineHeight: 1.5, fontSize: "0.92rem" }}>
-            Please review your class schedule before booking.
+            {CONFIRM.bookingHelp}
           </p>
           <div
             style={{
@@ -7686,7 +7804,7 @@ $5padding: 20,
               {studentProfile?.course_name || "General English"}
             </div>
             <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-              Classes: {studentBookingSelections.length}
+              {CONFIRM.classes(studentBookingSelections.length)}
             </div>
             <div style={{ display: "grid", gap: 6, maxHeight: 180, overflowY: "auto" }}>
               {studentBookingSelections.map((slot) => {
@@ -7699,11 +7817,11 @@ $5padding: 20,
               })}
             </div>
             <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-              Duration: {studentClassDuration} minutes
+              {CONFIRM.minutesEach(studentClassDuration)}
             </div>
             {assignedTeacherName && (
               <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-                Teacher: {assignedTeacherName}
+                {CLASS_INFO.teacher}: {assignedTeacherName}
               </div>
             )}
           </div>
@@ -7723,7 +7841,7 @@ $5padding: 20,
                 cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer",
               }}
             >
-              Cancel
+              {CONFIRM.cancel}
             </button>
             <button
               type="button"
@@ -7740,7 +7858,7 @@ $5padding: 20,
                 boxShadow: "0 8px 18px rgba(46, 125, 50, 0.22)",
               }}
             >
-              {isSubmittingStudentBooking ? "Booking..." : "Confirm Booking"}
+              {isSubmittingStudentBooking ? BOOKING.booking : CONFIRM.yesBook}
             </button>
           </div>
         </div>
