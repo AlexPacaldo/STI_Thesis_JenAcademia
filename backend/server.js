@@ -1017,6 +1017,68 @@ function requireQueryScope(...names) {
   };
 }
 
+/**
+ * May this session read a teacher's availability?
+ *
+ * !! A student has to be able to read the availability of the teacher
+ * !! assigned to them. It is how they know which days they can book, and
+ * !! without it the booking form says "no free times on this day" on every
+ * !! single day - including the days the teacher is free, which is every day
+ * !! the teacher is free.
+ * !!
+ * !! The teacher_id in the query is not the caller's own id, so the general
+ * !! "you may only query yourself" rule refused it. That rule was right for
+ * !! the calendar lists, where a query id reads somebody's schedule, and
+ * !! wrong here: a teacher's free times are not private, and the student
+ * !! standing in front of the booking form needs them.
+ * !!
+ * !! So the check is the relationship, not the id: an admin may read any
+ * !! teacher, a teacher may read their own, and a student may read the one
+ * !! teacher assigned to them - and nobody else.
+ */
+async function sessionMayReadTeacherAvailability(req, teacherId) {
+  if (teacherId === undefined || teacherId === null || teacherId === "") return false;
+
+  const session = req.session || {};
+
+  if (session.role === "admin") return true;
+  if (session.role === "teacher") return String(session.userId) === String(teacherId);
+
+  if (session.role === "student") {
+    const [rows] = await pool.query(
+      `SELECT assigned_teacher_id FROM student_profiles WHERE user_id = ? LIMIT 1`,
+      [session.userId]
+    );
+    return (
+      rows.length > 0 &&
+      rows[0].assigned_teacher_id != null &&
+      String(rows[0].assigned_teacher_id) === String(teacherId)
+    );
+  }
+
+  return false;
+}
+
+/**
+ * Middleware: the query may name a teacher, as long as the caller is allowed
+ * to read that teacher's availability.
+ */
+function requireTeacherAvailabilityScope(name = "teacher_id") {
+  return (req, res, next) => {
+    sessionMayReadTeacherAvailability(req, req.query?.[name])
+      .then((allowed) => {
+        if (!allowed) {
+          return res.status(403).json({ message: "You can only view your own schedule." });
+        }
+        next();
+      })
+      .catch((err) => {
+        console.error("requireTeacherAvailabilityScope error:", err);
+        res.status(500).json({ message: "Server error" });
+      });
+  };
+}
+
 /** Does this notification belong to the caller? */
 async function sessionMayActOnNotification(req, notificationId) {
   const session = req.session || {};
@@ -6929,7 +6991,7 @@ app.get("/api/calendar/stream/:user_id", requireSession, (req, res) => {
 });
 
 // Get teacher availability for a month
-app.get("/api/calendar/teacher-availability", requireSession, requireQueryScope("teacher_id"), async (req, res) => {
+app.get("/api/calendar/teacher-availability", requireSession, requireTeacherAvailabilityScope(), async (req, res) => {
   try {
     const { teacher_id, year, month } = req.query;
     
@@ -11297,7 +11359,7 @@ app.put("/api/student/package/:student_id/use-class", requireSession, async (req
 });
 
 // Get teacher availability records for a specific month
-app.get("/api/calendar/teacher-availability-records", requireSession, requireQueryScope("teacher_id"), async (req, res) => {
+app.get("/api/calendar/teacher-availability-records", requireSession, requireTeacherAvailabilityScope(), async (req, res) => {
   try {
     const { teacher_id, year, month } = req.query;
 
@@ -11350,7 +11412,7 @@ app.get("/api/calendar/teacher-availability-records", requireSession, requireQue
 });
 
 // Get teacher availability record for a specific date
-app.get("/api/calendar/teacher-availability-record", requireSession, requireQueryScope("teacher_id"), async (req, res) => {
+app.get("/api/calendar/teacher-availability-record", requireSession, requireTeacherAvailabilityScope(), async (req, res) => {
   try {
     const { teacher_id, available_date } = req.query;
     if (!teacher_id || !available_date) {

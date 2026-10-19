@@ -1,5 +1,5 @@
 import styles from "../assets/contractExpiry.module.css";
-import { describeContractExpiry } from "../utils/contractExpiry.js";
+import { describeContractExpiry, describeContractExpiryForStudent } from "../utils/contractExpiry.js";
 
 /**
  * "N days left" on a contract, in one place.
@@ -17,9 +17,18 @@ import { describeContractExpiry } from "../utils/contractExpiry.js";
  * @param {string|Date|null} props.expiresAt the contract deadline
  * @param {string} [props.size] "sm" for a dense table cell, default for a card
  * @param {boolean} [props.showDate] also render the exact date
+ * @param {boolean} [props.forStudent] use the student's plain wording
+ *   ("Your plan ends on...") rather than the admin's ("Contract ends on...")
  */
-export default function ContractExpiryBadge({ expiresAt, size = "md", showDate = false }) {
-  const info = describeContractExpiry(expiresAt);
+export default function ContractExpiryBadge({
+  expiresAt,
+  size = "md",
+  showDate = false,
+  forStudent = false,
+}) {
+  const info = forStudent
+    ? describeContractExpiryForStudent(expiresAt)
+    : describeContractExpiry(expiresAt);
   if (info.state === "none") return null;
 
   return (

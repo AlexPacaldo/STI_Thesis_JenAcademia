@@ -33,7 +33,7 @@ import {
   describeBlockedByOtherRequest,
   describeRequestFlow,
 } from "../frontend/src/utils/contractRequestFlow.js";
-import { describeContractExpiry } from "../frontend/src/utils/contractExpiry.js";
+import { describeContractExpiryForStudent } from "../frontend/src/utils/contractExpiry.js";
 
 let passed = 0;
 const failures = [];
@@ -129,7 +129,7 @@ for (const kind of ["new", "extension"]) {
   flowStrings.push({ path: `flow.${kind}.blocked.hint`, text: blocked.hint });
 }
 
-const expiry = describeContractExpiry(new Date("2026-10-10T00:00:00Z"));
+const expiry = describeContractExpiryForStudent(new Date("2026-10-10T00:00:00Z"));
 flowStrings.push({ path: "expiry.label", text: expiry.label });
 flowStrings.push({ path: "expiry.detail", text: expiry.detail });
 

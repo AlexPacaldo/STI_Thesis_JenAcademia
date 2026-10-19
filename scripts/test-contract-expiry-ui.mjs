@@ -2,6 +2,7 @@ import {
   EXPIRY_SOON_DAYS,
   describeContractBalance,
   describeContractExpiry,
+  describeContractExpiryForStudent,
   describeCanReRequest,
   describeExtensionEligibility,
   describeStudentContract,
@@ -31,9 +32,41 @@ check("garbage is nothing, not a wrong number", describeContractExpiry("soon", N
 
 const gone = describeContractExpiry(inDays(-10), NOW);
 check("the past is expired", gone.state, "expired");
-check("and says so", gone.label, "Ended");
+check("and says so, in the admin's words", gone.label, "Expired");
 check("with a negative count", gone.daysLeft, -10);
 check("and a danger tone", gone.tone, "danger");
+
+/* ------------------------------------------------- the student's wording */
+
+// !! Two voices, and the admin's screen must keep the one it had. The badge
+// !! is on the admin's Contracts page, the teacher's list and the student's
+// !! pages, and changing the admin's wording to match the student's was the
+// !! wrong call - it is their working screen.
+check(
+  "the student hears it in their own words",
+  describeContractExpiryForStudent(inDays(-10), NOW).label,
+  "Ended"
+);
+check(
+  "and the date reads as a plan",
+  describeContractExpiryForStudent(inDays(-10), NOW).detail.startsWith("Your plan ended on"),
+  true
+);
+check(
+  "the admin still hears 'contract'",
+  describeContractExpiry(inDays(-10), NOW).detail.startsWith("Contract ended"),
+  true
+);
+check(
+  "and the student still hears the same number of days",
+  describeContractExpiryForStudent(inDays(5), NOW).label,
+  describeContractExpiry(inDays(5), NOW).label
+);
+check(
+  "and the same state",
+  describeContractExpiryForStudent(inDays(5), NOW).state,
+  describeContractExpiry(inDays(5), NOW).state
+);
 
 /* ---------------------------------------------------------------- boundary */
 
@@ -56,7 +89,7 @@ check("not soon is calm", describeContractExpiry(inDays(15), NOW).tone, "ok");
 const far = describeContractExpiry(inDays(80), NOW);
 check("a long contract is fine", far.state, "ok");
 check("and still reports a count", far.label, "80 days left");
-check("and carries the date for the tooltip", far.detail.startsWith("Your plan ends"), true);
+check("and carries the date for the tooltip", far.detail.startsWith("Contract ends"), true);
 
 /* ---------------------------------------------------------------- balance */
 

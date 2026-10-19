@@ -40,7 +40,7 @@ import {
   filterOptionsForCourses,
   hasPreferredSchedule,
   pruneSelectionToCourses,
-  STUDENT_CRITERIA_OPTIONS,
+  SIMPLE_CRITERIA_OPTIONS,
   toPreferredSchedulePayload,
   toggleValue,
 } from "../utils/matchingCriteria.js";
@@ -736,7 +736,7 @@ function ClassesLeftCard({ left, total, percent, readyToBook, badge, note }) {
  * !! things, none of which is the thing they came to do. This asks them to
  * !! press a day, and the day says what it is.
  */
-function DayPicker({ days, selected, onPick, emptyMessage }) {
+function DayPicker({ days, selected, onPick, emptyMessage, statusFor }) {
   if (!days.length) {
     return (
       <div style={{ padding: 12, background: "#f4f6f8", borderRadius: 8, color: "#555" }}>
@@ -749,13 +749,28 @@ function DayPicker({ days, selected, onPick, emptyMessage }) {
     <div className={styles.dayStrip}>
       {days.map((day) => {
         const active = day.key === selected;
+        // A day the teacher does not work is dimmed, so the strip carries the
+        // same information the month grid carried in its colours.
+        const status = statusFor ? statusFor(day.key) : null;
+        const free = status === "available";
+        const unknown = status === null;
+
         return (
           <button
             key={day.key}
             type="button"
             onClick={() => onPick(day.key)}
             aria-pressed={active}
-            className={`${styles.dayChip} ${active ? styles.dayChipActive : ""}`}
+            title={
+              status === "available"
+                ? "Your teacher is free on this day"
+                : status === "unavailable"
+                  ? "Your teacher is busy on this day"
+                  : "Your teacher has no classes set for this day"
+            }
+            className={`${styles.dayChip} ${active ? styles.dayChipActive : ""} ${
+              free ? styles.dayChipFree : ""
+            } ${unknown ? styles.dayChipUnknown : ""}`}
           >
             <div style={{ fontSize: "0.95rem" }}>{day.weekday}</div>
             <div style={{ fontSize: "1.1rem", marginTop: 2 }}>{day.dayNumber}</div>
@@ -843,6 +858,15 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   // The most recent package whatever its status. Display only: every booking
   // decision reads `studentPackage`, which stays null once a contract ends.
   const [latestStudentPackage, setLatestStudentPackage] = useState(null);
+  // Whether the package has actually been fetched yet.
+  //
+  // !! Until it has, the page cannot tell "you have no plan" from "we have
+  // !! not asked yet", and it was guessing: it showed a student with six
+  // !! unused classes on an ended plan a "Get a new plan" button, and then
+  // !! swapped it for "Ask for more time" a moment later when the answer
+  // !! arrived. A button that changes under the student's finger is worse
+  // !! than a button that is late.
+  const [studentPackageLoaded, setStudentPackageLoaded] = useState(false);
   const [calendarRefreshToken, setCalendarRefreshToken] = useState(0);
   const [isUserReady, setIsUserReady] = useState(false);
   const [isInitialCalendarLoading, setIsInitialCalendarLoading] = useState(true);
@@ -1219,11 +1243,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         .trim()
     : "";
   const contractLearningGoalOptions = useMemo(
-    () => filterOptionsForCourses(STUDENT_CRITERIA_OPTIONS.learningGoal, selectedContractCourseNames),
+    () => filterOptionsForCourses(SIMPLE_CRITERIA_OPTIONS.learningGoal, selectedContractCourseNames),
     [selectedContractCourseNames]
   );
   const contractFocusAreaOptions = useMemo(
-    () => filterOptionsForCourses(STUDENT_CRITERIA_OPTIONS.focusArea, selectedContractCourseNames),
+    () => filterOptionsForCourses(SIMPLE_CRITERIA_OPTIONS.focusArea, selectedContractCourseNames),
     [selectedContractCourseNames]
   );
 
@@ -1490,10 +1514,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         .then(r => {
           setStudentPackage(r.data.package);
           setLatestStudentPackage(r.data.latest_package ?? r.data.package ?? null);
+          setStudentPackageLoaded(true);
         })
         .catch((err) => {
           setStudentPackage(null);
           setLatestStudentPackage(err?.response?.data?.latest_package ?? null);
+          setStudentPackageLoaded(true);
         });
     }
   }, [localRole, localUserId, calendarRefreshToken]);
@@ -3739,6 +3765,49 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     [viewerTodayKey, scheduleWindowEndKey]
   );
 
+  // Which of the days in the strip the teacher actually works.
+  //
+  // !! The month grid carried this in its colours - a green square meant
+  // !! "you can press this" and a pale one meant "there is no class here".
+  // !! The strip of days has no colours, so without this a student taps a day
+  // !! the teacher does not work and is told "no free times on this day",
+  // !! which reads as their fault and is not.
+  // !!
+  // !! The strip can cross a month boundary, so both months are fetched.
+  const [simpleAvailability, setSimpleAvailability] = useState({});
+
+  useEffect(() => {
+    if (!isSimpleStudentView || !assignedTeacherId) return;
+
+    const months = new Set();
+    simpleBookingDays.forEach((day) => {
+      const date = dateKeyToLocalDate(day.key);
+      if (date) months.add(`${date.getFullYear()}-${date.getMonth() + 1}`);
+    });
+    if (!months.size) return;
+
+    let active = true;
+
+    Promise.all(
+      [...months].map((month) => {
+        const [year, monthNumber] = month.split("-").map(Number);
+        return axios
+          .get(`${API}/api/calendar/teacher-availability`, {
+            params: { teacher_id: assignedTeacherId, year, month: monthNumber },
+          })
+          .then((r) => r.data?.availability || {})
+          .catch(() => ({}));
+      })
+    ).then((maps) => {
+      if (!active) return;
+      setSimpleAvailability(Object.assign({}, ...maps));
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [isSimpleStudentView, assignedTeacherId, simpleBookingDays]);
+
   // The student's own requests, and what they may do about them.
   //
   // Matching on request_type is the point: an approved new-contract request from
@@ -4291,12 +4360,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       ...current,
       learningGoal: pruneSelectionToCourses(
         current?.learningGoal,
-        STUDENT_CRITERIA_OPTIONS.learningGoal,
+        SIMPLE_CRITERIA_OPTIONS.learningGoal,
         selectedCourseNames
       ),
       focusArea: pruneSelectionToCourses(
         current?.focusArea,
-        STUDENT_CRITERIA_OPTIONS.focusArea,
+        SIMPLE_CRITERIA_OPTIONS.focusArea,
         selectedCourseNames
       ),
     }));
@@ -6850,6 +6919,9 @@ $5padding: 20,
                             selected={studentBookingDate}
                             onPick={chooseBookingDate}
                             emptyMessage="No days to choose from."
+                            statusFor={(key) =>
+                              simpleAvailability[key] === undefined ? null : simpleAvailability[key]
+                            }
                           />
                           </div>
                           <div>
@@ -6894,13 +6966,20 @@ $5padding: 20,
                             </div>
                           ) : (
                             <div style={{ padding: 12, background: "#f4f6f8", borderRadius: 8, color: "#555" }}>
-                              {/* Before a day is chosen there are no times to
-                                  speak of, so saying "no free times on this
-                                  day" is talking about a day that has not
-                                  been picked. */}
-                              {studentBookingDate
-                                ? "No free times on this day. Please pick another day."
-                                : "Pick a day above, and the times will show here."}
+                              {/* Three different situations, and the old one
+                                  message covered only the middle one.
+                                  !! Before a day is chosen there are no times
+                                  to speak of, so saying "no free times on
+                                  this day" is talking about a day nobody has
+                                  picked. And a day the teacher does not work
+                                  is not the same as a day they work but are
+                                  full - one is the teacher's plan, the other
+                                  is the student's mistake to make. */}
+                              {!studentBookingDate
+                                ? "Pick a day above, and the times will show here."
+                                : simpleAvailability[studentBookingDate] === undefined
+                                  ? "Your teacher has no classes set for this day. Please pick another day."
+                                  : "No free times on this day. Please pick another day."}
                             </div>
                           )}
                         </div>
@@ -7019,7 +7098,7 @@ $5padding: 20,
                           total={Number(effectiveClassesLimit) || 0}
                           percent={effectivePercent}
                           readyToBook={Number(effectiveBookableClasses) || 0}
-                          badge={<ContractExpiryBadge expiresAt={contractExpiresAt} showDate />}
+                          badge={<ContractExpiryBadge expiresAt={contractExpiresAt} showDate forStudent />}
                           note={studentPlanStatusNote}
                         />
 
@@ -7079,11 +7158,21 @@ $5padding: 20,
                           total={Number(effectiveClassesLimit) || 0}
                           percent={effectivePercent}
                           readyToBook={Number(effectiveBookableClasses) || 0}
-                          badge={<ContractExpiryBadge expiresAt={contractExpiresAt} showDate />}
+                          badge={<ContractExpiryBadge expiresAt={contractExpiresAt} showDate forStudent />}
                           note={studentPlanStatusNote}
                         />
                       </>
                     )}
+                    {/* Nothing about what they may ask for is decided until
+                        the package has actually arrived. Offering a button
+                        and then changing it a moment later is how a student
+                        ends up pressing the wrong one. */}
+                    {!studentPackageLoaded ? (
+                      <div style={{ marginTop: 12, color: "#6b7280", fontSize: "0.9rem" }}>
+                        Loading your plan...
+                      </div>
+                    ) : (
+                      <>
                     {canRequestExtension && (
                       <div style={{ marginTop: 12, padding: 12, border: "1px solid #e0b872", borderRadius: 10, background: "#fdf9f1" }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: "#7a5210" }}>
@@ -7301,6 +7390,8 @@ $5padding: 20,
                           )}
                         </>
                       ) : null
+                    )}
+                      </>
                     )}
                     {/* The extension request, in a window like the new-contract
                         one. Two forms that do the same kind of thing - ask the
@@ -7587,6 +7678,8 @@ $5padding: 20,
                                         emptyMessage="Pick a course first."
                                         name="contract-learning-goal"
                                         allowCustom
+                                        othersLabel="Something else"
+                                        customPlaceholder="Tell us in your own words"
                                         customValue={contractCriteriaOther.learningGoal}
                                         onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, learningGoal: text }))}
                                       />
@@ -7598,26 +7691,32 @@ $5padding: 20,
                                         emptyMessage="Pick a course first."
                                         name="contract-focus-area"
                                         allowCustom
+                                        othersLabel="Something else"
+                                        customPlaceholder="Tell us in your own words"
                                         customValue={contractCriteriaOther.focusArea}
                                         onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, focusArea: text }))}
                                       />
                                       <CriteriaChipField
                                         legend={NEW_PLAN_WINDOW.learningStyle}
-                                        options={STUDENT_CRITERIA_OPTIONS.learningStyle}
+                                        options={SIMPLE_CRITERIA_OPTIONS.learningStyle}
                                         selected={contractAiCriteria.learningStyle}
                                         onToggle={(value) => toggleContractAiCriterionValue("learningStyle", value)}
                                         name="contract-learning-style"
                                         allowCustom
+                                        othersLabel="Something else"
+                                        customPlaceholder="Tell us in your own words"
                                         customValue={contractCriteriaOther.learningStyle}
                                         onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, learningStyle: text }))}
                                       />
                                       <CriteriaChipField
                                         legend={NEW_PLAN_WINDOW.learningPace}
-                                        options={STUDENT_CRITERIA_OPTIONS.pace}
+                                        options={SIMPLE_CRITERIA_OPTIONS.pace}
                                         selected={contractAiCriteria.pace}
                                         onToggle={(value) => toggleContractAiCriterionValue("pace", value)}
                                         name="contract-pace"
                                         allowCustom
+                                        othersLabel="Something else"
+                                        customPlaceholder="Tell us in your own words"
                                         customValue={contractCriteriaOther.pace}
                                         onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, pace: text }))}
                                       />

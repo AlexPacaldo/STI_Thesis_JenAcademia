@@ -178,6 +178,21 @@
   color: #fff;
 }
 
+/* A day the teacher has marked as free. */
+.dayChipFree {
+  border-color: #79a847;
+  background: #e9f3dd;
+}
+
+/* A day with no schedule at all - dimmed, so the strip carries the same
+   information the month grid carried in its colours. Without this a student
+   taps a day the teacher does not work and is told "no free times", which
+   sounds like their fault and is not. */
+.dayChipUnknown {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
 /* Two choices side by side, or one above the other on a narrow screen. */
 .modeRow {
   display: grid;

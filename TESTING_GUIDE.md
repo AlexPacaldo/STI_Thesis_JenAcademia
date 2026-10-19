@@ -149,13 +149,26 @@ for the length of the request, and the route refuses a second kind outright.
 
 ```bash
 node backend/contractRequestFlow.test.js --test          # the rules
+node scripts/test-student-rules.mjs                      # which asks are allowed
 node scripts/test-contract-request-flow.mjs               # what the student is offered
 node scripts/test-contract-request-migration.mjs          # the schema, on a scratch table
 node scripts/test-contract-request-e2e.mjs                # the whole thing, over HTTP
+node scripts/test-student-copy.mjs                       # the words the student reads
+node scripts/test-calendar-roles.mjs                     # the page, in a real browser
 ```
 
 The end-to-end check starts the backend on its own port, creates a student of
 its own, drives the real routes, and removes everything it created.
+
+The browser sweep needs a driver:
+
+```bash
+npm i -D puppeteer-core
+```
+
+It drives Edge, checks the student's booking form, the teacher's grid and
+availability manager, and the admin's calendar, and reads nothing it does not
+create. Without the driver it skips and passes, so it never blocks a commit.
 
 ---
 

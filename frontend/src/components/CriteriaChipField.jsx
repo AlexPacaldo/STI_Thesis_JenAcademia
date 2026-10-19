@@ -51,6 +51,8 @@ export default function CriteriaChipField({
   allowCustom = false,
   customValue = "",
   onCustomChange,
+  othersLabel = "Others",
+  customPlaceholder = "Describe it in your own words",
 }) {
   const selectedValues = Array.isArray(selected) ? selected : [];
   const customSelected = selectedValues.includes(CUSTOM_OPTION_VALUE);
@@ -97,7 +99,7 @@ export default function CriteriaChipField({
                 className={styles.input}
               />
               <span className={styles.mark} aria-hidden="true" />
-              <span className={styles.chipText}>Something else</span>
+              <span className={styles.chipText}>{othersLabel}</span>
               <span className={styles.srOnly}>{customSelected ? ", selected" : ""}</span>
             </label>
           ) : null}
@@ -111,7 +113,7 @@ export default function CriteriaChipField({
             type="text"
             value={customValue}
             onChange={(e) => onCustomChange?.(e.target.value)}
-            placeholder="Tell us in your own words"
+            placeholder={customPlaceholder}
             aria-label={`${legend}: other`}
             maxLength={MAX_CUSTOM_LENGTH}
           />

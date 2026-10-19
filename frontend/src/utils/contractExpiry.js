@@ -9,6 +9,13 @@
  * Days are rounded UP. The deadline is a datetime (purchase time plus three
  * months), so at 22:00 on the final day "0 days left" would be technically
  * correct and completely useless to read.
+ *
+ * !! Two sets of words, and which one is used depends on who is reading.
+ * !! The admin's Contracts page and the teacher's list are working screens:
+ * !! "Expires in 12 days" and a contract deadline is what they work with. The
+ * !! student is a child on a phone, and "your plan ends on" is what they can
+ * !! act on. Changing the admin's wording to match the student's was the wrong
+ * !! call - it is their screen, and it has to keep working the way it did.
  */
 
 const MS_PER_DAY = 86400000;
@@ -25,17 +32,48 @@ export const EXPIRY_SOON_DAYS = 14;
  *   state is "none" | "expired" | "today" | "soon" | "ok"
  */
 export function describeContractExpiry(expiresAt, now = new Date()) {
+  return describeExpiry(expiriesAt(expiresAt, now), EXPIRY_WORDS);
+}
+
+/**
+ * The same thing, in the student's words.
+ *
+ * @param {string|Date|null} expiresAt
+ * @param {Date} [now] injected so the result is testable
+ */
+export function describeContractExpiryForStudent(expiresAt, now = new Date()) {
+  return describeExpiry(expiriesAt(expiresAt, now), STUDENT_EXPIRY_WORDS);
+}
+
+/** The admin's and the teacher's wording. */
+const EXPIRY_WORDS = {
+  expired: { label: "Expired", detail: (pretty) => `Contract ended ${pretty}` },
+  today: { label: "Expires today", detail: (pretty) => `Contract ends ${pretty}` },
+  soon: { label: (days) => (days === 1 ? "1 day left" : `${days} days left`), detail: (pretty) => `Contract ends ${pretty}` },
+  ok: { label: (days) => (days === 1 ? "1 day left" : `${days} days left`), detail: (pretty) => `Contract ends ${pretty}` },
+};
+
+/** The student's wording. */
+const STUDENT_EXPIRY_WORDS = {
+  expired: { label: "Ended", detail: (pretty) => `Your plan ended on ${pretty}` },
+  today: { label: "Ends today", detail: (pretty) => `Your plan ends on ${pretty}` },
+  soon: { label: (days) => (days === 1 ? "1 day left" : `${days} days left`), detail: (pretty) => `Your plan ends on ${pretty}` },
+  ok: { label: (days) => (days === 1 ? "1 day left" : `${days} days left`), detail: (pretty) => `Your plan ends on ${pretty}` },
+};
+
+/** The date, the days left, and the state. No words. */
+function expiriesAt(expiresAt, now) {
   // No deadline means there is nothing to say. Deliberately not "Not set" as a
   // label: a package created before the term existed and one with no package at
   // all look identical in this data, and inventing a value would be worse than
   // showing nothing.
   if (!expiresAt) {
-    return { state: "none", daysLeft: null, label: "", detail: "", tone: "muted" };
+    return { state: "none", daysLeft: null, pretty: "", daysLeftForLabel: 0 };
   }
 
   const when = expiresAt instanceof Date ? expiresAt : new Date(expiresAt);
   if (Number.isNaN(when.getTime())) {
-    return { state: "none", daysLeft: null, label: "", detail: "", tone: "muted" };
+    return { state: "none", daysLeft: null, pretty: "", daysLeftForLabel: 0 };
   }
 
   const daysLeft = Math.ceil((when.getTime() - now.getTime()) / MS_PER_DAY);
@@ -45,51 +83,50 @@ export function describeContractExpiry(expiresAt, now = new Date()) {
     day: "numeric",
   });
 
-  if (daysLeft < 0) {
+  return { state: daysLeft < 0 ? "expired" : daysLeft === 0 ? "today" : daysLeft <= EXPIRY_SOON_DAYS ? "soon" : "ok", daysLeft, pretty };
+}
+
+/** Turn the date and the days left into words, in one voice or the other. */
+function describeExpiry({ state, daysLeft, pretty }, words) {
+  if (state === "none") {
+    return { state: "none", daysLeft: null, label: "", detail: "", tone: "muted" };
+  }
+
+  if (state === "expired") {
     return {
-      state: "expired",
+      state,
       daysLeft,
-      label: "Ended",
-      detail: `Your plan ended on ${pretty}`,
+      label: words.expired.label,
+      detail: words.expired.detail(pretty),
       tone: "danger",
     };
   }
 
-  if (daysLeft === 0) {
+  if (state === "today") {
     return {
-      state: "today",
+      state,
       daysLeft,
-      label: "Ends today",
-      detail: `Your plan ends on ${pretty}`,
+      label: words.today.label,
+      detail: words.today.detail(pretty),
       tone: "danger",
     };
   }
 
-  if (daysLeft === 1) {
+  if (state === "soon") {
     return {
-      state: "soon",
+      state,
       daysLeft,
-      label: "1 day left",
-      detail: `Your plan ends on ${pretty}`,
-      tone: "warn",
-    };
-  }
-
-  if (daysLeft <= EXPIRY_SOON_DAYS) {
-    return {
-      state: "soon",
-      daysLeft,
-      label: `${daysLeft} days left`,
-      detail: `Your plan ends on ${pretty}`,
+      label: words.soon.label(daysLeft),
+      detail: words.soon.detail(pretty),
       tone: "warn",
     };
   }
 
   return {
-    state: "ok",
+    state,
     daysLeft,
-    label: `${daysLeft} days left`,
-    detail: `Your plan ends on ${pretty}`,
+    label: words.ok.label(daysLeft),
+    detail: words.ok.detail(pretty),
     tone: "ok",
   };
 }

@@ -28,20 +28,20 @@
 
 export const STUDENT_CRITERIA_OPTIONS = {
   learningGoal: [
-    ["school-support", "Help with school", ["Online English", "OPIc"]],
-    ["conversation", "Talking", ["Conversational English", "Travel English", "Online English", "OPIc"]],
-    ["exam-prep", "Exam prep", ["IELTS", "TOEIC", "OPIc"]],
-    ["business", "Work English", ["Business English", "Job Interview", "TOEIC"]],
-    ["confidence", "Feel more confident", ["Conversational English", "Travel English", "Online English"]],
-    ["interview-readiness", "Job interview", ["Job Interview", "Business English"]],
-    ["news-discussion", "Talk about news", ["News", "Conversational English"]],
+    ["school-support", "School Support", ["Online English", "OPIc"]],
+    ["conversation", "Conversation", ["Conversational English", "Travel English", "Online English", "OPIc"]],
+    ["exam-prep", "Exam Preparation", ["IELTS", "TOEIC", "OPIc"]],
+    ["business", "Business English", ["Business English", "Job Interview", "TOEIC"]],
+    ["confidence", "Confidence Building", ["Conversational English", "Travel English", "Online English"]],
+    ["interview-readiness", "Interview Readiness", ["Job Interview", "Business English"]],
+    ["news-discussion", "News Discussion", ["News", "Conversational English"]],
   ],
   learningStyle: [
-    ["structured", "Step by step"],
-    ["conversational", "Talk a lot"],
-    ["visual", "Pictures"],
-    ["interactive", "Games"],
-    ["independent", "On my own"],
+    ["structured", "Structured Lessons"],
+    ["conversational", "Conversational Practice"],
+    ["visual", "Visual Activities"],
+    ["interactive", "Interactive Activities"],
+    ["independent", "Independent Practice"],
   ],
   focusArea: [
     ["speaking", "Speaking", ["Conversational English", "Travel English", "Online English", "OPIc", "Job Interview"]],
@@ -49,15 +49,15 @@ export const STUDENT_CRITERIA_OPTIONS = {
     ["reading", "Reading", ["IELTS", "TOEIC", "News", "Online English"]],
     ["writing", "Writing", ["IELTS", "Business English", "Online English", "Job Interview"]],
     ["listening", "Listening", ["IELTS", "TOEIC", "Conversational English", "OPIc", "News"]],
-    ["vocabulary", "Words", ["Business English", "Travel English", "News", "TOEIC", "IELTS"]],
-    ["pronunciation", "Pronouncing", ["Conversational English", "OPIc", "Travel English", "Online English"]],
-    ["interview-answers", "Job interview answers", ["Job Interview", "Business English"]],
+    ["vocabulary", "Vocabulary", ["Business English", "Travel English", "News", "TOEIC", "IELTS"]],
+    ["pronunciation", "Pronunciation", ["Conversational English", "OPIc", "Travel English", "Online English"]],
+    ["interview-answers", "Interview Answers", ["Job Interview", "Business English"]],
   ],
   pace: [
-    ["slow", "Slow"],
-    ["balanced", "Just right"],
-    ["fast", "Fast"],
-    ["review-heavy", "Lots of review"],
+    ["slow", "Slow and Guided"],
+    ["balanced", "Balanced"],
+    ["fast", "Fast-paced"],
+    ["review-heavy", "Review-heavy"],
   ],
 };
 
@@ -74,24 +74,76 @@ export const TEACHER_CRITERIA_OPTIONS = {
     ["kids and novice english", "Kids and Novice English", ["Online English"]],
   ],
   // Identical vocabulary to the student's learningStyle, so the matcher can
-  // compare them exactly. Identical WORDS too - the admin is comparing a
-  // student's answer with a teacher's answer, and "Step by step" on one side
-  // and "Structured" on the other would be the admin doing the translating.
+  // compare them exactly.
   teachingStyle: [
-    ["structured", "Step by step"],
-    ["conversational", "Talk a lot"],
-    ["visual", "Pictures"],
-    ["interactive", "Games"],
-    ["independent", "On my own"],
+    ["structured", "Structured"],
+    ["conversational", "Conversational"],
+    ["visual", "Visual"],
+    ["interactive", "Interactive"],
+    ["independent", "Independent Practice"],
   ],
   // Identical vocabulary to the student's pace.
   idealStudentPace: [
-    ["slow", "Slow"],
-    ["balanced", "Just right"],
-    ["fast", "Fast"],
-    ["review-heavy", "Lots of review"],
+    ["slow", "Slow and Guided"],
+    ["balanced", "Balanced"],
+    ["fast", "Fast-paced"],
+    ["review-heavy", "Review-heavy"],
   ],
 };
+
+/**
+ * The same choices, in words a student can read.
+ *
+ * !! The values and the course scoping come from STUDENT_CRITERIA_OPTIONS, so
+ * !! they cannot drift - only the LABELS differ. The values are the contract
+ * !! with backend/teacherMatching.js and must not be touched.
+ * !!
+ * !! The admin's own forms keep the original wording. An admin matching a
+ * !! teacher against a student is working with the teacher's professional
+ * !! vocabulary - "Structured Lessons", "Slow and Guided" - and changing it to
+ * !! "Step by step" and "Slow" for a form the admin fills in was the wrong
+ * !! call. The plain words are for the student, and only the student.
+ */
+const SIMPLE_CRITERIA_LABELS = {
+  "school-support": "Help with school",
+  conversation: "Talking",
+  "exam-prep": "Exam prep",
+  business: "Work English",
+  confidence: "Feel more confident",
+  "interview-readiness": "Job interview",
+  "news-discussion": "Talk about news",
+
+  structured: "Step by step",
+  conversational: "Talk a lot",
+  visual: "Pictures",
+  interactive: "Games",
+  independent: "On my own",
+
+  speaking: "Speaking",
+  grammar: "Grammar",
+  reading: "Reading",
+  writing: "Writing",
+  listening: "Listening",
+  vocabulary: "Words",
+  pronunciation: "Pronouncing",
+  "interview-answers": "Job interview answers",
+
+  slow: "Slow",
+  balanced: "Just right",
+  fast: "Fast",
+  "review-heavy": "Lots of review",
+};
+
+export const SIMPLE_CRITERIA_OPTIONS = Object.fromEntries(
+  Object.entries(STUDENT_CRITERIA_OPTIONS).map(([group, options]) => [
+    group,
+    options.map(([value, label, allowedCourses]) => [
+      value,
+      SIMPLE_CRITERIA_LABELS[value] || label,
+      allowedCourses,
+    ]),
+  ])
+);
 
 // Short helper text shown under each field, matching the Level Evaluation style.
 export const STUDENT_CRITERIA_HINTS = {
