@@ -295,6 +295,7 @@
   }
 
   .brandName {
+    display: inline-block;
     justify-self: center;
     max-width: 100%;
     font-size: 0.96rem;
@@ -333,7 +334,7 @@
   .headerSeparator { font-size: 1.1rem; }
 }
 
-@media (max-width: 400px) {
+@media (max-width: 480px) {
   .account { display: none; }
 
   .StudentAccount,
