@@ -57,6 +57,7 @@ const ADMIN_TABS = [
   "teacherCourses",
   "createTeacher",
   "createStudent",
+  "createAdmin",
   "archive",
 ];
 
@@ -496,6 +497,15 @@ export default function AdminDashboard() {
     learningStyleOther: "",
     paceOther: "",
     preferredSchedule: createEmptyPreferredSchedule(),
+  });
+  // create-admin form
+  const [aForm, setAForm] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    country: "",
+    birthDate: "",
+    password: "",
   });
   const [showLevelHelp, setShowLevelHelp] = useState(false);
   const [courses, setCourses] = useState([]);
@@ -1093,6 +1103,33 @@ export default function AdminDashboard() {
     }
   }
 
+  // ---- actions: create admin ----
+  async function createAdmin(payloadSource = aForm) {
+    setLoading(true);
+    try {
+      const payload = {
+        ...payloadSource,
+        role: "admin",
+      };
+      await axios.post(`${API}/api/admin/users`, payload); // creates admin
+      notify("Admin account created.", "success");
+      setAForm({
+        firstName: "",
+        lastName: "",
+        email: "",
+        country: "",
+        birthDate: "",
+        password: "",
+      });
+      loadUsers();
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || "Failed to create admin", "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function openAdminConfirm(config) {
     setAdminConfirm(config);
   }
@@ -1109,6 +1146,8 @@ export default function AdminDashboard() {
         await createTeacher(adminConfirm.payload);
       } else if (adminConfirm.action === "create_student") {
         await createStudent(adminConfirm.payload);
+      } else if (adminConfirm.action === "create_admin") {
+        await createAdmin(adminConfirm.payload);
       } else if (adminConfirm.action === "save_teacher_courses") {
         await saveManagedTeacherCourses(adminConfirm.payload.teacherId, adminConfirm.payload.courseIds);
       } else if (adminConfirm.action === "archive_user") {
@@ -2087,6 +2126,24 @@ export default function AdminDashboard() {
       tone: "primary",
       warnings,
       payload: { ...sForm },
+    });
+  }
+
+  async function handleCreateAdminSubmit(e) {
+    e.preventDefault();
+    if (e.currentTarget && !e.currentTarget.reportValidity()) return;
+    if (!aForm.password) {
+      notify("Please set a password for the admin account.", "error");
+      return;
+    }
+
+    openAdminConfirm({
+      action: "create_admin",
+      title: "Create admin account?",
+      message: "This will create an administrator account with the details you entered.",
+      confirmLabel: "Create Admin",
+      tone: "primary",
+      payload: { ...aForm },
     });
   }
 
@@ -3485,6 +3542,59 @@ export default function AdminDashboard() {
               <br />
               <button className={styles.primary} disabled={loading}>
                 {loading ? "Creating..." : "Create Student"}
+              </button>
+            </form>
+          </section>
+        )}
+
+        {active === "createAdmin" && (
+          <section className={styles.card}>
+            <div className={styles.cardHead}>
+              <h2>Create Admin Account</h2>
+              <p style={{ margin: "4px 0 0 0", fontSize: "0.9em", color: "#666" }}>
+                Create a new administrator account. Admins can manage all accounts,
+                books, contracts, and system settings.
+              </p>
+            </div>
+            <form className={styles.form} onSubmit={handleCreateAdminSubmit}>
+              <div className={styles.grid2}>
+                <div>
+                  <label>First Name</label>
+                  <input value={aForm.firstName} onChange={(e)=>setAForm({...aForm, firstName:e.target.value})} />
+                </div>
+                <div>
+                  <label>Last Name</label>
+                  <input value={aForm.lastName} onChange={(e)=>setAForm({...aForm, lastName:e.target.value})} />
+                </div>
+                <div>
+                  <label>Email</label>
+                  <input type="email" value={aForm.email} onChange={(e)=>setAForm({...aForm, email:e.target.value})} />
+                </div>
+                <div>
+                  <label>Country</label>
+                  <select value={aForm.country} onChange={(e)=>setAForm({...aForm, country:e.target.value})} required>
+                    <option value="">Select Country</option>
+                    {COUNTRY_OPTIONS.map((country) => (
+                      <option key={country} value={country}>{country}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label>Birthday</label>
+                  <input type="date" value={aForm.birthDate} onChange={(e)=>setAForm({...aForm, birthDate:e.target.value})} required />
+                </div>
+                <div>
+                  <label>Password</label>
+                  <input type="password" value={aForm.password} onChange={(e)=>setAForm({...aForm, password:e.target.value})} required minLength="8" />
+                  <p className={styles.criteriaFieldHint}>
+                    Choose a strong password. The admin will use it to sign in.
+                  </p>
+                </div>
+              </div>
+              <br />
+              <br />
+              <button className={styles.primary} disabled={loading}>
+                {loading ? "Creating..." : "Create Admin"}
               </button>
             </form>
           </section>
