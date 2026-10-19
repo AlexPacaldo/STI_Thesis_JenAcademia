@@ -498,6 +498,48 @@
   padding: 20px 18px 24px;
 }
 
+/* The camera modal's body and frame.
+   !! These two rules were missing, and the component went on referencing
+   !! them. A CSS-module class that does not exist resolves to undefined and
+   !! the rule is simply dropped - so the video sat in the modal with no
+   !! frame around it, no aspect ratio and no size, and the modal had no
+   !! padding. Nothing complained: the build was clean and every test
+   !! passed.
+   !! Found by scripts/test-css-modules.mjs, which was extended to check the
+   !! pages as well as the components. */
+.cameraBody {
+  display: flex;
+  justify-content: center;
+  padding: 20px 18px;
+  background: #1d2422;
+}
+
+.cameraFrame {
+  position: relative;
+  width: min(420px, 100%);
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 16px;
+  background: #000;
+  color: #fff;
+}
+
+.cameraFrame video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cameraFrame span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .cropFrame {
   position: relative;
   width: min(320px, 100%);

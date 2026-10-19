@@ -592,17 +592,8 @@ function RequestDialog({ title, onClose, children, maxWidth = 620 }) {
           aria-modal="true"
           aria-label={title}
           onClick={(e) => e.stopPropagation()}
-          style={{
-            width: "100%",
-            maxWidth,
-            maxHeight: "calc(100vh - 40px)",
-            overflowY: "auto",
-            background: "#fff",
-            borderRadius: 14,
-            border: "1px solid #d9e2d9",
-            padding: "24px 24px 20px",
-            boxShadow: "0 18px 44px rgba(0, 0, 0, 0.22)",
-          }}
+          className={styles.dialog}
+          style={{ maxWidth }}
         >
           <h3 style={{ margin: "0 0 4px 0", fontSize: "1.15rem", fontWeight: 800, color: "#1d3a2c" }}>
             {title}
@@ -755,15 +746,7 @@ function DayPicker({ days, selected, onPick, emptyMessage }) {
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        gap: 8,
-        overflowX: "auto",
-        paddingBottom: 6,
-        WebkitOverflowScrolling: "touch",
-      }}
-    >
+    <div className={styles.dayStrip}>
       {days.map((day) => {
         const active = day.key === selected;
         return (
@@ -772,20 +755,7 @@ function DayPicker({ days, selected, onPick, emptyMessage }) {
             type="button"
             onClick={() => onPick(day.key)}
             aria-pressed={active}
-            style={{
-              flex: "0 0 auto",
-              minWidth: 74,
-              padding: "10px 8px",
-              borderRadius: 12,
-              border: active ? "2px solid #26423b" : "1px solid #d0d0d0",
-              background: active ? "#26423b" : "#fff",
-              color: active ? "#fff" : "#333",
-              cursor: "pointer",
-              fontWeight: 700,
-              fontSize: "0.8rem",
-              lineHeight: 1.25,
-              textAlign: "center",
-            }}
+            className={`${styles.dayChip} ${active ? styles.dayChipActive : ""}`}
           >
             <div style={{ fontSize: "0.95rem" }}>{day.weekday}</div>
             <div style={{ fontSize: "1.1rem", marginTop: 2 }}>{day.dayNumber}</div>
@@ -810,30 +780,8 @@ function ClassCard({ classInfo, onOpen, actionLabel, actionDisabled }) {
   const timeLabel = classInfo.timeLabel;
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "1fr auto",
-        alignItems: "center",
-        gap: 12,
-        padding: "14px 16px",
-        border: "1px solid #d7e5d9",
-        borderRadius: 16,
-        background: "#fff",
-      }}
-    >
-      <button
-        type="button"
-        onClick={onOpen}
-        style={{
-          border: "none",
-          background: "transparent",
-          padding: 0,
-          textAlign: "left",
-          cursor: "pointer",
-          minWidth: 0,
-        }}
-      >
+    <div className={styles.classCard}>
+      <button type="button" onClick={onOpen} className={styles.classCardMain}>
         <div style={{ fontSize: "0.8rem", fontWeight: 800, color: "#5e7268", letterSpacing: "0.04em" }}>
           {dayLabel}
         </div>
@@ -5063,7 +5011,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         `}
       </style>
       <main className={styles.page}>
-      <section className={styles.center}>
+      <section className={isSimpleStudentView ? styles.studentCenter : styles.center}>
 
         <div className={isSimpleStudentView ? styles.simpleWrapper : styles.wrapper}>
           {/* The month grid.
@@ -6602,11 +6550,11 @@ $5padding: 20,
                         <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{CLASS_INFO.why}</label>
                         <textarea rows={3} placeholder={CLASS_INFO.whyPlaceholder} value={requestReason} onChange={e => { setRequestReason(e.target.value); setRequestError(""); }} style={{ width: "100%", padding: "9px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }} />
                       </div>
-                      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                        <button type="button" onClick={() => { setRequestMode(false); setRequestError(""); }} disabled={isSubmittingRequest} style={{ padding: "10px 16px", fontSize: "0.9rem", fontWeight: 700, border: "1px solid #d0d0d0", background: "#fff", borderRadius: 8, cursor: isSubmittingRequest ? "not-allowed" : "pointer", opacity: isSubmittingRequest ? 0.6 : 1 }}>
+                      <div className={styles.actionRow} style={{ marginBottom: 12, justifyContent: "flex-end" }}>
+                        <button type="button" onClick={() => { setRequestMode(false); setRequestError(""); }} disabled={isSubmittingRequest} style={{ flex: 1, padding: "12px 16px", fontSize: "0.9rem", fontWeight: 700, border: "1px solid #d0d0d0", background: "#fff", borderRadius: 8, cursor: isSubmittingRequest ? "not-allowed" : "pointer", opacity: isSubmittingRequest ? 0.6 : 1 }}>
                           {CONFIRM.cancel}
                         </button>
-                        <button type="button" onClick={openRequestConfirmation} disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError} style={{ padding: "10px 16px", fontSize: "0.9rem", fontWeight: 700, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 8, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}>
+                        <button type="button" onClick={openRequestConfirmation} disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError} style={{ flex: 2, padding: "12px 16px", fontSize: "0.9rem", fontWeight: 700, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 8, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}>
                           {isSubmittingRequest ? CONFIRM.sending : CONFIRM.send}
                         </button>
                       </div>
@@ -6681,12 +6629,12 @@ $5padding: 20,
                           <p style={{ margin: 0 }}>{BOOKING.noTeacher}</p>
                         )}
                       </div>
-                      <div style={{ display: "grid", gap: 12 }}>
+                      <div className={styles.panelBody}>
                         <div>
                           <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 6, color: "#333" }}>
                             {BOOKING.howToBook}
                           </label>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                          <div className={styles.modeRow}>
                             <button
                               type="button"
                             onClick={() => {
@@ -6946,7 +6894,13 @@ $5padding: 20,
                             </div>
                           ) : (
                             <div style={{ padding: 12, background: "#f4f6f8", borderRadius: 8, color: "#555" }}>
-                              No free times on this day. Please pick another day.
+                              {/* Before a day is chosen there are no times to
+                                  speak of, so saying "no free times on this
+                                  day" is talking about a day that has not
+                                  been picked. */}
+                              {studentBookingDate
+                                ? "No free times on this day. Please pick another day."
+                                : "Pick a day above, and the times will show here."}
                             </div>
                           )}
                         </div>
@@ -7011,7 +6965,7 @@ $5padding: 20,
                             {studentBookingError}
                           </div>
                         )}
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <div className={styles.actionRow}>
                           <button
                             type="button"
                             onClick={() => {
@@ -8136,15 +8090,7 @@ $5padding: 20,
           aria-modal="true"
           aria-labelledby="reschedule-confirm-title"
           onClick={(event) => event.stopPropagation()}
-          style={{
-            width: "min(460px, 100%)",
-            background: "#fff",
-            border: "1px solid rgba(38, 66, 59, 0.12)",
-            borderRadius: 24,
-            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
-            padding: 24,
-            animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
-          }}
+          className={styles.confirmCard}
         >
           <div
             style={{
@@ -8264,15 +8210,7 @@ $5padding: 20,
           aria-modal="true"
           aria-labelledby="student-booking-confirm-title"
           onClick={(event) => event.stopPropagation()}
-          style={{
-            width: "min(430px, 100%)",
-            background: "#fff",
-            border: "1px solid rgba(38, 66, 59, 0.12)",
-            borderRadius: 24,
-            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
-            padding: 24,
-            animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
-          }}
+          className={styles.confirmCard}
         >
           <div
             style={{
