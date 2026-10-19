@@ -658,6 +658,74 @@ function PendingRequestPanel({
 }
 
 /**
+ * How many classes the student has left, as a picture.
+ *
+ * !! A number inside a sentence is a fact a student has to read. A number
+ * !! with a bar under it is a fact a student can see. The old page had the
+ * !! picture and it was worth keeping - it is the one thing on the page that
+ * !! answers "how long have I got" at a glance, and it is the thing a student
+ * !! checks before they decide whether to book another one.
+ *
+ * !! It is also bigger than it was. The number is 44px rather than 22px,
+ * !! because the number is the point of the card.
+ */
+function ClassesLeftCard({ left, total, percent, readyToBook, badge }) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: 12,
+        padding: "18px 20px",
+        border: "1px solid #d7e5d9",
+        borderRadius: 18,
+        background: "#fff",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 800, color: "#5e7268", letterSpacing: "0.03em" }}>
+          Classes left
+        </div>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5e7268" }}>
+          Ready to book: {readyToBook}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <span style={{ fontSize: 44, fontWeight: 800, color: "#2f5a43", lineHeight: 1 }}>{left}</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: "#5e7268" }}>of {total}</span>
+      </div>
+
+      <div style={{ height: 10, background: "#e8eeeb", borderRadius: 999, overflow: "hidden" }}>
+        <div
+          style={{
+            width: `${percent}%`,
+            height: "100%",
+            background: "#5f7f70",
+            borderRadius: 999,
+            transition: "width 200ms ease",
+          }}
+        />
+      </div>
+
+      {/* The deadline, on its own line.
+          !! The badge does not wrap, so it cannot sit in a column beside the
+          !! number - "12 days left, your plan ends on 10 Oct 2026" is one
+          !! long line, and in a narrow column it ran off the edge. On its own
+          !! row it has the whole card to sit in. */}
+      <div>{badge}</div>
+    </div>
+  );
+}
+
+/**
  * The days a student can pick from.
  *
  * !! This replaces the month grid for students. A month grid asks a child to
@@ -6887,12 +6955,24 @@ $5padding: 20,
                       <>
                         <div className={styles.legendTitle}>My classes</div>
 
+                        {/* The counter, first. It is the one thing on the page
+                            that answers "how long have I got" without being
+                            read, and it is what a student checks before they
+                            decide whether to book another class. */}
+                        <ClassesLeftCard
+                          left={Number(effectiveClassesLeft) || 0}
+                          total={Number(effectiveClassesLimit) || 0}
+                          percent={effectivePercent}
+                          readyToBook={Number(effectiveBookableClasses) || 0}
+                          badge={<ContractExpiryBadge expiresAt={contractExpiresAt} showDate />}
+                        />
+
                         {studentUpcomingLoading && studentUpcomingClasses.length === 0 ? (
                           <div style={{ padding: 12, color: "#6b7280", fontSize: "0.9rem" }}>
                             Loading your classes...
                           </div>
                         ) : simpleStudentClasses.length > 0 ? (
-                          <div className={styles.slotList}>
+                          <div className={styles.slotList} style={{ marginTop: 14 }}>
                             {simpleStudentClasses.map((entry) => (
                               <ClassCard
                                 key={entry.id}
@@ -6908,6 +6988,7 @@ $5padding: 20,
                         ) : (
                           <div
                             style={{
+                              marginTop: 14,
                               padding: "16px 14px",
                               border: "1px solid #d7e5d9",
                               borderRadius: 16,
@@ -6929,65 +7010,21 @@ $5padding: 20,
                             )}
                           </div>
                         )}
-
-                        {/* How many are left, in one line.
-                            One number, one sentence. It used to be a card
-                            with the number, the total, a second number for
-                            "available to book", a badge and a progress bar -
-                            five ways of saying how many classes a student
-                            had, in a card the size of a postage stamp. */}
-                        <div
-                          style={{
-                            marginTop: 14,
-                            padding: "12px 14px",
-                            borderRadius: 14,
-                            background: "#f2f7f4",
-                            color: "#2f5a43",
-                            fontSize: "1rem",
-                            fontWeight: 700,
-                          }}
-                        >
-                          You have {effectiveClassesLeft} class
-                          {Number(effectiveClassesLeft) === 1 ? "" : "es"} left.
-                        </div>
                       </>
                     ) : (
                       <>
-                        {/* The one number that matters, first.
-                            !!
-                            !! It used to read "Classes Left 0/10" and then
-                            !! "Available to book: 0" underneath, which is the
-                            !! same fact twice in two different words. A student
-                            !! should be able to look at this and know how many
-                            !! classes they can book right now.
-                            */}
+                        {/* The same counter card the student sees. An admin
+                            looking at a student's calendar is looking at the
+                            same thing the student is, so it should look the
+                            same. */}
                         <div className={styles.legendTitle}>{PLAN.title}</div>
-                        <div className={styles.slotList}>
-                          <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", textAlign: "center" }}>
-                            <div style={{ fontSize: 14, color: "#666" }}>{PLAN.classesLeft}</div>
-                            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 3, fontSize: 22, fontWeight: 750, marginTop: 6, lineHeight: 1.15, letterSpacing: 0, color: "#5f7f70" }}>
-                              <span>{effectiveClassesLeft}</span>
-                              <span style={{ fontSize: 20, fontWeight: 500, color: "#5f7f70" }}>/</span>
-                              <span>{effectiveClassesLimit}</span>
-                            </div>
-                            <div style={{ marginTop: 6, color: "#374151", fontSize: 14, fontWeight: 600 }}>
-                              {PLAN.readyToBook}: {effectiveBookableClasses}
-                            </div>
-                            <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}>
-                              {/* Falls back to the most recent package so an expired
-                                  plan still shows its deadline here. The panel
-                                  below already distinguishes "no plan" from "plan
-                                  ended" - this keeps the badge agreeing with it
-                                  rather than going blank. */}
-                              <ContractExpiryBadge expiresAt={contractExpiresAt} showDate />
-                            </div>
-                            <div style={{ marginTop: 8 }}>
-                              <div style={{ height: 8, background: "#eef2ff", borderRadius: 8, overflow: "hidden" }}>
-                                <div style={{ width: `${effectivePercent}%`, height: "100%", background: "#5f7f70" }} />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                        <ClassesLeftCard
+                          left={Number(effectiveClassesLeft) || 0}
+                          total={Number(effectiveClassesLimit) || 0}
+                          percent={effectivePercent}
+                          readyToBook={Number(effectiveBookableClasses) || 0}
+                          badge={<ContractExpiryBadge expiresAt={contractExpiresAt} showDate />}
+                        />
                         <div style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
                           {hasNoActiveStudentPackage
                             ? (endedContractWithUnusedClasses
