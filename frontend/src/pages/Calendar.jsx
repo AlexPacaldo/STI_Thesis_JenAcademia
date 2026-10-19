@@ -1,6 +1,11 @@
 import { openSseStream } from "../utils/sseClient.js";
 import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
-import { describeCanReRequest, describeExtensionEligibility } from "../utils/contractExpiry.js";
+import { describeExtensionEligibility } from "../utils/contractExpiry.js";
+import {
+  REQUEST_KIND_EXTENSION,
+  REQUEST_KIND_NEW,
+  describeRequestFlow,
+} from "../utils/contractRequestFlow.js";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
@@ -538,6 +543,67 @@ const addMonthsClamped = (date, months) => {
 };
 
 /**
+ * The window a contract request is sent from.
+ *
+ * Both kinds of request are sent from a window rather than from the card in
+ * the sidebar.
+ *
+ * !! The extension form was the last one still rendered inline, in a ~300px
+ * !! column, which made it the worst kind of form to read: a notes box three
+ * !! characters wide, with the buttons underneath it. The new-contract form
+ * !! was moved out for exactly this reason and the two did not match, so a
+ * !! student who asked for a new contract got a window and a student who asked
+ * !! for an extension got a letterbox.
+ * !!
+ * !! Through ModalPortal rather than rendered in place: anything position:
+ * !! fixed inside .content-area is positioned against the content column, not
+ * !! the viewport, so an in-place overlay covers the page but not the sidebar -
+ * !! which is exactly the window this is supposed to escape.
+ */
+function RequestDialog({ title, onClose, children, maxWidth = 620 }) {
+  return (
+    <ModalPortal>
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 1200,
+          background: "rgba(15, 25, 20, 0.45)",
+          display: "grid",
+          placeItems: "center",
+          padding: 20,
+          overflowY: "auto",
+        }}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            width: "100%",
+            maxWidth,
+            maxHeight: "calc(100vh - 40px)",
+            overflowY: "auto",
+            background: "#fff",
+            borderRadius: 14,
+            border: "1px solid #d9e2d9",
+            padding: "24px 24px 20px",
+            boxShadow: "0 18px 44px rgba(0, 0, 0, 0.22)",
+          }}
+        >
+          <h3 style={{ margin: "0 0 4px 0", fontSize: "1.15rem", fontWeight: 800, color: "#1d3a2c" }}>
+            {title}
+          </h3>
+          {children}
+        </div>
+      </div>
+    </ModalPortal>
+  );
+}
+
+/**
  * Calendar view for teachers and students. Data is loaded from the backend using
  * the SQL schema tables (teacher_availability, classes, student_class_packages).
  *
@@ -621,6 +687,19 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [contractAiCriteria, setContractAiCriteria] = useState(() => createEmptyCriteria());
   const [contractRequestError, setContractRequestError] = useState("");
   const [contractRequests, setContractRequests] = useState([]);
+  // The requests that are still waiting for an answer, as their own list.
+  //
+  // !! Separate from the history above, and not derived from it. The history is
+  // !! the last five requests, which is a window; a student with more than
+  // !! five in it had their pending extension fall out of the window and the
+  // !! card told them they had never asked, while the admin was holding a
+  // !! request from them. Whether something is pending is a fact, so it comes
+  // !! as a fact.
+  const [pendingContractRequests, setPendingContractRequests] = useState([]);
+  // True while the open form is editing a request that is already with the
+  // admin, rather than sending a first one.
+  const [contractRequestEditing, setContractRequestEditing] = useState(false);
+  const [isCancellingContractRequest, setIsCancellingContractRequest] = useState(false);
   const [isSubmittingContractRequest, setIsSubmittingContractRequest] = useState(false);
   // The extension's "why do you need longer" box, and the only free text left in
   // either form. A new-contract request no longer has a notes field at all: it
@@ -1274,8 +1353,14 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
     axios
       .get(`${API}/api/student/contract-requests/${localUserId}`)
-      .then(r => setContractRequests(r.data?.requests || []))
-      .catch(() => setContractRequests([]));
+      .then(r => {
+        setContractRequests(r.data?.requests || []);
+        setPendingContractRequests(r.data?.pending || []);
+      })
+      .catch(() => {
+        setContractRequests([]);
+        setPendingContractRequests([]);
+      });
   };
 
   useEffect(() => {
@@ -3264,30 +3349,35 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   });
   const endedContractWithUnusedClasses = contractAsk === "extend";
 
-  // The student's own most recent request of the kind they are being offered.
-  // Matching on request_type is the point: an approved new-contract request from
-  // months ago must not make a pending extension look already-answered.
-  const extensionRequestPending = contractRequests.find(
-    (r) => r.request_type === "extension" && r.status === "pending"
-  );
-  // One pending request per kind on the server too, so re-sending updates the
-  // existing row rather than piling duplicates in the admin's queue.
-  const extensionRequestResolved = contractRequests.find(
-    (r) => r.request_type === "extension" && r.status !== "pending"
-  );
-
-  // !! Everything below reads extensionRequestResolved, so it has to be declared
-  // !! below that. These were originally above it and the Calendar crashed on
-  // !! every render with "Cannot access 'ht' before initialization" - the
-  // !! temporal dead zone. Nothing catches it: the bundler builds clean, and the
-  // !! tests pass, because they exercise contractExpiry.js directly and never
-  // !! evaluate the component's declaration order. Only the browser can see it.
+  // The student's own requests, and what they may do about them.
   //
-  // A decline has to leave a way forward, so this decides what the card offers
-  // rather than the component re-deriving it. An approval opens nothing - there
-  // is nothing left to ask for once the extension has been granted.
-  const extensionOutcome = describeCanReRequest(extensionRequestResolved);
-  const canAskAgain = extensionOutcome.canReRequest;
+  // Matching on request_type is the point: an approved new-contract request from
+  // months ago must not make a pending extension look already-answered, and a
+  // pending extension must not make a new-contract request look answered
+  // either. The two kinds are separate requests and they are read separately.
+  //
+  // !! These two objects are read by everything below, so they have to stay
+  // !! declared above it. They were once declared further down and the
+  // !! Calendar crashed on every render with "Cannot access 'ht' before
+  // !! initialization" - the temporal dead zone. Nothing catches that: the
+  // !! bundler builds clean and the tests pass, because they exercise the
+  // !! rules directly and never evaluate the component's declaration order.
+  // !! Only the browser can see it.
+  const extensionFlow = describeRequestFlow({
+    pending: pendingContractRequests,
+    history: contractRequests,
+    kind: REQUEST_KIND_EXTENSION,
+  });
+  const newContractFlow = describeRequestFlow({
+    pending: pendingContractRequests,
+    history: contractRequests,
+    kind: REQUEST_KIND_NEW,
+  });
+
+  // A decline has to leave a way forward, so the card offers to ask again
+  // rather than the component re-deriving it. An approval opens nothing -
+  // there is nothing left to ask for once the extension has been granted.
+  const canAskAgain = extensionFlow.canAskAgain;
   const canRequestExtension = contractAsk === "extend" || canAskAgain;
   // Suppressed rather than shown alongside: two different asks for the same
   // situation, and the one that silently throws their balance away should not be
@@ -3616,7 +3706,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
     setIsSubmittingContractRequest(true);
     try {
-      await axios.post(`${API}/api/student/contract-requests`, {
+      const response = await axios.post(`${API}/api/student/contract-requests`, {
         student_id: localUserId,
         course_id: contractCourseId,
         requested_classes: contractClassCount,
@@ -3633,12 +3723,22 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         preferred_schedule: toPreferredSchedulePayload(contractPreferredSchedule),
       });
 
-      notify?.("Contract request sent to the admin.", "success");
+      // The server says whether this was a first request or a revision, and the
+      // student is told which. "Sent" and "updated" are different things, and
+      // a student who pressed Send twice deserves to know the second press
+      // changed the request rather than adding to it.
+      notify?.(
+        response.data?.isRevision
+          ? "Your request was updated. The admin sees the latest version."
+          : "Contract request sent to the admin.",
+        "success"
+      );
       setContractRequestOpen(false);
       // Cleared so the form does not linger next time. The extension route is
       // hidden while this is set, and a leftover `true` would keep showing a new
       // contract form to a student who should only be offered an extension.
       setRequestingNewContract(false);
+      setContractRequestEditing(false);
       setContractClassDuration("50");
 
       setContractAiCriteria(createEmptyCriteria());
@@ -3662,17 +3762,20 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
     setIsSubmittingContractRequest(true);
     try {
-      await axios.post(`${API}/api/student/contract-requests`, {
+      const response = await axios.post(`${API}/api/student/contract-requests`, {
         student_id: localUserId,
         request_type: "extension",
         trial_notes: contractExtensionNote.trim(),
       });
 
       notify?.(
-        "Extension request sent to the admin. Your classes stay on the contract until it is resolved.",
+        response.data?.isRevision
+          ? "Your extension request was updated. Your classes stay on the contract until it is resolved."
+          : "Extension request sent to the admin. Your classes stay on the contract until it is resolved.",
         "success"
       );
       setContractRequestOpen(false);
+      setContractRequestEditing(false);
       setContractExtensionNote("");
       loadContractRequests();
     } catch (err) {
@@ -3680,6 +3783,72 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     } finally {
       setIsSubmittingContractRequest(false);
     }
+  };
+
+  /**
+   * Withdraw a request that is still with the admin.
+   *
+   * !! A student who sent a request by mistake had no way out of it before.
+   * !! The only thing they could do was wait for an admin to decline it, which
+   * !! spends a decision on a mistake and leaves the request in the queue the
+   * !! whole time. A request the student no longer wants is not a request at
+   * !! all, so they are allowed to say so.
+   */
+  const cancelContractRequest = async (requestId) => {
+    if (!requestId) return;
+
+    setIsCancellingContractRequest(true);
+    setContractRequestError("");
+    try {
+      const response = await axios.post(
+        `${API}/api/student/contract-requests/${requestId}/cancel`,
+        { student_id: localUserId }
+      );
+      notify?.(response.data?.message || "Your request has been withdrawn.", "success");
+      setContractRequestOpen(false);
+      setContractRequestEditing(false);
+      setContractExtensionNote("");
+      loadContractRequests();
+    } catch (err) {
+      setContractRequestError(err?.response?.data?.message || "Unable to withdraw the request.");
+    } finally {
+      setIsCancellingContractRequest(false);
+    }
+  };
+
+  /**
+   * Open the extension form, either to send a first request or to change one
+   * that is already with the admin.
+   *
+   * Changing the note of a request the admin is reading is a revision, and it
+   * is worth saying so - both to the student, who might otherwise think they
+   * had sent two requests, and to the admin, who sees the earlier version kept
+   * in the history rather than overwritten.
+   */
+  const openExtensionRequestForm = ({ editing = false } = {}) => {
+    setRequestingNewContract(false);
+    setContractRequestOpen(true);
+    setContractRequestEditing(editing);
+    setContractRequestError("");
+
+    if (editing) {
+      const pending = extensionFlow.pendingRequest;
+      setContractExtensionNote(pending?.trial_notes || "");
+    } else {
+      setContractExtensionNote("");
+    }
+  };
+
+  /**
+   * Open the new-contract form, either to send a first request or to change one
+   * that is already with the admin.
+   */
+  const openNewContractForm = ({ editing = false } = {}) => {
+    setRequestingNewContract(true);
+    setContractRequestOpen(true);
+    setContractRequestEditing(editing);
+    setContractRequestError("");
+    updateContractCourse(studentProfile?.course_id || "");
   };
 
   const updateContractCourse = (courseId) => {
@@ -6331,21 +6500,41 @@ $5padding: 20,
                           Your contract ended, but those classes were paid for and are still yours.
                           Ask the admin to extend it and you can book them.
                         </div>
-                        {extensionRequestPending ? (
-                          <div style={{ marginTop: 10, fontSize: 12, color: "#7a5210" }}>
-                            Extension request <strong>{extensionRequestPending.status}</strong>. The admin has been notified.
-                          </div>
-                        ) : extensionRequestResolved ? (
+                        {extensionFlow.isPending ? (
+                          /* The request is with the admin. Say so, and offer the
+                             two things a student can still do about it: change it,
+                             or take it back. A request they can only wait on is a
+                             request they cannot take back. */
+                          <>
+                            <div style={{ marginTop: 10, fontSize: 12, color: "#7a5210" }}>
+                              {extensionFlow.banner}
+                            </div>
+                            {!contractRequestOpen && (
+                              <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                                <button
+                                  type="button"
+                                  className={styles.slotBtn}
+                                  onClick={() => openExtensionRequestForm({ editing: true })}
+                                  style={{ width: "100%", border: "1px solid #d9b477", borderRadius: 8, background: "#fff", cursor: "pointer" }}
+                                >
+                                  {extensionFlow.actionLabel}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => cancelContractRequest(extensionFlow.pendingRequest?.request_id)}
+                                  disabled={isCancellingContractRequest}
+                                  style={{ width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", color: "#6b5a3c", fontSize: 12, cursor: isCancellingContractRequest ? "not-allowed" : "pointer" }}
+                                >
+                                  {isCancellingContractRequest ? "Withdrawing..." : "Withdraw this request"}
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        ) : extensionFlow.resolvedRequest ? (
                           /* Said explicitly, because silence after a decision is
                              the same as never having asked. */
-                          <div style={{ marginTop: 10, fontSize: 12, color: extensionRequestResolved.status === "approved" ? "#2f5a43" : "#8c2020" }}>
-                            Your last extension request was{" "}
-                            <strong>{extensionRequestResolved.status}</strong>
-                            {extensionRequestResolved.admin_response
-                              ? `: ${extensionRequestResolved.admin_response}`
-                              : extensionRequestResolved.status === "declined"
-                                ? ". Your unused classes remain on the expired contract."
-                                : "."}
+                          <div style={{ marginTop: 10, fontSize: 12, color: extensionFlow.resolvedRequest.status === "approved" ? "#2f5a43" : extensionFlow.resolvedRequest.status === "cancelled" ? "#6b5a3c" : "#8c2020" }}>
+                            {extensionFlow.outcome}
                           </div>
                         ) : null}
 
@@ -6359,10 +6548,7 @@ $5padding: 20,
                           <div style={{ marginTop: 10 }}>
                             <button
                               type="button"
-                              onClick={() => {
-                                setContractRequestOpen(true);
-                                setContractRequestError("");
-                              }}
+                              onClick={() => openExtensionRequestForm()}
                               style={{ width: "100%", padding: "9px 10px", border: "1px solid #d9b477", borderRadius: 8, background: "#fff", cursor: "pointer" }}
                             >
                               Ask again
@@ -6370,57 +6556,21 @@ $5padding: 20,
                           </div>
                         )}
 
-                        {!extensionRequestPending && !extensionRequestResolved && !contractRequestOpen && (
+                        {!extensionFlow.isPending && !extensionFlow.resolvedRequest && !contractRequestOpen && (
                           <button
                             type="button"
                             className={styles.slotBtn}
-                            onClick={() => {
-                              setContractRequestOpen(true);
-                              setContractRequestError("");
-                            }}
+                            onClick={() => openExtensionRequestForm()}
                             style={{ marginTop: 10, width: "100%", border: "1px solid #d9b477", borderRadius: 8, background: "#fff", cursor: "pointer" }}
                           >
                             Request an extension
                           </button>
                         )}
 
-                        {!extensionRequestPending && contractRequestOpen && (
-                          <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                            <textarea
-                              value={contractExtensionNote}
-                              onChange={(e) => setContractExtensionNote(e.target.value)}
-                              rows={3}
-                              placeholder="Why do you need longer? e.g. illness delayed your lessons."
-                              style={{ width: "100%", padding: 9, border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit", resize: "vertical" }}
-                            />
-                            <div style={{ display: "flex", gap: 8 }}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setContractRequestOpen(false);
-                                  setContractExtensionNote("");
-                                }}
-                                disabled={isSubmittingContractRequest}
-                                style={{ flex: 1, padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                onClick={submitExtensionRequest}
-                                disabled={isSubmittingContractRequest}
-                                style={{ flex: 1, padding: "9px 10px", border: "none", borderRadius: 8, background: "#7a5210", color: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
-                              >
-                                {isSubmittingContractRequest ? "Sending..." : "Send Request"}
-                              </button>
-                            </div>
-                            <div style={{ fontSize: 11, color: "#6b5a3c", lineHeight: 1.5 }}>
-                              Payment is handled outside this system, so nothing is charged here.
-                              Talk to the admin about how long you would like your contract
-                              extended — they will agree a new end date with you.
-                            </div>
-                          </div>
-                        )}
+                        {/* The form itself is in a window, not here. The card
+                            says what is waiting and offers the three things a
+                            student can do about it; the form belongs in a
+                            dialog the size of a form. */}
 
                         {/* !! Always available, not only after a decline.
                           !!
@@ -6440,13 +6590,7 @@ $5padding: 20,
                           <button
                             type="button"
                             className={styles.slotBtn}
-                            onClick={() => {
-                              setRequestingNewContract(true);
-                              setContractRequestOpen(true);
-                              setContractExtensionNote("");
-                              setContractRequestError("");
-                              updateContractCourse(studentProfile?.course_id || "");
-                            }}
+                            onClick={() => openNewContractForm({ editing: newContractFlow.isPending })}
                             style={{
                               marginTop: 8,
                               width: "100%",
@@ -6467,27 +6611,147 @@ $5padding: 20,
                               cursor: "pointer",
                             }}
                           >
-                            Request a new contract instead
+                            {newContractFlow.isPending
+                              ? "Update your contract request instead"
+                              : "Request a new contract instead"}
                           </button>
                         )}
                       </div>
                     )}
                     {canRequestNewContract && !contractRequestOpen && !requestingNewContract && (
-                      <button
-                        type="button"
-                        className={styles.slotBtn}
-                        onClick={() => {
-                          setContractRequestOpen(true);
-                          setContractRequestError("");
-                          updateContractCourse(studentProfile?.course_id || "");
-                        }}
-                        style={{ width: "100%", padding: "10px 12px", border: "none", borderRadius: 8, background: "#111827", color: "#fff", fontWeight: 700, cursor: "pointer" }}
-                      >
-                        Request a new contract
-                      </button>
+                      /* A pending request of this kind means the student has
+                         already asked. The card says so and offers to change it,
+                         rather than offering a second "Request" that would
+                         quietly replace the first. */
+                      newContractFlow.isPending ? (
+                        <div style={{ marginTop: 12, padding: 12, border: "1px solid #d9e2d9", borderRadius: 10, background: "#f7faf8" }}>
+                          <div style={{ fontSize: 12, color: "#2f5a43", lineHeight: 1.45 }}>
+                            {newContractFlow.banner}
+                          </div>
+                          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                            <button
+                              type="button"
+                              className={styles.slotBtn}
+                              onClick={() => openNewContractForm({ editing: true })}
+                              style={{ width: "100%", border: "1px solid #c3cbd5", borderRadius: 8, background: "#fff", fontWeight: 600, cursor: "pointer" }}
+                            >
+                              {newContractFlow.actionLabel}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => cancelContractRequest(newContractFlow.pendingRequest?.request_id)}
+                              disabled={isCancellingContractRequest}
+                              style={{ width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", color: "#6b7280", fontSize: 12, cursor: isCancellingContractRequest ? "not-allowed" : "pointer" }}
+                            >
+                              {isCancellingContractRequest ? "Withdrawing..." : "Withdraw this request"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className={styles.slotBtn}
+                          onClick={() => openNewContractForm()}
+                          style={{ width: "100%", padding: "10px 12px", border: "none", borderRadius: 8, background: "#111827", color: "#fff", fontWeight: 700, cursor: "pointer" }}
+                        >
+                          Request a new contract
+                        </button>
+                      )
                     )}
-                    {contractRequestOpen && (canRequestNewContract || requestingNewContract) && (
-                          /* Lifted out of the sidebar and into a window.
+                    {/* The extension request, in a window like the new-contract
+                        one. Two forms that do the same kind of thing - ask the
+                        admin for something - should look the same and behave
+                        the same way. */}
+                    {contractRequestOpen && !requestingNewContract && (
+                      <RequestDialog
+                        title={
+                          contractRequestEditing
+                            ? "Update your extension request"
+                            : "Request an extension"
+                        }
+                        onClose={() => {
+                          setContractRequestOpen(false);
+                          setContractRequestEditing(false);
+                          setContractExtensionNote("");
+                          setContractRequestError("");
+                        }}
+                      >
+                        <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
+                          {contractRequestEditing && (
+                            /* The student is changing a request the admin is
+                               holding. Say that this replaces it, because
+                               "Send Request" on a request that already exists
+                               reads as sending a second one. */
+                            <div style={{ padding: 10, border: "1px solid #c3cbd5", borderRadius: 8, background: "#f6f8f7", fontSize: 12, color: "#374151", lineHeight: 1.45 }}>
+                              You are changing the request the admin already has.
+                              Sending this replaces it - they will see this version,
+                              and the one before it stays in their history.
+                            </div>
+                          )}
+
+                          {latestStudentPackage && (
+                            <div style={{ fontSize: 12, color: "#6b5a3c", lineHeight: 1.45 }}>
+                              You have{" "}
+                              <strong>{latestStudentPackage.classes_left}</strong> unused class
+                              {Number(latestStudentPackage.classes_left) === 1 ? "" : "es"} on a contract that
+                              ended. An extension keeps them - no new contract, nothing used is reset.
+                            </div>
+                          )}
+
+                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600 }}>
+                            Why do you need longer?
+                          </label>
+                          <textarea
+                            value={contractExtensionNote}
+                            onChange={(e) => setContractExtensionNote(e.target.value)}
+                            rows={5}
+                            placeholder="e.g. illness delayed my lessons."
+                            style={{ width: "100%", padding: 9, border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit", resize: "vertical" }}
+                          />
+
+                          {contractRequestError && (
+                            <div style={{ padding: 8, border: "1px solid #fecaca", borderRadius: 8, background: "#fef2f2", color: "#b91c1c", fontSize: 12 }}>
+                              {contractRequestError}
+                            </div>
+                          )}
+
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setContractRequestOpen(false);
+                                setContractRequestEditing(false);
+                                setContractExtensionNote("");
+                              }}
+                              disabled={isSubmittingContractRequest}
+                              style={{ flex: 1, padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={submitExtensionRequest}
+                              disabled={isSubmittingContractRequest}
+                              style={{ flex: 1, padding: "9px 10px", border: "none", borderRadius: 8, background: "#7a5210", color: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
+                            >
+                              {isSubmittingContractRequest
+                                ? "Sending..."
+                                : contractRequestEditing
+                                  ? "Update Request"
+                                  : "Send Request"}
+                            </button>
+                          </div>
+
+                          <div style={{ fontSize: 11, color: "#6b5a3c", lineHeight: 1.5 }}>
+                            Payment is handled outside this system, so nothing is charged here.
+                            Talk to the admin about how long you would like your contract
+                            extended — they will agree a new end date with you.
+                          </div>
+                        </div>
+                      </RequestDialog>
+                    )}
+                    {contractRequestOpen && requestingNewContract && (
+                      /* Lifted out of the sidebar and into a window.
 
                              !! It was rendering inline in a ~300px column, which made
                              !! every field in it cramped: the criteria chips wrapped onto
@@ -6503,50 +6767,25 @@ $5padding: 20,
                              !! content column, not the viewport, so an in-place overlay covers
                              !! the page but not the sidebar - which is exactly the window this is
                              !! supposed to escape. */
-                          <ModalPortal>
-                            <div
-                              onClick={() => {
-                                // Both flags, not just the override. The dialog is
-                                // gated on contractRequestOpen, so clearing only
-                                // requestingNewContract would have left it open for
-                                // anyone who arrived without that override - the
-                                // normal case - and clicking the backdrop would have
-                                // done nothing at all.
-                                setContractRequestOpen(false);
-                                setRequestingNewContract(false);
-                                setContractRequestError("");
-                              }}
-                              style={{
-                                position: "fixed",
-                                inset: 0,
-                                zIndex: 1200,
-                                background: "rgba(15, 25, 20, 0.45)",
-                                display: "grid",
-                                placeItems: "center",
-                                padding: 20,
-                                overflowY: "auto",
-                              }}
-                            >
-                              <div
-                                role="dialog"
-                                aria-modal="true"
-                                aria-label="Request a new contract"
-                                onClick={(e) => e.stopPropagation()}
-                                style={{
-                                  width: "100%",
-                                  maxWidth: 620,
-                                  maxHeight: "calc(100vh - 40px)",
-                                  overflowY: "auto",
-                                  background: "#fff",
-                                  borderRadius: 14,
-                                  border: "1px solid #d9e2d9",
-                                  padding: "24px 24px 20px",
-                                  boxShadow: "0 18px 44px rgba(0, 0, 0, 0.22)",
-                                }}
-                              >
-                                <h3 style={{ margin: "0 0 4px 0", fontSize: "1.15rem", fontWeight: 800, color: "#1d3a2c" }}>
-                                  Request a new contract
-                                </h3>
+                      <RequestDialog
+                        title={
+                          contractRequestEditing
+                            ? "Update your contract request"
+                            : "Request a new contract"
+                        }
+                        onClose={() => {
+                          // Both flags, not just the override. The dialog is
+                          // gated on contractRequestOpen, so clearing only
+                          // requestingNewContract would have left it open for
+                          // anyone who arrived without that override - the
+                          // normal case - and clicking the backdrop would have
+                          // done nothing at all.
+                          setContractRequestOpen(false);
+                          setRequestingNewContract(false);
+                          setContractRequestEditing(false);
+                          setContractRequestError("");
+                        }}
+                      >
                             {/* The consequence, stated here rather than assumed. This
                                 form only appears alongside the extension route when the
                                 student has deliberately chosen it, which is the one
@@ -6561,12 +6800,29 @@ $5padding: 20,
                                 an extension instead.
                               </div>
                             )}
+                            {contractRequestEditing && (
+                              /* The request already exists. Saying so is the
+                                 difference between a student who thinks they
+                                 sent two requests and one who knows they
+                                 changed one. */
+                              <div style={{ marginBottom: 10, padding: 10, border: "1px solid #c3cbd5", borderRadius: 8, background: "#f6f8f7", fontSize: 12, color: "#374151", lineHeight: 1.45 }}>
+                                You already have a request with the admin. Sending this
+                                replaces it - they will see this version, and the one
+                                before it stays in their history.
+                              </div>
+                            )}
+                            {newContractFlow.isPending && !contractRequestEditing && (
+                              <div style={{ marginBottom: 10, fontSize: 12, color: "#7a5210", lineHeight: 1.45 }}>
+                                {newContractFlow.banner}
+                              </div>
+                            )}
                             {contractRequests[0] && (
                               <div style={{ marginBottom: 10, fontSize: 12, color: "#4b5563" }}>
                                 Latest request: <strong style={{ textTransform: "capitalize" }}>{contractRequests[0].status}</strong>
                                 {contractRequests[0].course_name ? ` - ${contractRequests[0].course_name}` : ""}
                                 {contractRequests[0].requested_classes ? ` (${contractRequests[0].requested_classes} classes)` : ""}
                                 {contractRequests[0].class_duration ? ` - ${contractRequests[0].class_duration} min` : ""}
+                                {contractRequests[0].revision_label ? ` - ${contractRequests[0].revision_label}` : ""}
                               </div>
                             )}
                               <div style={{ display: "grid", gap: 10 }}>
@@ -6776,6 +7032,7 @@ $5padding: 20,
                                     onClick={() => {
                               setContractRequestOpen(false);
                               setRequestingNewContract(false);
+                              setContractRequestEditing(false);
                             }}
                                     disabled={isSubmittingContractRequest}
                                     style={{ flex: 1, padding: "9px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
@@ -6788,14 +7045,16 @@ $5padding: 20,
                                     disabled={isSubmittingContractRequest}
                                     style={{ flex: 1, padding: "9px 10px", border: "none", borderRadius: 8, background: "#111827", color: "#fff", cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
                                   >
-                                    {isSubmittingContractRequest ? "Sending..." : "Send Request"}
+                                    {isSubmittingContractRequest
+                                      ? "Sending..."
+                                      : contractRequestEditing
+                                        ? "Update Request"
+                                        : "Send Request"}
                                   </button>
                                 </div>
                               </div>
 
-                          </div>
-                        </div>
-                      </ModalPortal>
+                      </RequestDialog>
                     )}
                     <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
                       <button

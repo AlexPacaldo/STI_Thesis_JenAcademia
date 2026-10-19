@@ -27,6 +27,13 @@ import {
   describeDbConfig,
 } from "./dbConfig.js";
 import { CONTRACT_EXPIRY_WARNING_DAYS, CONTRACT_TERM_MONTHS } from "./contractTerms.js";
+import {
+  appendRevision,
+  buildRevisionSnapshot,
+  canCancelRequest,
+  describeRevisions,
+  normalizeRequestType,
+} from "./contractRequestFlow.js";
 import { createRateLimiter } from "./rateLimit.js";
 import { readBearerToken, signSessionToken, verifySessionToken } from "./sessionToken.js";
 import { signFileLink, verifyFileLink } from "./fileLink.js";
@@ -2350,6 +2357,168 @@ async function ensureContractRequestTypeColumns() {
   }
 }
 
+/**
+ * The lifecycle of a contract request: withdrawal, revision and the rule that
+ * makes "one pending request per kind" a fact about the database rather than a
+ * convention.
+ *
+ * Four things are added:
+ *
+ *   status           gains 'cancelled'. A student who sent a request by
+ *                    mistake has to be able to withdraw it. Without a state for
+ *                    that, the only way out was to wait for an admin to decline
+ *                    it - a decision somebody else has to make for you - and
+ *                    the request stayed in the queue the whole time.
+ *
+ *   revision_count   how many versions the request has had. A request sent
+ *                    once is version 1.
+ *
+ *   request_history  the earlier versions, so revising a request does not
+ *                    destroy what the admin would have read the first time.
+ *
+ *   pending_key      a generated column holding "<student>:<kind>" while the
+ *                    request is pending and NULL once it is resolved, with a
+ *                    UNIQUE key over it. That is the enforcement: MySQL treats
+ *                    every NULL as distinct, so resolved rows are unconstrained
+ *                    and pending rows are not.
+ *
+ * !! The unique key is the point of all of this. The route handler checked for
+ * !! a pending row before writing one, which is a check and a write in two
+ * !! steps - and two students pressing the button at the same moment could
+ * !! both pass the check and both write. The database does not have that gap:
+ * !! the second write fails, and the handler turns that into a clean answer
+ * !! instead of a stack trace.
+ */
+async function ensureContractRequestLifecycleColumns() {
+  if (!(await columnExists("student_contract_requests", "revision_count"))) {
+    await pool.query(
+      `ALTER TABLE student_contract_requests
+       ADD COLUMN revision_count INT NOT NULL DEFAULT 1 AFTER status`
+    );
+  }
+
+  if (!(await columnExists("student_contract_requests", "request_history"))) {
+    await pool.query(
+      `ALTER TABLE student_contract_requests
+       ADD COLUMN request_history TEXT DEFAULT NULL AFTER revision_count`
+    );
+  }
+
+  // The status enum. MODIFY is safe to repeat: it always sets the same set.
+  await pool.query(
+    `ALTER TABLE student_contract_requests
+     MODIFY COLUMN status ENUM('pending','approved','declined','cancelled') NOT NULL DEFAULT 'pending'`
+  );
+
+  if (!(await columnExists("student_contract_requests", "pending_key"))) {
+    // Duplicates first. The rule was enforced in application code only, and
+    // that code could be raced. Any database that has been up long enough may
+    // already hold two pending requests of the same kind for one student, and
+    // the unique key below would refuse to be created while they are there.
+    //
+    // The newest of each group is kept - it is the one the student last
+    // touched - and the older ones are withdrawn. A withdrawal is the honest
+    // record of what happened to them: they were superseded, not declined.
+    const [duplicates] = await pool.query(
+      `SELECT student_id, request_type, COUNT(*) AS total
+         FROM student_contract_requests
+        WHERE status = 'pending'
+        GROUP BY student_id, request_type
+       HAVING total > 1`
+    );
+
+    for (const group of duplicates) {
+      const [rows] = await pool.query(
+        `SELECT request_id
+           FROM student_contract_requests
+          WHERE student_id = ? AND request_type = ? AND status = 'pending'
+          ORDER BY requested_at DESC, request_id DESC`,
+        [group.student_id, group.request_type]
+      );
+
+      const superseded = rows.slice(1).map((row) => row.request_id);
+      if (!superseded.length) continue;
+
+      await pool.query(
+        `UPDATE student_contract_requests
+            SET status = 'cancelled', resolved_at = CURRENT_TIMESTAMP
+          WHERE request_id IN (${superseded.map(() => "?").join(", ")})`,
+        superseded
+      );
+
+      console.log(
+        `Contract requests: withdrew ${superseded.length} duplicate pending ` +
+          `'${group.request_type}' request(s) for student ${group.student_id}.`
+      );
+    }
+
+    await pool.query(
+      `ALTER TABLE student_contract_requests
+       ADD COLUMN pending_key VARCHAR(64)
+         GENERATED ALWAYS AS (IF(status = 'pending', CONCAT(student_id, ':', request_type), NULL)) STORED`
+    );
+  }
+
+  if (!(await indexExists("student_contract_requests", "uq_contract_requests_pending"))) {
+    await pool.query(
+      `ALTER TABLE student_contract_requests
+       ADD UNIQUE KEY uq_contract_requests_pending (pending_key)`
+    );
+  }
+}
+
+/**
+ * One live notification per contract request, for the notifications that
+ * already exist.
+ *
+ * !! The old code inserted a new notification for every submission, so a
+ * !! student who revised a request three times had three unread entries in
+ * !! every admin's bell for one request. The route now updates the existing
+ * !! notification instead of adding another, but the rows that were already
+ * !! there are still stacked up - and the number on the bell is the number the
+ * !! admin trusts.
+ * !!
+ * !! So the older copies are read rather than deleted. They stay as a record
+ * !! that the request was submitted more than once, and they stop counting.
+ */
+async function dedupeContractRequestNotifications() {
+  const [duplicates] = await pool.query(
+    `SELECT user_id, related_id, COUNT(*) AS total
+       FROM notifications
+      WHERE related_type = 'contract_request' AND related_id IS NOT NULL
+      GROUP BY user_id, related_id
+     HAVING total > 1`
+  );
+
+  let read = 0;
+
+  for (const group of duplicates) {
+    const [rows] = await pool.query(
+      `SELECT notification_id
+         FROM notifications
+        WHERE user_id = ? AND related_id = ? AND related_type = 'contract_request'
+        ORDER BY created_at DESC, notification_id DESC`,
+      [group.user_id, group.related_id]
+    );
+
+    const older = rows.slice(1).map((row) => row.notification_id);
+    if (!older.length) continue;
+
+    await pool.query(
+      `UPDATE notifications
+          SET is_read = 1, read_at = COALESCE(read_at, CURRENT_TIMESTAMP)
+        WHERE notification_id IN (${older.map(() => "?").join(", ")})`,
+      older
+    );
+
+    read += older.length;
+  }
+
+  if (read) {
+    console.log(`Contract requests: read ${read} duplicate notification(s) left by earlier submissions.`);
+  }
+}
+
 async function refreshProfileCompletion(userId) {
   await pool.query(
     `UPDATE users
@@ -2718,6 +2887,8 @@ const SCHEMA_STEPS = [
   ["teacher profile columns", ensureTeacherProfileColumns],
   ["contract request type columns", ensureContractRequestTypeColumns],
   ["contract request schedule columns", ensureContractRequestScheduleColumns],
+  ["contract request lifecycle columns", ensureContractRequestLifecycleColumns],
+  ["contract request notification dedupe", dedupeContractRequestNotifications],
   ["profile completion refresh", refreshAllProfileCompletion],
   ["student contract requests table", ensureStudentContractRequestsTable],
   ["class package duration column", ensureStudentClassPackageDurationColumn],
@@ -5648,7 +5819,96 @@ app.put("/api/admin/student-contracts/:student_id", requireAdminSession, async (
   }
 });
 
+/**
+ * Tell the admins about a contract request, without burying them.
+ *
+ * !! One live notification per request, not one per submission. A student who
+ * !! revises a request three times used to put three unread notifications in
+ * !! every admin's bell, all saying the same thing about the same request, and
+ * !! the count climbed with every keystroke-driven submit. The bell is a to-do
+ * !! list; a to-do list with four copies of one item has told the admin nothing
+ * !! about how much work there is.
+ * !!
+ * !! So the notification for a request is UPDATED in place. Its text changes
+ * !! to describe what the request is now, and it goes back to unread, because
+ * !! the request did change and the admin has to look at it again. One request,
+ * !! one bell entry - which is what the number on the bell is supposed to mean.
+ */
+async function notifyAdminsOfContractRequest({
+  connection,
+  requestId,
+  title,
+  message,
+}) {
+  const [adminRows] = await connection.query(
+    `SELECT user_id FROM users WHERE role = 'admin' AND status = 'active'`
+  );
+  if (!adminRows.length) return;
+
+  for (const admin of adminRows) {
+    const [result] = await connection.query(
+      `UPDATE notifications
+          SET title = ?, message = ?, is_read = 0, read_at = NULL, created_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND related_id = ? AND related_type = 'contract_request'`,
+      [encryptNullableText(title), encryptNullableText(message), admin.user_id, requestId]
+    );
+
+    if (result.affectedRows > 0) continue;
+
+    await connection.query(
+      `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+       VALUES (?, 'general', ?, ?, ?, 'contract_request', '/AdminDashboard')`,
+      [admin.user_id, encryptNullableText(title), encryptNullableText(message), requestId]
+    );
+  }
+}
+
+/**
+ * Mark the admins' notification for a request as read.
+ *
+ * Called when the request is resolved - approved, declined or withdrawn. The
+ * bell is a to-do list, and a request that has been decided is not on it any
+ * more. Without this the count kept climbing and never came back down, which
+ * is how a badge stops being information.
+ */
+async function markAdminNotificationsRead(connection, requestId) {
+  await connection.query(
+    `UPDATE notifications
+        SET is_read = 1, read_at = CURRENT_TIMESTAMP
+      WHERE related_id = ? AND related_type = 'contract_request'
+        AND user_id IN (SELECT user_id FROM users WHERE role = 'admin')`,
+    [requestId]
+  );
+}
+
+/**
+ * A student asks for a contract, or for more time on the one they have.
+ *
+ * The two kinds are handled by one route because they share a lifecycle: both
+ * are pending until an admin decides, both can be revised while they wait, and
+ * both can be withdrawn.
+ *
+ * THE RULE: a student has at most one pending request of each kind. Asking
+ * again while one is pending is a REVISION of that request, not a second one.
+ *
+ * !! That was already the behaviour, and it was already right in the way that
+ * !! matters - the admin's queue never grew a duplicate. What it did not do
+ * !! was keep the earlier version, tell the student that is what they were
+ * !! doing, or make the rule survive two tabs open at once. It revised the row
+ * !! in place, overwriting the note the admin had not read yet, and the
+ * !! notification bell counted one more entry for every submit.
+ * !!
+ * !! So asking again now:
+ * !!   - archives the version it replaces, so the admin can still read what
+ * !!     the student said the first time
+ * !!   - counts as a revision, and says so
+ * !!   - updates the admin's existing notification instead of adding another
+ * !!   - is protected by a unique key in the database, so two simultaneous
+ * !!     submissions cannot both create a pending request
+ */
 app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("student_id"), async (req, res) => {
+  const connection = await pool.getConnection();
+
   try {
     const { student_id, course_id, requested_classes, class_duration, trial_notes, ai_criteria, request_type, preferred_schedule } = req.body;
     const parsedStudentId = parseInt(student_id, 10);
@@ -5660,7 +5920,23 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
     // that has not been updated yet still submits a plain contract request, and
     // failing it because a column it knows nothing about is missing would break
     // a flow that works.
-    const parsedRequestType = String(request_type || "new").toLowerCase() === "extension" ? "extension" : "new";
+    const parsedRequestType = normalizeRequestType(request_type);
+
+    await connection.beginTransaction();
+
+    // The student's own row, locked for the length of the transaction.
+    //
+    // !! This is what makes "one pending request per kind" hold under two
+    // !! simultaneous submissions. The check and the write below are two
+    // !! statements, and without a lock two requests could both pass the check
+    // !! and both write. The unique key on the generated column catches that
+    // !! too, but it catches it as a failure - the second request would be
+    // !! rejected with an error the student has to retry. Locking here means
+    // !! the second request waits, then sees the first one and revises it.
+    //
+    // Locking the user row rather than the request row: the request row may not
+    // exist yet, and a lock on a row that is not there locks nothing.
+    await connection.query(`SELECT user_id FROM users WHERE user_id = ? FOR UPDATE`, [parsedStudentId]);
 
     // An extension is a request for more TIME on a contract that already ran
     // out, with classes on it they never used. Every one of those conditions is
@@ -5668,7 +5944,7 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
     // mutates a package and a UI that can be bypassed is not a guard.
     let extensionPackage = null;
     if (parsedRequestType === "extension") {
-      const [packageRows] = await pool.query(
+      const [packageRows] = await connection.query(
         `SELECT package_id, total_classes, classes_used, classes_left, class_duration,
                 status, created_at, expires_at
            FROM student_class_packages
@@ -5679,6 +5955,7 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
       );
 
       if (!packageRows.length) {
+        await connection.rollback();
         return res.status(400).json({
           message: "You have no class contract to extend. Request a new contract instead.",
         });
@@ -5693,6 +5970,7 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
       if (left <= 0) {
         // Nothing to extend. They used everything, so this is a new contract and
         // sending it down the new path is what they actually want.
+        await connection.rollback();
         return res.status(400).json({
           message:
             "You have used all the classes on this contract, so there is nothing to extend. Please request a new contract instead.",
@@ -5700,6 +5978,7 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
       }
 
       if (extensionPackage.status !== "expired" && !endPassed) {
+        await connection.rollback();
         return res.status(400).json({
           message: "This contract has not ended yet, so there is nothing to extend.",
         });
@@ -5708,6 +5987,7 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
 
     if (parsedRequestType === "new") {
       if (!parsedStudentId || !parsedCourseId || !Number.isFinite(parsedClasses) || parsedClasses <= 0) {
+        await connection.rollback();
         return res.status(400).json({ message: "Please choose a course and number of classes." });
       }
     }
@@ -5720,11 +6000,14 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
     // !! extension would have had that row rewritten, and the admin would open
     // !! the queue to find an extension where a class purchase was submitted -
     // !! with the original request gone and nobody told.
-    const [existing] = await pool.query(
-      `SELECT request_id
-       FROM student_contract_requests
-       WHERE student_id = ? AND status = 'pending' AND request_type = ?
-       LIMIT 1`,
+    const [existing] = await connection.query(
+      `SELECT request_id, request_type, course_id, requested_classes, class_duration,
+              trial_notes, ai_criteria, package_id, classes_left_at_request,
+              preferred_days, preferred_start, preferred_end,
+              revision_count, request_history, status, requested_at
+         FROM student_contract_requests
+        WHERE student_id = ? AND status = 'pending' AND request_type = ?
+        LIMIT 1`,
       [parsedStudentId, parsedRequestType]
     );
 
@@ -5742,15 +6025,56 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
     const preferredStart = preferredSchedule ? preferredSchedule.start : null;
     const preferredEnd = preferredSchedule ? preferredSchedule.end : null;
 
+    const [studentRows] = await connection.query(
+      `SELECT first_name, last_name FROM users WHERE user_id = ?`,
+      [parsedStudentId]
+    );
+    const [courseRows] = await connection.query(
+      `SELECT course_name FROM courses WHERE course_id = ?`,
+      [parsedCourseId]
+    );
+
+    const studentName = studentRows.length
+      ? `${studentRows[0].first_name} ${studentRows[0].last_name}`.trim()
+      : "A student";
+    const courseName = courseRows[0]?.course_name || "a course";
+
     if (existing.length) {
       const requestId = existing[0].request_id;
-      await pool.query(
+      // Decrypted before it is read. The note and the history are stored
+      // encrypted, and what goes into the history has to be the words the
+      // student wrote rather than the ciphertext they were stored as.
+      const previous = decryptFields(existing[0], ["trial_notes", "ai_criteria", "request_history"]);
+
+      // Keep the version that is being replaced. The admin may have read it
+      // already, and even if they have not, the first thing a student said is
+      // part of the request - it is what the rest of it is a revision of.
+      //
+      // Decrypted first, and encrypted again as one blob on the way out.
+      //
+      // !! The snapshot holds the note the student wrote, and that note is
+      // !! stored encrypted in its own column. Copying that ciphertext into
+      // !! the history produced a history whose entries were unreadable: the
+      // !! column decrypted to a JSON string, and every note inside it was
+      // !! still `enc:v1:...`. The admin saw a history of nothing.
+      // !!
+      // !! The history is one encrypted column holding plaintext inside, so
+      // !! the note is protected by the column and readable once it is out.
+      const archived = appendRevision(
+        previous.request_history,
+        buildRevisionSnapshot(previous, { revisedAt: new Date().toISOString() })
+      );
+
+      const nextRevision = Math.max(1, Number(previous.revision_count ?? 1) || 1) + 1;
+
+      await connection.query(
         `UPDATE student_contract_requests
-         SET course_id = ?, requested_classes = ?, class_duration = ?, trial_notes = ?, ai_criteria = ?,
-             request_type = ?, package_id = ?, classes_left_at_request = ?,
-             preferred_days = ?, preferred_start = ?, preferred_end = ?,
-             admin_response = NULL, resolved_at = NULL, requested_at = CURRENT_TIMESTAMP, status = 'pending'
-         WHERE request_id = ?`,
+            SET course_id = ?, requested_classes = ?, class_duration = ?, trial_notes = ?, ai_criteria = ?,
+                request_type = ?, package_id = ?, classes_left_at_request = ?,
+                preferred_days = ?, preferred_start = ?, preferred_end = ?,
+                revision_count = ?, request_history = ?,
+                admin_response = NULL, resolved_at = NULL, requested_at = CURRENT_TIMESTAMP, status = 'pending'
+          WHERE request_id = ?`,
         [
           parsedCourseId,
           isExtension ? 0 : parsedClasses,
@@ -5763,55 +6087,39 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
           preferredDays,
           preferredStart,
           preferredEnd,
+          nextRevision,
+          encryptNullableText(archived),
           requestId,
         ]
       );
 
-      const [studentRows] = await pool.query(
-        `SELECT first_name, last_name FROM users WHERE user_id = ?`,
-        [parsedStudentId]
-      );
-      const [courseRows] = await pool.query(
-        `SELECT course_name FROM courses WHERE course_id = ?`,
-        [parsedCourseId]
-      );
-      const [adminRows] = await pool.query(
-        `SELECT user_id FROM users WHERE role = 'admin' AND status = 'active'`
-      );
-
-      const studentName = studentRows.length
-        ? `${studentRows[0].first_name} ${studentRows[0].last_name}`.trim()
-        : "A student";
-      const courseName = courseRows[0]?.course_name || "a course";
       const notificationMessage = isExtension
-        ? `${studentName} updated their pending extension request. They have ${snapshotClassesLeft} unused class${snapshotClassesLeft === 1 ? "" : "es"} left on a contract that has ended.`
-        : `${studentName} updated a pending contract request for ${courseName} with ${parsedClasses} classes (${parsedDuration}-minute lessons).`;
+        ? `${studentName} updated their pending extension request${nextRevision > 2 ? ` (version ${nextRevision})` : ""}. They have ${snapshotClassesLeft} unused class${snapshotClassesLeft === 1 ? "" : "es"} left on a contract that has ended.`
+        : `${studentName} updated a pending contract request${nextRevision > 2 ? ` (version ${nextRevision})` : ""} for ${courseName} with ${parsedClasses} classes (${parsedDuration}-minute lessons).`;
 
-      if (adminRows.length) {
-        await pool.query(
-          `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
-           VALUES ${adminRows.map(() => "(?, 'general', ?, ?, ?, 'contract_request', '/AdminDashboard')").join(", ")}`,
-          adminRows.flatMap((admin) => [
-            admin.user_id,
-            encryptNullableText(isExtension ? "Updated Extension Request" : "Updated Contract Request"),
-            encryptNullableText(notificationMessage),
-            requestId,
-          ])
-        );
-      }
+      await notifyAdminsOfContractRequest({
+        connection,
+        requestId,
+        title: isExtension ? "Updated Extension Request" : "Updated Contract Request",
+        message: notificationMessage,
+      });
+
+      await connection.commit();
 
       return res.status(200).json({
         message: isExtension ? "Extension request updated" : "Contract request updated",
         request_id: requestId,
+        revision: nextRevision,
+        isRevision: true,
       });
     }
 
-    const [result] = await pool.query(
+    const [result] = await connection.query(
       `INSERT INTO student_contract_requests
          (student_id, course_id, requested_classes, class_duration, trial_notes, ai_criteria, status,
-          request_type, package_id, classes_left_at_request,
+          request_type, package_id, classes_left_at_request, revision_count,
           preferred_days, preferred_start, preferred_end)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, 1, ?, ?, ?)`,
       [
         parsedStudentId,
         parsedCourseId,
@@ -5828,46 +6136,61 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
       ]
     );
 
-    const [studentRows] = await pool.query(
-      `SELECT first_name, last_name FROM users WHERE user_id = ?`,
-      [parsedStudentId]
-    );
-    const [courseRows] = await pool.query(
-      `SELECT course_name FROM courses WHERE course_id = ?`,
-      [parsedCourseId]
-    );
-    const [adminRows] = await pool.query(
-      `SELECT user_id FROM users WHERE role = 'admin' AND status = 'active'`
-    );
-
-    const studentName = studentRows.length
-      ? `${studentRows[0].first_name} ${studentRows[0].last_name}`.trim()
-      : "A student";
-    const courseName = courseRows[0]?.course_name || "a course";
     const notificationMessage = isExtension
       ? `${studentName} requested an extension. They have ${snapshotClassesLeft} unused class${snapshotClassesLeft === 1 ? "" : "es"} left on a contract that has ended.`
       : `${studentName} requested a new contract for ${courseName} with ${parsedClasses} classes (${parsedDuration}-minute lessons).`;
 
-    if (adminRows.length) {
-      await pool.query(
-        `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
-         VALUES ${adminRows.map(() => "(?, 'general', ?, ?, ?, 'contract_request', '/AdminDashboard')").join(", ")}`,
-        adminRows.flatMap((admin) => [
-          admin.user_id,
-          encryptNullableText(isExtension ? "Extension Request" : "New Contract Request"),
-          encryptNullableText(notificationMessage),
-          result.insertId,
-        ])
-      );
-    }
+    await notifyAdminsOfContractRequest({
+      connection,
+      requestId: result.insertId,
+      title: isExtension ? "Extension Request" : "New Contract Request",
+      message: notificationMessage,
+    });
+
+    await connection.commit();
 
     res.status(201).json({
       message: isExtension ? "Extension request sent" : "Contract request sent",
       request_id: result.insertId,
+      revision: 1,
+      isRevision: false,
     });
   } catch (err) {
+    try {
+      await connection.rollback();
+    } catch {
+      // The transaction was already gone. Nothing to undo.
+    }
+
+    // The unique key on the generated column. Two submissions that raced past
+    // the check, both reaching the insert. The second one is not an error the
+    // student caused, so it is answered as a revision of the first rather than
+    // a failure - and the student is told which it is.
+    if (err?.code === "ER_DUP_ENTRY") {
+      try {
+        const [pending] = await pool.query(
+          `SELECT request_id FROM student_contract_requests
+            WHERE student_id = ? AND status = 'pending' AND request_type = ?
+            LIMIT 1`,
+          [parseInt(req.body?.student_id, 10), normalizeRequestType(req.body?.request_type)]
+        );
+
+        if (pending.length) {
+          return res.status(200).json({
+            message: "Your request was already received. The admin has it.",
+            request_id: pending[0].request_id,
+            isRevision: true,
+          });
+        }
+      } catch {
+        // Fall through to the generic error below.
+      }
+    }
+
     console.error("POST /api/student/contract-requests error:", err);
     res.status(500).json({ message: "Error sending contract request" });
+  } finally {
+    connection.release();
   }
 });
 
@@ -5887,12 +6210,154 @@ app.get("/api/student/contract-requests/:student_id", requireSession, async (req
       [student_id]
     );
 
-    res.json({ requests: decryptRows(rows, ["trial_notes", "ai_criteria", "admin_response"]) });
+    // The pending requests, separately and without a limit.
+    //
+    // !! The list above is the last five requests, which is a history to read.
+    // !! Deciding what the student may do next from a history is a mistake: the
+    // !! history is a window, and a student with six requests in it had their
+    // !! pending extension fall out of the window - so the card told them they
+    // !! had never asked, while the admin was holding a request from them. The
+    // !! pending set is the fact; it gets its own query and no limit.
+    const [pendingRows] = await pool.query(
+      `SELECT r.*, c.course_name
+       FROM student_contract_requests r
+       LEFT JOIN courses c ON c.course_id = r.course_id
+       WHERE r.student_id = ? AND r.status = 'pending'
+       ORDER BY r.requested_at DESC`,
+      [student_id]
+    );
+
+    const decryptFieldsForStudent = ["trial_notes", "ai_criteria", "admin_response", "request_history"];
+
+    res.json({
+      requests: decryptRows(rows, decryptFieldsForStudent).map(decorateContractRequest),
+      pending: decryptRows(pendingRows, decryptFieldsForStudent).map(decorateContractRequest),
+    });
   } catch (err) {
     console.error("GET /api/student/contract-requests/:student_id error:", err);
     res.status(500).json({ message: "Error fetching contract requests" });
   }
 });
+
+/**
+ * Withdraw a request that is still pending.
+ *
+ * !! A student who sent a request by mistake had no way out. The only thing
+ * !! they could do was wait for an admin to decline it, and the request sat in
+ * !! the queue the whole time - the student was told they had asked for
+ * !! something they had not asked for, and the admin had to spend a decision
+ * !! on a mistake. A request the student no longer wants is not a request at
+ * !! all, and the queue is where that has to be decided.
+ *
+ * Only a pending request can be withdrawn. Once an admin has approved or
+ * declined it, it is a decision and not a draft - the student asks again with
+ * a new request, which leaves the old one readable as history.
+ */
+app.post("/api/student/contract-requests/:request_id/cancel", requireSession, async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const requestId = parseInt(req.params.request_id, 10);
+    if (!Number.isFinite(requestId)) {
+      await connection.rollback();
+      return res.status(400).json({ message: "That is not a request." });
+    }
+
+    const [rows] = await connection.query(
+      `SELECT request_id, student_id, request_type, status
+         FROM student_contract_requests
+        WHERE request_id = ?
+        FOR UPDATE`,
+      [requestId]
+    );
+
+    if (!rows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: "That request no longer exists." });
+    }
+
+    const request = rows[0];
+
+    // Only the student who asked may withdraw it. An admin may resolve it from
+    // the queue, and that is a different action with a different record.
+    if (String(request.student_id) !== String(req.session?.userId)) {
+      await connection.rollback();
+      return res.status(403).json({ message: "You can only withdraw your own request." });
+    }
+
+    if (!canCancelRequest(request)) {
+      await connection.rollback();
+      return res.status(409).json({
+        message:
+          request.status === "cancelled"
+            ? "That request has already been withdrawn."
+            : "That request has already been answered, so it cannot be withdrawn.",
+      });
+    }
+
+    await connection.query(
+      `UPDATE student_contract_requests
+          SET status = 'cancelled', resolved_at = CURRENT_TIMESTAMP
+        WHERE request_id = ?`,
+      [requestId]
+    );
+
+    // The admins' notification is read, not deleted. It stays as a record that
+    // the request existed and was withdrawn, and the bell stops counting it -
+    // a withdrawn request is not work waiting to be done.
+    const [studentRows] = await connection.query(
+      `SELECT first_name, last_name FROM users WHERE user_id = ?`,
+      [request.student_id]
+    );
+    const studentName = studentRows.length
+      ? `${studentRows[0].first_name} ${studentRows[0].last_name}`.trim()
+      : "A student";
+
+    await connection.query(
+      `UPDATE notifications
+          SET title = ?, message = ?, is_read = 1, read_at = CURRENT_TIMESTAMP
+        WHERE related_id = ? AND related_type = 'contract_request' AND user_id IN (
+          SELECT user_id FROM users WHERE role = 'admin'
+        )`,
+      [
+        encryptNullableText("Contract Request Withdrawn"),
+        encryptNullableText(`${studentName} withdrew their ${request.request_type === "extension" ? "extension" : "contract"} request.`),
+        requestId,
+      ]
+    );
+
+    await connection.commit();
+
+    res.json({ message: "Your request has been withdrawn." });
+  } catch (err) {
+    try {
+      await connection.rollback();
+    } catch {
+      // The transaction was already gone. Nothing to undo.
+    }
+    console.error("POST /api/student/contract-requests/:request_id/cancel error:", err);
+    res.status(500).json({ message: "Error withdrawing the request" });
+  } finally {
+    connection.release();
+  }
+});
+
+/**
+ * Add the revision trail to a request row, as something the UI can read.
+ *
+ * The stored history is a JSON string in an encrypted column, so it arrives
+ * here as text. The UI wants the list of earlier versions, not the string that
+ * holds them, and it wants to know how many times the request was changed.
+ */
+function decorateContractRequest(row) {
+  const revisions = describeRevisions(row);
+  return {
+    ...row,
+    revision_count: revisions.count,
+    revision_label: revisions.label,
+    revisions: revisions.history,
+  };
+}
 
 app.get("/api/admin/contract-requests", requireAdminSession, async (_req, res) => {
   try {
@@ -5906,10 +6371,14 @@ app.get("/api/admin/contract-requests", requireAdminSession, async (_req, res) =
        JOIN users u ON u.user_id = r.student_id
        LEFT JOIN courses c ON c.course_id = r.course_id
        LEFT JOIN student_class_packages p ON p.package_id = r.package_id
-       ORDER BY FIELD(r.status, 'pending', 'approved', 'declined'), r.requested_at DESC`
+       ORDER BY FIELD(r.status, 'pending', 'approved', 'declined', 'cancelled'), r.requested_at DESC`
     );
 
-    res.json({ requests: decryptRows(rows, ["trial_notes", "ai_criteria", "admin_response"]) });
+    res.json({
+      requests: decryptRows(rows, ["trial_notes", "ai_criteria", "admin_response", "request_history"]).map(
+        decorateContractRequest
+      ),
+    });
   } catch (err) {
     console.error("GET /api/admin/contract-requests error:", err);
     res.status(500).json({ message: "Error fetching contract requests" });
@@ -6079,6 +6548,15 @@ app.put("/api/admin/contract-requests/:request_id", requireAdminSession, async (
     const request = decryptFields(requestRows[0], ["trial_notes", "ai_criteria", "admin_response"]);
     if (request.status !== "pending") {
       await connection.rollback();
+      // Each way this can happen is worth naming. "Already been resolved" sent
+      // the admin looking for a decision they had already made, when in fact
+      // the student had withdrawn the request and it was never going to be
+      // decided at all.
+      if (request.status === "cancelled") {
+        return res.status(409).json({
+          message: "This request was withdrawn by the student, so there is nothing to decide.",
+        });
+      }
       return res.status(409).json({ message: "This request has already been resolved" });
     }
 
@@ -6101,6 +6579,8 @@ app.put("/api/admin/contract-requests/:request_id", requireAdminSession, async (
            WHERE request_id = ?`,
           [status, encryptNullableText(admin_response || null), request_id]
         );
+
+        await markAdminNotificationsRead(connection, request.request_id);
 
         await connection.query(
           `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
@@ -6180,6 +6660,8 @@ app.put("/api/admin/contract-requests/:request_id", requireAdminSession, async (
          WHERE request_id = ?`,
         [status, encryptNullableText(admin_response || null), request_id]
       );
+
+      await markAdminNotificationsRead(connection, request.request_id);
 
       const endDate = newExpiry.toLocaleDateString("en-US", {
         year: "numeric", month: "long", day: "numeric",
@@ -6302,6 +6784,8 @@ app.put("/api/admin/contract-requests/:request_id", requireAdminSession, async (
        WHERE request_id = ?`,
       [status, encryptNullableText(admin_response || null), request_id]
     );
+
+    await markAdminNotificationsRead(connection, request.request_id);
 
     const notificationTitle = status === "approved"
       ? "Contract Request Approved"

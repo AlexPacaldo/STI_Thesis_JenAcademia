@@ -112,6 +112,50 @@
 - [ ] No action buttons available
 - [ ] Can view all request details
 
+### Contract Requests (student asks, asks again, changes their mind)
+- [ ] "Request an extension" creates a request and the admin's bell shows it once
+- [ ] Asking again while it is pending says the request was UPDATED, not sent twice
+- [ ] The admin's bell still shows one entry for the request, not one per submission
+- [ ] The admin can see the student's reason, and the earlier versions of it
+- [ ] "Withdraw this request" removes it from the admin's queue
+- [ ] Withdrawing twice is refused, and says the request was already answered
+- [ ] A new contract request and an extension request are separate, and can both be pending
+- [ ] A declined request can be asked again; an approved one offers nothing further
+- [ ] The request queue never shows two pending requests of the same kind for one student
+
+---
+
+## Contract Request Flow
+
+A student can have **one pending request of each kind** - a new contract, or an
+extension. Asking again while one is pending is a **revision** of that request,
+not a second one.
+
+| The student does | What happens |
+|---|---|
+| Sends a request | A pending request is created, and each admin is notified once |
+| Sends it again | The same request is revised. The earlier version is kept, the revision count goes up, and the admin's notification is updated in place - one bell entry, still unread |
+| Sends the other kind | A separate request, pending alongside the first one. They are different asks and do not overwrite each other |
+| Withdraws it | The request is marked withdrawn, it leaves the queue, and the admin's notification is read rather than deleted |
+| The admin decides | The request is approved or declined. A decline can be asked again |
+
+The rule is enforced by the database - a unique key over a generated column -
+so two simultaneous submissions cannot both create a pending request. The
+student's row is locked for the length of the request, so the second one waits
+and then revises the first.
+
+### Checks
+
+```bash
+node backend/contractRequestFlow.test.js --test          # the rules
+node scripts/test-contract-request-flow.mjs               # what the student is offered
+node scripts/test-contract-request-migration.mjs          # the schema, on a scratch table
+node scripts/test-contract-request-e2e.mjs                # the whole thing, over HTTP
+```
+
+The end-to-end check starts the backend on its own port, creates a student of
+its own, drives the real routes, and removes everything it created.
+
 ---
 
 ## Troubleshooting

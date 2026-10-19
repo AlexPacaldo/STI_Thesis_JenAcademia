@@ -2223,12 +2223,25 @@ export default function AdminDashboard() {
   }
 
   function requestUpdateContractRequest(requestId, status, requestRow) {
+    // What is being decided, said in the dialog.
+    //
+    // !! The dialog used to say only "This will approve the student's contract
+    // !! request" - which is the one thing the admin already knew, and none of
+    // !! the things they were being asked to decide on. The course, how many
+    // !! classes, and what the student said are all in the table behind the
+    // !! modal, which the modal covers.
+    const what = requestRow?.course_name
+      ? `${requestRow.course_name} with ${requestRow.requested_classes} classes`
+      : `a contract with ${requestRow?.requested_classes ?? "?"} classes`;
+    const reason = requestRow?.trial_notes ? ` Their reason: "${requestRow.trial_notes}"` : "";
+
     openAdminConfirm({
       action: "contract_request",
       title: status === "approved" ? "Approve contract request?" : "Decline contract request?",
-      message: status === "approved"
-        ? "This will approve the student's contract request."
-        : "This will decline the student's contract request.",
+      message:
+        status === "approved"
+          ? `This will approve the student's request for ${what}.${reason}`
+          : `This will decline the student's request for ${what}.${reason} They can ask again afterwards.`,
       confirmLabel: status === "approved" ? "Approve" : "Decline",
       tone: status === "approved" ? "primary" : "danger",
       payload: {
@@ -3675,13 +3688,19 @@ export default function AdminDashboard() {
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
                     <thead>
+                      {/* One set of columns for both kinds of request. The
+                          header used to describe the new-contract shape while
+                          the extension rows had a different number of cells,
+                          so the two kinds did not line up - and the student
+                          note had nowhere to go at all. */}
                       <tr>
                         <th>Student</th>
-                        <th>Requested Course</th>
-                        <th>Classes</th>
-                        <th>Duration</th>
-                        <th>Status</th>
+                        <th>Type</th>
                         <th>Requested</th>
+                        <th>Duration</th>
+                        <th>Reason</th>
+                        <th>Status</th>
+                        <th>Requested at</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
@@ -3701,10 +3720,12 @@ export default function AdminDashboard() {
                               borderRadius: 999,
                               background:
                                 request.status === "pending" ? "#fef3c7"
-                                : request.status === "approved" ? "#dcfce7" : "#fee2e2",
+                                : request.status === "approved" ? "#dcfce7"
+                                : request.status === "cancelled" ? "#f3f4f6" : "#fee2e2",
                               color:
                                 request.status === "pending" ? "#92400e"
-                                : request.status === "approved" ? "#166534" : "#991b1b",
+                                : request.status === "approved" ? "#166534"
+                                : request.status === "cancelled" ? "#4b5563" : "#991b1b",
                               fontWeight: 700,
                               textTransform: "capitalize",
                             }}
@@ -3712,6 +3733,17 @@ export default function AdminDashboard() {
                             {request.status}
                           </span>
                         );
+
+                        // The earlier versions of a request the student changed.
+                        //
+                        // !! Kept because the request the admin reads is the LAST
+                        // !! one, and the last one alone is not the whole story.
+                        // !! A student who asked for a month, then realised they
+                        // !! needed two, then realised the illness had passed -
+                        // !! the admin should be able to see that, not just the
+                        // !! final version with no indication that it is the
+                        // !! third.
+                        const revisionHistory = Array.isArray(request.revisions) ? request.revisions : [];
 
                         return (
                           <tr key={request.request_id}>
@@ -3734,35 +3766,63 @@ export default function AdminDashboard() {
                               </span>
                             </td>
                             {isExtension ? (
-                              <td data-label="Unused classes">
+                              <td data-label="Requested">
                                 <div style={{ fontWeight: 700 }}>
-                                  {request.classes_left_at_request ?? "?"} left when asked
+                                  {request.classes_left_at_request ?? "?"} unused classes
                                 </div>
                                 <div style={{ fontSize: "0.8em", color: "#666" }}>
                                   now: {request.package_classes_left ?? "?"}
                                 </div>
+                                <div style={{ fontSize: "0.8em", color: "#666", marginTop: 2 }}>
+                                  contract ended {formatDate(request.package_expires_at)}
+                                </div>
+                                <div style={{ fontSize: "0.8em", color: "#666" }}>
+                                  status: {request.package_status || "unknown"}
+                                </div>
                               </td>
                             ) : (
-                              <>
-                                <td data-label="Requested Course">{request.course_name || "Course not set"}</td>
-                                <td data-label="Classes">{request.requested_classes}</td>
-                              </>
+                              <td data-label="Requested">
+                                <div style={{ fontWeight: 700 }}>
+                                  {request.course_name || "Course not set"}
+                                </div>
+                                <div style={{ fontSize: "0.8em", color: "#666" }}>
+                                  {request.requested_classes} classes
+                                </div>
+                              </td>
                             )}
                             <td data-label="Duration">{request.class_duration || 50} min</td>
-                            {isExtension ? (
-                              <>
-                                <td data-label="Contract ended">
-                                  <div>{formatDate(request.package_expires_at)}</div>
-                                  <div style={{ fontSize: "0.8em", color: "#666" }}>
-                                    status: {request.package_status || "unknown"}
-                                  </div>
-                                </td>
-                                <td data-label="Decision">{decisionChip}</td>
-                              </>
-                            ) : (
-                              <td data-label="Status">{decisionChip}</td>
-                            )}
-                            <td data-label="Requested">{formatDate(request.requested_at)}</td>
+                            <td data-label="Reason">
+                              {/* The reason the student gave, and what they said
+                                  before. An extension request exists to say "I
+                                  need more time, here is why" - so the why has
+                                  to be in the queue, not only in the database. */}
+                              <div style={{ fontSize: "0.85em", color: "#374151", maxWidth: 260 }}>
+                                {request.trial_notes || "—"}
+                              </div>
+                              {revisionHistory.length > 0 && (
+                                <details style={{ marginTop: 4, fontSize: "0.8em", color: "#666" }}>
+                                  <summary style={{ cursor: "pointer" }}>
+                                    {request.revision_label || "Revised"}
+                                  </summary>
+                                  {revisionHistory.map((revision, index) => (
+                                    <div
+                                      key={`${revision.revision}-${index}`}
+                                      style={{ marginTop: 4, paddingLeft: 8, borderLeft: "2px solid #e5e7eb" }}
+                                    >
+                                      <div style={{ fontWeight: 700 }}>
+                                        Earlier version {index + 1}
+                                        {revision.revised_at
+                                          ? ` - ${formatDate(revision.revised_at)}`
+                                          : ""}
+                                      </div>
+                                      <div>{revision.trial_notes || "No reason given."}</div>
+                                    </div>
+                                  ))}
+                                </details>
+                              )}
+                            </td>
+                            <td data-label="Status">{decisionChip}</td>
+                            <td data-label="Requested at">{formatDate(request.requested_at)}</td>
                             <td data-label="Actions">
                               {request.status === "pending" ? (
                                 <div className={styles.rowActions}>
@@ -4948,6 +5008,30 @@ export default function AdminDashboard() {
                     that ended{" "}
                     {formatDate(extensionApproval.request.package_expires_at)}.
                   </p>
+
+                  {/* Why they are asking.
+                      The request exists to say "I need more time, and here is
+                      why", and the length of the extension is the admin's to
+                      agree. Deciding it without the reason means guessing. */}
+                  {extensionApproval.request.trial_notes && (
+                    <div className={styles.modalWarning} style={{ marginBottom: "12px" }}>
+                      <strong>Their reason:</strong> {extensionApproval.request.trial_notes}
+                      {Array.isArray(extensionApproval.request.revisions) &&
+                        extensionApproval.request.revisions.length > 0 && (
+                          <details style={{ marginTop: "8px" }}>
+                            <summary style={{ cursor: "pointer" }}>
+                              {extensionApproval.request.revision_label || "Earlier versions"}
+                            </summary>
+                            {extensionApproval.request.revisions.map((revision, index) => (
+                              <div key={`${revision.revision}-${index}`} style={{ marginTop: "6px" }}>
+                                <strong>Earlier version {index + 1}:</strong>{" "}
+                                {revision.trial_notes || "No reason given."}
+                              </div>
+                            ))}
+                          </details>
+                        )}
+                    </div>
+                  )}
 
                   <div className={styles.modalWarning}>
                     This moves the end date of the existing contract. The classes are
