@@ -66,10 +66,6 @@ const ADMIN_TABS = [
 // be first in the list.
 const getAdminTabFromSearch = (search) => {
   const requestedTab = new URLSearchParams(search).get("tab");
-  // Only the super administrator may open the Create Admin tab.
-  if (requestedTab === "createAdmin" && !me?.isSuperAdmin) {
-    return "overview";
-  }
   return ADMIN_TABS.includes(requestedTab) ? requestedTab : "overview";
 };
 
@@ -412,7 +408,9 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     const requestedTab = new URLSearchParams(location.search).get("tab");
-    const nextActive = getAdminTabFromSearch(location.search);
+    // Only the super administrator may open the Create Admin tab.
+    const nextActive =
+      requestedTab === "createAdmin" && !me?.isSuperAdmin ? "overview" : getAdminTabFromSearch(location.search);
     setActive((currentActive) => (currentActive === nextActive ? currentActive : nextActive));
 
     // Normalise a bare /AdminDashboard (or a bogus ?tab=) to the real default.
@@ -428,7 +426,7 @@ export default function AdminDashboard() {
     // setSearchParams is stable across renders; including it would re-run this on
     // every navigation and fight the guard above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.search]);
+  }, [location.search, me]);
 
   /**
    * Switch tabs from inside the page.
