@@ -9,6 +9,7 @@ export function sanitizeUser(user) {
     firstName: user.firstName ?? user.first_name ?? "",
     lastName: user.lastName ?? user.last_name ?? "",
     role: user.role ?? "",
+    isSuperAdmin: Boolean(user.isSuperAdmin ?? user.is_super_admin ?? false),
     profileCompleted: Boolean(user.profileCompleted ?? user.profile_completed ?? false),
     passwordChanged: Boolean(user.passwordChanged ?? user.password_changed ?? false),
     profileImageUrl: user.profileImageUrl ?? user.profile_image_url ?? "",
