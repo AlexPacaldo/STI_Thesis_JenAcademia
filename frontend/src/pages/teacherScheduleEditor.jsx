@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import axios from "axios";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import styles from "../assets/studentSchedule.module.css";
+import cal from "../assets/calendar.module.css";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
 
@@ -141,28 +142,28 @@ export default function teacherScheduleEditor({ title = "Teacher Availability" }
         <h1 className={styles.title}>Calendar</h1>
 
         <div className={styles.wrapper}>
-          <div className={styles.calendarCard}>
-            <div className={styles.calHeader}>
-              <button onClick={prevMonth} className={styles.navBtn} aria-label="Previous month">
+          <div className={cal.calendarCard}>
+            <div className={cal.calHeader}>
+              <button onClick={prevMonth} className={cal.navBtn} aria-label="Previous month">
                 ‹
               </button>
-              <div className={styles.monthLabel}>
+              <div className={cal.monthLabel}>
                 {monthName} {year}
               </div>
-              <button onClick={nextMonth} className={styles.navBtn} aria-label="Next month">
+              <button onClick={nextMonth} className={cal.navBtn} aria-label="Next month">
                 ›
               </button>
             </div>
 
-            <div className={styles.weekHeader}>
+            <div className={cal.weekHeader}>
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-                <div key={d} className={styles.weekday}>
+                <div key={d} className={cal.weekday}>
                   {d}
                 </div>
               ))}
             </div>
 
-            <div className={styles.grid}>
+            <div className={cal.grid}>
               {days.map((d, idx) => {
                 const status = statusOf(d);
                 const hasClasses = hasClassesOnDate(d);
@@ -170,11 +171,11 @@ export default function teacherScheduleEditor({ title = "Teacher Availability" }
                   <button
                     key={idx}
                     className={[
-                      styles.cell,
-                      !d && styles.empty,
-                      styles.clickableCell,         // interactive for teacher
-                      status === "available" && styles.available,
-                      hasClasses && styles.available,
+                      cal.cell,
+                      !d && cal.empty,
+                      cal.clickableCell,         // interactive for teacher
+                      status === "available" && cal.available,
+                      hasClasses && cal.available,
                     ]
                       .filter(Boolean)
                       .join(" ")}
@@ -197,7 +198,7 @@ export default function teacherScheduleEditor({ title = "Teacher Availability" }
             {selectedClass ? (
               // Class selected view - show student info
               <>
-                <div className={styles.legendTitle}>
+                <div className={cal.panelTitle}>
                   Student Information
                 </div>
                 <div className={styles.slotList}>
@@ -247,7 +248,7 @@ export default function teacherScheduleEditor({ title = "Teacher Availability" }
             ) : selectedDate ? (
               // Date selected view - show classes
               <>
-                <div className={styles.legendTitle}>
+                <div className={cal.panelTitle}>
                   Classes on {new Date(selectedDate + "T00:00:00").toLocaleDateString()}
                 </div>
                 <div className={styles.slotList}>
@@ -283,7 +284,7 @@ export default function teacherScheduleEditor({ title = "Teacher Availability" }
             ) : (
               // No selection view - show actions
               <>
-                <div className={styles.legendTitle}>Actions</div>
+                <div className={cal.panelTitle}>Actions</div>
                 <div className={styles.slotList}>
                   <button className={styles.slotBtn} onClick={jumpToToday}>
                     Jump to Today
@@ -292,17 +293,17 @@ export default function teacherScheduleEditor({ title = "Teacher Availability" }
               </>
             )}
 
-            <div className={styles.legendBlock}>
-              <div className={styles.legendRow}>
-                <span className={`${styles.legendDot} ${styles.legendAvail}`} />
+            <div className={cal.legendBlock}>
+              <div className={cal.legendRow}>
+                <span className={`${cal.legendDot} ${cal.legendAvail}`} />
                 <span>Classes</span>
               </div>
 
-              <div className={styles.legendRow}>
-                <span className={`${styles.legendDot}`} style={{ background: "#fff" }} />
+              <div className={cal.legendRow}>
+                <span className={`${cal.legendDot}`} style={{ background: "#fff" }} />
                 <span>Clear</span>
               </div>
-              <div className={styles.legendRow} style={{ marginTop: 6, fontSize: 12, color: "#666" }}>
+              <div className={cal.legendRow} style={{ marginTop: 6, fontSize: 12, color: "#666" }}>
                 Click a day to view classes, then click a class to see student info
               </div>
             </div>

@@ -21,6 +21,7 @@ import {
   BOOKING,
   CLASS_INFO,
   CONFIRM,
+  HOME,
   LEGEND,
   LOADING,
   MORE_TIME_CARD,
@@ -28,6 +29,7 @@ import {
   NEW_PLAN_WINDOW,
   PLAN,
   PLAN_STATUS,
+  VIEW,
 } from "../frontend/src/utils/studentCopy.js";
 import {
   describeBlockedByOtherRequest,
@@ -79,6 +81,8 @@ function everyString(group, prefix = "") {
 const GROUPS = {
   PLAN,
   PLAN_STATUS,
+  HOME,
+  VIEW,
   MORE_TIME_CARD,
   MORE_TIME_WINDOW,
   NEW_PLAN_WINDOW,

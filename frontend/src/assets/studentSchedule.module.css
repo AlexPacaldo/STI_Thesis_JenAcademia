@@ -145,62 +145,6 @@
   margin: 24px auto;
 }
 
-/* The strip of days a student picks from.
-   It WRAPS rather than scrolls. A horizontal scroll hides buttons behind an
-   edge that a student does not know they can swipe, and on a phone it means
-   the days after the first three are invisible. Wrapping puts every day on
-   screen, and the buttons stay big enough to press. */
-.dayStrip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-}
-
-.dayChip {
-  flex: 0 0 auto;
-  min-width: 74px;
-  padding: 10px 8px;
-  border-radius: 12px;
-  border: 1px solid #d0d0d0;
-  background: #fff;
-  color: #333;
-  cursor: pointer;
-  font-weight: 700;
-  font-size: 0.8rem;
-  line-height: 1.25;
-  text-align: center;
-}
-
-.dayChipActive {
-  border: 2px solid #26423b;
-  background: #26423b;
-  color: #fff;
-}
-
-/* A day the teacher has marked as free. */
-.dayChipFree {
-  border-color: #79a847;
-  background: #e9f3dd;
-}
-
-/* A day with no schedule at all - dimmed, so the strip carries the same
-   information the month grid carried in its colours. Without this a student
-   taps a day the teacher does not work and is told "no free times", which
-   sounds like their fault and is not. */
-.dayChipUnknown {
-  opacity: 0.55;
-  border-style: dashed;
-}
-
-/* Two choices side by side, or one above the other on a narrow screen. */
-.modeRow {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  min-width: 0;
-}
-
 /* The buttons at the bottom of a form. */
 .actionRow {
   display: flex;
@@ -213,35 +157,10 @@
   min-width: 0;
 }
 
-/* A class card: the day and time on the left, the button on the right. */
-.classCard {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid #d7e5d9;
-  border-radius: 16px;
-  background: #fff;
-  min-width: 0;
-}
-
-.classCardMain {
-  border: none;
-  background: transparent;
-  padding: 0;
-  text-align: left;
-  cursor: pointer;
-  min-width: 0;
-}
-
-/* Anything that holds text has to be allowed to shrink, or a long word
-   pushes the whole page sideways. */
-.panelBody {
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-}
+/* A class card: the day and time on the left, the button on the right.
+   !! The student's cards live in studentKid.module.css now - the strip of
+   !! days and the class cards are Kid Mode, and a student should not be able
+   !! to tell where one stylesheet ends and the next begins. */
 
 @media (max-width: 640px) {
   /* A phone gets the whole width. */
@@ -254,25 +173,10 @@
     margin: 12px auto;
   }
 
-  /* The two booking choices stack, and both buttons go full width. A
-     half-width button on a phone is a button you miss. */
-  .modeRow {
-    grid-template-columns: 1fr;
-  }
-
+  /* The buttons at the bottom of a form go full width. A half-width button
+     on a phone is a button you miss. */
   .actionRow > button {
     flex: 1 1 100%;
-  }
-
-  /* The class card stacks: the day and the time on top, the button under
-     it, full width. */
-  .classCard {
-    grid-template-columns: 1fr;
-    justify-items: stretch;
-  }
-
-  .classCard > button {
-    width: 100%;
   }
 
   /* Less padding in the window, so the form inside it has room to breathe
@@ -288,100 +192,18 @@
   }
 }
 
-.calendarCard {
-  background: white;
-  padding: 14px;
-  border-radius: 24px;
-  box-shadow:
-    6px 6px 16px rgba(18, 34, 30, 0.16),
-    -4px -4px 12px rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(38, 66, 59, 0.1);
-  min-width: 0;
-}
 
-.calHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
 
-.monthLabel {
-  font-weight: 700;
-  font-size: 1rem;
-  color: var(--text);
-}
 
-.navBtn {
-  border: 1px solid rgba(38, 66, 59, 0.12);
-  background: var(--surface-raised);
-  font-size: 20px;
-  cursor: pointer;
-  font-weight: 700;
-  width: 38px;
-  height: 38px;
-  border-radius: 14px;
-  transition: background 160ms ease, transform 160ms ease;
-}
 
-.navBtn:hover {
-  background: var(--bg-alt);
-  transform: translateY(-1px);
-}
 
-.weekHeader {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 6px;
-  margin: 6px 0;
-}
 
-.weekday {
-  text-align: center;
-  font-size: 12px;
-  color: var(--muted);
-  font-weight: 700;
-}
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 6px;
-}
 
-.cell {
-  width: 100%;
-  min-width: 0;
-  aspect-ratio: 1 / 1;
-  padding: 0;
-  border-radius: 18px;
-  font-weight: 700;
-  background: var(--surface-raised);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  user-select: none;
-  border: 1px solid rgba(38, 66, 59, 0.08);
-  color: var(--text);
-}
 
-.empty {
-  background: transparent;
-  border: none;
-}
 
-.available { background: var(--cal-available-cell); }
-.hasClasses { background: var(--cal-scheduled-cell); }
-.unavailable { background: var(--cal-unavailable-cell); }
-.pastCell { background: var(--cal-past-cell); color: var(--muted-light); }
-.unscheduled { background: var(--cal-unscheduled-cell); }
 
-.clickableCell { cursor: pointer; }
 .clickableCell:hover { outline: 2px solid rgba(38, 66, 59, 0.2); }
-.cell:disabled { cursor: default; }
-.pastCell:disabled { opacity: 1; }
-.selected { outline: 3px solid var(--primary); }
-.today { outline: 3px solid var(--brand-green); }
 
 .bookPanel {
   display: flex;
@@ -443,11 +265,6 @@
   min-width: 0;
 }
 
-.legendTitle {
-  font-weight: 800;
-  margin-bottom: 4px;
-  color: var(--text);
-}
 
 .guideTitle {
   font-size: 0.92rem;
@@ -465,17 +282,7 @@
   color: var(--muted-light);
 }
 
-.selectionInfo {
-  display: flex;
-  gap: 12px;
-  padding: 10px;
-  border: 1px solid rgba(38, 66, 59, 0.1);
-  border-radius: 18px;
-  background: var(--surface-raised);
-}
 
-.infoLabel { font-size: 12px; color: var(--muted); }
-.infoValue { font-weight: 700; color: var(--text); }
 
 .slotList {
   display: grid;
@@ -502,11 +309,6 @@
 }
 
 .slotBtn:disabled { cursor: not-allowed; opacity: .6; }
-.slotBtnActive {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
-}
 
 .bookBtn {
   min-height: 48px;
@@ -518,25 +320,13 @@
 
 .bookBtn:disabled { opacity: .6; cursor: not-allowed; }
 
-.joinBtn {
-  background: var(--accent-success);
-  border-color: var(--accent-success);
-}
 
 .joinBtn:disabled {
   background: #8f8f8f;
   box-shadow: none;
 }
 
-.rescheduleBtn {
-  background: var(--accent-warn);
-  border-color: var(--accent-warn);
-}
 
-.doneBtn {
-  background: var(--accent-info);
-  border-color: var(--accent-info);
-}
 
 .doneBtn:disabled {
   background: #6c757d;
@@ -1043,99 +833,18 @@
   color: var(--text-warn);
 }
 
-.legendBlock {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed rgba(38, 66, 59, 0.16);
-}
 
-.legendRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 6px 0;
-  font-size: 0.86rem;
-  font-weight: 600;
-  color: var(--text);
-}
 
-.legendDot {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  display: inline-block;
-  flex-shrink: 0;
-  border: 1px solid rgba(38, 66, 59, 0.18);
-  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.45);
-}
 
-.legendAvail { background: var(--cal-available-dot); }
-.legendClasses { background: var(--cal-scheduled-dot); }
-.legendUnavail { background: var(--cal-unavailable-dot); }
-.legendPast { background: var(--cal-past-dot); }
-.legendUnscheduled { background: var(--cal-unscheduled-dot); }
 
-.footer {
-  margin-top: auto;
-  display: flex;
-  justify-content: center;
-  gap: 24px;
-  padding: 18px;
-  border-top: 1px solid rgba(38, 66, 59, 0.1);
-  color: var(--muted);
-  font-size: 14px;
-}
 
-.counterCard {
-  background: #fff;
-  border: 1px solid rgba(38, 66, 59, 0.1);
-  border-radius: 20px;
-  padding: 14px 16px;
-  margin-bottom: 16px;
-  box-shadow: 0 10px 26px rgba(18, 34, 30, 0.05);
-}
 
-.counterRow {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
 
-.counterLabel {
-  font-size: 14px;
-  color: var(--muted);
-}
 
-.counterValue {
-  font-weight: 800;
-  font-size: 20px;
-}
 
-.counterSub {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--muted);
-}
 
-.progress {
-  margin-top: 10px;
-  height: 8px;
-  background: #e8eeeb;
-  border-radius: 999px;
-  overflow: hidden;
-}
 
-.progressFill {
-  height: 100%;
-  background: var(--primary);
-  width: 0%;
-  transition: width 200ms ease;
-  border-radius: 999px;
-}
 
-.today {
-  outline: 3px solid var(--accent);
-}
 
 @media (max-width: 900px) {
   .wrapper {

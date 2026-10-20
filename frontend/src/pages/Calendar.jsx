@@ -5,6 +5,7 @@ import {
   BOOKING,
   CLASS_INFO,
   CONFIRM,
+  HOME,
   LEGEND,
   LOADING,
   MORE_TIME_CARD,
@@ -12,6 +13,7 @@ import {
   NEW_PLAN_WINDOW,
   PLAN,
   PLAN_STATUS,
+  VIEW,
 } from "../utils/studentCopy.js";
 import {
   REQUEST_KIND_EXTENSION,
@@ -22,10 +24,25 @@ import {
 } from "../utils/contractRequestFlow.js";
 import {
   addDaysToDateKey,
+  bookingWindowEndKey,
   buildDayChoices,
+  buildMonthDayChoices,
+  canStepMonth,
   dateKeyToLocalDate,
   describeClassDay,
+  expiryToDateKey,
+  monthBoundsForRange,
+  monthKey,
 } from "../utils/studentSchedule.js";
+import {
+  humanTime,
+  isPartOfDay,
+  isTimeInPart,
+  minutesToTime,
+  normalizeTime,
+  timeToMinutes,
+} from "../utils/classTime.js";
+import StudentBookingWizard from "../components/StudentBookingWizard.jsx";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
@@ -49,6 +66,8 @@ import MatchPreviewCard from "../components/MatchPreviewCard.jsx";
 import ModalPortal from "../utils/ModalPortal.jsx";
 import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/studentSchedule.module.css";
+import kid from "../assets/studentKid.module.css";
+import cal from "../assets/calendar.module.css";
 import { API_BASE_URL } from "../utils/api.js";
 import { openClassRecording } from "../utils/classRecording.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
@@ -83,117 +102,27 @@ const fmtDate = (d) => {
 };
 
 // convert 24‑hour time string (HH:MM:SS or ISO datetime) to human format e.g. "2:30 PM"
-const humanTime = (t24) => {
-  if (!t24) return "";
-  const trimmed = t24.trim();
-  const isoMatch = trimmed.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/);
-  if (isoMatch) {
-    const date = new Date(trimmed);
-    if (!isNaN(date.getTime())) {
-      let hour = date.getHours();
-      const mins = String(date.getMinutes()).padStart(2, '0');
-      const ampm = hour >= 12 ? "PM" : "AM";
-      if (hour > 12) hour -= 12;
-      if (hour === 0) hour = 12;
-      return `${hour}:${mins} ${ampm}`;
-    }
-  }
-  const [h, m] = trimmed.split(":");
-  let hour = parseInt(h, 10);
-  const mins = m || "00";
-  const ampm = hour >= 12 ? "PM" : "AM";
-  if (hour > 12) hour -= 12;
-  if (hour === 0) hour = 12;
-  return `${hour}:${mins} ${ampm}`;
-};
-
-const normalizeTime = (timeStr) => {
-  if (!timeStr) return "";
-  const t = timeStr.trim();
-  const isoMatch = t.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/);
-  if (isoMatch) {
-    const date = new Date(t);
-    if (!isNaN(date.getTime())) {
-      const hour = String(date.getHours()).padStart(2, '0');
-      const mins = String(date.getMinutes()).padStart(2, '0');
-      return `${hour}:${mins}`;
-    }
-  }
-
-  const ampmMatch = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
-  if (ampmMatch) {
-    let hour = parseInt(ampmMatch[1], 10);
-    const mins = ampmMatch[2];
-    const period = ampmMatch[3].toUpperCase();
-    if (period === "PM" && hour < 12) hour += 12;
-    if (period === "AM" && hour === 12) hour = 0;
-    return `${String(hour).padStart(2, "0")}:${mins}`;
-  }
-  const plainMatch = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
-  if (plainMatch) {
-    const hour = String(parseInt(plainMatch[1], 10)).padStart(2, "0");
-    const mins = plainMatch[2];
-    return `${hour}:${mins}`;
-  }
-  return "";
-};
-
 const parse24HourTime = (timeStr) => normalizeTime(timeStr);
 const CLASS_DURATION_OPTIONS = [25, 50];
 const DEFAULT_CLASS_DURATION = 50;
 const SLOT_STEP_MINUTES = 25;
 const CLASS_BREAK_BUFFER_MINUTES = 10;
 const SCHEDULE_WINDOW_MONTHS = 3;
-const WEEKDAY_OPTIONS = [
-  [0, "Sun"],
-  [1, "Mon"],
-  [2, "Tue"],
-  [3, "Wed"],
-  [4, "Thu"],
-  [5, "Fri"],
-  [6, "Sat"],
-];
+
+/**
+ * How many times the weekly search will show.
+ *
+ * !! A teacher who works every morning, three days a week, for three months,
+ * !! has over two hundred free morning times. A list that long is not a list
+ * !! - it is the wall of choices the booking wizard was built to stop. So the
+ * !! soonest ones are shown, and the student is told how many there are in
+ * !! all.
+ */
+const MAX_WEEKLY_SUGGESTIONS = 30;
 
 const normalizeClassDuration = (value) => {
   const parsed = parseInt(value, 10);
   return CLASS_DURATION_OPTIONS.includes(parsed) ? parsed : DEFAULT_CLASS_DURATION;
-};
-
-const timeToMinutes = (timeStr) => {
-  const normalized = normalizeTime(timeStr);
-  if (!normalized) return null;
-  const [hours, minutes] = normalized.split(":").map(Number);
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
-  return hours * 60 + minutes;
-};
-
-const minutesToTime = (minutes) => {
-  const safeMinutes = ((Number(minutes) % (24 * 60)) + (24 * 60)) % (24 * 60);
-  const hours = Math.floor(safeMinutes / 60);
-  const mins = safeMinutes % 60;
-  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-};
-
-const describeTimeDistance = (requestedTime, suggestedTime) => {
-  const requestedMinutes = timeToMinutes(requestedTime);
-  const suggestedMinutes = timeToMinutes(suggestedTime);
-  if (requestedMinutes == null || suggestedMinutes == null) return "";
-  const diff = suggestedMinutes - requestedMinutes;
-  if (diff === 0) return "Exact match";
-  const absDiff = Math.abs(diff);
-  return `${absDiff} min ${diff > 0 ? "later" : "earlier"}`;
-};
-
-const formatLongDate = (dateKey) => {
-  if (!dateKey) return "";
-  const date = new Date(`${dateKey}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return dateKey;
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    weekday: "long",
-  });
 };
 
 const formatScheduleDate = (dateKey) => {
@@ -341,12 +270,14 @@ const verificationStatusLabels = {
   incomplete: "Incomplete",
 };
 
+/* The teacher's panel: the same card as the rest of the calendar, so the
+   paperwork does not look like it was imported from somewhere else. */
 const verificationPanelStyle = {
   marginTop: 12,
-  padding: 12,
-  border: "1px solid #dbe4ea",
-  borderRadius: 10,
-  background: "#f8fbfd",
+  padding: 16,
+  border: "1px solid var(--border)",
+  borderRadius: 18,
+  background: "var(--surface-soft)",
 };
 
 // Helper: check if a class is joinable (30 mins before start until class end)
@@ -611,6 +542,392 @@ function RequestDialog({ title, onClose, children, maxWidth = 620 }) {
 }
 
 /**
+ * The window the teacher's availability manager opens in.
+ *
+ * !! It used to open in the panel beside the grid, and the grid and the form
+ * !! fought over the same space - the form was tall, the grid was squeezed to
+ * !! the side, and a teacher setting their hours had to scroll a narrow
+ * !! column to reach the Save button. Now the grid stays where it was and the
+ * !! form comes to the teacher.
+ *
+ * !! The days the teacher picks a date from come with the form, because the
+ * !! grid is behind this window and there would otherwise be no way to
+ * !! choose a date at all.
+ *
+ * !! Through ModalPortal, like the other windows in this page: anything
+ * !! position: fixed inside .content-area is positioned against the content
+ * !! column, not the viewport, so an in-place overlay covers the page but not
+ * !! the sidebar.
+ */
+function AvailabilityDialog({ open, onClose, screen = "form", children }) {
+  if (!open) return null;
+
+  const headings = {
+    form: {
+      title: "Set Your Schedule",
+      sub: "Set your available times from today up to 3 months ahead. You cannot set availability on dates with existing bookings or past dates.",
+      label: "Set Your Schedule",
+    },
+    list: {
+      title: "Your availabilities",
+      sub: "Every day you have set, from today up to 3 months ahead. Edit one to change it.",
+      label: "Your availabilities",
+    },
+    filter: {
+      title: "Filter your days",
+      sub: "Choose which days you want to see.",
+      label: "Filter your days",
+    },
+  };
+  const heading = headings[screen] || headings.form;
+
+  return (
+    <ModalPortal>
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 1200,
+          background: "rgba(15, 25, 20, 0.45)",
+          display: "grid",
+          placeItems: "center",
+          padding: 20,
+          overflowY: "auto",
+        }}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={heading.label}
+          onClick={(event) => event.stopPropagation()}
+          className={styles.dialog}
+          style={{ maxWidth: 780 }}
+        >
+          <div className={cal.dialogHead}>
+            <div>
+              <h3 className={cal.dialogTitle}>{heading.title}</h3>
+              <p className={cal.dialogSub}>{heading.sub}</p>
+            </div>
+            <button type="button" className={cal.dialogClose} onClick={onClose} aria-label="Close">
+              ×
+            </button>
+          </div>
+          {children}
+        </div>
+      </div>
+    </ModalPortal>
+  );
+}
+
+/**
+/**
+ * The days the teacher has already set, and the screen that filters them.
+ *
+ * !! A screen of the availability window, not another window. The teacher can
+ * !! go back to the form without losing what they were doing, and the list
+ * !! gets the whole width of the window to be read in.
+ *
+ * !! Every day is a card with the date, whether it is available or not, the
+ * !! hours, and what can be done with it: edit it, or delete it. A day with a
+ * !! booked class on it cannot be deleted - the class is the teacher's, and
+ * !! taking the availability away would take the class away with it.
+ *
+ * !! The filters live on their own screen, behind one button. A teacher who
+ * !! works three days a week for three months has ninety days set, and ninety
+ * !! cards is a wall again - the thing this screen was built to stop. But
+ * !! three rows of filters sitting on the list is clutter ON THE LIST, and
+ * !! the list is what the teacher came for. So the list has one button, and
+ * !! the filters are one click away.
+ */
+function AvailabilityAvailabilities({
+  screen,
+  records,
+  onEdit,
+  onDelete,
+  onBack,
+  onShowFilter,
+  onShowList,
+}) {
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [monthFilter, setMonthFilter] = useState("all");
+  const [dayFilter, setDayFilter] = useState("all");
+
+  // The months that have something in them, in order.
+  const months = useMemo(() => {
+    const seen = new Map();
+    records.forEach((record) => {
+      const date = dateKeyToLocalDate(record.available_date);
+      if (!date) return;
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      if (seen.has(key)) return;
+      seen.set(key, {
+        key,
+        label: date.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+      });
+    });
+    return [...seen.values()];
+  }, [records]);
+
+  // The days of the week, and how many of them there are.
+  //
+  // !! All seven, in the same order as the Weekdays picker in the form
+  // !! above, so the two read the same way. A day with nothing on it still
+  // !! shows, with a zero - "Thu 0" tells a teacher they have no
+  // !! Thursdays, which is worth knowing and is not obvious from a list they
+  // !! have to read through.
+  const weekdays = useMemo(() => {
+    const counts = new Map();
+    records.forEach((record) => {
+      const date = dateKeyToLocalDate(record.available_date);
+      if (!date) return;
+      counts.set(date.getDay(), (counts.get(date.getDay()) || 0) + 1);
+    });
+    return [0, 1, 2, 3, 4, 5, 6].map((day) => ({
+      day,
+      label: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][day],
+      count: counts.get(day) || 0,
+    }));
+  }, [records]);
+
+  const availableCount = records.filter((record) => record.status === "available").length;
+  const unavailableCount = records.length - availableCount;
+
+  const shown = records.filter((record) => {
+    if (statusFilter === "available" && record.status !== "available") return false;
+    if (statusFilter === "unavailable" && record.status === "available") return false;
+
+    const date = dateKeyToLocalDate(record.available_date);
+    if (!date) return false;
+
+    if (monthFilter !== "all") {
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      if (key !== monthFilter) return false;
+    }
+
+    if (dayFilter !== "all" && date.getDay() !== dayFilter) return false;
+
+    return true;
+  });
+
+  // How many of the three filters are switched on. The button on the list says
+  // so, so a teacher can tell there IS a filter before they wonder why the
+  // list is short.
+  const activeFilters =
+    (statusFilter !== "all" ? 1 : 0) +
+    (monthFilter !== "all" ? 1 : 0) +
+    (dayFilter !== "all" ? 1 : 0);
+
+  const filterBtn = (active) =>
+    `${cal.filterBtn} ${active ? cal.filterBtnActive : ""}`;
+
+  if (screen === "filter") {
+    return (
+      <div className={cal.dialogBody}>
+        <div className={cal.filterBar}>
+          <div className={cal.filterGroup}>
+            <span className={cal.filterLabel}>Status</span>
+            <div className={cal.filterPills}>
+              <button
+                type="button"
+                className={filterBtn(statusFilter === "all")}
+                aria-pressed={statusFilter === "all"}
+                onClick={() => setStatusFilter("all")}
+              >
+                All{" "}
+                <span className={cal.filterNum}>{records.length}</span>
+              </button>
+              <button
+                type="button"
+                className={filterBtn(statusFilter === "available")}
+                aria-pressed={statusFilter === "available"}
+                onClick={() => setStatusFilter("available")}
+              >
+                Available{" "}
+                <span className={cal.filterNum}>{availableCount}</span>
+              </button>
+              <button
+                type="button"
+                className={filterBtn(statusFilter === "unavailable")}
+                aria-pressed={statusFilter === "unavailable"}
+                onClick={() => setStatusFilter("unavailable")}
+              >
+                Unavailable{" "}
+                <span className={cal.filterNum}>{unavailableCount}</span>
+              </button>
+            </div>
+          </div>
+
+          <div className={cal.filterGroup}>
+            <span className={cal.filterLabel}>Month</span>
+            <div className={cal.filterPills}>
+              <button
+                type="button"
+                className={filterBtn(monthFilter === "all")}
+                aria-pressed={monthFilter === "all"}
+                onClick={() => setMonthFilter("all")}
+              >
+                All months
+              </button>
+              {months.map((month) => (
+                <button
+                  key={month.key}
+                  type="button"
+                  className={filterBtn(monthFilter === month.key)}
+                  aria-pressed={monthFilter === month.key}
+                  onClick={() => setMonthFilter(month.key)}
+                >
+                  {month.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className={cal.filterGroup}>
+            <span className={cal.filterLabel}>Day</span>
+            <div className={cal.filterPills}>
+              <button
+                type="button"
+                className={filterBtn(dayFilter === "all")}
+                aria-pressed={dayFilter === "all"}
+                onClick={() => setDayFilter("all")}
+              >
+                All days
+              </button>
+              {weekdays.map((weekday) => (
+                <button
+                  key={weekday.day}
+                  type="button"
+                  className={filterBtn(dayFilter === weekday.day)}
+                  aria-pressed={dayFilter === weekday.day}
+                  onClick={() => setDayFilter(weekday.day)}
+                >
+                  {weekday.label}
+                  {" "}
+                  <span className={cal.filterNum}>{weekday.count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <button type="button" className={cal.applyBtn} onClick={onShowList}>
+          Show {shown.length} {shown.length === 1 ? "day" : "days"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={cal.dialogBody}>
+      <button type="button" className={cal.backBtn} onClick={onBack}>
+        ← Back to set your schedule
+      </button>
+
+      {records.length > 0 && (
+        <>
+          <div className={cal.listBar}>
+            <button
+              type="button"
+              className={`${cal.filterBtn} ${activeFilters ? cal.filterBtnActive : ""}`}
+              onClick={onShowFilter}
+            >
+              Filter{activeFilters ? ` (${activeFilters})` : ""}
+            </button>
+            <span className={cal.filterSummary}>
+              Showing {shown.length} of {records.length}{" "}
+              {records.length === 1 ? "day" : "days"}.
+            </span>
+          </div>
+
+          {shown.length > 0 ? (
+            <div className={cal.availScroll}>
+              {shown.map((record) => {
+                const available = record.status === "available";
+                const hasTimes = record.start_time || record.end_time;
+                return (
+                  <div
+                    key={record.id || record.availability_id}
+                    className={`${cal.availCard} ${available ? "" : cal.availCardOff}`}
+                  >
+                    <div className={cal.availTop}>
+                      <div style={{ minWidth: 0 }}>
+                        <div className={cal.availDate}>
+                          {formatScheduleDate(record.available_date)}
+                        </div>
+                        <span
+                          className={`${cal.availBadge} ${available ? cal.availBadgeOn : cal.availBadgeOff}`}
+                          style={{ marginTop: 6 }}
+                        >
+                          {available ? "Available" : "Unavailable"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {available && hasTimes ? (
+                      <div className={cal.availHours}>
+                        {humanTime(record.start_time)} – {humanTime(record.end_time)}
+                      </div>
+                    ) : null}
+
+                    {available && !hasTimes ? (
+                      <div className={cal.availHours}>Available all day</div>
+                    ) : null}
+
+                    {available && record.break_start && record.break_end ? (
+                      <div className={cal.availBreak}>
+                        Break: {humanTime(record.break_start)} – {humanTime(record.break_end)}
+                      </div>
+                    ) : null}
+
+                    {record.has_booked_class ? (
+                      <div className={cal.availNote}>
+                        A student has a class on this day, so it cannot be changed.
+                      </div>
+                    ) : null}
+
+                    <div className={cal.availActions}>
+                      <button
+                        type="button"
+                        className={cal.availBtnEdit}
+                        onClick={() => onEdit(record)}
+                        disabled={!!record.has_booked_class}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className={cal.availBtnDelete}
+                        onClick={() => onDelete(record)}
+                        disabled={!!record.has_booked_class}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className={kid.empty}>
+              <span className={kid.emptyIcon} aria-hidden="true">🔍</span>
+              <span>No days match this filter.</span>
+            </div>
+          )}
+        </>
+      )}
+
+      {records.length === 0 && (
+        <div className={kid.empty}>
+          <span className={kid.emptyIcon} aria-hidden="true">📅</span>
+          <span>You have not set any days yet.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * The panel that shows a request that is with the admin.
  *
  * !! One panel for both cards, because the two kinds of request have the same
@@ -663,53 +980,24 @@ function PendingRequestPanel({
  * !! answers "how long have I got" at a glance, and it is the thing a student
  * !! checks before they decide whether to book another one.
  *
- * !! It is also bigger than it was. The number is 44px rather than 22px,
+ * !! It is bigger than it was. The number is the biggest thing on the page,
  * !! because the number is the point of the card.
  */
 function ClassesLeftCard({ left, total, percent, readyToBook, badge, note }) {
   return (
-    <div
-      style={{
-        display: "grid",
-        gap: 12,
-        padding: "18px 20px",
-        border: "1px solid #d7e5d9",
-        borderRadius: 18,
-        background: "#fff",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ fontSize: 13, fontWeight: 800, color: "#5e7268", letterSpacing: "0.03em" }}>
-          Classes left
-        </div>
-        <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5e7268" }}>
-          Ready to book: {readyToBook}
-        </div>
+    <div className={kid.counter}>
+      <div className={kid.counterTop}>
+        <span className={kid.counterLabel}>{HOME.classesLeft}</span>
+        <span className={kid.counterReady}>{HOME.readyToBook(readyToBook)}</span>
       </div>
 
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-        <span style={{ fontSize: 44, fontWeight: 800, color: "#2f5a43", lineHeight: 1 }}>{left}</span>
-        <span style={{ fontSize: 15, fontWeight: 700, color: "#5e7268" }}>of {total}</span>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <span className={kid.counterNumber}>{left}</span>
+        <span className={kid.counterOf}>{HOME.of(total)}</span>
       </div>
 
-      <div style={{ height: 10, background: "#e8eeeb", borderRadius: 999, overflow: "hidden" }}>
-        <div
-          style={{
-            width: `${percent}%`,
-            height: "100%",
-            background: "#5f7f70",
-            borderRadius: 999,
-            transition: "width 200ms ease",
-          }}
-        />
+      <div className={kid.counterBar}>
+        <div className={kid.counterBarFill} style={{ width: `${percent}%` }} />
       </div>
 
       {/* The deadline, on its own line.
@@ -717,7 +1005,7 @@ function ClassesLeftCard({ left, total, percent, readyToBook, badge, note }) {
           !! number - "12 days left, your plan ends on 10 Oct 2026" is one
           !! long line, and in a narrow column it ran off the edge. On its own
           !! row it has the whole card to sit in. */}
-      <div>{badge}</div>
+      {badge}
 
       {/* What state the plan is in.
           !! The old page said this in a line under the counter, and the
@@ -725,10 +1013,9 @@ function ClassesLeftCard({ left, total, percent, readyToBook, badge, note }) {
           ;; MEANS - all used up, all already booked, the plan has ended. A
           !! student with zero classes left and one with eight classes left
           !! both show "0 of 12" for the ready-to-book part, and only this
-          ;; sentence tells them apart. */}
-      {note && (
-        <div style={{ fontSize: 12.5, color: "#5e7268", lineHeight: 1.45 }}>{note}</div>
-      )}
+          !! sentence tells them apart - one needs a new plan, the other
+          !! needs to move a class. */}
+      {note && <p className={kid.counterNote}>{note}</p>}
     </div>
   );
 }
@@ -744,14 +1031,15 @@ function ClassesLeftCard({ left, total, percent, readyToBook, badge, note }) {
 function DayPicker({ days, selected, onPick, emptyMessage, statusFor }) {
   if (!days.length) {
     return (
-      <div style={{ padding: 12, background: "#f4f6f8", borderRadius: 8, color: "#555" }}>
-        {emptyMessage}
+      <div className={kid.empty}>
+        <span className={kid.emptyIcon} aria-hidden="true">📅</span>
+        <span>{emptyMessage}</span>
       </div>
     );
   }
 
   return (
-    <div className={styles.dayStrip}>
+    <div className={kid.dayStrip}>
       {days.map((day) => {
         const active = day.key === selected;
         // A day the teacher does not work is dimmed, so the strip carries the
@@ -773,13 +1061,13 @@ function DayPicker({ days, selected, onPick, emptyMessage, statusFor }) {
                   ? "Your teacher is busy on this day"
                   : "Your teacher has no classes set for this day"
             }
-            className={`${styles.dayChip} ${active ? styles.dayChipActive : ""} ${
-              free ? styles.dayChipFree : ""
-            } ${unknown ? styles.dayChipUnknown : ""}`}
+            className={`${kid.dayChip} ${active ? kid.dayChipActive : ""} ${
+              free ? kid.dayChipFree : ""
+            } ${unknown ? kid.dayChipUnknown : ""}`}
           >
-            <div style={{ fontSize: "0.95rem" }}>{day.weekday}</div>
-            <div style={{ fontSize: "1.1rem", marginTop: 2 }}>{day.dayNumber}</div>
-            <div style={{ fontSize: "0.7rem", opacity: 0.85, marginTop: 2 }}>{day.month}</div>
+            <span style={{ fontSize: "0.95rem" }}>{day.weekday}</span>
+            <span style={{ fontSize: "1.3rem", fontWeight: 800 }}>{day.dayNumber}</span>
+            <span style={{ fontSize: "0.72rem", opacity: 0.85 }}>{day.month}</span>
           </button>
         );
       })}
@@ -796,41 +1084,16 @@ function DayPicker({ days, selected, onPick, emptyMessage, statusFor }) {
  * !! for.
  */
 function ClassCard({ classInfo, onOpen, actionLabel, actionDisabled }) {
-  const dayLabel = classInfo.dayLabel;
-  const timeLabel = classInfo.timeLabel;
-
   return (
-    <div className={styles.classCard}>
-      <button type="button" onClick={onOpen} className={styles.classCardMain}>
-        <div style={{ fontSize: "0.8rem", fontWeight: 800, color: "#5e7268", letterSpacing: "0.04em" }}>
-          {dayLabel}
-        </div>
-        <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#10231d", lineHeight: 1.15, marginTop: 2 }}>
-          {timeLabel}
-        </div>
-        <div style={{ fontSize: "0.9rem", color: "#4b5563", marginTop: 4 }}>{classInfo.subtitle}</div>
+    <div className={kid.classItem}>
+      <button type="button" onClick={onOpen} className={kid.classItemMain}>
+        <span className={kid.classDay}>{classInfo.dayLabel}</span>
+        <span className={kid.classTime}>{classInfo.timeLabel}</span>
+        <span className={kid.classCourse}>{classInfo.subtitle}</span>
       </button>
 
       {actionLabel && (
-        <button
-          type="button"
-          onClick={onOpen}
-          disabled={actionDisabled}
-          className={styles.bookBtn}
-          style={{
-            minHeight: 46,
-            padding: "12px 18px",
-            border: "none",
-            borderRadius: 12,
-            background: "#2e7d32",
-            color: "#fff",
-            fontWeight: 700,
-            fontSize: "0.95rem",
-            cursor: actionDisabled ? "not-allowed" : "pointer",
-            opacity: actionDisabled ? 0.5 : 1,
-            whiteSpace: "nowrap",
-          }}
-        >
+        <button type="button" onClick={onOpen} disabled={actionDisabled} className={kid.classAction}>
           {actionLabel}
         </button>
       )}
@@ -932,18 +1195,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [assignedTeacherName, setAssignedTeacherName] = useState("");
   const [studentRemarks, setStudentRemarks] = useState([]);
   const [teacherClassesCache, setTeacherClassesCache] = useState({});
-  const [studentBookingMode, setStudentBookingMode] = useState(false);
-  const [studentBookingDate, setStudentBookingDate] = useState(fmtDate(today));
+  const [studentBookingMode, setStudentBookingMode] = useState(false);  const [studentBookingDate, setStudentBookingDate] = useState(fmtDate(today));
   const [studentBookingTime, setStudentBookingTime] = useState("");
   const [studentBookingSelections, setStudentBookingSelections] = useState([]);
   const [studentBookingSuggestions, setStudentBookingSuggestions] = useState([]);
+  const [studentBookingSuggestionsTotal, setStudentBookingSuggestionsTotal] = useState(0);
   const [studentBookingApplyMode, setStudentBookingApplyMode] = useState("manual");
   const [studentBookingWeeklyWeekdays, setStudentBookingWeeklyWeekdays] = useState([1, 3, 5]);
   const [studentBookingWeeklyTime, setStudentBookingWeeklyTime] = useState("");
   const [studentBookingSubject, setStudentBookingSubject] = useState("");
   const [studentBookingError, setStudentBookingError] = useState("");
   const [isSubmittingStudentBooking, setIsSubmittingStudentBooking] = useState(false);
-  const [studentBookingConfirmOpen, setStudentBookingConfirmOpen] = useState(false);
   const [courses, setCourses] = useState([]);
   const [contractRequestOpen, setContractRequestOpen] = useState(false);
   const [contractCourseId, setContractCourseId] = useState("");
@@ -1014,6 +1276,49 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [contractPreferredSchedule, setContractPreferredSchedule] = useState(
     createEmptyPreferredSchedule()
   );
+
+  /**
+   * How the calendar is being looked at.
+   *
+   * !! Two ways, and the teacher and the admin choose between them with the
+   * !! pill at the top of the page.
+   * !!
+   * !! "month" is the grid - the calendar as a calendar, for finding a day
+   * !! and seeing what is on it. "list" is the same classes as a list, one
+   * !! after another, which is the shape the student's own page uses. A
+   * !! teacher reading a month of classes wants the list; a teacher finding
+   * !! the one class on a Tuesday wants the grid.
+   * !!
+   * !! The choice is remembered, because a teacher who works in the list
+   * !! should not have to say so every morning.
+   */
+  const [calendarView, setCalendarView] = useState(() => {
+    try {
+      return localStorage.getItem("JenAcademia.calendarView") === "list" ? "list" : "month";
+    } catch {
+      return "month";
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("JenAcademia.calendarView", calendarView);
+    } catch {
+      // A browser that will not let us remember the choice is not a reason to
+      // stop working.
+    }
+  }, [calendarView]);
+
+  /**
+   * The month the availability manager is showing days for.
+   *
+   * !! The manager is a window now, so the days it offers have to come with
+   * !! it - the grid it used to be clicked against is behind the window.
+   */
+  const [availabilityPickerMonth, setAvailabilityPickerMonth] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() };
+  });
 
   // Each field's chips merged with whatever was typed in its "Others" box.
   //
@@ -1095,6 +1400,50 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const viewerTodayKey = useMemo(() => formatDateInTimezone(new Date(currentTimeTick), viewerTimezone), [viewerTimezone, currentTimeTick]);
   const viewerToday = useMemo(() => dateKeyToLocalDate(viewerTodayKey) || new Date(), [viewerTodayKey]);
   const scheduleWindowEndKey = useMemo(() => fmtDate(addMonthsClamped(viewerToday, SCHEDULE_WINDOW_MONTHS)), [viewerToday]);
+
+  // The last day this student may book.
+  //
+  // !! The contract decides, and the booking window is the ceiling. A student
+  // !! whose plan runs out on the 19th cannot book a class on the 20th,
+  // !! however free the teacher is - and a plan that runs out LONGER than the
+  // !! window does not push the window out, because a teacher only sets
+  // !! availability three months ahead and there is nothing to book past that.
+  const studentBookingEndKey = useMemo(
+    () =>
+      bookingWindowEndKey({
+        contractExpiresAt: studentPackage?.expires_at ?? null,
+        fallbackEndKey: scheduleWindowEndKey,
+      }),
+    [studentPackage?.expires_at, scheduleWindowEndKey]
+  );
+
+  // The month the student's day picker is showing.
+  //
+  // !! It used to be a strip of fourteen days that stopped two weeks from
+  // !! today, so a student whose teacher had a free Saturday in six weeks
+  // !! could not see it and did not know it was there. The picker moves month
+  // !! by month now, and it stops at the end of the student's contract.
+  const [studentBookingMonth, setStudentBookingMonth] = useState(() => ({
+    year: viewerToday.getFullYear(),
+    month: viewerToday.getMonth(),
+  }));
+
+  // What to say when the student picks a day they cannot book.
+  //
+  // !! "Three months ahead" was a rule of the app, not a fact about the
+  // !! student, and it was wrong for them. The day their plan ends is a fact
+  // !! about them, and it is the day they need to hear.
+  const studentBookingWindowMessage = useMemo(() => {
+    const expiry = expiryToDateKey(studentPackage?.expires_at ?? null);
+    const end = dateKeyToLocalDate(expiry);
+    if (end) {
+      return BOOKING.pickBeforePlanEnds(
+        end.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+      );
+    }
+    return `Please pick a date from today up to ${SCHEDULE_WINDOW_MONTHS} months ahead.`;
+  }, [studentPackage?.expires_at]);
+
   const initialBrowserToday = useRef(today);
   const initialBrowserTodayKey = useRef(fmtDate(today));
 
@@ -1299,7 +1648,25 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [bulkAvailabilityWeekdays, setBulkAvailabilityWeekdays] = useState([1, 2, 3, 4, 5]);
   const [teacherSelectedDate, setTeacherSelectedDate] = useState(null);
   const [teacherAvailabilityList, setTeacherAvailabilityList] = useState([]); // list of availability records for the visible month
+  // Every availability the teacher has set, across the whole booking window.
+  const [teacherAvailabilityAll, setTeacherAvailabilityAll] = useState([]);
+  // Which screen the availability window is showing: the form, or the list of
+  // the days they have already set.
+  const [availabilityScreen, setAvailabilityScreen] = useState("form");
+  // The availability being edited, if any.
+  const [editingAvailability, setEditingAvailability] = useState(null);
   const [teacherAvailabilityRecordForDate, setTeacherAvailabilityRecordForDate] = useState(null); // individual selected date record
+  // Have the records for the day the student picked arrived yet?
+  const [teacherAvailabilityLoaded, setTeacherAvailabilityLoaded] = useState(true);
+  // Which day have the free times been worked out for?
+  //
+  // !! The free times are worked out from two things that arrive separately:
+  // !! the teacher's classes for that day, and the teacher's plan for that
+  // !! month. Until both are here there are no times to show, and the wizard
+  // !! has to say "looking" rather than "no free times" - otherwise a student
+  // !! is told the teacher is busy when the answer simply has not come back
+  // !! yet.
+  const [bookingTimesReadyDate, setBookingTimesReadyDate] = useState("");
   const [confirmAction, setConfirmAction] = useState(null);
   const closeConfirmAction = () => setConfirmAction(null);
   const triggerCalendarRefresh = useCallback(() => {
@@ -2074,6 +2441,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       const targetYear = bookingDate.getFullYear();
       const targetMonth = bookingDate.getMonth() + 1;
 
+      // !! The free times for the chosen day are worked out from these
+      // !! records. Until they arrive the wizard has nothing to show, and a
+      // !! wizard that shows "no free times" while it is still asking is
+      // !! telling the student a lie.
+      setTeacherAvailabilityLoaded(false);
+
       axios
         .get(`${API}/api/calendar/teacher-availability-records`, {
           params: { teacher_id: assignedTeacherId, year: targetYear, month: targetMonth }
@@ -2088,7 +2461,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         .catch(err => {
           console.error("Error loading teacher availability records:", err);
           setTeacherAvailabilityList([]);
-        });
+        })
+        .finally(() => setTeacherAvailabilityLoaded(true));
     }
   }, [studentBookingMode, assignedTeacherId, localRole, studentBookingDate, calendarRefreshToken]);
 
@@ -2156,11 +2530,16 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     }
     if (studentBookingMode && studentBookingDate && assignedTeacherId && teacherClassesCache[studentBookingDate] !== undefined) {
       loadAvailableTimeSlots(studentBookingDate, assignedTeacherId);
+      // The times for this day have now been worked out - but only once the
+      // teacher's plan for the month is here. Worked out without it, the
+      // answer is "no free times", and the wizard would say that to a
+      // student whose teacher is wide open.
+      if (teacherAvailabilityLoaded) setBookingTimesReadyDate(studentBookingDate);
     }
     if (requestMode && requestDate && selectedClass?.teacher_id && classesCache[requestDate] !== undefined) {
       loadAvailableTimeSlots(requestDate, selectedClass.teacher_id, selectedClassDuration, selectedClass.id);
     }
-  }, [selectedDate, teacherId, classesCache, availability, studentBookingMode, studentBookingDate, assignedTeacherId, teacherClassesCache, teacherAvailabilityList, studentPackage, studentProfile, requestMode, requestDate, selectedClass?.teacher_id, selectedClass?.id, selectedClassDuration, calendarRefreshToken]);
+  }, [selectedDate, teacherId, classesCache, availability, studentBookingMode, studentBookingDate, assignedTeacherId, teacherClassesCache, teacherAvailabilityList, teacherAvailabilityLoaded, studentPackage, studentProfile, requestMode, requestDate, selectedClass?.teacher_id, selectedClass?.id, selectedClassDuration, calendarRefreshToken]);
 
   // preload every day in the month so cells with classes are colored on load
   useEffect(() => {
@@ -2297,11 +2676,13 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     if (isOutsideScheduleWindow(chosen)) {
       setStudentBookingDate(chosen);
       setStudentBookingTime("");
-      setStudentBookingError(`Please pick a date from today up to ${SCHEDULE_WINDOW_MONTHS} months ahead.`);
+      setStudentBookingError(studentBookingWindowMessage);
       return;
     }
     setStudentBookingDate(chosen);
     setStudentBookingTime("");
+    // The free times have to be worked out again for this day.
+    setBookingTimesReadyDate("");
     setSelectedDate(null);
     // preload teacher classes for the chosen date if we already know the teacher
     if (assignedTeacherId) loadTeacherClassesForDate(chosen, assignedTeacherId);
@@ -2627,7 +3008,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
   const isOutsideScheduleWindow = (dateStr) => {
     const normalized = normalizeDate(dateStr);
-    return Boolean(normalized) && (normalized < viewerTodayKey || normalized > scheduleWindowEndKey);
+    // A student books inside their own contract. A teacher sets availability
+    // inside the booking window, which is a different limit and a different
+    // person - a student whose plan ends this month does not shorten the
+    // months a teacher may plan ahead.
+    const end = localRole === "student" ? studentBookingEndKey : scheduleWindowEndKey;
+    return Boolean(normalized) && (normalized < viewerTodayKey || normalized > end);
   };
 
   const bulkAvailabilityDates = useMemo(() => {
@@ -2677,6 +3063,54 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         console.error("Error loading teacher availability:", err);
         setTeacherAvailabilityList([]);
       });
+  };
+
+  /**
+   * Every availability the teacher has set, across the whole booking window.
+   *
+   * !! The month is not enough. A teacher who sets their hours in January
+   * !! wants to see January and February and March at once, and the old list
+   * !! showed them one month at a time inside a panel that was already
+   * !! crowded. This is every day they have set, in one list, in order.
+   */
+  const loadTeacherAvailabilityForWindow = async () => {
+    if (localRole !== "teacher" || !localUserId) return [];
+
+    const monthKeys = [];
+    const cursor = new Date(viewerToday.getFullYear(), viewerToday.getMonth(), 1);
+    const end = dateKeyToLocalDate(scheduleWindowEndKey);
+    while (end && cursor <= end) {
+      monthKeys.push({ year: cursor.getFullYear(), month: cursor.getMonth() + 1 });
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+    if (!monthKeys.length) return [];
+
+    try {
+      const responses = await Promise.all(
+        monthKeys.map(({ year: targetYear, month: targetMonth }) =>
+          axios.get(`${API}/api/calendar/teacher-availability-records`, {
+            params: { teacher_id: localUserId, year: targetYear, month: targetMonth }
+          })
+        )
+      );
+
+      const records = responses
+        .flatMap((response) => response.data?.records || [])
+        .map(formatAvailabilityRecordForViewer)
+        .filter(
+          (record) =>
+            !isPastDateString(record.available_date) &&
+            !isOutsideScheduleWindow(record.available_date)
+        )
+        .sort((a, b) => String(a.available_date).localeCompare(String(b.available_date)));
+
+      setTeacherAvailabilityAll(records);
+      return records;
+    } catch (err) {
+      console.error("Error loading teacher availability:", err);
+      setTeacherAvailabilityAll([]);
+      return [];
+    }
   };
 
   // Fetch a specific teacher's availability records (used by students for reschedule validation)
@@ -2913,8 +3347,11 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       setAvailabilityBreakStart("");
       setAvailabilityBreakEnd("");
       setAvailabilityDate(viewerTodayKey);
+      // The teacher is not editing a day any more.
+      setEditingAvailability(null);
       triggerCalendarRefresh();
       loadTeacherAvailabilityForMonth();
+      loadTeacherAvailabilityForWindow();
       
       // Refresh availability cache
       const y = year;
@@ -3781,29 +4218,230 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
             todayKey: viewerTodayKey,
             tomorrowKey: addDaysToDateKey(viewerTodayKey, 1),
           }),
-          timeLabel: time ? (endTime ? `${time} - ${endTime}` : time) : "Time to be decided",
-          subtitle: cls.className || studentProfile?.course_name || "Your class",
+          timeLabel: time ? (endTime ? `${time} - ${endTime}` : time) : HOME.timeToBeDecided,
+          subtitle: cls.className || studentProfile?.course_name || HOME.yourClass,
           viewerDate,
           time,
         };
       })
     : [];
 
-  // The days a student can pick from.
+  /**
+   * The teacher's and the admin's classes, as a list.
+   *
+   * !! This is the "list" way of looking at the calendar: the same classes
+   * !! the grid shows, in a column, one after another, in the shape the
+   * !! student's own page uses.
+   * !!
+   * !! The month is already loaded - /classes-by-month fills the cache for
+   * !! every day of it, and the grid is drawn from that same cache - so the
+   * !! list is the grid's data read a different way, not a second request.
+   * !!
+   * !! The month is kept, past days included, because the grid shows them
+   * !! too and a teacher looking at October wants to see October.
+   */
+  const simpleTeacherClasses = useMemo(() => {
+    if (!isTeacherOrAdmin) return [];
+
+    const rows = [];
+    Object.entries(classesCache).forEach(([dateKey, classes]) => {
+      (classes || []).forEach((cls) => {
+        if (cls.verification_status === "incomplete") return;
+        const viewerDate = normalizeDate(cls.scheduled_date || dateKey);
+        const start = humanTime(cls.start_time || cls.time || "");
+        const end = humanTime(getEndTime(cls.start_time || cls.time, cls.duration, cls.end_time) || "");
+
+        rows.push({
+          id: cls.id ?? cls.class_id,
+          classInfo: cls,
+          dayLabel: describeClassDay({
+            viewerDate,
+            todayKey: viewerTodayKey,
+            tomorrowKey: addDaysToDateKey(viewerTodayKey, 1),
+          }),
+          timeLabel: start ? (end ? `${start} - ${end}` : start) : HOME.timeToBeDecided,
+          // A teacher wants to know who is coming. An admin wants to know
+          // who is teaching.
+          subtitle:
+            localRole === "teacher"
+              ? cls.studentFullName || cls.studentName || HOME.yourClass
+              : cls.teacherFullName || cls.teacherName || cls.teacher || HOME.yourClass,
+          viewerDate,
+          sortKey: `${viewerDate} ${cls.start_time || cls.time || ""}`,
+        });
+      });
+    });
+
+    return rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  }, [classesCache, isTeacherOrAdmin, localRole, viewerTodayKey]);
+
+  // The days a teacher can set availability for, in the month the picker is on.
+  const availabilityPickerDays = useMemo(
+    () =>
+      buildMonthDayChoices({
+        year: availabilityPickerMonth.year,
+        month: availabilityPickerMonth.month,
+        todayKey: viewerTodayKey,
+        endKey: scheduleWindowEndKey,
+      }),
+    [availabilityPickerMonth, viewerTodayKey, scheduleWindowEndKey]
+  );
+
+  const availabilityPickerMonthName = useMemo(() => {
+    const date = new Date(availabilityPickerMonth.year, availabilityPickerMonth.month, 1);
+    return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  }, [availabilityPickerMonth]);
+
+  // How far the picker can move: from this month to the end of the window.
+  const availabilityPickerBounds = useMemo(() => {
+    const start = new Date(viewerToday.getFullYear(), viewerToday.getMonth(), 1);
+    const end = dateKeyToLocalDate(scheduleWindowEndKey);
+    return {
+      minKey: monthKey(start.getFullYear(), start.getMonth()),
+      maxKey: end ? monthKey(end.getFullYear(), end.getMonth()) : monthKey(start.getFullYear(), start.getMonth()),
+    };
+  }, [viewerToday, scheduleWindowEndKey]);
+
+  const moveAvailabilityPickerMonth = (delta) => {
+    setAvailabilityPickerMonth((current) => {
+      const next = new Date(current.year, current.month + delta, 1);
+      return { year: next.getFullYear(), month: next.getMonth() };
+    });
+  };
+
+  const canMoveAvailabilityPickerMonth = (delta) =>
+    canStepMonth({
+      year: availabilityPickerMonth.year,
+      month: availabilityPickerMonth.month,
+      delta,
+      minKey: availabilityPickerBounds.minKey,
+      maxKey: availabilityPickerBounds.maxKey,
+    });
+
+  // What the picker knows about a day: free, busy, or nothing yet.
+  //
+  // !! Only when we have actually loaded that month. The records are the
+  // !! visible month's, so a picker on another month knows nothing and says
+  // !! nothing rather than claiming every day is free.
+  const availabilityPickerStatusFor = (key) => {
+    if (
+      availabilityPickerMonth.year !== year ||
+      availabilityPickerMonth.month !== month
+    ) {
+      return null;
+    }
+    const record = teacherAvailabilityList.find(
+      (entry) => normalizeDate(entry.available_date) === key
+    );
+    return record ? record.status : null;
+  };
+
+  const closeAvailabilityManager = () => {
+    setSetAvailabilityMode(false);
+    setAvailabilityError("");
+    setAvailabilityScreen("form");
+    setEditingAvailability(null);
+  };
+
+  /**
+   * Open the list of the days the teacher has already set.
+   *
+   * !! It is a screen of the same window, not another window, so the teacher
+   * !! can go back to the form without losing what they were doing.
+   */
+  const openAvailabilityList = async () => {
+    setAvailabilityScreen("list");
+    await loadTeacherAvailabilityForWindow();
+  };
+
+  /**
+   * Put one of the teacher's existing availabilities back into the form.
+   *
+   * !! The form saves by date, so editing a day means saving that day again
+   * !! with the new times. The day is moved onto the screen too, or the
+   * !! teacher would be editing a date they cannot see.
+   */
+  const editAvailability = (record) => {
+    const recordDate = normalizeDate(record.available_date);
+    setEditingAvailability(record);
+    setAvailabilityApplyMode("single");
+    setAvailabilityDate(recordDate);
+    setAvailabilityStatus(record.status === "available" ? "available" : "unavailable");
+    setAvailabilityStartTime(record.start_time ? normalizeTime(record.start_time) : "");
+    setAvailabilityEndTime(record.end_time ? normalizeTime(record.end_time) : "");
+    setAvailabilityBreakStart(record.break_start ? normalizeTime(record.break_start) : "");
+    setAvailabilityBreakEnd(record.break_end ? normalizeTime(record.break_end) : "");
+    setAvailabilityError("");
+
+    const date = dateKeyToLocalDate(recordDate);
+    if (date) {
+      setAvailabilityPickerMonth({ year: date.getFullYear(), month: date.getMonth() });
+    }
+
+    setAvailabilityScreen("form");
+  };
+
+
   //
   // !! Fourteen days is enough for booking a class, which is usually soon.
   // !! Moving a class is different: a student whose class was cancelled for
   // !! a holiday in three weeks needs to pick a day three weeks out, and a
   // !! strip that stops at two would quietly refuse them. So the two get
   // !! different lengths.
+  //
+  // !! The days a student books from are now a MONTH, not a fortnight, with
+  // !! arrows that move between months. A fortnight of days stops half way
+  // !! through the student's own plan: their contract runs three months, and
+  // !! the days they are allowed to book stop two weeks in.
   const simpleBookingDays = useMemo(
-    () => buildDayChoices({ todayKey: viewerTodayKey, endKey: scheduleWindowEndKey }),
-    [viewerTodayKey, scheduleWindowEndKey]
+    () =>
+      buildMonthDayChoices({
+        year: studentBookingMonth.year,
+        month: studentBookingMonth.month,
+        todayKey: viewerTodayKey,
+        endKey: studentBookingEndKey,
+      }),
+    [studentBookingMonth, viewerTodayKey, studentBookingEndKey]
   );
 
+  // The months the student's picker can reach.
+  //
+  // !! From this month to the month their plan ends. Not one month before
+  // !! and not one month after: a day outside the contract is a day the
+  // !! student cannot book, and offering it greyed out is a dead end.
+  const studentBookingMonthBounds = useMemo(
+    () => monthBoundsForRange({ startKey: viewerTodayKey, endKey: studentBookingEndKey }),
+    [viewerTodayKey, studentBookingEndKey]
+  );
+
+  const studentBookingMonthName = useMemo(() => {
+    const date = new Date(studentBookingMonth.year, studentBookingMonth.month, 1);
+    return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  }, [studentBookingMonth]);
+
+  const moveStudentBookingMonth = (delta) => {
+    setStudentBookingMonth((current) => {
+      const next = new Date(current.year, current.month + delta, 1);
+      return { year: next.getFullYear(), month: next.getMonth() };
+    });
+  };
+
+  const canMoveStudentBookingMonth = (delta) =>
+    canStepMonth({
+      year: studentBookingMonth.year,
+      month: studentBookingMonth.month,
+      delta,
+      minKey: studentBookingMonthBounds.minKey,
+      maxKey: studentBookingMonthBounds.maxKey,
+    });
+
+  // !! Moving a class is the same booking as making one - the class still has
+  // !! to land on a day the student's plan reaches - so the strip stops at the
+  // !! end of the plan. It used to stop at the end of the teacher's window,
+  // !! which offered days the request would then refuse.
   const simpleRescheduleDays = useMemo(
-    () => buildDayChoices({ todayKey: viewerTodayKey, endKey: scheduleWindowEndKey, limit: 28 }),
-    [viewerTodayKey, scheduleWindowEndKey]
+    () => buildDayChoices({ todayKey: viewerTodayKey, endKey: studentBookingEndKey, limit: 28 }),
+    [viewerTodayKey, studentBookingEndKey]
   );
 
   // Which of the days in the strip the teacher actually works.
@@ -3817,6 +4455,14 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   // !! The strip can cross a month boundary, so both months are fetched.
   const [simpleAvailability, setSimpleAvailability] = useState({});
 
+  // Are those days still on their way?
+  //
+  // !! The booking wizard tells a student which days are free, and a day that
+  // !! is "no times yet" because the answer had not arrived yet is a day the
+  // !! wizard must not grey out. So the wizard has to know the difference
+  // !! between "the teacher does not work that day" and "we do not know yet".
+  const [simpleAvailabilityLoading, setSimpleAvailabilityLoading] = useState(false);
+
   useEffect(() => {
     if (!isSimpleStudentView || !assignedTeacherId) return;
 
@@ -3828,6 +4474,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     if (!months.size) return;
 
     let active = true;
+    setSimpleAvailabilityLoading(true);
 
     Promise.all(
       [...months].map((month) => {
@@ -3842,6 +4489,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     ).then((maps) => {
       if (!active) return;
       setSimpleAvailability(Object.assign({}, ...maps));
+      setSimpleAvailabilityLoading(false);
     });
 
     return () => {
@@ -3922,7 +4570,18 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
   const hasNoClassesLeft = hasNoBookableClasses;
   const studentBookingLimit = Math.max(0, Number(effectiveBookableClasses || 0));
-  const studentBookingSelectionFull = studentBookingLimit > 0 && studentBookingSelections.length >= studentBookingLimit;
+
+  // Are the free times for the day the student picked still on their way?
+  const bookingTimesLoading = Boolean(
+    studentBookingMode &&
+    studentBookingDate &&
+    (
+      teacherClassesCache[studentBookingDate] === undefined ||
+      (localRole === "student" && !teacherAvailabilityLoaded) ||
+      bookingTimesReadyDate !== studentBookingDate
+    )
+  );
+
   const studentBookingSelectionKey = (date, time) => `${normalizeDate(date)}|${normalizeTime(time)}`;
   const isStudentBookingSelected = (date, time) => {
     const key = studentBookingSelectionKey(date, time);
@@ -4005,50 +4664,57 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
     return slots;
   };
-  const toggleStudentBookingSelection = (date, time) => {
+  /**
+   * One day, one time.
+   *
+   * !! The old toggle let a student collect any number of times on any number
+   * !! of days, and the "one time" way of booking had no use for more than
+   * !! one. A child tapping a second time did not mean "add another class" -
+   * !! it meant they were not sure the first tap had worked. So the second tap
+   * !! now takes the first one back.
+   */
+  const pickSingleBookingTime = (date, time) => {
     const normalizedDate = normalizeDate(date);
     const normalizedTime = normalizeTime(time);
     if (!normalizedDate || !normalizedTime) return;
+    if (isTeacherDateTimeBooked(normalizedDate, normalizedTime)) return;
 
-    setStudentBookingSelections((current) => {
-      const key = studentBookingSelectionKey(normalizedDate, normalizedTime);
-      const exists = current.some((slot) => studentBookingSelectionKey(slot.date, slot.time) === key);
-      if (exists) {
-        return current.filter((slot) => studentBookingSelectionKey(slot.date, slot.time) !== key);
-      }
-      if (current.length >= studentBookingLimit) {
-        setStudentBookingError(`You can only select ${studentBookingLimit} class${studentBookingLimit === 1 ? "" : "es"} based on your remaining package.`);
-        return current;
-      }
-      const nextStart = timeToMinutes(normalizedTime);
-      const nextEnd = nextStart == null ? null : nextStart + studentClassDuration;
-      const overlapsSelected = current.some((slot) => {
-        if (normalizeDate(slot.date) !== normalizedDate) return false;
-        const slotStart = timeToMinutes(slot.time);
-        const slotEnd = slotStart == null ? null : slotStart + studentClassDuration;
-        return nextStart != null && nextEnd != null && slotStart != null && slotEnd != null
-          && rangesOverlapWithClassBuffer(nextStart, nextEnd, slotStart, slotEnd);
-      });
-      if (overlapsSelected) {
-        setStudentBookingError(`This class overlaps with another selected slot or its ${CLASS_BREAK_BUFFER_MINUTES}-minute teacher break.`);
-        return current;
-      }
+    if (studentBookingLimit <= 0) {
+      setStudentBookingError(BOOKING.noClassesLeft);
+      return;
+    }
+
+    const key = studentBookingSelectionKey(normalizedDate, normalizedTime);
+    const alreadyPicked = studentBookingSelections.some(
+      (slot) => studentBookingSelectionKey(slot.date, slot.time) === key
+    );
+
+    if (alreadyPicked) {
+      setStudentBookingSelections([]);
+      setStudentBookingTime("");
       setStudentBookingError("");
-      const selectedAvailabilityRecord = teacherAvailabilityList.find(
-        record => normalizeDate(record.available_date) === normalizedDate
-      ) || (
-        normalizeDate(teacherAvailabilityRecordForDate?.available_date) === normalizedDate
-          ? teacherAvailabilityRecordForDate
-          : null
-      );
-      return [...current, {
+      return;
+    }
+
+    const selectedAvailabilityRecord = teacherAvailabilityList.find(
+      record => normalizeDate(record.available_date) === normalizedDate
+    ) || (
+      normalizeDate(teacherAvailabilityRecordForDate?.available_date) === normalizedDate
+        ? teacherAvailabilityRecordForDate
+        : null
+    );
+
+    setStudentBookingError("");
+    setStudentBookingTime(normalizedTime);
+    setStudentBookingSelections([
+      {
         date: normalizedDate,
         time: normalizedTime,
         teacher_timezone: selectedAvailabilityRecord?.teacher_timezone || DEFAULT_TIMEZONE,
-      }]
-        .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
-    });
+      },
+    ]);
   };
+
   const toggleStudentBookingWeekday = (weekday) => {
     setStudentBookingWeeklyWeekdays((current) => {
       const exists = current.includes(weekday);
@@ -4057,12 +4723,13 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     });
     setStudentBookingError("");
     setStudentBookingSuggestions([]);
+    setStudentBookingSuggestionsTotal(0);
   };
-  const loadTeacherAvailabilityRecordsForScheduleWindow = async () => {
+  const loadTeacherAvailabilityRecordsForScheduleWindow = async (endKey = scheduleWindowEndKey) => {
     if (!assignedTeacherId) return [];
     const monthKeys = [];
     const cursor = new Date(viewerToday.getFullYear(), viewerToday.getMonth(), 1);
-    const end = dateKeyToLocalDate(scheduleWindowEndKey);
+    const end = dateKeyToLocalDate(endKey);
     while (end && cursor <= end) {
       monthKeys.push({ year: cursor.getFullYear(), month: cursor.getMonth() + 1 });
       cursor.setMonth(cursor.getMonth() + 1);
@@ -4079,32 +4746,61 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       .map(formatAvailabilityRecordForViewer)
       .filter((record) => {
         const dateKey = normalizeDate(record.available_date);
-        return dateKey >= scheduleWindowStart && dateKey <= scheduleWindowEnd;
+        return dateKey >= scheduleWindowStart && dateKey <= endKey;
       });
   };
+  /**
+   * Look for the times that match the chosen days and the chosen time.
+   *
+   * !! The student can ask for a part of the day - "morning" - or for an
+   * !! exact time. The two are different questions:
+   * !!
+   * !!   - A part of the day is "every free time in the morning". The old
+   * !!     form asked for 8:00 and gave back the closest time on each day,
+   * !!     which is one time per day and left the student guessing what else
+   * !!     was free. Now every time in that part of the day comes back.
+   * !!   - An exact time is still "the closest one to this", because that is
+   * !!     what asking for a time means.
+   * !!
+   * !! It says whether it found anything, because the wizard has to know
+   * !! whether to move on to the screen that shows the times or to stay put
+   * !! with the reason on it.
+   */
   const applyStudentWeeklyPattern = async () => {
     setStudentBookingError("");
     setStudentBookingSuggestions([]);
-    const preferredTime = normalizeTime(studentBookingWeeklyTime);
+    setStudentBookingSuggestionsTotal(0);
+    const choice = studentBookingWeeklyTime;
+    // An exact time, or nothing at all when the student asked for a part of
+    // the day.
+    const preferredTime = isPartOfDay(choice) ? "" : normalizeTime(choice);
     if (!studentBookingWeeklyWeekdays.length) {
-      setStudentBookingError("Please select at least one weekday.");
-      return;
+      setStudentBookingError(BOOKING.noDaysPicked);
+      return false;
     }
-    if (!preferredTime) {
-      setStudentBookingError("Please select a preferred time.");
-      return;
+    if (!choice) {
+      setStudentBookingError(BOOKING.noTimePicked);
+      return false;
     }
     if (!studentBookingLimit) {
-      setStudentBookingError("You have no classes left. Please ask the admin for a new plan.");
-      return;
+      setStudentBookingError(BOOKING.noClassesLeft);
+      return false;
     }
     if (studentBookingSelections.length >= studentBookingLimit) {
-      setStudentBookingError(`You already selected ${studentBookingLimit} class${studentBookingLimit === 1 ? "" : "es"}, which matches your remaining package.`);
-      return;
+      setStudentBookingError(`You already picked ${studentBookingLimit} class${studentBookingLimit === 1 ? "" : "es"}.`);
+      return false;
     }
 
     try {
-      const records = await loadTeacherAvailabilityRecordsForScheduleWindow();
+      // Every day the student is allowed to book, not just this month.
+      //
+      // !! The search used to stop at the end of the booking window, which is
+      // !! three months from today - and it offered every one of those days
+      // !! to a student whose plan might have ended in the middle of them.
+      // !! A class booked on a day the student's plan does not reach is a
+      // !! class nobody can pay for, so the contract is the end of the
+      // !! search now.
+      const records = await loadTeacherAvailabilityRecordsForScheduleWindow(studentBookingEndKey);
       const recordDates = records
         .map((record) => normalizeDate(record.available_date))
         .filter(Boolean);
@@ -4127,39 +4823,89 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
           return true;
         });
       const slotsByDate = new Map();
+      const matching = [];
 
       candidateSlots.forEach((slot) => {
-          const classesForDate = classesByDate.get(slot.date) || [];
-          if (studentSlotOverlapsClassList(classesForDate, slot.time)) return;
-          const slotMinutes = timeToMinutes(slot.time);
-          if (preferredMinutes == null || slotMinutes == null) return;
-          const distance = Math.abs(slotMinutes - preferredMinutes);
-          const existing = slotsByDate.get(slot.date);
-          if (!existing || distance < existing.distance || (distance === existing.distance && slotMinutes > preferredMinutes)) {
-            slotsByDate.set(slot.date, {
-              ...slot,
-              requested_time: preferredTime,
-              distance,
-            });
-          }
-        });
+        const classesForDate = classesByDate.get(slot.date) || [];
+        if (studentSlotOverlapsClassList(classesForDate, slot.time)) return;
 
-      const suggestions = Array.from(slotsByDate.values())
-        .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+        // A part of the day: every free time in it, on every chosen day.
+        if (isPartOfDay(choice)) {
+          if (!isTimeInPart(slot.time, choice)) return;
+          matching.push(slot);
+          return;
+        }
 
-      if (!suggestions.length) {
-        setStudentBookingError("We could not find a free time on those days. Please try another day.");
-        return;
+        // An exact time: the closest one on each day.
+        const slotMinutes = timeToMinutes(slot.time);
+        if (preferredMinutes == null || slotMinutes == null) return;
+        const distance = Math.abs(slotMinutes - preferredMinutes);
+        const existing = slotsByDate.get(slot.date);
+        if (!existing || distance < existing.distance || (distance === existing.distance && slotMinutes > preferredMinutes)) {
+          slotsByDate.set(slot.date, {
+            ...slot,
+            requested_time: preferredTime,
+            distance,
+          });
+        }
+      });
+
+      if (!isPartOfDay(choice)) {
+        Array.from(slotsByDate.values()).forEach((slot) => matching.push(slot));
       }
 
-      setStudentBookingSuggestions(suggestions);
-      setStudentBookingTime(preferredTime);
-      notify?.(`We found ${suggestions.length} time${suggestions.length === 1 ? "" : "s"}. You can add up to ${studentBookingLimit - studentBookingSelections.length}.`, "success");
+      matching.sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+
+      if (!matching.length) {
+        setStudentBookingError(BOOKING.noTimesFound);
+        return false;
+      }
+
+      // The soonest ones, and the student is told there are more.
+      //
+      // !! A teacher who works every morning, three days a week, for three
+      // !! months, has over two hundred free morning times. A list that long
+      // !! is not a list - it is the wall of choices this screen was built to
+      // !! stop. So the soonest ones are shown and the student is told how
+      // !! many there are in all.
+      const total = matching.length;
+      const shown = matching.slice(0, MAX_WEEKLY_SUGGESTIONS);
+
+      setStudentBookingSuggestions(shown);
+      setStudentBookingSuggestionsTotal(total);
+      if (!isPartOfDay(choice)) setStudentBookingTime(preferredTime);
+      notify?.(`We found ${total} time${total === 1 ? "" : "s"}.`, "success");
+      return true;
     } catch (err) {
       console.error(err);
-      setStudentBookingError("We could not look up free times. Please try again.");
+      setStudentBookingError(BOOKING.cannotLookUp);
+      return false;
     }
   };
+
+  /**
+   * Take a class back out of the picks.
+   *
+   * !! A student who pressed "Add" on four times and then wants three of
+   * !! them should be able to say so. There was no way to do that: the
+   * !! button said "Added", was greyed out, and pressed nothing. Now the
+   * !! button says "Remove" and this is what it does.
+   */
+  const removeStudentBookingSelection = (date, time) => {
+    const key = studentBookingSelectionKey(date, time);
+    setStudentBookingSelections((current) =>
+      current.filter((slot) => studentBookingSelectionKey(slot.date, slot.time) !== key)
+    );
+    setStudentBookingError("");
+  };
+
+  /**
+   * Add every time we found.
+   *
+   * !! The list stays on the screen afterwards. The old form emptied it, and
+   * !! a student who pressed "Add all" and then wanted to take one back had
+   * !! nothing left to take it back from.
+   */
   const addStudentBookingSuggestions = () => {
     if (!studentBookingSuggestions.length) return;
     setStudentBookingSelections((current) => {
@@ -4177,7 +4923,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return [...current, ...accepted]
         .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
     });
-    setStudentBookingSuggestions([]);
     setStudentBookingError("");
   };
   const addStudentBookingSuggestion = (suggestion) => {
@@ -4188,11 +4933,11 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         return current;
       }
       if (current.length >= studentBookingLimit) {
-        setStudentBookingError(`You can only select ${studentBookingLimit} class${studentBookingLimit === 1 ? "" : "es"} based on your remaining package.`);
+        setStudentBookingError(`You can only pick ${studentBookingLimit} class${studentBookingLimit === 1 ? "" : "es"}.`);
         return current;
       }
       if (studentSlotOverlapsSelections(current, suggestion.date, suggestion.time)) {
-        setStudentBookingError(`This class overlaps with another selected slot or its ${CLASS_BREAK_BUFFER_MINUTES}-minute teacher break.`);
+        setStudentBookingError("That time is too close to a class you already picked.");
         return current;
       }
       setStudentBookingError("");
@@ -4205,16 +4950,25 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     : "";
 
   const scheduleWindowStart = viewerTodayKey;
-  const scheduleWindowEnd = scheduleWindowEndKey;
+  // A booked class has to be a class the student may book, so the end of the
+  // window is the end of their contract rather than the end of the teacher's
+  // planning window.
+  const scheduleWindowEnd = studentBookingEndKey;
 
   const openMonthlyBooking = () => {
     if (hasNoClassesLeft) {
-      setStudentBookingError("You have no classes left. Please ask the admin for a new plan.");
+      setStudentBookingError(BOOKING.noClassesLeft);
       return;
     }
 
     setYear(viewerToday.getFullYear());
     setMonth(viewerToday.getMonth());
+    // The picker opens on the month the student is living in, not on
+    // whichever month they left it on last time.
+    setStudentBookingMonth({
+      year: viewerToday.getFullYear(),
+      month: viewerToday.getMonth(),
+    });
     setStudentBookingMode(true);
     // No day chosen to start with. The student is offered a strip of days,
     // and they pick the one they want.
@@ -4222,6 +4976,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     setStudentBookingTime("");
     setStudentBookingSelections([]);
     setStudentBookingSuggestions([]);
+    setStudentBookingSuggestionsTotal(0);
     setStudentBookingSubject("");
     setStudentBookingError("");
     setSelectedDate(null);
@@ -4436,7 +5191,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         : [];
 
     if (!slotsToBook.length) {
-      setStudentBookingError("Please select at least one time slot.");
+      setStudentBookingError(BOOKING.pickTimeFirst);
       return;
     }
     if (!assignedTeacherId) {
@@ -4444,17 +5199,17 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return;
     }
     if (hasNoClassesLeft) {
-      setStudentBookingError("You have no classes left. Please ask the admin for a new plan.");
+      setStudentBookingError(BOOKING.noClassesLeft);
       return;
     }
     if (slotsToBook.length > studentBookingLimit) {
-      setStudentBookingError(`You can only book ${studentBookingLimit} class${studentBookingLimit === 1 ? "" : "es"} based on your remaining package.`);
+      setStudentBookingError(`You can only book ${studentBookingLimit} class${studentBookingLimit === 1 ? "" : "es"}.`);
       return;
     }
 
     const invalidSlot = slotsToBook.find((slot) => slot.date < scheduleWindowStart || slot.date > scheduleWindowEnd);
     if (invalidSlot) {
-      setStudentBookingError(`Please pick a date from today up to ${SCHEDULE_WINDOW_MONTHS} months ahead.`);
+      setStudentBookingError(studentBookingWindowMessage);
       return;
     }
 
@@ -4543,6 +5298,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       setStudentBookingTime("");
       setStudentBookingSelections(failedBookings.map(({ slot }) => slot));
       setStudentBookingSuggestions([]);
+      setStudentBookingSuggestionsTotal(0);
       setStudentBookingSubject("");
       setSelectedDate(bookedClasses[0]?.viewerDate || studentBookingDate);
       setBookedDates(prev => [
@@ -4597,7 +5353,17 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     }
   };
 
-  const openStudentBookingConfirmation = () => {
+  /**
+   * Book the class the student has chosen.
+   *
+   * !! There used to be a second window here - "Check your booking" - with
+   * !! its own Yes button. It is gone, and that is the point: the wizard's
+   * !! last screen IS the check. It shows the day, the time, the teacher and
+   * !! how long the class is, in big letters, and the button under it says
+   * !! "Book it". A student was being asked to confirm the same thing twice
+   * !! by two screens that looked different, and the second one lost them.
+   */
+  const openStudentBookingConfirmation = async () => {
     setStudentBookingError("");
     const slotsToBook = studentBookingSelections.length
       ? studentBookingSelections
@@ -4605,36 +5371,43 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         ? [{ date: studentBookingDate, time: studentBookingTime }]
         : [];
     if (!slotsToBook.length) {
-      setStudentBookingError("Please select at least one time slot.");
+      setStudentBookingError(BOOKING.pickTimeFirst);
       return;
     }
     if (!assignedTeacherId) {
-      setStudentBookingError("Unable to book because your assigned teacher is not available.");
+      setStudentBookingError("Your teacher is not here yet. Please contact the admin.");
       return;
     }
     if (hasNoClassesLeft) {
-      setStudentBookingError("You have no classes left. Please ask the admin for a new plan.");
+      setStudentBookingError(BOOKING.noClassesLeft);
       return;
     }
     if (slotsToBook.length > studentBookingLimit) {
-      setStudentBookingError(`You can only book ${studentBookingLimit} class${studentBookingLimit === 1 ? "" : "es"} based on your remaining package.`);
+      setStudentBookingError(`You can only book ${studentBookingLimit} class${studentBookingLimit === 1 ? "" : "es"}.`);
       return;
     }
     if (slotsToBook.some((slot) => slot.date < scheduleWindowStart || slot.date > scheduleWindowEnd)) {
-      setStudentBookingError(`Please pick a date from today up to ${SCHEDULE_WINDOW_MONTHS} months ahead.`);
+      setStudentBookingError(studentBookingWindowMessage);
       return;
     }
     if (slotsToBook.some((slot) => isTeacherDateTimeBooked(slot.date, slot.time))) {
-      setStudentBookingError("The teacher is already booked at this time. Please choose another slot.");
+      setStudentBookingError("Your teacher is already booked at this time. Please pick another time.");
       return;
     }
 
-    setStudentBookingConfirmOpen(true);
+    await submitStudentBooking();
   };
 
-  const confirmStudentBooking = async () => {
-    setStudentBookingConfirmOpen(false);
-    await submitStudentBooking();
+  /**
+   * Leave the booking without booking anything.
+   */
+  const closeStudentBooking = () => {
+    setStudentBookingMode(false);
+    setStudentBookingSelections([]);
+    setStudentBookingSuggestions([]);
+    setStudentBookingSuggestionsTotal(0);
+    setStudentBookingTime("");
+    setStudentBookingError("");
   };
 
   const uploadStartProof = async (file) => {
@@ -4678,24 +5451,13 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     };
 
     return (
-      <div
-        style={{
-          marginTop: 12,
-          padding: "12px 14px",
-          border: "1px solid #dbe4ea",
-          borderRadius: 12,
-          background: "#f7fafc",
-          fontSize: "0.9rem",
-          color: "#374151",
-          lineHeight: 1.45,
-        }}
-      >
-        {sentences[selectedVerificationStatus] || sentences.pending}
-        {hasVerificationRecording && verificationRecordingExpiresAt && (
-          <div style={{ marginTop: 6, fontSize: "0.8rem", color: "#6b7d73" }}>
-            The recording is deleted on {formatVerificationTimestamp(verificationRecordingExpiresAt, true)}.
-          </div>
-        )}
+      <div className={kid.info}>
+        <span>
+          {sentences[selectedVerificationStatus] || sentences.pending}
+          {hasVerificationRecording && verificationRecordingExpiresAt && (
+            ` The recording is deleted ${formatVerificationTimestamp(verificationRecordingExpiresAt, true)}.`
+          )}
+        </span>
       </div>
     );
   };
@@ -5010,7 +5772,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                 )}
                 <button
                   type="button"
-                  className={`${styles.bookBtn} ${styles.doneBtn}`}
+                  className={`${cal.actionCard} ${cal.actionInfo}`}
                   disabled={!canEndVerifyAndComplete}
                   onClick={() => endSelectedClassSession({ completeAfterVerify: true })}
                   title={endVerifyDisabledReason}
@@ -5061,7 +5823,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
             {selectedClassEnded && selectedClassVerified && (
               <button
                 type="button"
-                className={`${styles.bookBtn} ${styles.doneBtn}`}
+                className={`${cal.actionCard} ${cal.actionInfo}`}
                 disabled={isMarkingClassDone}
                 onClick={() => handleConfirmClassDone()}
                 style={{ opacity: isMarkingClassDone ? 0.6 : 1 }}
@@ -5121,9 +5883,57 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         `}
       </style>
       <main className={styles.page}>
-      <section className={isSimpleStudentView ? styles.studentCenter : styles.center}>
+      <section
+        className={
+          isSimpleStudentView || (isTeacherOrAdmin && calendarView === "list")
+            ? styles.studentCenter
+            : styles.center
+        }
+      >
 
-        <div className={isSimpleStudentView ? styles.simpleWrapper : styles.wrapper}>
+        {/* The way of looking at the calendar.
+            !!
+            !! The grid and the list are the same classes, read two ways. A
+            !! teacher finding the one class on a Tuesday wants the grid; a
+            !! teacher reading a month of them wants the list, and the list is
+            !! the shape the student's own page uses.
+            !!
+            !! Only the teacher and the admin get this. A student has one
+            !! page, and there is nothing to choose between. */}
+        {isTeacherOrAdmin && (
+          <div className={cal.viewSwitchRow}>
+            <div className={cal.viewSwitch} role="tablist" aria-label="Calendar view">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={calendarView === "month"}
+                className={`${cal.viewSwitchBtn} ${calendarView === "month" ? cal.viewSwitchBtnActive : ""}`}
+                onClick={() => setCalendarView("month")}
+              >
+                <span aria-hidden="true">📅</span>
+                {VIEW.month}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={calendarView === "list"}
+                className={`${cal.viewSwitchBtn} ${calendarView === "list" ? cal.viewSwitchBtnActive : ""}`}
+                onClick={() => setCalendarView("list")}
+              >
+                <span aria-hidden="true">📋</span>
+                {VIEW.list}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div
+          className={
+            isSimpleStudentView || (isTeacherOrAdmin && calendarView === "list")
+              ? styles.simpleWrapper
+              : styles.wrapper
+          }
+        >
           {/* The month grid.
               !!
               !! A student does not get one. A month grid asks a child to read
@@ -5136,29 +5946,29 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
               !! Teachers and admins still get it, and so does an admin
               !! looking at somebody else's calendar - they are reading a
               !! schedule, not using one. */}
-          {!isSimpleStudentView && (
-          <div className={styles.calendarCard}>
-            <div className={styles.calHeader}>
-              <button type="button" onClick={prevMonth} className={styles.navBtn} aria-label="Previous month">
+          {!isSimpleStudentView && calendarView !== "list" && (
+          <div className={cal.calendarCard}>
+            <div className={cal.calHeader}>
+              <button type="button" onClick={prevMonth} className={cal.navBtn} aria-label="Previous month">
                 ‹
               </button>
-              <div className={styles.monthLabel}>
+              <div className={cal.monthLabel}>
                 {monthName} {year}
               </div>
-              <button type="button" onClick={nextMonth} className={styles.navBtn} aria-label="Next month">
+              <button type="button" onClick={nextMonth} className={cal.navBtn} aria-label="Next month">
                 ›
               </button>
             </div>
 
-            <div className={styles.weekHeader}>
+            <div className={cal.weekHeader}>
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-                <div key={d} className={styles.weekday}>
+                <div key={d} className={cal.weekday}>
                   {d}
                 </div>
               ))}
             </div>
 
-            <div className={styles.grid}>
+            <div className={cal.grid}>
               {days.map((d, idx) => {
                 const status = statusOf(d);
                 const hasClasses = hasClassesOnDate(d);
@@ -5173,25 +5983,25 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                 const teacherHasSchedule = d && (status === "available" || status === "unavailable");
                 
                 // Determine color coding for the calendar
-                let cellClass = styles.cell;
+                let cellClass = cal.cell;
                 if (!d) {
-                  cellClass = [styles.cell, styles.empty].join(" ");
+                  cellClass = [cal.cell, cal.empty].join(" ");
                 } else if (isPast) {
-                  cellClass = [styles.cell, styles.pastCell].join(" ");
+                  cellClass = [cal.cell, cal.pastCell].join(" ");
                 } else if (status === "unavailable") {
-                  cellClass = [styles.cell, styles.clickableCell, styles.unavailable].join(" ");
+                  cellClass = [cal.cell, cal.clickableCell, cal.unavailable].join(" ");
                 } else if (hasClasses) {
-                  cellClass = [styles.cell, styles.clickableCell, styles.hasClasses].join(" ");
+                  cellClass = [cal.cell, cal.clickableCell, cal.hasClasses].join(" ");
                 } else if (status === "available") {
-                  cellClass = [styles.cell, styles.clickableCell, styles.available].join(" ");
+                  cellClass = [cal.cell, cal.clickableCell, cal.available].join(" ");
                 } else if (!teacherHasSchedule) {
-                  cellClass = [styles.cell, styles.clickableCell, styles.unscheduled].join(" ");
+                  cellClass = [cal.cell, cal.clickableCell, cal.unscheduled].join(" ");
                 } else {
-                  cellClass = [styles.cell, styles.clickableCell].join(" ");
+                  cellClass = [cal.cell, cal.clickableCell].join(" ");
                 }
                 
-                if (isTodayCell) cellClass += " " + styles.today;
-                if (isSelected) cellClass += " " + styles.selected;
+                if (isTodayCell) cellClass += " " + cal.today;
+                if (isSelected) cellClass += " " + cal.selected;
                 
                 let tooltipText = "";
                 if (d) {
@@ -5225,69 +6035,135 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
           </div>
           )}
 
+          {/* The list: the same classes, one after another.
+              !!
+              !! This is the shape the student's own page uses - a heading, a
+              !! list of big cards, and nothing else. It is here for the
+              !! teacher who wants to read a month rather than hunt through a
+              !! grid for it.
+              !!
+              !! It disappears when a class is opened, and the class takes its
+              !! place - the same way the student's page works, so "Back to
+              !! Classes" comes back here too.
+              !!
+              !! The month arrows stay, because the list is a month as well
+              !! as a list, and a teacher who cannot move between months has
+              !! lost something the grid gave them. */}
+          {isTeacherOrAdmin && calendarView === "list" && !selectedClass && (
+            <div className={cal.calendarCard}>
+              <div className={cal.calHeader}>
+                <button type="button" onClick={prevMonth} className={cal.navBtn} aria-label="Previous month">
+                  ‹
+                </button>
+                <div className={cal.monthLabel}>
+                  {monthName} {year}
+                </div>
+                <button type="button" onClick={nextMonth} className={cal.navBtn} aria-label="Next month">
+                  ›
+                </button>
+              </div>
+
+              <div className={kid.homeHeader}>
+                <h2 className={kid.homeTitle}>
+                  {localRole === "teacher" ? HOME.myClasses : HOME.allClasses}
+                </h2>
+                <p className={kid.homeSubtitle}>
+                  {localRole === "teacher"
+                    ? HOME.monthClasses(`${monthName} ${year}`)
+                    : HOME.allMonthClasses(`${monthName} ${year}`)}
+                </p>
+              </div>
+
+              {simpleTeacherClasses.length > 0 ? (
+                <div className={kid.classList} style={{ marginTop: 16 }}>
+                  {simpleTeacherClasses.map((entry) => (
+                    <ClassCard
+                      key={entry.id ?? `${entry.viewerDate}-${entry.timeLabel}`}
+                      classInfo={entry}
+                      onOpen={() => {
+                        setSelectedDate(entry.viewerDate);
+                        setSelectedClassId(entry.classInfo.id ?? entry.classInfo.class_id);
+                      }}
+                      actionLabel={HOME.details}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className={kid.empty} style={{ marginTop: 16 }}>
+                  <span className={kid.emptyIcon} aria-hidden="true">📅</span>
+                  <span>{HOME.noClassesThisMonth}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           <aside className={styles.bookPanel}>
             {isTeacherOrAdmin ? (
               selectedClass ? (
                 <>
-                  <div className={styles.legendTitle}>
+                  <div className={cal.panelTitle}>
                     {localRole === "teacher" ? "Student Information" : "Class Information"}
                   </div>
                   <div className={styles.slotList}>
                     {selectedClass.studentName && (
-                      <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div className={cal.detailRow}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                           <AuthenticatedImage
                             src={selectedClass.student_profile_image_url || selectedClass.studentProfileImageUrl}
                             alt={selectedClass.studentFullName || selectedClass.studentName}
-                            style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", flex: "0 0 auto" }}
+                            className={cal.detailAvatar}
                             fallback={
                               <img
                                 src={userPic}
                                 alt={selectedClass.studentFullName || selectedClass.studentName}
-                                style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", flex: "0 0 auto" }}
+                                className={cal.detailAvatar}
                               />
                             }
                           />
                           <div>
-                            <div><strong>Student:</strong></div>
-                            <div style={{ fontSize: "0.95em", marginTop: "4px" }}>{selectedClass.studentFullName || selectedClass.studentName}</div>
+                            <div className={cal.detailLabel}>Student</div>
+                            <div className={cal.detailValue}>
+                              {selectedClass.studentFullName || selectedClass.studentName}
+                            </div>
                           </div>
                         </div>
                       </div>
                     )}
                     {(selectedClass.studentProficiencyLevel || selectedClass.student_proficiency_level) && (
-                      <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                        <div><strong>Proficiency Level:</strong></div>
-                        <div style={{ fontSize: "0.85em", marginTop: "4px" }}>
+                      <div className={cal.detailRow}>
+                        <div className={cal.detailLabel}>Proficiency level</div>
+                        <div className={cal.detailValue}>
                           {formatProficiencyLevel(selectedClass.studentProficiencyLevel || selectedClass.student_proficiency_level)}
                         </div>
                       </div>
                     )}
                     {selectedClass.studentEmail && (
-                      <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                        <div><strong>Student Email:</strong></div>
-                        <div style={{ fontSize: "0.85em", marginTop: "4px", wordBreak: "break-all" }}>{selectedClass.studentEmail}</div>
+                      <div className={cal.detailRow}>
+                        <div className={cal.detailLabel}>Student email</div>
+                        <div className={cal.detailValue}>{selectedClass.studentEmail}</div>
                       </div>
                     )}
                     {isAdmin && selectedClass.teacherName && (
-                      <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                        <div><strong>Teacher:</strong></div>
-                        <div style={{ fontSize: "0.95em", marginTop: "4px" }}>{selectedClass.teacherName}</div>
+                      <div className={cal.detailRow}>
+                        <div className={cal.detailLabel}>Teacher</div>
+                        <div className={cal.detailValue}>{selectedClass.teacherName}</div>
                       </div>
                     )}
                     {isAdmin && selectedClass.teacherEmail && (
-                      <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                        <div><strong>Teacher Email:</strong></div>
-                        <div style={{ fontSize: "0.85em", marginTop: "4px", wordBreak: "break-all" }}>{selectedClass.teacherEmail}</div>
+                      <div className={cal.detailRow}>
+                        <div className={cal.detailLabel}>Teacher email</div>
+                        <div className={cal.detailValue}>{selectedClass.teacherEmail}</div>
                       </div>
                     )}
-                    <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                      <div><strong>Class:</strong></div>
-                      <div style={{ fontSize: "0.95em", marginTop: "4px" }}>{selectedClass.className}</div>
+                    <div className={cal.detailRow}>
+                      <div className={cal.detailLabel}>Class</div>
+                      <div className={cal.detailValue}>{selectedClass.className}</div>
                     </div>
-                    <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                      <div><strong>Time:</strong></div>
-                      <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration, selectedClass.end_time)}</div>
+                    <div className={cal.detailRow}>
+                      <div className={cal.detailLabel}>Time</div>
+                      <div className={`${cal.detailValue} ${cal.detailValueLoud}`}>
+                        {selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration, selectedClass.end_time)}
+                      </div>
                     </div>
                   </div>
                   {renderVerificationPanel()}
@@ -5320,7 +6196,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                       type="button"
                       disabled={isClassEntryDisabled}
                       onClick={enterSelectedClass}
-                      className={`${styles.bookBtn} ${styles.joinBtn}`}
+                      className={`${cal.actionCard} ${cal.actionPrimary}`}
                       style={{
                         textAlign: "center",
                         display: "block",
@@ -5337,7 +6213,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                   { isTeacherOrAdmin && isSelectedClassNoShowable && !requestMode && (
                     <button
                       type="button"
-                      className={`${styles.bookBtn} ${styles.doneBtn}`}
+                      className={`${cal.actionCard} ${cal.actionInfo}`}
                       disabled={isMarkingClassDone}
                       onClick={markSelectedClassNoShow}
                       style={{
@@ -5353,7 +6229,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                   ) }
                   { canShowRescheduleAction && (
                     <button
-                      className={`${styles.bookBtn} ${styles.rescheduleBtn}`}
+                      className={`${cal.actionCard} ${cal.actionWarn}`}
                       onClick={() => {
                         // Fetch counterparty's booked dates
                         const otherPartyId = localRole === "student" ? selectedClass.teacher_id : selectedClass.student_id;
@@ -5413,51 +6289,47 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     </div>
                   ) }
                   { requestMode && !selectedClassStarted && !selectedClassEnded && (
-                    <div style={{ marginTop: 12, padding: 14, border: "1px solid #e0e0e0", borderRadius: 8, background: "#fafafa" }}>
-                      <div style={{ marginBottom: 12 }}>
-                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#333" }}>Request Reschedule</h4>
-                        <p style={{ margin: 0, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
+                    <div className={cal.panelCard} style={{ marginTop: 12 }}>
+                      <div>
+                        <h4 style={{ margin: "0 0 6px 0", fontSize: "1.05rem", fontWeight: 800, color: "var(--primary)" }}>
+                          Request Reschedule
+                        </h4>
+                        <p className={cal.formHint}>
                           Select your preferred date and time, and let your teacher know why you need the reschedule.
                         </p>
                       </div>
-                      {requestError && (
-                        <div style={{ marginBottom: 10, padding: 8, background: "#ffebee", border: "1px solid #ffcdd2", borderRadius: 6, color: "#c62828", fontSize: "0.8rem" }}>
-                          {requestError}
-                        </div>
-                      )}
-                      <div style={{ marginBottom: 10 }}>
-                        <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>New Date *</label>
-                        <div style={{ width: "100%", padding: "10px", fontSize: "0.95rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#fff", minHeight: "42px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                          <div style={{ color: requestDate ? "#111" : "#666" }}>
+                      {requestError && <div className={cal.errorBox}>{requestError}</div>}
+                      <div>
+                        <label className={cal.formLabel}>New Date *</label>
+                        <div className={cal.formInput} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", minHeight: "42px", cursor: "default" }}>
+                          <span style={{ color: requestDate ? "var(--text)" : "var(--muted-light)" }}>
                             {requestDate ? new Date(requestDate + "T00:00:00").toLocaleDateString() : "Select a date on the calendar"}
-                          </div>
+                          </span>
                         </div>
-                        <div style={{ fontSize: "0.7rem", color: "#999", marginTop: 4 }}>Click a day on the calendar</div>
+                        <p className={cal.formHint} style={{ marginTop: 6 }}>Click a day on the calendar</p>
                         {requestDate && (
-                          <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
+                          <div style={{ marginTop: 6 }}>
                             {getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? (
-                              <p style={{ margin: 0, color: "#f44336" }}>{localRole === "student" ? "Teacher" : "You are"} unavailable on this date</p>
+                              <p className={cal.fieldError}>{localRole === "student" ? "Teacher" : "You are"} unavailable on this date</p>
                             ) : getRescheduleAvailabilityStatus(requestDate) === "available" ? (
-                              <p style={{ margin: 0, color: "#4caf50" }}>Available on this date</p>
+                              <p className={cal.formHint}>Available on this date</p>
                             ) : (
-                              <p style={{ margin: 0, color: "#999" }}>Availability not set</p>
+                              <p className={cal.formHint}>Availability not set</p>
                             )}
                             {counterpartyBookedDates.filter(bd => normalizeDate(bd.scheduled_date) === normalizeDate(requestDate)).length > 0 && (
-                              <p style={{ margin: "4px 0 0 0", color: "#ff9800" }}>
+                              <p className={cal.formHint} style={{ color: "var(--text-warn)" }}>
                                 {localRole === "student" ? "Teacher" : "Student"} booked: {counterpartyBookedDates.filter(bd => normalizeDate(bd.scheduled_date) === normalizeDate(requestDate)).map(bd => humanTime(bd.start_time)).join(", ")}
                               </p>
                             )}
                           </div>
                         )}
                       </div>
-                      <div style={{ marginBottom: 10 }}>
-                        <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>New Time *</label>
+                      <div>
+                        <label className={cal.formLabel}>New Time *</label>
                         {requestDate && getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? (
-                          <div style={{ padding: 12, background: "#fff3e0", borderRadius: 8, color: "#b65f00" }}>
-                            You are unavailable on this date.
-                          </div>
+                          <div className={cal.warnBox}>You are unavailable on this date.</div>
                         ) : rescheduleTimeSlots.length > 0 ? (
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
+                          <div className={cal.slotGrid}>
                             {rescheduleTimeSlots.map(time => {
                               const isSelected = requestTime === time;
                               return (
@@ -5477,7 +6349,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                       setRequestError("This time is outside your availability window. Please choose another time.");
                                     }
                                   }}
-                                  style={{ padding: "12px 14px", border: isSelected ? "2px solid #4CAF50" : "1px solid #d0d0d0", borderRadius: "8px", background: isSelected ? "#e8f5e9" : "#fff", color: "#111", cursor: "pointer", textAlign: "center" }}
+                                  className={`${cal.slotBtn} ${isSelected ? cal.slotBtnSelected : ""}`}
                                 >
                                   {humanTime(time)}
                                 </button>
@@ -5485,25 +6357,41 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                             })}
                           </div>
                         ) : (
-                          <div style={{ padding: 12, background: "#f4f6f8", borderRadius: 8, color: "#555" }}>
-                            No available slots found for this date. Choose another day.
-                          </div>
+                          <div className={cal.infoBox}>No available slots found for this date. Choose another day.</div>
                         )}
                         {requestError && (
-                          <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
+                          <div className={cal.fieldError}>
                             ✕ {requestError}
                           </div>
                         )}
                       </div>
-                      <div style={{ marginBottom: 12 }}>
-                        <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Reason *</label>
-                        <textarea rows={3} placeholder="Please explain why you need to reschedule (minimum 5 characters)" value={requestReason} onChange={e => { setRequestReason(e.target.value); setRequestError(""); }} style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }} />
+                      <div>
+                        <label className={cal.formLabel}>Reason *</label>
+                        <textarea
+                          className={cal.formTextarea}
+                          rows={3}
+                          placeholder="Please explain why you need to reschedule (minimum 5 characters)"
+                          value={requestReason}
+                          onChange={e => { setRequestReason(e.target.value); setRequestError(""); }}
+                        />
                       </div>
-                      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                        <button type="button" onClick={() => { setRequestMode(false); setRequestError(""); }} disabled={isSubmittingRequest} style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, cursor: isSubmittingRequest ? "not-allowed" : "pointer", opacity: isSubmittingRequest ? 0.6 : 1 }}>
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <button
+                          type="button"
+                          onClick={() => { setRequestMode(false); setRequestError(""); }}
+                          disabled={isSubmittingRequest}
+                          className={cal.actionCard}
+                          style={{ justifyContent: "center" }}
+                        >
                           Cancel
                         </button>
-                        <button type="button" onClick={openRequestConfirmation} disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError} style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "#999" : "#0f0f0f", color: "#fff", borderRadius: 6, cursor: (isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError) ? "not-allowed" : "pointer" }}>
+                        <button
+                          type="button"
+                          onClick={openRequestConfirmation}
+                          disabled={isSubmittingRequest || !requestDate || !requestTime || !requestReason || requestReason.trim().length < 5 || getRescheduleAvailabilityStatus(requestDate) !== "available" || !!requestError}
+                          className={`${cal.actionCard} ${cal.actionPrimary}`}
+                          style={{ justifyContent: "center" }}
+                        >
                           {isSubmittingRequest ? "Sending..." : "Send Request"}
                         </button>
                       </div>
@@ -5511,16 +6399,16 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                   ) }
                   <button
                     type="button"
-                    className={styles.slotBtn}
+                    className={cal.actionCard}
                     onClick={() => setSelectedClassId(null)}
                     style={{ marginTop: "8px" }}
                   >
                     Back to Classes
                   </button>
                 </>
-              ) : selectedDate ? (
+              ) : selectedDate && calendarView !== "list" ? (
                 <>
-                  <div className={styles.legendTitle}>
+                  <div className={cal.panelTitle}>
                     {new Date(selectedDate + "T00:00:00").toLocaleDateString()}
                   </div>
                   <div className={styles.slotList}>
@@ -5529,34 +6417,31 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         <button
                           key={idx}
                           type="button"
-                          className={styles.slotBtn}
+                          className={cal.dayClass}
                           onClick={() => setSelectedClassId(cls.id)}
-                          style={{ textAlign: "left", cursor: "pointer" }}
                         >
-                          <div><strong>{cls.className || cls.name || "Untitled"}</strong></div>
-                          <div style={{ fontSize: "0.85em", marginTop: "4px" }}>
+                          <span className={cal.dayClassTitle}>{cls.className || cls.name || "Untitled"}</span>
+                          <span className={cal.dayClassTime}>
                             {cls.time || cls.startTime || ""} - {getEndTime(cls.time || cls.startTime, cls.duration, cls.end_time) || ""}
-                          </div>
-                          {cls.studentName && <div style={{ fontSize: "0.85em", color: "#666" }}>Student: {cls.studentName}</div>}
+                          </span>
+                          {cls.studentName && <span className={cal.dayClassWho}>Student: {cls.studentName}</span>}
                           {(cls.teacherFullName || cls.teacherName || cls.teacher) && (
-                            <div style={{ fontSize: "0.85em", color: "#666" }}>
+                            <span className={cal.dayClassWho}>
                               Teacher: {cls.teacherFullName || cls.teacherName || cls.teacher}
-                            </div>
+                            </span>
                           )}
                         </button>
                       ))
                     ) : (
-                      <div style={{ padding: "12px", color: "#999", fontSize: "0.9em" }}>
-                        No classes scheduled for this day
-                      </div>
+                      <div className={cal.infoBox}>No classes scheduled for this day</div>
                     )}
 
                     {/* Admin booking interface */}
                     {onBookClass && selectedDate && (
                       <>
                         <div style={{ margin: "16px 0 8px 0", padding: "8px 0", borderTop: "1px solid #e0e0e0" }}>
-                          <div style={{ fontSize: "0.9em", fontWeight: "600", color: "#333" }}>Available Time Slots</div>
-                          <div style={{ fontSize: "0.8em", color: "#666", marginTop: "4px" }}>Click to book a class</div>
+                          <div className={cal.panelTitle}>Available Time Slots</div>
+                          <div className={cal.formHint}>Click a time to book a class</div>
                         </div>
                         {availableTimeSlots && availableTimeSlots.length > 0 ? (
                           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -5578,23 +6463,11 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                               const renderTimeGroup = (title, slots, icon) => (
                                 slots.length > 0 && (
                                   <div>
-                                    <div style={{
-                                      fontSize: "0.8em",
-                                      fontWeight: "600",
-                                      color: "#666",
-                                      marginBottom: "8px",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: "6px"
-                                    }}>
-                                      <span>{icon}</span>
+                                    <div className={cal.panelTitle} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                      <span aria-hidden="true">{icon}</span>
                                       {title} ({slots.length})
                                     </div>
-                                    <div style={{
-                                      display: "grid",
-                                      gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-                                      gap: "8px"
-                                    }}>
+                                    <div className={cal.slotGrid}>
                                       {slots.map(time => {
                                         const isBooked = selectedClasses.some(cls => cls.time === time || cls.startTime === time);
                                         return (
@@ -5610,44 +6483,9 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                               }
                                             }}
                                             disabled={isBooked}
-                                            style={{
-                                              padding: "12px 16px",
-                                              border: isBooked ? "1px solid #e0e0e0" : "1px solid #4CAF50",
-                                              borderRadius: "8px",
-                                              background: isBooked ? "#f8f8f8" : "#f1f8f1",
-                                              color: isBooked ? "#999" : "#2E7D32",
-                                              fontSize: "0.9em",
-                                              fontWeight: "600",
-                                              cursor: isBooked ? "not-allowed" : "pointer",
-                                              transition: "all 0.2s ease",
-                                              textAlign: "center",
-                                              display: "flex",
-                                              flexDirection: "column",
-                                              alignItems: "center",
-                                              gap: "4px",
-                                              minHeight: "60px",
-                                              justifyContent: "center"
-                                            }}
-                                            onMouseEnter={(e) => {
-                                              if (!isBooked) {
-                                                e.target.style.background = "#e8f5e8";
-                                                e.target.style.borderColor = "#388E3C";
-                                                e.target.style.transform = "translateY(-1px)";
-                                                e.target.style.boxShadow = "0 2px 8px rgba(76, 175, 80, 0.2)";
-                                              }
-                                            }}
-                                            onMouseLeave={(e) => {
-                                              if (!isBooked) {
-                                                e.target.style.background = "#f1f8f1";
-                                                e.target.style.borderColor = "#4CAF50";
-                                                e.target.style.transform = "translateY(0)";
-                                                e.target.style.boxShadow = "none";
-                                              }
-                                            }}
+                                            className={`${cal.slotBtn} ${isBooked ? cal.slotBtnTaken : ""}`}
                                           >
-                                            <div style={{ fontSize: "1em", fontWeight: "700" }}>
-                                              {humanTime(time)}
-                                            </div>
+                                            {humanTime(time)}
                                           </button>
                                         );
                                       })}
@@ -5696,20 +6534,20 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
-$5zIndex: 1000,
-$5padding: 20,
+                            zIndex: 1000,
+                            padding: 20,
                             animation: "fadeIn 0.2s ease-out"
                           }}>
                             <div style={{
-                              background: "#fff",
-                              border: "1px solid rgba(38, 66, 59, 0.12)",
+                              background: "var(--surface)",
+                              border: "1px solid var(--border)",
                               borderRadius: 24,
                               padding: 24,
                               maxWidth: "440px",
                               width: "100%",
                               maxHeight: "calc(100vh - 40px)",
                               overflow: "auto",
-                              boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
+                              boxShadow: "var(--shadow-xl)",
                               animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
                               position: "relative"
                             }}>
@@ -5722,6 +6560,7 @@ $5padding: 20,
                                   setBookingSubject("");
                                   setBookingEndTime("");
                                 }}
+                                aria-label="Close"
                                 style={{
                                   position: "absolute",
                                   top: "16px",
@@ -5730,23 +6569,14 @@ $5padding: 20,
                                   border: "none",
                                   fontSize: "24px",
                                   cursor: "pointer",
-                                  color: "#666",
+                                  color: "var(--muted)",
                                   padding: "4px",
                                   borderRadius: "50%",
-                                  width: "32px",
-                                  height: "32px",
+                                  width: "40px",
+                                  height: "40px",
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "center",
-                                  transition: "all 0.2s ease"
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.target.style.background = "#f0f0f0";
-                                  e.target.style.color = "#333";
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.target.style.background = "transparent";
-                                  e.target.style.color = "#666";
                                 }}
                               >
                                 ×
@@ -5755,19 +6585,18 @@ $5padding: 20,
                               {/* Header */}
                               <div style={{ marginBottom: "20px", paddingRight: "40px" }}>
                                 <div style={{
-                                  fontSize: "1.5em",
-                                  fontWeight: "700",
-                                  color: "#1a1a1a",
-                                  marginBottom: "8px",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "8px"
+                                  fontSize: "1.4rem",
+                                  fontWeight: 800,
+                                  color: "var(--primary)",
+                                  marginBottom: "6px",
+                                  letterSpacing: "-0.01em"
                                 }}>
                                   Book Class
                                 </div>
                                 <div style={{
-                                  fontSize: "0.9em",
-                                  color: "#666",
+                                  fontSize: "0.95rem",
+                                  fontWeight: 500,
+                                  color: "var(--muted)",
                                   lineHeight: "1.5"
                                 }}>
                                   Schedule a new class for {new Date(selectedDate + "T00:00:00").toLocaleDateString()} at {humanTime(selectedTimeSlot)}
@@ -5777,38 +6606,13 @@ $5padding: 20,
                               {/* Form Fields */}
                               <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                                 <div>
-                                  <label style={{
-                                    display: "block",
-                                    fontSize: "0.9em",
-                                    fontWeight: "600",
-                                    marginBottom: "6px",
-                                    color: "#333"
-                                  }}>
+                                  <label className={cal.formLabel}>
                                     Subject <span style={{ color: "#e74c3c" }}>*</span>
                                   </label>
                                   <select
                                     value={bookingSubject}
                                     onChange={(e) => setBookingSubject(e.target.value)}
-                                    style={{
-                                      width: "100%",
-                                      padding: "12px 14px",
-                                      fontSize: "0.95em",
-                                      border: "2px solid #e1e5e9",
-                                      borderRadius: "8px",
-                                      boxSizing: "border-box",
-                                      fontFamily: "inherit",
-                                      background: "#fff",
-                                      cursor: "pointer",
-                                      transition: "border-color 0.2s ease, box-shadow 0.2s ease"
-                                    }}
-                                    onFocus={(e) => {
-                                      e.target.style.borderColor = "#4CAF50";
-                                      e.target.style.boxShadow = "0 0 0 3px rgba(76, 175, 80, 0.1)";
-                                    }}
-                                    onBlur={(e) => {
-                                      e.target.style.borderColor = "#e1e5e9";
-                                      e.target.style.boxShadow = "none";
-                                    }}
+                                    className={cal.formSelect}
                                   >
                                     <option value="">Select a subject...</option>
                                     <option value="Business English">Business English</option>
@@ -5823,46 +6627,16 @@ $5padding: 20,
                                 </div>
 
                                 <div>
-                                  <label style={{
-                                    display: "block",
-                                    fontSize: "0.9em",
-                                    fontWeight: "600",
-                                    marginBottom: "6px",
-                                    color: "#333"
-                                  }}>
+                                  <label className={cal.formLabel}>
                                     End Time <span style={{ color: "#e74c3c" }}>*</span>
                                   </label>
                                   <input
                                     type="time"
                                     value={bookingEndTime}
                                     onChange={(e) => setBookingEndTime(e.target.value)}
-                                    style={{
-                                      width: "100%",
-                                      padding: "12px 14px",
-                                      fontSize: "0.95em",
-                                      border: "2px solid #e1e5e9",
-                                      borderRadius: "8px",
-                                      boxSizing: "border-box",
-                                      fontFamily: "inherit",
-                                      transition: "border-color 0.2s ease, box-shadow 0.2s ease"
-                                    }}
-                                    onFocus={(e) => {
-                                      e.target.style.borderColor = "#4CAF50";
-                                      e.target.style.boxShadow = "0 0 0 3px rgba(76, 175, 80, 0.1)";
-                                    }}
-                                    onBlur={(e) => {
-                                      e.target.style.borderColor = "#e1e5e9";
-                                      e.target.style.boxShadow = "none";
-                                    }}
+                                    className={cal.formInput}
                                   />
-                                  <div style={{
-                                    fontSize: "0.8em",
-                                    color: "#666",
-                                    marginTop: "6px",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "4px"
-                                  }}>
+                                  <div className={cal.formHint}>
                                     <span>🕐</span>
                                     Start: {humanTime(selectedTimeSlot)} • Duration: {bookingEndTime ? (() => {
                                       const start = new Date(`2000-01-01T${selectedTimeSlot}`);
@@ -5891,24 +6665,7 @@ $5padding: 20,
                                     setBookingSubject("");
                                     setBookingEndTime("");
                                   }}
-                                  style={{
-                                    padding: "10px 20px",
-                                    fontSize: "0.9em",
-                                    fontWeight: "600",
-                                    border: "2px solid #e1e5e9",
-                                    background: "#fff",
-                                    borderRadius: "8px",
-                                    cursor: "pointer",
-                                    transition: "all 0.2s ease"
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.target.style.borderColor = "#ccc";
-                                    e.target.style.background = "#f8f9fa";
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.target.style.borderColor = "#e1e5e9";
-                                    e.target.style.background = "#fff";
-                                  }}
+                                  className={cal.actionCard}
                                 >
                                   Cancel
                                 </button>
@@ -5929,28 +6686,7 @@ $5padding: 20,
                                     setBookingSubject("");
                                     setBookingEndTime("");
                                   }}
-                                  style={{
-                                    padding: "10px 20px",
-                                    fontSize: "0.9em",
-                                    fontWeight: "600",
-                                    border: "none",
-                                    background: "#4CAF50",
-                                    color: "#fff",
-                                    borderRadius: "8px",
-                                    cursor: "pointer",
-                                    transition: "all 0.2s ease",
-                                    boxShadow: "0 2px 8px rgba(76, 175, 80, 0.2)"
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.target.style.background = "#45a049";
-                                    e.target.style.transform = "translateY(-1px)";
-                                    e.target.style.boxShadow = "0 4px 12px rgba(76, 175, 80, 0.3)";
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.target.style.background = "#4CAF50";
-                                    e.target.style.transform = "translateY(0)";
-                                    e.target.style.boxShadow = "0 2px 8px rgba(76, 175, 80, 0.2)";
-                                  }}
+                                  className={`${cal.actionCard} ${cal.actionPrimary}`}
                                 >
                                   Book Class
                                 </button>
@@ -5963,7 +6699,7 @@ $5padding: 20,
                   </div>
                   <button
                     type="button"
-                    className={styles.slotBtn}
+                    className={cal.actionCard}
                     onClick={() => setSelectedDate(null)}
                     style={{ marginTop: "12px" }}
                   >
@@ -5972,12 +6708,12 @@ $5padding: 20,
                 </>
               ) : (
                 <>
-                  <div className={styles.legendTitle}>Actions</div>
+                  <div className={cal.panelTitle}>Actions</div>
                   <div className={styles.slotList}>
                     {localRole === "teacher" && (
-                      <button 
-                        type="button" 
-                        className={styles.slotBtn} 
+                      <button
+                        type="button"
+                        className={`${cal.actionCard} ${setAvailabilityMode ? cal.actionCardActive : ""}`}
                         onClick={() => {
                           setSetAvailabilityMode(!setAvailabilityMode);
                           if (!setAvailabilityMode) {
@@ -5988,406 +6724,48 @@ $5padding: 20,
                             setAvailabilityBreakEnd("");
                             setAvailabilityStatus("available");
                             setAvailabilityError("");
+                            setEditingAvailability(null);
                             loadTeacherAvailabilityForMonth();
+                            // The count on the "See my availabilities" button
+                            // has to be right before they press it.
+                            loadTeacherAvailabilityForWindow();
+                            // The picker opens on the month the teacher is
+                            // looking at.
+                            //
+                            // !! It used to open on today's month, whatever
+                            // !! month the grid was showing. A teacher who
+                            // !! paged the grid to November, opened the
+                            // !! window, and was shown October - and the
+                            // !! date they picked was not the date they
+                            // !! thought they were looking at.
+                            const viewing = new Date(year, month, 1);
+                            const first = new Date(
+                              viewerToday.getFullYear(),
+                              viewerToday.getMonth(),
+                              1
+                            );
+                            const last = dateKeyToLocalDate(scheduleWindowEndKey);
+                            const lastMonth = last
+                              ? new Date(last.getFullYear(), last.getMonth(), 1)
+                              : first;
+                            const wanted =
+                              viewing < first ? first : viewing > lastMonth ? lastMonth : viewing;
+                            setAvailabilityPickerMonth({
+                              year: wanted.getFullYear(),
+                              month: wanted.getMonth(),
+                            });
                           }
                         }}
-                        style={{ background: setAvailabilityMode ? "#e8f5e9" : "#fff", borderColor: setAvailabilityMode ? "#4CAF50" : "#ccc" }}
                       >
-                        {setAvailabilityMode ? "Close Availability Manager" : "Set Availability"}
+                        <span className={cal.actionIcon} aria-hidden="true">🗓️</span>
+                        <span>{setAvailabilityMode ? "Close Availability Manager" : "Set Availability"}</span>
                       </button>
                     )}
-                    <button type="button" className={styles.slotBtn} onClick={jumpToToday}>
-                      Jump to Today
+                    <button type="button" className={cal.actionCard} onClick={jumpToToday}>
+                      <span className={cal.actionIcon} aria-hidden="true">📅</span>
+                      <span>Jump to Today</span>
                     </button>
                   </div>
-
-                  {/* Teacher Availability Manager */}
-                  {setAvailabilityMode && localRole === "teacher" && (
-                    <div className={styles.availabilityManager} style={{ marginTop: 16, padding: 14, border: "1px solid #e0e0e0", borderRadius: 8, background: "#fafafa" }}>
-                      <div style={{ marginBottom: 12 }}>
-                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.95rem", color: "#333" }}>Set Your Schedule</h4>
-                        <p style={{ margin: 0, fontSize: "0.8rem", color: "#666", lineHeight: 1.4 }}>
-                          Set your available times from today up to 3 months ahead. You cannot set availability on dates with existing bookings or past dates.
-                        </p>
-                      </div>
-
-                      {availabilityError && (
-                        <div style={{ marginBottom: 10, padding: 10, background: "#ffebee", border: "1px solid #ffcdd2", borderRadius: 6, color: "#c62828", fontSize: "0.8rem" }}>
-                          {availabilityError}
-                        </div>
-                      )}
-
-                      <div style={{ marginBottom: 12, display: "grid", gap: 10 }}>
-                        <div>
-                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Apply To *</label>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAvailabilityApplyMode("single");
-                                setAvailabilityError("");
-                              }}
-                              style={{
-                                padding: "8px 10px",
-                                fontSize: "0.85rem",
-                                border: availabilityApplyMode === "single" ? "2px solid #4CAF50" : "1px solid #d0d0d0",
-                                borderRadius: 6,
-                                background: availabilityApplyMode === "single" ? "#e8f5e9" : "#fff",
-                                color: availabilityApplyMode === "single" ? "#2E7D32" : "#555",
-                                cursor: "pointer",
-                                fontWeight: 600,
-                              }}
-                            >
-                              Single Day
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAvailabilityApplyMode("bulk");
-                                setAvailabilityError("");
-                              }}
-                              style={{
-                                padding: "8px 10px",
-                                fontSize: "0.85rem",
-                                border: availabilityApplyMode === "bulk" ? "2px solid #4CAF50" : "1px solid #d0d0d0",
-                                borderRadius: 6,
-                                background: availabilityApplyMode === "bulk" ? "#e8f5e9" : "#fff",
-                                color: availabilityApplyMode === "bulk" ? "#2E7D32" : "#555",
-                                cursor: "pointer",
-                                fontWeight: 600,
-                              }}
-                            >
-                              Weekly Pattern
-                            </button>
-                          </div>
-                        </div>
-
-                        {availabilityApplyMode === "bulk" && (
-                          <div>
-                            <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Weekdays *</label>
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 5 }}>
-                              {[
-                                [0, "Sun"],
-                                [1, "Mon"],
-                                [2, "Tue"],
-                                [3, "Wed"],
-                                [4, "Thu"],
-                                [5, "Fri"],
-                                [6, "Sat"],
-                              ].map(([weekday, label]) => {
-                                const active = bulkAvailabilityWeekdays.includes(weekday);
-                                return (
-                                  <button
-                                    key={weekday}
-                                    type="button"
-                                    onClick={() => toggleBulkAvailabilityWeekday(weekday)}
-                                    style={{
-                                      padding: "8px 4px",
-                                      fontSize: "0.72rem",
-                                      border: active ? "2px solid #4CAF50" : "1px solid #d0d0d0",
-                                      borderRadius: 6,
-                                      background: active ? "#e8f5e9" : "#fff",
-                                      color: active ? "#2E7D32" : "#555",
-                                      cursor: "pointer",
-                                      fontWeight: 700,
-                                    }}
-                                  >
-                                    {label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                            <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666" }}>
-                              Applies to {bulkAvailabilityDates.length} date{bulkAvailabilityDates.length === 1 ? "" : "s"} in {monthName} {year}
-                            </div>
-                          </div>
-                        )}
-
-                        {availabilityApplyMode === "single" && (
-                        <div>
-                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Date *</label>
-<div style={{ width: "100%", padding: "10px", fontSize: "0.95rem", border: "1px solid #d0d0d0", borderRadius: 6, background: "#fff", minHeight: "42px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                             <div style={{ color: availabilityDate ? "#111" : "#666" }}>
-                               {availabilityDate ? new Date(availabilityDate + "T00:00:00").toLocaleDateString() : "Select a date on the calendar"}
-                             </div>
-                           </div>
-                           <div style={{ fontSize: "0.7rem", color: "#999", marginTop: 4 }}>Click a day on the calendar</div>
-                           <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666" }}>
-                            Dates allowed from today to {new Date(scheduleWindowEndKey + "T00:00:00").toLocaleDateString()}
-                          </div>
-                          {getAvailabilityFieldError("availabilityDate") && (
-                            <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#d32f2f" }}>
-                              {getAvailabilityFieldError("availabilityDate")}
-                            </div>
-                          )}
-                        </div>
-                        )}
-
-                        <div>
-                          <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Availability Status *</label>
-                          <div className={styles.availabilityStatus} style={{ display: "flex", gap: 12 }}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAvailabilityStatus("available");
-                                setAvailabilityError(validateAvailabilityInputs({ availabilityStatus: "available" }));
-                              }}
-                              style={{
-                                flex: 1,
-                                padding: "8px 12px",
-                                fontSize: "0.9rem",
-                                border: availabilityStatus === "available" ? "2px solid #4CAF50" : "1px solid #d0d0d0",
-                                borderRadius: 6,
-                                background: availabilityStatus === "available" ? "#e8f5e9" : "#fff",
-                                color: availabilityStatus === "available" ? "#2E7D32" : "#666",
-                                cursor: "pointer",
-                                fontWeight: 600,
-                              }}
-                            >
-                              Available
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAvailabilityStatus("unavailable");
-                                setAvailabilityError(validateAvailabilityInputs({ availabilityStatus: "unavailable" }));
-                              }}
-                              style={{
-                                flex: 1,
-                                padding: "8px 12px",
-                                fontSize: "0.9rem",
-                                border: availabilityStatus === "unavailable" ? "2px solid #f44336" : "1px solid #d0d0d0",
-                                borderRadius: 6,
-                                background: availabilityStatus === "unavailable" ? "#ffebee" : "#fff",
-                                color: availabilityStatus === "unavailable" ? "#c62828" : "#666",
-                                cursor: "pointer",
-                                fontWeight: 600,
-                              }}
-                            >
-                              Unavailable
-                            </button>
-                          </div>
-                        </div>
-
-                        {availabilityStatus === "available" && (
-                          <>
-                            <div>
-                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Start Time *</label>
-                              <input
-                                type="time"
-                                step="3600"
-                                value={availabilityStartTime}
-                                onChange={e => {
-                                  const time = e.target.value;
-                                  const roundedTime = time ? `${time.split(':')[0]}:00` : "";
-                                  setAvailabilityStartTime(roundedTime);
-                                  setAvailabilityError(validateAvailabilityInputs({ availabilityStartTime: roundedTime }));
-                                }}
-                                style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
-                              />
-                              {getAvailabilityFieldError("availabilityStartTime") && (
-                                <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#d32f2f" }}>
-                                  {getAvailabilityFieldError("availabilityStartTime")}
-                                </div>
-                              )}
-                            </div>
-
-                            <div>
-                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>End Time *</label>
-                              <input
-                                type="time"
-                                step="3600"
-                                value={availabilityEndTime}
-                                onChange={e => {
-                                  const time = e.target.value;
-                                  const roundedTime = time ? `${time.split(':')[0]}:00` : "";
-                                  setAvailabilityEndTime(roundedTime);
-                                  setAvailabilityError(validateAvailabilityInputs({ availabilityEndTime: roundedTime }));
-                                }}
-                                style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
-                              />
-                              {getAvailabilityFieldError("availabilityEndTime") && (
-                                <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#d32f2f" }}>
-                                  {getAvailabilityFieldError("availabilityEndTime")}
-                                </div>
-                              )}
-                              {availabilityStartTime && availabilityEndTime && (
-                                <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666" }}>
-                                  Duration: {(() => {
-                                    const start = new Date(`2000-01-01T${availabilityStartTime}`);
-                                    const end = new Date(`2000-01-01T${availabilityEndTime}`);
-                                    const diffMinutes = Math.round((end - start) / (1000 * 60));
-                                    const hours = Math.floor(diffMinutes / 60);
-                                    const mins = diffMinutes % 60;
-                                    if (hours === 0) return `${mins} minutes`;
-                                    return `${hours}h ${mins}m`;
-                                  })()}
-                                </div>
-                              )}
-                            </div>
-
-                            <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: 10, marginTop: 5 }}>
-                              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: 4, color: "#333" }}>Break Time (Optional)</label>
-                              
-                              <div className={styles.breakTimeFields} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-                                <div>
-                                  <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 500, marginBottom: 3, color: "#666" }}>Break Start</label>
-                                  <input
-                                    type="time"
-                                    step="3600"
-                                    value={availabilityBreakStart}
-                                    onChange={e => {
-                                      const time = e.target.value;
-                                      const roundedTime = time ? `${time.split(':')[0]}:00` : "";
-                                      setAvailabilityBreakStart(roundedTime);
-                                      setAvailabilityError(validateAvailabilityInputs({ availabilityBreakStart: roundedTime }));
-                                    }}
-                                    style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
-                                  />
-                                  {getAvailabilityFieldError("availabilityBreakStart") && (
-                                    <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#d32f2f" }}>
-                                      {getAvailabilityFieldError("availabilityBreakStart")}
-                                    </div>
-                                  )}
-                                </div>
-                                <div>
-                                  <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 500, marginBottom: 3, color: "#666" }}>Break End</label>
-                                  <input
-                                    type="time"
-                                    step="3600"
-                                    value={availabilityBreakEnd}
-                                    onChange={e => {
-                                      const time = e.target.value;
-                                      const roundedTime = time ? `${time.split(':')[0]}:00` : "";
-                                      setAvailabilityBreakEnd(roundedTime);
-                                      setAvailabilityError(validateAvailabilityInputs({ availabilityBreakEnd: roundedTime }));
-                                    }}
-                                    style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit" }}
-                                  />
-                                  {getAvailabilityFieldError("availabilityBreakEnd") && (
-                                    <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#d32f2f" }}>
-                                      {getAvailabilityFieldError("availabilityBreakEnd")}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-
-                              {availabilityBreakStart && availabilityBreakEnd && (
-                                <div style={{ lineHeight: 1.4, fontSize: "0.75rem", padding: 8, background: "#f5f5f5", borderRadius: 6, color: "#666" }}>
-                                  Break: {humanTime(availabilityBreakStart)} - {humanTime(availabilityBreakEnd)}
-                                </div>
-                              )}
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      <div className={styles.availabilityActions} style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginBottom: 16 }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSetAvailabilityMode(false);
-                            setAvailabilityError("");
-                            setAvailabilityStartTime("");
-                            setAvailabilityEndTime("");
-                            setAvailabilityBreakStart("");
-                            setAvailabilityBreakEnd("");
-                          }}
-                          disabled={isSubmittingAvailability}
-                          style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, cursor: isSubmittingAvailability ? "not-allowed" : "pointer", opacity: isSubmittingAvailability ? 0.6 : 1 }}
-                        >
-                          Close
-                        </button>
-                        <button
-                          type="button"
-                          onClick={openAvailabilityConfirmation}
-                          disabled={isSubmittingAvailability}
-                          style={{ padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, border: "none", background: isSubmittingAvailability ? "#999" : "#4CAF50", color: "#fff", borderRadius: 6, cursor: isSubmittingAvailability ? "not-allowed" : "pointer" }}
-                        >
-                          {isSubmittingAvailability ? "Saving..." : "Save Availability"}
-                        </button>
-                      </div>
-
-                      {/* Show visible month's availability records */}
-                      {teacherAvailabilityList && teacherAvailabilityList.length > 0 && (
-                        <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: 12 }}>
-                          <h5 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "#333", fontWeight: 600 }}>
-                            Your Availability for {monthName}
-                          </h5>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "200px", overflowY: "auto" }}>
-                            {teacherAvailabilityList.map(record => (
-                              <div
-                                key={record.id || record.availability_id}
-                                style={{
-                                  padding: 10,
-                                  background: record.status === "available" ? "#e8f5e9" : "#ffebee",
-                                  border: `1px solid ${record.status === "available" ? "#c8e6c9" : "#ffcdd2"}`,
-                                  borderRadius: 6,
-                                  fontSize: "0.8rem",
-                                }}
-                              >
-                                <div className={styles.availabilityRecordHeader} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
-                                  <div style={{ minWidth: 0, flex: 1 }}>
-                                    <strong style={{ display: "block", lineHeight: 1.25 }}>{formatScheduleDate(record.available_date)}</strong>
-                                    <span
-                                      style={{
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        marginTop: 4,
-                                        padding: "2px 8px",
-                                        borderRadius: 999,
-                                        background: record.status === "available" ? "#d8e8df" : "#fde2e2",
-                                        color: record.status === "available" ? "#26423b" : "#b91c1c",
-                                        fontSize: "0.72rem",
-                                        fontWeight: 700,
-                                        lineHeight: 1.3,
-                                      }}
-                                    >
-                                      {record.status === "available" ? "Available" : "Unavailable"}
-                                    </span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => deleteTeacherAvailability(record.id || record.availability_id)}
-                                    disabled={!!record.has_booked_class}
-                                    title={record.has_booked_class ? "A student has a booked class on this day" : undefined}
-                                    style={{
-                                      padding: "6px 10px",
-                                      fontSize: "0.75rem",
-                                      fontWeight: 700,
-                                      border: "none",
-                                      background: record.has_booked_class ? "#ccc" : "#f44336",
-                                      color: record.has_booked_class ? "#888" : "#fff",
-                                      borderRadius: 4,
-                                      cursor: record.has_booked_class ? "not-allowed" : "pointer",
-                                      minWidth: 62,
-                                      lineHeight: 1,
-                                      whiteSpace: "nowrap",
-                                      flex: "0 0 auto",
-                                    }}
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
-                                {record.status === "available" && (record.start_time || record.end_time) ? (
-                                  <div style={{ color: "#555", marginTop: 6, lineHeight: 1.5 }}>
-                                    <div style={{ fontWeight: 700 }}>{humanTime(record.start_time)} - {humanTime(record.end_time)}</div>
-                                    {record.break_start && record.break_end && (
-                                      <div style={{ color: "#666", fontSize: "0.75rem", marginTop: 4 }}>Break: {humanTime(record.break_start)} - {humanTime(record.break_end)}</div>
-                                    )}
-                                  </div>
-                                ) : record.status === "available" ? (
-                                  <div style={{ color: "#555", marginTop: 6, lineHeight: 1.5 }}>
-                                    Available all day
-                                  </div>
-                                ) : null}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </>
               )
             ) : (
@@ -6402,60 +6780,54 @@ $5padding: 20,
                         !! the thing they came to see is WHEN - so the day and
                         !! the time are the headline and the subject is the
                         !! small print. */}
-                    <div className={styles.legendTitle}>
-                      {describeClassDay({
-                        viewerDate: normalizeDate(selectedClass.scheduled_date),
-                        todayKey: viewerTodayKey,
-                        tomorrowKey: addDaysToDateKey(viewerTodayKey, 1),
-                      })}
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: "2rem",
-                        fontWeight: 800,
-                        color: "#10231d",
-                        lineHeight: 1.1,
-                        marginBottom: 4,
-                      }}
-                    >
-                      {selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration, selectedClass.end_time)}
-                    </div>
-                    {selectedClass.className && (
-                      <div style={{ fontSize: "1rem", color: "#4b5563", marginBottom: 12 }}>
-                        {selectedClass.className}
+                    <div className={kid.detail}>
+                      <div className={kid.detailDay}>
+                        {describeClassDay({
+                          viewerDate: normalizeDate(selectedClass.scheduled_date),
+                          todayKey: viewerTodayKey,
+                          tomorrowKey: addDaysToDateKey(viewerTodayKey, 1),
+                        })}
                       </div>
-                    )}
 
-                    <div className={styles.slotList}>
-                      {selectedTeacherFullName && (
-                        <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div className={kid.detailTime}>
+                        {selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration, selectedClass.end_time)}
+                      </div>
+                      {selectedClass.className && (
+                        <div className={kid.detailCourse}>{selectedClass.className}</div>
+                      )}
+
+                      <div className={styles.slotList}>
+                        {selectedTeacherFullName && (
+                          <div className={kid.detailRow}>
                             <AuthenticatedImage
                               src={selectedClass.teacherProfileImageUrl}
                               alt={selectedTeacherFullName || selectedClass.teacherFullName || selectedClass.teacherName}
-                              style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", flex: "0 0 auto" }}
+                              className={kid.detailAvatar}
                               fallback={
                                 <img
                                   src={userPic}
                                   alt={selectedTeacherFullName || selectedClass.teacherFullName || selectedClass.teacherName}
-                                  style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", flex: "0 0 auto" }}
+                                  className={kid.detailAvatar}
                                 />
                               }
                             />
                             <div>
-                              <div><strong>{CLASS_INFO.teacher}</strong></div>
-                              <div style={{ fontSize: "0.85em", marginTop: "4px" }}>{selectedTeacherFullName || selectedClass.teacherFullName || selectedClass.teacherName}</div>
+                              <div className={kid.detailLabel}>{CLASS_INFO.teacher}</div>
+                              <div className={kid.detailValue}>
+                                {selectedTeacherFullName || selectedClass.teacherFullName || selectedClass.teacherName}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )}
-                      {selectedClass.teacherEmail && (
-                        <div className={styles.slotBtn} style={{ cursor: "default", pointerEvents: "none", background: "#f5f5f5" }}>
-                          <div><strong>{CLASS_INFO.email}</strong></div>
-                          <div style={{ fontSize: "0.75em", marginTop: "4px", wordBreak: "break-all" }}>{selectedClass.teacherEmail}</div>
-                        </div>
-                      )}
+                        )}
+                        {selectedClass.teacherEmail && (
+                          <div className={kid.detailRow}>
+                            <span className={kid.detailIcon} aria-hidden="true">✉️</span>
+                            <div>
+                              <div className={kid.detailLabel}>{CLASS_INFO.email}</div>
+                              <div className={kid.detailValue}>{selectedClass.teacherEmail}</div>
+                            </div>
+                          </div>
+                        )}
                   {latestRemark && (
                       <div style={remarkSectionStyle}>
                         <div style={remarkHeadingStyle}>{CLASS_INFO.teacherNote}</div>
@@ -6474,6 +6846,7 @@ $5padding: 20,
                         </div>
                       </div>
                       )}
+                      </div>
                     </div>
                     {/* How the class went.
                         !! A student gets one plain sentence. They used to get
@@ -6491,7 +6864,7 @@ $5padding: 20,
                       <button
                         disabled={isClassEntryDisabled}
                         onClick={enterSelectedClass}
-                        className={`${styles.bookBtn} ${styles.joinBtn}`}
+                        className={`${cal.actionCard} ${cal.actionPrimary}`}
                         style={{
                           textAlign: "center",
                           display: "block",
@@ -6508,7 +6881,7 @@ $5padding: 20,
                     {isTeacherOrAdmin && isSelectedClassNoShowable && !requestMode && (
                       <button
                         type="button"
-                        className={`${styles.bookBtn} ${styles.doneBtn}`}
+                        className={`${cal.actionCard} ${cal.actionInfo}`}
                         disabled={isMarkingClassDone}
                         onClick={markSelectedClassNoShow}
                         style={{
@@ -6525,7 +6898,7 @@ $5padding: 20,
                     {canShowRescheduleAction && (
                       <button
                         type="button"
-                        className={`${styles.bookBtn} ${styles.rescheduleBtn}`}
+                        className={`${cal.actionCard} ${cal.actionWarn}`}
                         onClick={() => {
                         // Fetch counterparty's booked dates
                         const otherPartyId = localRole === "student" ? selectedClass.teacher_id : selectedClass.student_id;
@@ -6694,7 +7067,7 @@ $5padding: 20,
                     ) }
                     <button
                       type="button"
-                      className={styles.slotBtn}
+                      className={kid.btnGhost}
                       onClick={() => {
                         setSelectedClassId(null);
                         // A student on the simple page has no day view to go
@@ -6703,15 +7076,15 @@ $5padding: 20,
                         // over when they close the class.
                         if (isSimpleStudentView) setSelectedDate(null);
                       }}
-                      style={{ marginTop: "8px" }}
+                      style={{ marginTop: "8px", width: "100%" }}
                     >
-                      {isSimpleStudentView ? "Back to my classes" : CLASS_INFO.backToClasses}
+                      ← {isSimpleStudentView ? HOME.backToMyClasses : CLASS_INFO.backToClasses}
                     </button>
                   </>
                 ) : selectedDate && !isSimpleStudentView ? (
                   // Date selected view - clickable classes for student
                   <>
-                    <div className={styles.legendTitle}>
+                    <div className={cal.panelTitle}>
                       {CLASS_INFO.classesOn(new Date(selectedDate + "T00:00:00").toLocaleDateString())}
                     </div>
                     <div className={styles.slotList}>
@@ -6720,30 +7093,27 @@ $5padding: 20,
                           <button
                             key={idx}
                             type="button"
-                            className={styles.slotBtn}
+                            className={cal.dayClass}
                             onClick={() => setSelectedClassId(cls.id)}
-                            style={{ textAlign: "left", cursor: "pointer" }}
                           >
-                            <div><strong>{cls.className || cls.name || "Untitled"}</strong></div>
-                            <div style={{ fontSize: "0.85em", marginTop: "4px" }}>
+                            <span className={cal.dayClassTitle}>{cls.className || cls.name || "Untitled"}</span>
+                            <span className={cal.dayClassTime}>
                               {cls.time || cls.startTime || ""} - {getEndTime(cls.time || cls.startTime, cls.duration, cls.end_time) || ""}
-                            </div>
+                            </span>
                             {(cls.teacherFullName || cls.teacherName || cls.teacher) && (
-                              <div style={{ fontSize: "0.85em", color: "#666" }}>
+                              <span className={cal.dayClassWho}>
                                 {CLASS_INFO.teacher}: {cls.teacherFullName || cls.teacherName || cls.teacher}
-                              </div>
+                              </span>
                             )}
                           </button>
                         ))
                       ) : (
-                        <div style={{ padding: "12px", color: "#999", fontSize: "0.9em" }}>
-                          {CLASS_INFO.noClassesThatDay}
-                        </div>
+                        <div className={cal.infoBox}>{CLASS_INFO.noClassesThatDay}</div>
                       )}
                     </div>
                     <button
                       type="button"
-                      className={styles.slotBtn}
+                      className={cal.actionCard}
                       onClick={() => setSelectedDate(null)}
                       style={{ marginTop: "12px" }}
                     >
@@ -6751,391 +7121,74 @@ $5padding: 20,
                     </button>
                   </>
                 ) : studentBookingMode ? (
-                  <>
-                    <div className={styles.legendTitle}>{BOOKING.title}</div>
-                    <div className={styles.slotList}>
-                      <div style={{ padding: 12, color: "#333", fontSize: "0.95em" }}>
-                        {assignedTeacherName ? (
-                          <p style={{ margin: 0 }}>{BOOKING.intro(assignedTeacherName)}</p>
-                        ) : (
-                          <p style={{ margin: 0 }}>{BOOKING.noTeacher}</p>
-                        )}
-                      </div>
-                      <div className={styles.panelBody}>
-                        <div>
-                          <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 6, color: "#333" }}>
-                            {BOOKING.howToBook}
-                          </label>
-                          <div className={styles.modeRow}>
-                            <button
-                              type="button"
-                            onClick={() => {
-                              setStudentBookingApplyMode("manual");
-                              setStudentBookingError("");
-                              setStudentBookingSuggestions([]);
-                            }}
-                              style={{
-                                padding: "11px 10px",
-                                fontSize: "0.85rem",
-                                border: studentBookingApplyMode === "manual" ? "2px solid #4CAF50" : "1px solid #d0d0d0",
-                                borderRadius: 8,
-                                background: studentBookingApplyMode === "manual" ? "#e8f5e9" : "#fff",
-                                color: studentBookingApplyMode === "manual" ? "#2E7D32" : "#555",
-                                cursor: "pointer",
-                                fontWeight: 700,
-                              }}
-                            >
-                              {BOOKING.singleTimes}
-                            </button>
-                            <button
-                              type="button"
-                            onClick={() => {
-                              setStudentBookingApplyMode("weekly");
-                              setStudentBookingError("");
-                              setStudentBookingSuggestions([]);
-                            }}
-                              style={{
-                                padding: "11px 10px",
-                                fontSize: "0.85rem",
-                                border: studentBookingApplyMode === "weekly" ? "2px solid #4CAF50" : "1px solid #d0d0d0",
-                                borderRadius: 8,
-                                background: studentBookingApplyMode === "weekly" ? "#e8f5e9" : "#fff",
-                                color: studentBookingApplyMode === "weekly" ? "#2E7D32" : "#555",
-                                cursor: "pointer",
-                                fontWeight: 700,
-                              }}
-                            >
-                              {BOOKING.sameTimeEachWeek}
-                            </button>
-                          </div>
-                        </div>
-
-                        {studentBookingApplyMode === "weekly" && studentBookingSelectionFull && (
-                          <div style={{ display: "grid", gap: 6, padding: "10px 11px", border: "1px solid #d7e5d9", borderRadius: 8, background: "#f6fbf8", color: "#26423b" }}>
-                            <div style={{ fontSize: "0.82rem", fontWeight: 800 }}>All done</div>
-                            <div style={{ fontSize: "0.74rem", lineHeight: 1.35, color: "#5e7268" }}>
-                              You picked all {studentBookingLimit} class{studentBookingLimit === 1 ? "" : "es"}. Take one away to look again.
-                            </div>
-                          </div>
-                        )}
-
-                        {studentBookingApplyMode === "weekly" && !studentBookingSelectionFull && (
-                          <div style={{ display: "grid", gap: 10, padding: 10, border: "1px solid #d7e5d9", borderRadius: 8, background: "#f6fbf8" }}>
-                            {studentBookingSuggestions.length > 0 ? (
-                              <div style={{ display: "grid", gap: 8, padding: "10px 11px", border: "1px solid #d7e5d9", borderRadius: 6, background: "#fff" }}>
-                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                                  <div style={{ minWidth: 0 }}>
-                                    <div style={{ color: "#5e7268", fontSize: "0.72rem", fontWeight: 700, lineHeight: 1.25 }}>{BOOKING.whatToLookFor}</div>
-                                    <div style={{ color: "#10231d", fontSize: "0.86rem", fontWeight: 800, lineHeight: 1.3, marginTop: 3 }}>
-                                      {studentBookingWeeklyWeekdays
-                                        .map((weekday) => WEEKDAY_OPTIONS.find(([value]) => value === weekday)?.[1])
-                                        .filter(Boolean)
-                                        .join(", ")} at {humanTime(studentBookingWeeklyTime)}
-                                    </div>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setStudentBookingSuggestions([]);
-                                      setStudentBookingError("");
-                                    }}
-                                    style={{ border: "1px solid #91a79a", background: "#fff", color: "#26423b", borderRadius: 6, padding: "6px 9px", cursor: "pointer", fontSize: "0.72rem", fontWeight: 700, whiteSpace: "nowrap" }}
-                                  >
-                                    Change
-                                  </button>
-                                </div>
-                                {studentBookingSelections.length > 0 && (
-                                  <div style={{ color: "#66756e", fontSize: "0.72rem", lineHeight: 1.35 }}>
-                                    We will not suggest a time that clashes with a class you already picked.
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <>
-                                <div>
-                                  <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{BOOKING.whichDays}</label>
-                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 5 }}>
-                                    {WEEKDAY_OPTIONS.map(([weekday, label]) => {
-                                      const active = studentBookingWeeklyWeekdays.includes(weekday);
-                                      return (
-                                        <button
-                                          key={weekday}
-                                          type="button"
-                                          onClick={() => toggleStudentBookingWeekday(weekday)}
-                                          style={{
-                                            padding: "8px 4px",
-                                            fontSize: "0.72rem",
-                                            border: active ? "2px solid #4CAF50" : "1px solid #d0d0d0",
-                                            borderRadius: 6,
-                                            background: active ? "#e8f5e9" : "#fff",
-                                            color: active ? "#2E7D32" : "#555",
-                                            cursor: "pointer",
-                                            fontWeight: 700,
-                                          }}
-                                        >
-                                          {label}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                                <div>
-                                  <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{BOOKING.whatTime}</label>
-                                  <input
-                                    type="time"
-                                    value={studentBookingWeeklyTime}
-                                    onChange={e => {
-                                      setStudentBookingWeeklyTime(normalizeTime(e.target.value));
-                                      setStudentBookingError("");
-                                    }}
-                                    style={{ width: "100%", padding: "8px 10px", fontSize: "0.9rem", border: "1px solid #d0d0d0", borderRadius: 6, boxSizing: "border-box", fontFamily: "inherit", background: "#fff" }}
-                                  />
-                                  <div style={{ fontSize: "0.7rem", color: "#666", marginTop: 4 }}>
-                                    We will find the closest time your teacher is free.
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={applyStudentWeeklyPattern}
-                                  disabled={isSubmittingStudentBooking || hasNoClassesLeft}
-                                  style={{ padding: "11px 12px", fontSize: "0.9rem", fontWeight: 700, border: "none", borderRadius: 8, background: "#2E7D32", color: "#fff", cursor: (isSubmittingStudentBooking || hasNoClassesLeft) ? "not-allowed" : "pointer", opacity: (isSubmittingStudentBooking || hasNoClassesLeft) ? 0.6 : 1 }}
-                                >
-                                  {BOOKING.findTimes}
-                                </button>
-                                <div style={{ fontSize: "0.72rem", color: "#666", lineHeight: 1.4 }}>
-                                  {BOOKING.findTimesHelp}
-                                </div>
-                                {studentBookingSelections.length > 0 && (
-                                  <div style={{ padding: "8px 10px", border: "1px solid #d7e5d9", borderRadius: 6, background: "#fff", color: "#5e7268", fontSize: "0.74rem", lineHeight: 1.35 }}>
-                                    We will not suggest a time that clashes with a class you already picked.
-                                  </div>
-                                )}
-                              </>
-                            )}
-                            {studentBookingSuggestions.length > 0 && (
-                              <div style={{ display: "grid", gap: 8, paddingTop: 4 }}>
-                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                                  <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, color: "#333" }}>
-                                    {BOOKING.timesThatWork(studentBookingSuggestions.length)}
-                                  </label>
-                                  <button
-                                    type="button"
-                                    onClick={addStudentBookingSuggestions}
-                                    disabled={isSubmittingStudentBooking || hasNoClassesLeft}
-                                    style={{ padding: "6px 9px", fontSize: "0.72rem", fontWeight: 700, border: "1px solid #4CAF50", borderRadius: 6, background: "#fff", color: "#2E7D32", cursor: (isSubmittingStudentBooking || hasNoClassesLeft) ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}
-                                  >
-                                    {BOOKING.addAll}
-                                  </button>
-                                </div>
-                                <div style={{ display: "grid", gap: 7, maxHeight: 230, overflowY: "auto", paddingRight: 3 }}>
-                                  {studentBookingSuggestions.map((slot) => {
-                                    const slotEnd = timeToMinutes(slot.time) == null ? "" : minutesToTime(timeToMinutes(slot.time) + studentClassDuration);
-                                    const selected = isStudentBookingSelected(slot.date, slot.time);
-                                    const limitReached = studentBookingSelections.length >= studentBookingLimit;
-                                    const timeDistance = describeTimeDistance(slot.requested_time, slot.time);
-                                    return (
-                                      <div
-                                        key={studentBookingSelectionKey(slot.date, slot.time)}
-                                        style={{ display: "grid", gridTemplateColumns: "1fr auto", alignItems: "center", gap: 10, padding: "10px 11px", border: selected ? "2px solid #4CAF50" : "1px solid #cddfd2", borderRadius: 6, background: selected ? "#e8f5e9" : "#fff", fontSize: "0.8rem" }}
-                                      >
-                                        <div style={{ minWidth: 0 }}>
-                                          <div style={{ color: "#5e7268", fontSize: "0.72rem", fontWeight: 700, lineHeight: 1.25 }}>
-                                            {formatLongDate(slot.date)}
-                                          </div>
-                                          <div style={{ color: "#10231d", fontWeight: 800, fontSize: "0.88rem", lineHeight: 1.3, marginTop: 3 }}>
-                                            {humanTime(slot.time)}{slotEnd ? ` - ${humanTime(slotEnd)}` : ""}
-                                          </div>
-                                          <div style={{ color: "#66756e", marginTop: 4, lineHeight: 1.3 }}>
-                                            Preferred {humanTime(slot.requested_time)}
-                                            {timeDistance ? ` · ${timeDistance}` : ""}
-                                          </div>
-                                        </div>
-                                        <button
-                                          type="button"
-                                          onClick={() => addStudentBookingSuggestion(slot)}
-                                          disabled={selected || limitReached}
-                                          style={{ border: "1px solid #4CAF50", background: selected ? "#4CAF50" : "#fff", color: selected ? "#fff" : "#2E7D32", borderRadius: 6, padding: "6px 9px", cursor: (selected || limitReached) ? "not-allowed" : "pointer", fontSize: "0.74rem", fontWeight: 700, opacity: (!selected && limitReached) ? 0.55 : 1 }}
-                                        >
-                                          {selected ? BOOKING.added : BOOKING.add}
-                                        </button>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {studentBookingApplyMode === "manual" && (
-                        <>
-                        <div>
-                          <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 6, color: "#333" }}>{BOOKING.whichDay}</label>
-                          {/* A strip of days, not a calendar.
-                              !!
-                              !! A student has no month grid on their page, so
-                              !! the old "click a day on the calendar" had
-                              !! nothing to click. The strip says what each day
-                              !! is, and the only thing to do is press one. */}
-                          <DayPicker
-                            days={simpleBookingDays}
-                            selected={studentBookingDate}
-                            onPick={chooseBookingDate}
-                            emptyMessage="No days to choose from."
-                            statusFor={(key) =>
-                              simpleAvailability[key] === undefined ? null : simpleAvailability[key]
-                            }
-                          />
-                          </div>
-                          <div>
-                           <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{BOOKING.times}</label>
-                          <div style={{ fontSize: "0.72rem", color: "#666", marginBottom: 6 }}>
-                            {BOOKING.timesHelp}
-                          </div>
-                          {availability[studentBookingDate] === "unavailable" ? (
-                            <div style={{ padding: 12, background: "#fff3e0", borderRadius: 8, color: "#b65f00" }}>
-                              Your teacher is busy on this day.
-                            </div>
-                          ) : availableTimeSlots && availableTimeSlots.length > 0 ? (
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
-                              {availableTimeSlots.map(time => {
-                                const isBooked = isTeacherDateTimeBooked(studentBookingDate, time);
-                                const isSelected = isStudentBookingSelected(studentBookingDate, time);
-                                return (
-                                  <button
-                                    key={time}
-                                    type="button"
-                                    onClick={() => {
-                                      if (!isBooked) {
-                                        setStudentBookingTime(time);
-                                        toggleStudentBookingSelection(studentBookingDate, time);
-                                      }
-                                    }}
-                                    disabled={isBooked}
-                                    style={{
-                                      padding: "12px 14px",
-                                      border: isSelected ? "2px solid #4CAF50" : "1px solid #d0d0d0",
-                                      borderRadius: "8px",
-                                      background: isSelected ? "#e8f5e9" : isBooked ? "#f8f8f8" : "#fff",
-                                      color: isBooked ? "#999" : "#111",
-                                      cursor: isBooked ? "not-allowed" : "pointer",
-                                      textAlign: "center"
-                                    }}
-                                  >
-                                    {humanTime(time)}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <div style={{ padding: 12, background: "#f4f6f8", borderRadius: 8, color: "#555" }}>
-                              {/* Three different situations, and the old one
-                                  message covered only the middle one.
-                                  !! Before a day is chosen there are no times
-                                  to speak of, so saying "no free times on
-                                  this day" is talking about a day nobody has
-                                  picked. And a day the teacher does not work
-                                  is not the same as a day they work but are
-                                  full - one is the teacher's plan, the other
-                                  is the student's mistake to make. */}
-                              {!studentBookingDate
-                                ? "Pick a day above, and the times will show here."
-                                : simpleAvailability[studentBookingDate] === undefined
-                                  ? "Your teacher has no classes set for this day. Please pick another day."
-                                  : "No free times on this day. Please pick another day."}
-                            </div>
-                          )}
-                        </div>
-                        </>
-                        )}
-                        {studentBookingSelections.length > 0 && (
-                          <div>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
-                              <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, color: "#333" }}>
-                                {BOOKING.yourPicks(studentBookingSelections.length, studentBookingLimit)}
-                              </label>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setStudentBookingSelections([]);
-                                  setStudentBookingTime("");
-                                  setStudentBookingError("");
-                                }}
-                                disabled={isSubmittingStudentBooking}
-                                style={{ border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, padding: "5px 8px", cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer", fontSize: "0.75rem", fontWeight: 700, color: "#374151", whiteSpace: "nowrap" }}
-                              >
-                                {BOOKING.clear}
-                              </button>
-                            </div>
-                            <div style={{ display: "grid", gap: 8, maxHeight: 180, overflowY: "auto" }}>
-                              {studentBookingSelections.map((slot) => {
-                                const slotEnd = timeToMinutes(slot.time) == null ? "" : minutesToTime(timeToMinutes(slot.time) + studentClassDuration);
-                                return (
-                                  <div
-                                    key={studentBookingSelectionKey(slot.date, slot.time)}
-                                    style={{ display: "grid", gridTemplateColumns: "1fr auto", alignItems: "center", gap: 10, padding: "10px 11px", border: "1px solid #d7e5d9", borderRadius: 6, background: "#f6fbf8", fontSize: "0.82rem" }}
-                                  >
-                                    <div style={{ minWidth: 0 }}>
-                                      <div style={{ color: "#5e7268", fontSize: "0.72rem", fontWeight: 700, lineHeight: 1.25 }}>
-                                        {formatLongDate(slot.date)}
-                                      </div>
-                                      <div style={{ color: "#10231d", fontWeight: 800, fontSize: "0.88rem", lineHeight: 1.3, marginTop: 3 }}>
-                                        {humanTime(slot.time)}{slotEnd ? ` - ${humanTime(slotEnd)}` : ""}
-                                      </div>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleStudentBookingSelection(slot.date, slot.time)}
-                                      style={{ border: "1px solid #d0d0d0", background: "#fff", borderRadius: 6, padding: "5px 8px", cursor: "pointer", fontSize: "0.75rem", fontWeight: 700 }}
-                                    >
-                                      {BOOKING.remove}
-                                    </button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                        {/* The course and the class length are not asked for
-                            here. They are shown in the confirmation the student
-                            reads before they book, which is where a student
-                            actually checks those two things - and a form
-                            that shows read-only boxes is a form that looks
-                            like it wants something the student did not give. */}
-                        {studentBookingError && (
-                          <div style={{ padding: 10, background: "#ffebee", border: "1px solid #ffcdd2", borderRadius: 6, color: "#c62828", fontSize: "0.85em" }}>
-                            {studentBookingError}
-                          </div>
-                        )}
-                        <div className={styles.actionRow}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setStudentBookingMode(false);
-                              setStudentBookingSelections([]);
-                              setStudentBookingSuggestions([]);
-                            }}
-                            disabled={isSubmittingStudentBooking}
-                            style={{ flex: 1, padding: "13px 16px", fontSize: "0.95em", border: "1px solid #d0d0d0", background: "#fff", borderRadius: 10, fontWeight: 700, cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer" }}
-                          >
-                            {CONFIRM.cancel}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={openStudentBookingConfirmation}
-                            disabled={isSubmittingStudentBooking || studentBookingSelections.length === 0 || assignedTeacherId == null || hasNoClassesLeft}
-                            style={{ flex: 2, padding: "13px 16px", fontSize: "1rem", border: "none", background: "#4CAF50", color: "#fff", borderRadius: 10, fontWeight: 700, cursor: (isSubmittingStudentBooking || studentBookingSelections.length === 0 || assignedTeacherId == null || hasNoClassesLeft) ? "not-allowed" : "pointer" }}
-                          >
-                            {isSubmittingStudentBooking
-                              ? BOOKING.booking
-                              : studentBookingSelections.length > 1
-                                ? BOOKING.bookMany(studentBookingSelections.length)
-                                : BOOKING.bookOne}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </>
+                  /* The booking wizard.
+                     !!
+                     !! This used to be a form with a row of days, a grid of
+                     !! times, a list of picks and two mode buttons, all on one
+                     !! screen. A lot of the students on this app are children,
+                     !! and a child looking at that screen picks nothing.
+                     !!
+                     !! The wizard asks one question at a time, with big
+                     !! buttons, and the class is shown in full before
+                     !! anything is booked. It draws the screens and says what
+                     !! was pressed - the Calendar still owns the classes, the
+                     !! limits and the booking itself. */
+                  <StudentBookingWizard
+                    teacherName={assignedTeacherName}
+                    courseName={studentProfile?.course_name || ""}
+                    classDuration={studentClassDuration}
+                    hasNoClassesLeft={hasNoClassesLeft}
+                    isSubmitting={isSubmittingStudentBooking}
+                    error={studentBookingError}
+                    onClearError={() => setStudentBookingError("")}
+                    days={simpleBookingDays}
+                    availability={simpleAvailability}
+                    availabilityLoading={simpleAvailabilityLoading}
+                    monthName={studentBookingMonthName}
+                    canGoPreviousMonth={canMoveStudentBookingMonth(-1)}
+                    canGoNextMonth={canMoveStudentBookingMonth(1)}
+                    onPreviousMonth={() => moveStudentBookingMonth(-1)}
+                    onNextMonth={() => moveStudentBookingMonth(1)}
+                    selectedDate={studentBookingDate}
+                    onPickDate={chooseBookingDate}
+                    timeSlots={availableTimeSlots}
+                    timesLoading={bookingTimesLoading}
+                    isTimeBooked={(time) => isTeacherDateTimeBooked(studentBookingDate, time)}
+                    selections={studentBookingSelections}
+                    isSelected={isStudentBookingSelected}
+                    onPickTime={pickSingleBookingTime}
+                    applyMode={studentBookingApplyMode}
+                    onApplyModeChange={(mode) => {
+                      setStudentBookingApplyMode(mode);
+                      setStudentBookingSelections([]);
+                      setStudentBookingSuggestions([]);
+                      setStudentBookingSuggestionsTotal(0);
+                      // The day and the time belong to the way of booking
+                      // that was chosen. Carrying them over would leave the
+                      // student looking at a day they did not pick, and
+                      // would leave a stale time behind to be booked by
+                      // accident.
+                      setStudentBookingDate("");
+                      setStudentBookingTime("");
+                      setBookingTimesReadyDate("");
+                      setStudentBookingError("");
+                    }}
+                    weeklyWeekdays={studentBookingWeeklyWeekdays}
+                    onToggleWeekday={toggleStudentBookingWeekday}
+                    weeklyTime={studentBookingWeeklyTime}
+                    onWeeklyTimeChange={(time) => {
+                      setStudentBookingWeeklyTime(time);
+                      setStudentBookingError("");
+                    }}
+                    suggestions={studentBookingSuggestions}
+                    suggestionsTotal={studentBookingSuggestionsTotal}
+                    onAddSuggestion={addStudentBookingSuggestion}
+                    onRemoveSelection={removeStudentBookingSelection}
+                    onAddAllSuggestions={addStudentBookingSuggestions}
+                    onFindTimes={applyStudentWeeklyPattern}
+                    onBook={openStudentBookingConfirmation}
+                    onCancel={closeStudentBooking}
+                  />
                 ) : (
                   // Student summary
                   <>
@@ -7149,8 +7202,28 @@ $5padding: 20,
                         !! they have left. So the list is the page.
                         */}
                     {isSimpleStudentView ? (
-                      <>
-                        <div className={styles.legendTitle}>My classes</div>
+                      /* The student's own home screen.
+                         !!
+                         !! A month grid went here, and the number of classes
+                         !! left went under it in a small card. A student
+                         !! opening the app does not want a calendar - they
+                         !! want to know when their next class is, and how many
+                         !! they have left. So the list is the page.
+                         !!
+                         !! And the page is read top to bottom in the order a
+                         !! student asks the questions in: how many have I got,
+                         !! can I book one, and when are my classes. The big
+                         !! green button sits in the middle because it is the
+                         !! thing they came to press, and it must not be
+                         !! pushed off the bottom of the screen by a long list
+                         !! of classes. */
+                      <div className={kid.home}>
+                        <div className={kid.homeHeader}>
+                          <h1 className={kid.homeTitle}>{HOME.title}</h1>
+                          <p className={kid.homeSubtitle}>
+                            {HOME.subtitle(assignedTeacherName)}
+                          </p>
+                        </div>
 
                         {/* The counter, first. It is the one thing on the page
                             that answers "how long have I got" without being
@@ -7165,57 +7238,70 @@ $5padding: 20,
                           note={studentPlanStatusNote}
                         />
 
+                        {/* The one big green button.
+                            !!
+                            !! It is the biggest thing on the page that can be
+                            !! pressed, and it is above the list, so a student
+                            !! with eight classes booked does not have to
+                            !! scroll past all eight to find it. */}
+                        <button
+                          type="button"
+                          className={kid.bookBig}
+                          onClick={openMonthlyBooking}
+                          disabled={!assignedTeacherId || hasNoClassesLeft}
+                        >
+                          <span aria-hidden="true">📅</span>
+                          {PLAN.bookAClass}
+                        </button>
+
+                        {/* A greyed-out button with no reason is a broken
+                            button. Say why it cannot be pressed. */}
+                        {!assignedTeacherId && <p className={kid.counterNote}>{BOOKING.noTeacher}</p>}
+
                         {studentUpcomingLoading && studentUpcomingClasses.length === 0 ? (
-                          <div style={{ padding: 12, color: "#6b7280", fontSize: "0.9rem" }}>
-                            Loading your classes...
+                          <div className={kid.empty}>
+                            <span className={kid.emptyIcon} aria-hidden="true">📅</span>
+                            <span>{HOME.loadingClasses}</span>
                           </div>
                         ) : simpleStudentClasses.length > 0 ? (
-                          <div className={styles.slotList} style={{ marginTop: 14 }}>
-                            {simpleStudentClasses.map((entry) => (
-                              <ClassCard
-                                key={entry.id}
-                                classInfo={entry}
-                                onOpen={() => {
-                                  setSelectedDate(entry.viewerDate);
-                                  setSelectedClassId(entry.id);
-                                }}
-                                actionLabel="Details"
-                              />
-                            ))}
-                          </div>
+                          <>
+                            <h2 className={kid.sectionTitle}>{HOME.yourClasses}</h2>
+                            <div className={kid.classList}>
+                              {simpleStudentClasses.map((entry) => (
+                                <ClassCard
+                                  key={entry.id}
+                                  classInfo={entry}
+                                  onOpen={() => {
+                                    setSelectedDate(entry.viewerDate);
+                                    setSelectedClassId(entry.id);
+                                  }}
+                                  actionLabel={HOME.details}
+                                />
+                              ))}
+                            </div>
+                          </>
                         ) : (
-                          <div
-                            style={{
-                              marginTop: 14,
-                              padding: "16px 14px",
-                              border: "1px solid #d7e5d9",
-                              borderRadius: 16,
-                              background: "#fff",
-                              color: "#4b5563",
-                              fontSize: "0.95rem",
-                              lineHeight: 1.5,
-                            }}
-                          >
-                            {/* Two different situations, and they need two
-                                different sentences. "You have no classes
-                                booked yet" and "you have no classes left" are
-                                the same words with opposite meanings, and
-                                only one of them is fixed by booking a class. */}
-                            {hasNoClassesLeft ? (
-                              "You have no classes left. Please ask the admin for a new plan."
-                            ) : (
-                              "You have no classes booked yet. Press the green button below to book one."
-                            )}
+                          /* Two different situations, and they need two
+                             different sentences. "You have no classes
+                             booked yet" and "you have no classes left" are
+                             the same words with opposite meanings, and
+                             only one of them is fixed by booking a class. */
+                          <div className={kid.empty}>
+                            <span className={kid.emptyIcon} aria-hidden="true">📅</span>
+                            <span>
+                              {hasNoClassesLeft ? HOME.noClassesLeft : HOME.noClassesYet}
+                            </span>
+                            {!hasNoClassesLeft && <span>{HOME.noClassesYetHelp}</span>}
                           </div>
                         )}
-                      </>
+                      </div>
                     ) : (
                       <>
                         {/* The same counter card the student sees. An admin
                             looking at a student's calendar is looking at the
                             same thing the student is, so it should look the
                             same. */}
-                        <div className={styles.legendTitle}>{PLAN.title}</div>
+                        <div className={cal.panelTitle}>{PLAN.title}</div>
                         <ClassesLeftCard
                           left={Number(effectiveClassesLeft) || 0}
                           total={Number(effectiveClassesLimit) || 0}
@@ -7231,43 +7317,46 @@ $5padding: 20,
                         and then changing it a moment later is how a student
                         ends up pressing the wrong one. */}
                     {!studentPackageLoaded ? (
-                      <div style={{ marginTop: 12, color: "#6b7280", fontSize: "0.9rem" }}>
-                        Loading your plan...
+                      <div className={kid.empty}>
+                        <span className={kid.emptyIcon} aria-hidden="true">📅</span>
+                        <span>{HOME.loadingPlan}</span>
                       </div>
                     ) : (
                       <>
                     {canRequestExtension && (
-                      <div style={{ marginTop: 12, padding: 12, border: "1px solid #e0b872", borderRadius: 10, background: "#fdf9f1" }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: "#7a5210" }}>
-                          {MORE_TIME_CARD.heading}
-                        </div>
-                        <div style={{ marginTop: 4, fontSize: 12, color: "#6b5a3c", lineHeight: 1.45 }}>
+                      /* The card that says "ask the admin for something".
+                         !!
+                         !! It is a card, not a paragraph. The student has to
+                         !! read what the situation is and then press a button
+                         !! about it, and both of those need room. The old
+                         !! version was a 12px line of amber text with a
+                         !! 30px button under it. */
+                      <div className={kid.askCard}>
+                        <h3 className={kid.askHeading}>{MORE_TIME_CARD.heading}</h3>
+                        <p className={kid.askBody}>
                           {MORE_TIME_CARD.body(Number(latestStudentPackage.classes_left))}
-                        </div>
+                        </p>
                         {extensionFlow.isPending ? (
                           /* The request is with the admin. Say so, and offer the
                              two things a student can still do about it: change it,
                              or take it back. A request they can only wait on is a
                              request they cannot take back. */
                           <>
-                            <div style={{ marginTop: 10, fontSize: 12, color: "#7a5210" }}>
-                              {extensionFlow.banner}
-                            </div>
+                            <p className={kid.askBody}>{extensionFlow.banner}</p>
                             {!contractRequestOpen && (
-                              <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                              <div style={{ display: "grid", gap: 10 }}>
                                 <button
                                   type="button"
-                                  className={styles.slotBtn}
+                                  className={kid.askBtn}
                                   onClick={() => openExtensionRequestForm({ editing: true })}
-                                  style={{ width: "100%", border: "1px solid #d9b477", borderRadius: 8, background: "#fff", cursor: "pointer" }}
                                 >
                                   {MORE_TIME_CARD.changeMyAsk}
                                 </button>
                                 <button
                                   type="button"
+                                  className={kid.askBtn}
                                   onClick={() => cancelContractRequest(extensionFlow.pendingRequest?.request_id)}
                                   disabled={isCancellingContractRequest}
-                                  style={{ width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", color: "#6b5a3c", fontSize: 12, cursor: isCancellingContractRequest ? "not-allowed" : "pointer" }}
                                 >
                                   {isCancellingContractRequest ? "..." : MORE_TIME_CARD.cancelMyAsk}
                                 </button>
@@ -7277,9 +7366,7 @@ $5padding: 20,
                         ) : extensionFlow.resolvedRequest ? (
                           /* Said explicitly, because silence after a decision is
                              the same as never having asked. */
-                          <div style={{ marginTop: 10, fontSize: 12, color: extensionFlow.resolvedRequest.status === "approved" ? "#2f5a43" : extensionFlow.resolvedRequest.status === "cancelled" ? "#6b5a3c" : "#8c2020" }}>
-                            {extensionFlow.outcome}
-                          </div>
+                          <p className={kid.askBody}>{extensionFlow.outcome}</p>
                         ) : null}
 
                         {/* A decline is a decision, not a dead end. Previously any
@@ -7289,11 +7376,11 @@ $5padding: 20,
                             An approval genuinely has nothing to ask for, so this
                             is shown only on a decline. */}
                         {canAskAgain && !contractRequestOpen && !requestingNewContract && (
-                          <div style={{ marginTop: 10 }}>
+                          <div>
                             <button
                               type="button"
+                              className={kid.askBtn}
                               onClick={() => openExtensionRequestForm()}
-                              style={{ width: "100%", padding: "9px 10px", border: "1px solid #d9b477", borderRadius: 8, background: "#fff", fontWeight: 700, cursor: "pointer" }}
                             >
                               {MORE_TIME_CARD.askAgain}
                             </button>
@@ -7321,26 +7408,14 @@ $5padding: 20,
                             <>
                               <button
                                 type="button"
-                                className={styles.slotBtn}
+                                className={kid.askBtn}
                                 onClick={() => openExtensionRequestForm()}
                                 disabled={extensionBlocked.isBlocked}
-                                style={{
-                                  marginTop: 10,
-                                  width: "100%",
-                                  border: "1px solid #d9b477",
-                                  borderRadius: 8,
-                                  background: "#fff",
-                                  fontWeight: 700,
-                                  cursor: extensionBlocked.isBlocked ? "not-allowed" : "pointer",
-                                  opacity: extensionBlocked.isBlocked ? 0.55 : 1,
-                                }}
                               >
                                 {MORE_TIME_CARD.askForMoreTime}
                               </button>
                               {extensionBlocked.isBlocked && (
-                                <div style={{ marginTop: 6, fontSize: 11, color: "#6b5a3c", lineHeight: 1.45 }}>
-                                  {extensionBlocked.hint}
-                                </div>
+                                <p className={kid.askBody}>{extensionBlocked.hint}</p>
                               )}
                             </>
                           )}
@@ -7378,36 +7453,14 @@ $5padding: 20,
                             <>
                               <button
                                 type="button"
-                                className={styles.slotBtn}
+                                className={kid.askBtn}
                                 onClick={() => openNewContractForm()}
                                 disabled={newContractBlocked.isBlocked}
-                                style={{
-                                  marginTop: 8,
-                                  width: "100%",
-                                  padding: "9px 10px",
-                                  // Same class and metrics as the primary button, so
-                                  // the two line up exactly. Only the border and text
-                                  // differ - neutral rather than amber - which keeps
-                                  // this visibly the secondary choice without making
-                                  // it look like body text. It was an underlined link
-                                  // before, which read as a caption rather than
-                                  // something you can press.
-                                  border: "1px solid #c3cbd5",
-                                  borderRadius: 8,
-                                  background: "#fff",
-                                  color: "#374151",
-                                  fontSize: 13,
-                                  fontWeight: 600,
-                                  cursor: newContractBlocked.isBlocked ? "not-allowed" : "pointer",
-                                  opacity: newContractBlocked.isBlocked ? 0.55 : 1,
-                                }}
                               >
                                 {MORE_TIME_CARD.getNewPlanInstead}
                               </button>
                               {newContractBlocked.isBlocked && (
-                                <div style={{ marginTop: 6, fontSize: 11, color: "#6b5a3c", lineHeight: 1.45 }}>
-                                  {newContractBlocked.hint}
-                                </div>
+                                <p className={kid.askBody}>{newContractBlocked.hint}</p>
                               )}
                             </>
                           ))}
@@ -7429,27 +7482,14 @@ $5padding: 20,
                         <>
                           <button
                             type="button"
-                            className={styles.slotBtn}
+                            className={kid.askBtn}
                             onClick={() => openNewContractForm()}
                             disabled={newContractBlocked.isBlocked}
-                            style={{
-                              width: "100%",
-                              padding: "10px 12px",
-                              border: "none",
-                              borderRadius: 8,
-                              background: "#111827",
-                              color: "#fff",
-                              fontWeight: 700,
-                              cursor: newContractBlocked.isBlocked ? "not-allowed" : "pointer",
-                              opacity: newContractBlocked.isBlocked ? 0.55 : 1,
-                            }}
                           >
                             {MORE_TIME_CARD.getNewPlan}
                           </button>
                           {newContractBlocked.isBlocked && (
-                            <div style={{ marginTop: 6, fontSize: 11, color: "#6b5a3c", lineHeight: 1.45 }}>
-                              {newContractBlocked.hint}
-                            </div>
+                            <p className={kid.askBody}>{newContractBlocked.hint}</p>
                           )}
                         </>
                       ) : null
@@ -7958,28 +7998,22 @@ $5padding: 20,
                         !! in describeAvailableRequests where a test can reach
                         !! it.
                         */}
-                    <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-                      <button
-                        type="button"
-                        className={styles.bookBtn}
-                        onClick={openMonthlyBooking}
-                        disabled={!assignedTeacherId || hasNoClassesLeft}
-                        style={{
-                          width: "100%",
-                          minHeight: 56,
-                          fontSize: "1.1rem",
-                          textAlign: "center",
-                          borderRadius: 14,
-                          opacity: !assignedTeacherId || hasNoClassesLeft ? 0.55 : 1,
-                          cursor: !assignedTeacherId || hasNoClassesLeft ? "not-allowed" : "pointer",
-                        }}
-                      >
-                        {PLAN.bookAClass}
-                      </button>
-                    </div>
-                    {!assignedTeacherId && (
+                    {!isSimpleStudentView && (
+                      <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+                        <button
+                          type="button"
+                          className={kid.bookBig}
+                          onClick={openMonthlyBooking}
+                          disabled={!assignedTeacherId || hasNoClassesLeft}
+                        >
+                          <span aria-hidden="true">📅</span>
+                          {PLAN.bookAClass}
+                        </button>
+                      </div>
+                    )}
+                    {!isSimpleStudentView && !assignedTeacherId && (
                       <div style={{ marginTop: 10, fontSize: "0.85em", color: "#b65f00" }}>
-                        You do not have a teacher yet. Please contact support.
+                        {BOOKING.noTeacher}
                       </div>
                     )}
                   </>
@@ -7998,35 +8032,36 @@ $5padding: 20,
                 !!
                 !! And a student on the simple page has no calendar at all,
                 !! so there is nothing for the key to explain. It is for the
-                !! people who still have a grid in front of them. */}
-            {!isSimpleStudentView && (
-            <details className={styles.legendBlock}>
+                !! people who still have a grid in front of them - and there
+                !! is no grid in the list view either, so it goes there too. */}
+            {!isSimpleStudentView && calendarView !== "list" && (
+            <details className={cal.legendBlock}>
               <summary className={styles.guideTitle} style={{ cursor: "pointer" }}>
                 {LEGEND.title}
               </summary>
 
-              <div className={styles.legendRow}>
-                <span className={`${styles.legendDot} ${styles.legendAvail}`} />
+              <div className={cal.legendRow}>
+                <span className={`${cal.legendDot} ${cal.legendAvail}`} />
                 <span>{LEGEND.available}</span>
               </div>
 
-              <div className={styles.legendRow}>
-                <span className={`${styles.legendDot} ${styles.legendClasses}`} />
+              <div className={cal.legendRow}>
+                <span className={`${cal.legendDot} ${cal.legendClasses}`} />
                 <span>{LEGEND.hasClasses}</span>
               </div>
 
-              <div className={styles.legendRow}>
-                <span className={`${styles.legendDot} ${styles.legendUnavail}`} />
+              <div className={cal.legendRow}>
+                <span className={`${cal.legendDot} ${cal.legendUnavail}`} />
                 <span>{LEGEND.unavailable}</span>
               </div>
 
-              <div className={styles.legendRow}>
-                <span className={`${styles.legendDot} ${styles.legendUnscheduled}`} />
+              <div className={cal.legendRow}>
+                <span className={`${cal.legendDot} ${cal.legendUnscheduled}`} />
                 <span>{LEGEND.notSet}</span>
               </div>
 
-              <div className={styles.legendRow}>
-                <span className={`${styles.legendDot} ${styles.legendPast}`} />
+              <div className={cal.legendRow}>
+                <span className={`${cal.legendDot} ${cal.legendPast}`} />
                 <span>{LEGEND.past}</span>
               </div>
 
@@ -8034,6 +8069,365 @@ $5padding: 20,
             </details>
             )}
           </aside>
+
+                  {/* The teacher availability manager, in a window.
+                  !!
+                  !! It used to open in the panel beside the grid, and the grid and
+                  !! the form fought over the same space: the form was tall, the grid was
+                  !! squeezed to the side, and a teacher setting their hours had to
+                  !! scroll a narrow column to reach the Save button.
+                  !!
+                  !! It is a window now. The grid stays where it was and the form comes
+                  !! to the teacher. */}
+                  {/* The teacher availability manager, in a window.
+                  !!
+                  !! It used to open in the panel beside the grid, and the grid and
+                  !! the form fought over the same space: the form was tall, the grid was
+                  !! squeezed to the side, and a teacher setting their hours had to
+                  !! scroll a narrow column to reach the Save button.
+                  !!
+                  !! It is a window now. The grid stays where it was and the form comes
+                  !! to the teacher. */}
+                  {/* The teacher availability manager, in a window.
+                  !!
+                  !! It used to open in the panel beside the grid, and the grid and
+                  !! the form fought over the same space: the form was tall, the grid was
+                  !! squeezed to the side, and a teacher setting their hours had to
+                  !! scroll a narrow column to reach the Save button.
+                  !!
+                  !! It is a window now. The grid stays where it was and the form comes
+                  !! to the teacher. */}
+                  <AvailabilityDialog
+                    open={setAvailabilityMode && localRole === "teacher"}
+                    onClose={closeAvailabilityManager}
+                    screen={availabilityScreen}
+                  >
+                    {availabilityScreen === "list" || availabilityScreen === "filter" ? (
+                      <AvailabilityAvailabilities
+                        screen={availabilityScreen}
+                        records={teacherAvailabilityAll}
+                        onEdit={editAvailability}
+                        onDelete={(record) =>
+                          deleteTeacherAvailability(record.id || record.availability_id)
+                        }
+                        onBack={() => setAvailabilityScreen("form")}
+                        onShowFilter={() => setAvailabilityScreen("filter")}
+                        onShowList={() => setAvailabilityScreen("list")}
+                      />
+                    ) : (
+                    <div className={cal.dialogBody}>
+
+                      {editingAvailability && (
+                        /* The teacher has to know they are changing a day and
+                           not adding one, or the save reads as "add this day"
+                           and they end up with two. */
+                        <div className={cal.info}>
+                          Editing {formatScheduleDate(editingAvailability.available_date)}. Save to change it.
+                        </div>
+                      )}
+
+                      {availabilityError && <div className={cal.errorBox}>{availabilityError}</div>}
+
+                      <div style={{ display: "grid", gap: 12 }}>
+                        <div>
+                          <label className={cal.formLabel}>Apply To *</label>
+                          <div className={cal.segmented}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAvailabilityApplyMode("single");
+                                setAvailabilityError("");
+                              }}
+                              className={`${cal.segmentedBtn} ${availabilityApplyMode === "single" ? cal.segmentedBtnActive : ""}`}
+                            >
+                              Single Day
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAvailabilityApplyMode("bulk");
+                                setAvailabilityError("");
+                              }}
+                              className={`${cal.segmentedBtn} ${availabilityApplyMode === "bulk" ? cal.segmentedBtnActive : ""}`}
+                            >
+                              Weekly Pattern
+                            </button>
+                          </div>
+                        </div>
+
+                        {availabilityApplyMode === "bulk" && (
+                          <div>
+                            <label className={cal.formLabel}>Weekdays *</label>
+                            <div className={cal.weekdayPick}>
+                              {[
+                                [0, "Sun"],
+                                [1, "Mon"],
+                                [2, "Tue"],
+                                [3, "Wed"],
+                                [4, "Thu"],
+                                [5, "Fri"],
+                                [6, "Sat"],
+                              ].map(([weekday, label]) => {
+                                const active = bulkAvailabilityWeekdays.includes(weekday);
+                                return (
+                                  <button
+                                    key={weekday}
+                                    type="button"
+                                    onClick={() => toggleBulkAvailabilityWeekday(weekday)}
+                                    className={`${cal.weekdayPickBtn} ${active ? cal.weekdayPickBtnActive : ""}`}
+                                  >
+                                    {label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div className={cal.formHint}>
+                              Applies to {bulkAvailabilityDates.length} date{bulkAvailabilityDates.length === 1 ? "" : "s"} in {monthName} {year}
+                            </div>
+                          </div>
+                        )}
+
+                      {availabilityApplyMode === "single" && (
+                      <div>
+                        <label className={cal.formLabel}>Date *</label>
+                        {/* The days come with the form.
+                            !!
+                            !! The teacher used to pick the date by clicking a day
+                            !! on the month grid behind this panel. The form is a
+                            !! window now and the grid is behind that, so the days
+                            !! have to come with the form - otherwise there would
+                            !! be no way to choose a date at all.
+                            !!
+                            !! The strip is the one the student picks a day from: a
+                            !! name, a number, and no calendar to read. */}
+                        <div className={cal.pickerHead}>
+                          <button
+                            type="button"
+                            className={cal.navBtn}
+                            onClick={() => moveAvailabilityPickerMonth(-1)}
+                            disabled={!canMoveAvailabilityPickerMonth(-1)}
+                            aria-label="Previous month"
+                          >
+                            ‹
+                          </button>
+                          <span className={cal.pickerMonth}>{availabilityPickerMonthName}</span>
+                          <button
+                            type="button"
+                            className={cal.navBtn}
+                            onClick={() => moveAvailabilityPickerMonth(1)}
+                            disabled={!canMoveAvailabilityPickerMonth(1)}
+                            aria-label="Next month"
+                          >
+                            ›
+                          </button>
+                        </div>
+                        <DayPicker
+                          days={availabilityPickerDays}
+                          selected={availabilityDate}
+                          onPick={(key) => {
+                            setAvailabilityDate(key);
+                            setAvailabilityError("");
+                          }}
+                          emptyMessage="There are no days left to set in this month."
+                          statusFor={availabilityPickerStatusFor}
+                        />
+                        <div className={cal.formHint}>
+                          Dates allowed from today to {new Date(scheduleWindowEndKey + "T00:00:00").toLocaleDateString()}
+                        </div>
+                        {availabilityError && getAvailabilityFieldError("availabilityDate") && (
+                          <div className={cal.fieldError}>
+                            {getAvailabilityFieldError("availabilityDate")}
+                          </div>
+                        )}
+                      </div>
+                      )}
+
+                        <div>
+                          <label className={cal.formLabel}>Availability Status *</label>
+                          <div className={styles.availabilityStatus} style={{ display: "flex", gap: 12 }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAvailabilityStatus("available");
+                                setAvailabilityError(validateAvailabilityInputs({ availabilityStatus: "available" }));
+                              }}
+                              className={`${cal.segmentedBtn} ${availabilityStatus === "available" ? cal.segmentedBtnActive : ""}`}
+                            >
+                              Available
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAvailabilityStatus("unavailable");
+                                setAvailabilityError(validateAvailabilityInputs({ availabilityStatus: "unavailable" }));
+                              }}
+                              className={`${cal.segmentedBtn} ${availabilityStatus === "unavailable" ? cal.segmentedBtnDanger : ""}`}
+                            >
+                              Unavailable
+                            </button>
+                          </div>
+                        </div>
+
+                        {availabilityStatus === "available" && (
+                          <>
+                            <div>
+                              <label className={cal.formLabel}>Start Time *</label>
+                              <input
+                                type="time"
+                                step="3600"
+                                value={availabilityStartTime}
+                                onChange={e => {
+                                  const time = e.target.value;
+                                  const roundedTime = time ? `${time.split(':')[0]}:00` : "";
+                                  setAvailabilityStartTime(roundedTime);
+                                  setAvailabilityError(validateAvailabilityInputs({ availabilityStartTime: roundedTime }));
+                                }}
+                                className={cal.formInput}
+                              />
+                              {availabilityError && getAvailabilityFieldError("availabilityStartTime") && (
+                                <div className={cal.fieldError}>
+                                  {getAvailabilityFieldError("availabilityStartTime")}
+                                </div>
+                              )}
+                            </div>
+
+                            <div>
+                              <label className={cal.formLabel}>End Time *</label>
+                              <input
+                                type="time"
+                                step="3600"
+                                value={availabilityEndTime}
+                                onChange={e => {
+                                  const time = e.target.value;
+                                  const roundedTime = time ? `${time.split(':')[0]}:00` : "";
+                                  setAvailabilityEndTime(roundedTime);
+                                  setAvailabilityError(validateAvailabilityInputs({ availabilityEndTime: roundedTime }));
+                                }}
+                                className={cal.formInput}
+                              />
+                              {availabilityError && getAvailabilityFieldError("availabilityEndTime") && (
+                                <div className={cal.fieldError}>
+                                  {getAvailabilityFieldError("availabilityEndTime")}
+                                </div>
+                              )}
+                              {availabilityStartTime && availabilityEndTime && (
+                                <div className={cal.formHint}>
+                                  Duration: {(() => {
+                                    const start = new Date(`2000-01-01T${availabilityStartTime}`);
+                                    const end = new Date(`2000-01-01T${availabilityEndTime}`);
+                                    const diffMinutes = Math.round((end - start) / (1000 * 60));
+                                    const hours = Math.floor(diffMinutes / 60);
+                                    const mins = diffMinutes % 60;
+                                    if (hours === 0) return `${mins} minutes`;
+                                    return `${hours}h ${mins}m`;
+                                  })()}
+                                </div>
+                              )}
+                            </div>
+
+                            <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: 10, marginTop: 5 }}>
+                              <label className={cal.formLabel}>Break Time (Optional)</label>
+                              
+                              <div className={styles.breakTimeFields} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                                <div>
+                                  <label className={cal.formLabel}>Break Start</label>
+                                  <input
+                                    type="time"
+                                    step="3600"
+                                    value={availabilityBreakStart}
+                                    onChange={e => {
+                                      const time = e.target.value;
+                                      const roundedTime = time ? `${time.split(':')[0]}:00` : "";
+                                      setAvailabilityBreakStart(roundedTime);
+                                      setAvailabilityError(validateAvailabilityInputs({ availabilityBreakStart: roundedTime }));
+                                    }}
+                                    className={cal.formInput}
+                                  />
+                                  {availabilityError && getAvailabilityFieldError("availabilityBreakStart") && (
+                                    <div className={cal.fieldError}>
+                                      {getAvailabilityFieldError("availabilityBreakStart")}
+                                    </div>
+                                  )}
+                                </div>
+                                <div>
+                                  <label className={cal.formLabel}>Break End</label>
+                                  <input
+                                    type="time"
+                                    step="3600"
+                                    value={availabilityBreakEnd}
+                                    onChange={e => {
+                                      const time = e.target.value;
+                                      const roundedTime = time ? `${time.split(':')[0]}:00` : "";
+                                      setAvailabilityBreakEnd(roundedTime);
+                                      setAvailabilityError(validateAvailabilityInputs({ availabilityBreakEnd: roundedTime }));
+                                    }}
+                                    className={cal.formInput}
+                                  />
+                                  {availabilityError && getAvailabilityFieldError("availabilityBreakEnd") && (
+                                    <div className={cal.fieldError}>
+                                      {getAvailabilityFieldError("availabilityBreakEnd")}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {availabilityBreakStart && availabilityBreakEnd && (
+                                <div className={cal.formHint}>
+                                  Break: {humanTime(availabilityBreakStart)} - {humanTime(availabilityBreakEnd)}
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSetAvailabilityMode(false);
+                            setAvailabilityError("");
+                            setAvailabilityStartTime("");
+                            setAvailabilityEndTime("");
+                            setAvailabilityBreakStart("");
+                            setAvailabilityBreakEnd("");
+                            setEditingAvailability(null);
+                          }}
+                          disabled={isSubmittingAvailability}
+                          className={cal.actionCard}
+                          style={{ justifyContent: "center" }}
+                        >
+                          Close
+                        </button>
+                        <button
+                          type="button"
+                          onClick={openAvailabilityConfirmation}
+                          disabled={isSubmittingAvailability}
+                          className={`${cal.actionCard} ${cal.actionPrimary}`}
+                          style={{ justifyContent: "center" }}
+                        >
+                          {isSubmittingAvailability
+                            ? "Saving..."
+                            : editingAvailability
+                              ? "Save changes"
+                              : "Save Availability"}
+                        </button>
+                      </div>
+
+                      {/* The days the teacher has already set.
+                          !!
+                          !! This was a list of one month's records at the bottom of the
+                          !! form, in a panel that was already crowded, and it was the
+                          !! part of the window that looked like an afterthought. Now it
+                          !! is a screen of its own - every day the teacher has set, in
+                          !! order, with a way to edit or delete each one. */}
+                      <button type="button" className={cal.seeBtn} onClick={openAvailabilityList}>
+                        <span aria-hidden="true">📅</span>
+                        See my availabilities ({teacherAvailabilityAll.length})
+                      </button>
+                    </div>
+                    )}
+                  </AvailabilityDialog>
         </div>
     </section>
     </main>
@@ -8343,130 +8737,6 @@ $5padding: 20,
               }}
             >
               {isSubmittingRequest ? "Sending..." : "Send Request"}
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
-    {studentBookingConfirmOpen && (
-      <div
-        role="presentation"
-        onClick={() => {
-          if (!isSubmittingStudentBooking) setStudentBookingConfirmOpen(false);
-        }}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(15, 23, 42, 0.48)",
-          backdropFilter: "blur(8px)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 20,
-          zIndex: 2000,
-          animation: "fadeIn 0.2s ease-out",
-        }}
-      >
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="student-booking-confirm-title"
-          onClick={(event) => event.stopPropagation()}
-          className={styles.confirmCard}
-        >
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: "50%",
-              background: "#e8f5e9",
-              color: "#2e7d32",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 800,
-              fontSize: 18,
-              marginBottom: 14,
-            }}
-          >
-            OK
-          </div>
-          <h3 id="student-booking-confirm-title" style={{ margin: "0 0 8px", fontSize: "1.15rem", color: "#111827" }}>
-            {CONFIRM.bookingTitle}
-          </h3>
-          <p style={{ margin: "0 0 16px", color: "#4b5563", lineHeight: 1.5, fontSize: "0.92rem" }}>
-            {CONFIRM.bookingHelp}
-          </p>
-          <div
-            style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: 10,
-              background: "#f9fafb",
-              padding: "12px 14px",
-              marginBottom: 20,
-              display: "grid",
-              gap: 8,
-            }}
-          >
-            <div style={{ fontWeight: 700, color: "#111827" }}>
-              {studentProfile?.course_name || "General English"}
-            </div>
-            <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-              {CONFIRM.classes(studentBookingSelections.length)}
-            </div>
-            <div style={{ display: "grid", gap: 6, maxHeight: 180, overflowY: "auto" }}>
-              {studentBookingSelections.map((slot) => {
-                const slotEnd = timeToMinutes(slot.time) == null ? "" : minutesToTime(timeToMinutes(slot.time) + studentClassDuration);
-                return (
-                  <div key={studentBookingSelectionKey(slot.date, slot.time)} style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-                    {new Date(slot.date + "T00:00:00").toLocaleDateString()} at {humanTime(slot.time)}{slotEnd ? ` - ${humanTime(slotEnd)}` : ""}
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-              {CONFIRM.minutesEach(studentClassDuration)}
-            </div>
-            {assignedTeacherName && (
-              <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-                {CLASS_INFO.teacher}: {assignedTeacherName}
-              </div>
-            )}
-          </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => setStudentBookingConfirmOpen(false)}
-              disabled={isSubmittingStudentBooking}
-              style={{
-                border: "1px solid rgba(38, 66, 59, 0.14)",
-                background: "#fff",
-                color: "#26423b",
-                borderRadius: 14,
-                padding: "10px 18px",
-                minHeight: 42,
-                fontWeight: 700,
-                cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer",
-              }}
-            >
-              {CONFIRM.cancel}
-            </button>
-            <button
-              type="button"
-              onClick={confirmStudentBooking}
-              disabled={isSubmittingStudentBooking}
-              style={{
-                border: "none",
-                background: "#2e7d32",
-                color: "#fff",
-                borderRadius: 8,
-                padding: "10px 16px",
-                fontWeight: 700,
-                cursor: isSubmittingStudentBooking ? "not-allowed" : "pointer",
-                boxShadow: "0 8px 18px rgba(46, 125, 50, 0.22)",
-              }}
-            >
-              {isSubmittingStudentBooking ? BOOKING.booking : CONFIRM.yesBook}
             </button>
           </div>
         </div>
@@ -8791,6 +9061,3 @@ $5padding: 20,
     </>
   );
 }
-
-
-

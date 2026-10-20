@@ -1,0 +1,1572 @@
+/*
+ * Kid Mode — the whole student's experience.
+ *
+ * !! This screen is used by students, and a lot of them are children. So the
+ * !! rules here are not the usual ones:
+ * !!
+ * !!   - Every button you can press is big. A child's finger is not a mouse
+ * !!     pointer, and a button that is 32px tall is a button they miss.
+ * !!   - Every button says what it does, in one short line.
+ * !!   - Only one question is on the screen at a time. A screen with a strip
+ * !!     of days AND a grid of times AND a list of picks AND two mode buttons
+ * !!     is a screen for a grown-up who is reading carefully.
+ * !!   - The colours come from the brand ramp, so the wizard still looks like
+ * !!     the rest of the app - but the greens are the loud ones, because green
+ * !!     is the colour that says "you can press this".
+ * !!
+ * !! This is the stylesheet for the WHOLE student experience - their home
+ * !! page, their classes, the windows that open from them, and the booking
+ * !! wizard. It is one stylesheet on purpose: a student should not be able to
+ * !! tell where one screen ends and the next begins.
+ */
+
+/* The card the whole wizard sits in. */
+.wizard {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--neu-shadow-lg);
+}
+
+/* ---------------------------------------------------------------- the head */
+
+.head {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* The title, and the way out, on one row. */
+.headRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+/* The way out. Small, quiet, and on every screen. */
+.cancelBtn {
+  min-height: 44px;
+  padding: 8px 18px;
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 700;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.cancelBtn:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--primary);
+}
+
+.cancelBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.cancelBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--primary);
+}
+
+.intro {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------- where we are */
+
+.steps {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.stepDot {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--muted);
+  background: var(--surface-recessed);
+  border: 2px solid var(--border-strong);
+}
+
+.stepDotDone {
+  background: var(--brand-lime);
+  border-color: var(--brand-lime);
+  color: var(--primary);
+}
+
+.stepDotNow {
+  background: var(--brand-green);
+  border-color: var(--brand-green);
+  color: #fff;
+}
+
+.stepLine {
+  flex: 1 1 auto;
+  min-width: 12px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-recessed);
+}
+
+.stepLineDone {
+  background: var(--brand-lime);
+}
+
+.stepCount {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------------ the question */
+
+.question {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.help {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ------------------------------------------------- the two ways to book */
+
+.optionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.choiceCard {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  justify-items: start;
+  min-width: 0;
+  min-height: 168px;
+  padding: var(--space-5);
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-lg);
+  border: 2px solid var(--border-mid);
+  background: var(--surface-soft);
+  color: var(--text);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.choiceCard:hover {
+  transform: translateY(-2px);
+  border-color: var(--brand-lime);
+  box-shadow: var(--shadow-md);
+}
+
+.choiceCard:active {
+  transform: scale(0.98);
+}
+
+.choiceCardActive {
+  border-color: var(--brand-green);
+  background: #e9f3dd;
+  box-shadow: var(--shadow-md);
+}
+
+.choiceIcon {
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.choiceTitle {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.choiceText {
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------------- pick a day */
+
+/* The month the days come from, and the arrows that move it.
+   !! The arrows are the same size as the day cards' big targets - a child
+   !! should not have to find a smaller button to change month. */
+.monthBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  min-width: 0;
+}
+
+.monthBtn {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  border-radius: var(--control-radius);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.monthBtn:hover:not(:disabled) {
+  background: var(--surface-soft);
+  border-color: var(--brand-lime);
+  transform: translateY(-1px);
+}
+
+.monthBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* The arrows stop at the end of the student's plan. They are still there, so
+   the shape of the limit is visible. */
+.monthBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.monthName {
+  font-size: 1.05rem;
+  font-weight: 800;
+  text-align: center;
+  color: var(--primary);
+}
+
+.dayGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.dayCard {
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  justify-items: center;
+  min-width: 0;
+  min-height: 124px;
+  padding: var(--space-3) var(--space-2);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--text);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.dayCard:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--brand-lime);
+}
+
+.dayCard:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.dayCardActive {
+  border-color: var(--brand-green);
+  background: var(--brand-green);
+  color: #fff;
+}
+
+.dayCardActive:hover:not(:disabled) {
+  border-color: var(--brand-green);
+}
+
+.dayCardOff {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background: var(--surface-recessed);
+}
+
+.dayName {
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--muted);
+}
+
+.dayCardActive .dayName {
+  color: #e9f3dd;
+}
+
+.dayNumber {
+  font-size: 2.1rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--text);
+}
+
+.dayCardActive .dayNumber {
+  color: #fff;
+}
+
+.dayMonth {
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--muted-light);
+}
+
+.dayCardActive .dayMonth {
+  color: #e9f3dd;
+}
+
+/* The little word under the day: Free, Busy, No times. */
+.dayBadge {
+  margin-top: 6px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.dayBadgeFree {
+  background: var(--pill-success);
+  color: var(--text-success);
+}
+
+.dayBadgeBusy {
+  background: var(--pill-danger);
+  color: var(--text-danger);
+}
+
+.dayBadgeNone {
+  background: var(--pill-warn);
+  color: var(--text-warn);
+}
+
+.dayCardActive .dayBadge {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--primary);
+}
+
+/* ------------------------------------------------------------ pick a time */
+
+.timeGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.timeCard {
+  display: grid;
+  gap: 4px;
+  place-content: center;
+  justify-items: center;
+  min-width: 0;
+  min-height: 96px;
+  padding: var(--space-3);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--text);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.timeCard:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--brand-lime);
+}
+
+.timeCard:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.timeCardActive {
+  border-color: var(--brand-green);
+  background: #e9f3dd;
+}
+
+.timeCardOff {
+  cursor: not-allowed;
+  opacity: 0.55;
+  background: var(--surface-recessed);
+}
+
+.timeText {
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--text);
+}
+
+.timeCardActive .timeText {
+  color: var(--primary);
+}
+
+.timeOfDay {
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+.timeCardActive .timeOfDay {
+  color: var(--primary-mid);
+}
+
+.timeTaken {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--text-danger);
+}
+
+/* --------------------------------------------------- the days of the week */
+
+.weekdayGrid {
+  display: grid;
+  /* All seven in one row, because a week is one row. */
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.weekdayCard {
+  display: grid;
+  gap: 2px;
+  place-content: center;
+  justify-items: center;
+  min-width: 0;
+  min-height: 92px;
+  padding: var(--space-2);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--text);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.weekdayCard:hover {
+  transform: translateY(-2px);
+  border-color: var(--brand-lime);
+}
+
+.weekdayCardActive {
+  border-color: var(--brand-green);
+  background: var(--brand-green);
+  color: #fff;
+}
+
+.weekdayName {
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.weekdayTick {
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--muted);
+}
+
+.weekdayCardActive .weekdayTick {
+  color: #e9f3dd;
+}
+
+/* The three big time-of-day buttons. */
+.partGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.partCard {
+  display: grid;
+  gap: 4px;
+  place-content: center;
+  justify-items: center;
+  min-width: 0;
+  min-height: 108px;
+  padding: var(--space-3);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--text);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.partCard:hover {
+  transform: translateY(-2px);
+  border-color: var(--brand-lime);
+}
+
+.partCardActive {
+  border-color: var(--brand-green);
+  background: #e9f3dd;
+}
+
+.partName {
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+.partCardActive .partName {
+  color: var(--primary);
+}
+
+.otherTime {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
+.otherTimeToggle {
+  min-height: 52px;
+  padding: 10px 18px;
+  cursor: pointer;
+  border-radius: var(--control-radius);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 1rem;
+  font-weight: 700;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.otherTimeToggle:hover {
+  border-color: var(--brand-lime);
+}
+
+.otherTimeToggleActive {
+  border-color: var(--brand-green);
+  background: #e9f3dd;
+}
+
+.otherTimeInput {
+  width: 100%;
+  max-width: 220px;
+  padding: 12px 16px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  border-radius: var(--control-radius);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.otherTimeInput:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(121, 168, 71, 0.18);
+}
+
+/* ---------------------------------------------- the times we found */
+
+.foundList {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.foundCard {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+}
+
+.foundCardActive {
+  border-color: var(--brand-green);
+  background: #e9f3dd;
+}
+
+.foundDate {
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+.foundTime {
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+.foundNote {
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--muted-light);
+}
+
+.foundBtn {
+  min-width: 96px;
+  min-height: 52px;
+  padding: 10px 18px;
+  cursor: pointer;
+  border-radius: var(--control-radius);
+  border: 2px solid var(--brand-green);
+  background: var(--surface);
+  color: var(--primary-mid);
+  font-size: 1rem;
+  font-weight: 800;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.foundBtn:hover:not(:disabled) {
+  background: var(--brand-green);
+  color: #fff;
+}
+
+.foundBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.foundBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* The button on a time that is already in the picks.
+   !!
+   !! It says "Remove" and it looks like a different thing from the green
+   !! "Add" beside it - white with a red edge, not a green outline. A button
+   !! that means two opposite things depending on how the card is tinted is a
+   !! button a child cannot read. */
+.foundBtnDone {
+  background: #fff;
+  border-color: var(--accent-danger);
+  color: var(--text-danger);
+}
+
+.foundBtnDone:hover {
+  background: var(--pill-danger);
+}
+
+/* ------------------------------------------------------- the last look */
+
+.summary {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--surface-soft);
+  border: 2px solid var(--border-mid);
+}
+
+.summaryRow {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.summaryIcon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.summaryLabel {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.summaryValue {
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.summaryList {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.summaryItem {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+/* The way to take a class back out of the list on the last screen. */
+.summaryRemove {
+  min-height: 44px;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--accent-danger);
+  background: #fff;
+  color: var(--text-danger);
+  font-size: 0.95rem;
+  font-weight: 800;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.summaryRemove:hover {
+  background: var(--pill-danger);
+}
+
+.summaryRemove:active {
+  transform: scale(0.97);
+}
+
+
+/* The small button that says "Change" next to the day the student picked. */
+.changeBtn {
+  min-height: 44px;
+  padding: 8px 18px;
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--brand-green);
+  background: var(--surface);
+  color: var(--primary-mid);
+  font-size: 0.95rem;
+  font-weight: 800;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.changeBtn:hover {
+  background: var(--brand-green);
+  color: #fff;
+}
+
+.changeBtn:active {
+  transform: scale(0.97);
+}
+
+/* ------------------------------------------------------- the buttons */
+
+.footer {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  min-width: 0;
+  padding-top: var(--space-2);
+}
+
+.btn {
+  min-height: 60px;
+  padding: 14px 22px;
+  cursor: pointer;
+  border-radius: var(--control-radius);
+  font-size: 1.1rem;
+  font-weight: 800;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.btnGhost {
+  flex: 1 1 160px;
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--primary);
+}
+
+.btnGhost:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-soft);
+}
+
+.btnPrimary {
+  flex: 2 1 220px;
+  border: none;
+  background: var(--brand-green);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(47, 122, 61, 0.28);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background: var(--primary-mid);
+}
+
+.btnWide {
+  flex: 1 1 100%;
+}
+
+
+
+/* --------------------------------------------------------- notices */
+
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--pill-danger);
+  border: 1px solid rgba(168, 58, 52, 0.2);
+  color: var(--text-danger);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* A quiet fact the student should know but does not have to act on. */
+.info {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--pill-info);
+  border: 1px solid rgba(61, 107, 143, 0.18);
+  color: var(--text-info);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.empty {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: center;
+  text-align: center;
+  min-width: 0;
+  padding: var(--space-6) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 2px dashed var(--border-strong);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.emptyIcon {
+  font-size: 2.4rem;
+  line-height: 1;
+}
+
+
+
+/* The chosen day, shown above the times. */
+.pickedDay {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: #e9f3dd;
+  border: 2px solid var(--brand-lime);
+}
+
+.pickedDayText {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+/* ------------------------------------------------------------- loading */
+
+.loading {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  min-width: 0;
+}
+
+.loadingCard {
+  height: 124px;
+  border-radius: var(--radius-md);
+  background: var(--surface-recessed);
+  animation: kidPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes kidPulse {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(0.97);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ===================================================================
+   THE STUDENT'S HOME PAGE
+   =================================================================== */
+
+.home {
+  display: grid;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.homeHeader {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.homeTitle {
+  margin: 0;
+  font-size: 1.7rem;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--primary);
+}
+
+.homeSubtitle {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* The small quiet heading over a group of things. */
+.sectionTitle {
+  margin: 0 0 var(--space-3);
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------ classes left */
+
+.counter {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--neu-shadow-lg);
+}
+
+.counterTop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.counterLabel {
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* The number is the picture. It is the biggest thing on the page. */
+.counterNumber {
+  font-size: 3.4rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--primary);
+}
+
+.counterOf {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.counterBar {
+  height: 16px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-recessed);
+  overflow: hidden;
+}
+
+.counterBarFill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--brand-green);
+  transition: width var(--duration-base) var(--ease-out);
+}
+
+.counterReady {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-mid);
+}
+
+.counterNote {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------ the class list */
+
+.classList {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.classItem {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.classItem:hover {
+  transform: translateY(-2px);
+  border-color: var(--brand-lime);
+}
+
+.classItemMain {
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.classDay {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.classTime {
+  display: block;
+  margin-top: 2px;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+.classCourse {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.classAction {
+  min-height: 52px;
+  padding: 10px 20px;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--control-radius);
+  background: var(--brand-green);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+  white-space: nowrap;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.classAction:hover:not(:disabled) {
+  background: var(--primary-mid);
+  transform: translateY(-1px);
+}
+
+.classAction:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.classAction:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* ------------------------------------------------- the big book button */
+
+.bookBig {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 76px;
+  padding: var(--space-4);
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--brand-green);
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 800;
+  box-shadow: 0 10px 24px rgba(47, 122, 61, 0.28);
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.bookBig:hover:not(:disabled) {
+  background: var(--primary-mid);
+  transform: translateY(-1px);
+}
+
+.bookBig:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.bookBig:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
+}
+
+/* ---------------------------------------------------------- the asks */
+
+/* The card that says "ask the admin for something".
+   !!
+   !! Amber, because it is a warning and not an action. The button inside it
+   !! is white with an amber edge, so it is clearly a button and clearly not
+   !! the main thing on the page. */
+.askCard {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--pill-warn);
+  border: 1px solid rgba(209, 138, 16, 0.28);
+}
+
+.askHeading {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+  line-height: 1.3;
+  color: var(--text-warn);
+}
+
+.askBody {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-warn);
+}
+
+.askBtn {
+  min-height: 56px;
+  padding: 12px 22px;
+  cursor: pointer;
+  border-radius: var(--control-radius);
+  border: 2px solid var(--accent-warn);
+  background: #fff;
+  color: var(--text-warn);
+  font-size: 1rem;
+  font-weight: 800;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.askBtn:hover:not(:disabled) {
+  background: var(--pill-warn);
+}
+
+.askBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.askBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* --------------------------------------------- the window of one class */
+
+.detail {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.detailDay {
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.detailTime {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--text);
+}
+
+.detailCourse {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.detailRow {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+}
+
+.detailIcon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.detailLabel {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.detailValue {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.detailAvatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+
+/* ------------------------------------------- the strip of days (moving) */
+
+.dayStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.dayChip {
+  flex: 0 0 auto;
+  min-width: 84px;
+  min-height: 92px;
+  padding: var(--space-2);
+  display: grid;
+  gap: 2px;
+  place-content: center;
+  justify-items: center;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.dayChip:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--brand-lime);
+}
+
+.dayChipActive {
+  border-color: var(--brand-green);
+  background: var(--brand-green);
+  color: #fff;
+}
+
+/* A day the teacher does not work is dimmed, so the strip carries the same
+   information the month grid carried in its colours. */
+.dayChipFree {
+  border-color: var(--brand-lime);
+  background: #e9f3dd;
+}
+
+.dayChipUnknown {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+/* --------------------------------------------------------- small screens */
+
+@media (max-width: 640px) {
+  .wizard {
+    padding: var(--space-4);
+    gap: var(--space-3);
+  }
+
+  /* The student's own page. */
+  .home {
+    gap: var(--space-4);
+  }
+
+  .homeTitle {
+    font-size: 1.45rem;
+  }
+
+  .counter {
+    padding: var(--space-4);
+  }
+
+  .counterNumber {
+    font-size: 2.8rem;
+  }
+
+  /* The class card stacks: the day and the time on top, the button under
+     it, full width. */
+  .classItem {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+
+  .classAction {
+    width: 100%;
+  }
+
+  .bookBig {
+    min-height: 68px;
+    font-size: 1.15rem;
+  }
+
+  .dayChip {
+    min-width: 76px;
+  }
+
+  .title {
+    font-size: 1.3rem;
+  }
+
+  .question {
+    font-size: 1.2rem;
+  }
+
+  .optionGrid,
+  .partGrid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Every button goes full width. A half-width button on a phone is a
+     button a child misses.
+     !!
+     !! The flex basis is left alone on purpose. The buttons sit in a column
+     !! here, and in a column "100%" is 100% of the HEIGHT - so a button with
+     !! a 100% basis is taller than the box it is in, and the two buttons
+     !! wrap into a second column and sit side by side, off the edge of the
+     !! screen. `auto` lets each button be as tall as it needs to be. */
+  .btn {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .footer {
+    flex-direction: column;
+  }
+
+  .dayGrid {
+    grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  }
+
+  /* Seven days will not fit across a phone, so they go two rows of four
+     and three. The buttons stay big enough to press. */
+  .weekdayGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .foundCard {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+
+  /* No box inside the box on a phone. The list scrolls with the page, so
+     the student can see every time without learning to scroll inside a
+     smaller box inside a bigger one. */
+  .foundList {
+    max-height: none;
+  }
+
+  .foundBtn {
+    width: 100%;
+  }
+
+  /* The class and its Remove button stack, so the button is full width and
+     is not a small target in the corner. */
+  .summaryItem {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+
+  .summaryRemove {
+    width: 100%;
+  }
+}

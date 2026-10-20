@@ -4803,7 +4803,14 @@ export default function AdminDashboard() {
         </ModalPortal>
         {active === "calendar" && (
           <section className={styles.card}>
-            <div className={styles.cardHead}><h2>Scheduled Classes</h2></div>
+            <div className={styles.cardHead}>
+              <div>
+                <h2>Scheduled Classes</h2>
+                <p style={{ margin: "6px 0 0 0", fontSize: "0.95rem", fontWeight: 500, color: "var(--muted)", lineHeight: 1.5 }}>
+                  Every class on the calendar. Pick a day to see what is on it.
+                </p>
+              </div>
+            </div>
             <Calendar />
           </section>
         )}

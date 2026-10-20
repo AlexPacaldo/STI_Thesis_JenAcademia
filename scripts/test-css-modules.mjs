@@ -123,6 +123,37 @@ for (const mod of modules) {
   }
 }
 
+/* ------------------------------------------ components with a module elsewhere */
+
+/* !! The modules are not all in the same folder as the component. The booking
+ * !! wizard keeps its styles in assets/ with the other student styles, and
+ * !! the check above - which pairs a component with a module of the same name
+ * !! in the same folder - never looked at it. So the module a component
+ * !! imports is found by reading its import, the same way the pages are
+ * !! checked, and every styles.X it uses has to be in there. */
+const componentFiles = fs
+  .readdirSync(componentsDir)
+  .filter((name) => name.endsWith(".jsx"))
+  .map((name) => path.join(componentsDir, name));
+
+for (const jsxPath of componentFiles) {
+  const source = fs.readFileSync(jsxPath, "utf8");
+
+  const importMatch = source.match(/import\s+styles\s+from\s+"([^"]+\.module\.css)"/);
+  if (!importMatch) continue;
+
+  const cssPath = path.resolve(path.dirname(jsxPath), importMatch[1]);
+  if (!fs.existsSync(cssPath)) {
+    failures.push(`${path.basename(jsxPath)}: imports ${importMatch[1]}, which does not exist`);
+    continue;
+  }
+
+  const used = referencedClasses(source);
+  const defined = new Set(definedClasses(fs.readFileSync(cssPath, "utf8")));
+  const missing = used.filter((name) => !defined.has(name));
+  check(`${path.basename(jsxPath)}: every styles.X it uses exists in its module`, missing, []);
+}
+
 /* ------------------------------------------- the guard must be able to fail */
 
 check(
@@ -130,7 +161,6 @@ check(
   referencedClasses("const x = styles.ghost;").filter((n) => !definedClasses(".real {}").has(n)),
   ["ghost"]
 );
-
 check(
   "bracket notation is read too",
   referencedClasses('const x = styles["ghost2"];').filter((n) => !definedClasses(".real {}").has(n)),
@@ -159,12 +189,15 @@ check(
 // !! A scroll also hides buttons: the days after the first three were
 // !! invisible, and a student who does not know they can swipe does not
 // !! find them. It has to wrap.
-const studentScheduleCss = fs.readFileSync(
-  path.join(srcDir, "assets", "studentSchedule.module.css"),
+// !!
+// !! The strip is Kid Mode now, so it lives with the rest of the student's
+// !! styles rather than with the teacher's page.
+const kidCss = fs.readFileSync(
+  path.join(srcDir, "assets", "studentKid.module.css"),
   "utf8"
 );
 
-const dayStripRule = (studentScheduleCss.match(/\.dayStrip\s*\{([^}]*)\}/) || [])[1] || "";
+const dayStripRule = (kidCss.match(/\.dayStrip\s*\{([^}]*)\}/) || [])[1] || "";
 check("the day strip has a rule", dayStripRule.length > 0, true);
 check("and it wraps rather than scrolling", /flex-wrap:\s*wrap/.test(dayStripRule), true);
 check("and it never scrolls sideways", /overflow-x:\s*auto/.test(dayStripRule), false);

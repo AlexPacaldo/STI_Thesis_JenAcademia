@@ -1,0 +1,1163 @@
+/*
+ * The teacher's and the admin's calendar.
+ *
+ * !! The student has their own stylesheet (studentKid.module.css). Both are
+ * !! written from the same design language - the same tokens, the same card
+ * !! system, the same button shapes, the same type scale - so the whole app
+ * !! looks like one product and a teacher who also has a student account
+ * !! does not feel they have walked into a different website.
+ * !!
+ * !! The one thing that is different is DENSITY. A student reads one screen
+ * !! and presses one thing, so their buttons are 76px tall. A teacher is
+ * !! reading a schedule and moving between a grid and a panel, so their
+ * !! buttons are 48px tall and their rows are 44px. Same shapes, same
+ * !! colours, same language - sized for the reader.
+ */
+
+/* ===================================================================
+   THE TWO WAYS OF LOOKING AT A CALENDAR
+   =================================================================== */
+
+/* The row the pill sits in. */
+.viewSwitchRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+/* The pill.
+   !!
+   !! It is a pill and not a row of buttons because it is a choice between two
+   !! ways of looking at the same thing, not two things to do. It says which
+   !! one you are in. */
+.viewSwitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--neu-shadow-sm);
+}
+
+.viewSwitchBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 8px 22px;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 800;
+  white-space: nowrap;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.viewSwitchBtn:hover:not(.viewSwitchBtnActive) {
+  background: var(--surface-soft);
+  color: var(--primary);
+}
+
+.viewSwitchBtn:active {
+  transform: scale(0.97);
+}
+
+.viewSwitchBtnActive {
+  background: var(--brand-green);
+  color: #fff;
+}
+
+.viewSwitchBtnActive:hover {
+  background: var(--primary-mid);
+  color: #fff;
+}
+
+/* ===================================================================
+   THE WINDOWS
+   =================================================================== */
+
+/* The head of a window: what it is, and the way out. */
+.dialogHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.dialogTitle {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--primary);
+}
+
+.dialogSub {
+  margin: 6px 0 0 0;
+  font-size: 0.92rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.dialogClose {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-recessed);
+  color: var(--muted);
+  font-size: 1.5rem;
+  line-height: 1;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.dialogClose:hover {
+  background: var(--bg-alt);
+  color: var(--primary);
+}
+
+.dialogClose:active {
+  transform: scale(0.94);
+}
+
+/* The body of a window. */
+.dialogBody {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* The month the date strip is showing. */
+.pickerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.pickerMonth {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+/* ===================================================================
+   THE AVAILABILITIES THE TEACHER HAS SET
+   =================================================================== */
+
+.availList {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* The list scrolls, so the filters stay on the screen while the teacher
+   reads down it. */
+.availScroll {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* ------------------------------------------------------- the filters */
+
+/* The filters, as a tidy set of labelled rows.
+   !!
+   !! Three loose rows of pills with nothing to say what they were, and every
+   !! row a different width, read as clutter. A label down the left and the
+   !! pills starting at the same place on every row turns three rows of
+   !! buttons into three filters. */
+.filterBar {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.filterGroup {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.filterLabel {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.filterPills {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.filterBtn {
+  min-height: 40px;
+  padding: 6px 13px;
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 800;
+  white-space: nowrap;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.filterBtn:hover {
+  border-color: var(--brand-lime);
+  color: var(--primary);
+}
+
+.filterBtn:active {
+  transform: scale(0.97);
+}
+
+.filterBtnActive {
+  border-color: var(--brand-green);
+  background: var(--brand-green);
+  color: #fff;
+}
+
+.filterBtnActive:hover {
+  color: #fff;
+}
+
+/* The number behind a filter. Quieter than the name, so the eye reads the
+   name first. */
+.filterNum {
+  margin-left: 5px;
+  font-weight: 700;
+  opacity: 0.65;
+}
+
+.filterBtnActive .filterNum {
+  opacity: 0.85;
+}
+
+/* The line that says what is showing. */
+.filterSummary {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* The one button on the list that opens the filters, and the count beside
+   it. */
+.listBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+/* The way out of the filter screen, and back to the days. */
+.applyBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 58px;
+  padding: 12px 22px;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--control-radius);
+  background: var(--brand-green);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+  box-shadow: 0 8px 20px rgba(47, 122, 61, 0.28);
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.applyBtn:hover {
+  background: var(--primary-mid);
+}
+
+.applyBtn:active {
+  transform: scale(0.98);
+}
+
+.availCard {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* A day the teacher has marked as unavailable. */
+.availCardOff {
+  background: var(--pill-danger);
+  border-color: rgba(168, 58, 52, 0.2);
+}
+
+.availTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.availDate {
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.availBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.availBadgeOn {
+  background: var(--pill-success);
+  color: var(--text-success);
+}
+
+.availBadgeOff {
+  background: var(--surface);
+  color: var(--text-danger);
+}
+
+.availHours {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text-mid);
+}
+
+.availBreak {
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.availNote {
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text-warn);
+}
+
+.availActions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
+}
+
+.availBtn {
+  min-height: 44px;
+  padding: 8px 18px;
+  cursor: pointer;
+  border-radius: var(--control-radius);
+  background: #fff;
+  font-size: 0.95rem;
+  font-weight: 800;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.availBtn:active {
+  transform: scale(0.97);
+}
+
+.availBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.availBtnEdit {
+  border: 2px solid var(--brand-green);
+  color: var(--primary-mid);
+}
+
+.availBtnEdit:hover:not(:disabled) {
+  background: var(--brand-green);
+  color: #fff;
+}
+
+.availBtnDelete {
+  border: 2px solid var(--accent-danger);
+  color: var(--text-danger);
+}
+
+.availBtnDelete:hover:not(:disabled) {
+  background: var(--pill-danger);
+}
+
+/* The way back out of a screen inside a window. */
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 22px;
+  cursor: pointer;
+  border-radius: var(--control-radius);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 1rem;
+  font-weight: 800;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.backBtn:hover {
+  background: var(--surface-soft);
+  border-color: var(--brand-lime);
+}
+
+.backBtn:active {
+  transform: scale(0.98);
+}
+
+/* The way from the form to the list of the days already set. */
+.seeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 58px;
+  padding: 12px 22px;
+  cursor: pointer;
+  border-radius: var(--control-radius);
+  border: 2px solid var(--brand-lime);
+  background: #e9f3dd;
+  color: var(--primary);
+  font-size: 1rem;
+  font-weight: 800;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.seeBtn:hover {
+  background: var(--brand-lime);
+}
+
+.seeBtn:active {
+  transform: scale(0.98);
+}
+
+/* ===================================================================
+   THE MONTH GRID
+   =================================================================== */
+
+.calendarCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--neu-shadow-lg);
+  padding: var(--space-5);
+  min-width: 0;
+  /* The card is as tall as the month needs it to be, not as tall as the
+     panel next to it. Stretched, it was a tall white box with a small
+     calendar at the top of it. */
+  align-self: start;
+}
+
+.calHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.monthLabel {
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--primary);
+}
+
+/* The arrows that move between months. */
+.navBtn {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  border-radius: var(--control-radius);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.navBtn:hover {
+  background: var(--surface-soft);
+  border-color: var(--brand-lime);
+  transform: translateY(-1px);
+}
+
+.navBtn:active {
+  transform: scale(0.97);
+}
+
+.weekHeader {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.weekday {
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.cell {
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  font-size: 0.95rem;
+  background: var(--surface-raised);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.cell:disabled {
+  cursor: default;
+}
+
+/* The calendar status palette. A cell is a pale tint of the same hue as its
+   dot, so the legend describes the grid exactly. */
+.available {
+  background: var(--cal-available-cell);
+}
+
+.hasClasses {
+  background: var(--cal-scheduled-cell);
+}
+
+.unavailable {
+  background: var(--cal-unavailable-cell);
+}
+
+.unscheduled {
+  background: var(--cal-unscheduled-cell);
+}
+
+.pastCell {
+  background: var(--cal-past-cell);
+  color: var(--muted-light);
+}
+
+.empty {
+  background: transparent;
+  border: none;
+}
+
+.clickableCell {
+  cursor: pointer;
+}
+
+.clickableCell:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.today {
+  outline: 3px solid var(--brand-green);
+  outline-offset: -3px;
+}
+
+.selected {
+  outline: 3px solid var(--primary);
+  outline-offset: -3px;
+}
+
+/* ===================================================================
+   THE PANEL ON THE RIGHT
+   =================================================================== */
+
+/* The heading over a group of things. */
+.panelTitle {
+  margin: 0 0 var(--space-3);
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* A card inside the panel - a section, a form, a list. */
+.panelCard {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* A big action button - the things a teacher can DO from the panel. */
+.actionCard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 54px;
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  text-align: left;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 1rem;
+  font-weight: 800;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.actionCard:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--brand-lime);
+  background: var(--surface-soft);
+}
+
+.actionCard:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.actionCard:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* The action that is switched on. */
+.actionCardActive {
+  border-color: var(--brand-green);
+  background: #e9f3dd;
+}
+
+/* The three actions a class window can offer.
+   !! Green is the one to press, blue is "this is about the paperwork" and
+   !! amber is "this changes something that is already booked". They are the
+   !! same three colours the rest of the app uses for the same three ideas. */
+.actionPrimary {
+  border-color: var(--brand-green);
+  background: var(--brand-green);
+  color: #fff;
+}
+
+.actionPrimary:hover:not(:disabled) {
+  background: var(--primary-mid);
+  border-color: var(--primary-mid);
+}
+
+.actionInfo {
+  border-color: var(--accent-info);
+  background: var(--pill-info);
+  color: var(--text-info);
+}
+
+.actionWarn {
+  border-color: var(--accent-warn);
+  background: var(--pill-warn);
+  color: var(--text-warn);
+}
+
+.actionIcon {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+/* A label and a value, on one row. */
+.detailRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+}
+
+.detailLabel {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.detailValue {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.detailValueLoud {
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.detailAvatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+
+/* The classes on one day, as a list of cards. */
+.dayClass {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  text-align: left;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--text);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.dayClass:hover {
+  transform: translateY(-2px);
+  border-color: var(--brand-lime);
+}
+
+.dayClassTitle {
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.dayClassTime {
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text-mid);
+}
+
+.dayClassWho {
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+/* The free times on a day, grouped by the part of the day. */
+.slotGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.slotBtn {
+  min-height: 60px;
+  padding: 12px 16px;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--brand-lime);
+  background: #e9f3dd;
+  color: var(--primary);
+  font-size: 0.95rem;
+  font-weight: 800;
+  text-align: center;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.slotBtn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--brand-green);
+}
+
+.slotBtn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* A time that is already taken. */
+.slotBtnTaken {
+  cursor: not-allowed;
+  opacity: 0.55;
+  border-color: var(--border-mid);
+  background: var(--surface-recessed);
+  color: var(--muted-light);
+}
+
+/* The time that has been picked. */
+.slotBtnSelected {
+  border-color: var(--brand-green);
+  background: var(--brand-green);
+  color: #fff;
+}
+
+/* ===================================================================
+   FORMS
+   =================================================================== */
+
+.formLabel {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-mid);
+}
+
+.formInput,
+.formSelect,
+.formTextarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 14px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--control-radius);
+  outline: none;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.formInput:focus,
+.formSelect:focus,
+.formTextarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(121, 168, 71, 0.18);
+}
+
+.formTextarea {
+  min-height: 92px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.formHint {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* The red line under a field that is not right. */
+.fieldError {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text-danger);
+}
+
+/* The two-way choice - "Single Day" or "Weekly Pattern". */
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.segmentedBtn {
+  min-height: 46px;
+  padding: 10px 12px;
+  cursor: pointer;
+  border-radius: var(--control-radius);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--text-mid);
+  font-size: 0.9rem;
+  font-weight: 700;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.segmentedBtn:hover {
+  border-color: var(--brand-lime);
+}
+
+.segmentedBtn:active {
+  transform: scale(0.98);
+}
+
+.segmentedBtnActive {
+  border-color: var(--brand-green);
+  background: #e9f3dd;
+  color: var(--primary);
+}
+
+/* The "Unavailable" half of a two-way choice.
+   !! Red, because red is the word for "not available" everywhere else in
+   !! this app too, and a teacher scanning the form should not have to read
+   !! it to know which half is off. */
+.segmentedBtnDanger {
+  border-color: var(--accent-danger);
+  background: var(--pill-danger);
+  color: var(--text-danger);
+}
+
+/* The seven days of the week, as a choice. */
+.weekdayPick {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+  min-width: 0;
+}
+
+.weekdayPickBtn {
+  min-height: 44px;
+  padding: 6px 4px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--text-mid);
+  font-size: 0.78rem;
+  font-weight: 800;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.weekdayPickBtn:hover {
+  border-color: var(--brand-lime);
+}
+
+.weekdayPickBtnActive {
+  border-color: var(--brand-green);
+  background: var(--brand-green);
+  color: #fff;
+}
+
+/* ===================================================================
+   MESSAGES
+   =================================================================== */
+
+.errorBox {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--pill-danger);
+  border: 1px solid rgba(168, 58, 52, 0.2);
+  color: var(--text-danger);
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.warnBox {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--pill-warn);
+  border: 1px solid rgba(209, 138, 16, 0.28);
+  color: var(--text-warn);
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.infoBox {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--pill-info);
+  border: 1px solid rgba(61, 107, 143, 0.18);
+  color: var(--text-info);
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+/* ===================================================================
+   THE COLOUR KEY
+   =================================================================== */
+
+.legendBlock {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px dashed var(--border-strong);
+}
+
+.legendRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.legendDot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  border: 1px solid rgba(38, 66, 59, 0.18);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.45);
+}
+
+.legendAvail {
+  background: var(--cal-available-dot);
+}
+
+.legendClasses {
+  background: var(--cal-scheduled-dot);
+}
+
+.legendUnavail {
+  background: var(--cal-unavailable-dot);
+}
+
+.legendPast {
+  background: var(--cal-past-dot);
+}
+
+.legendUnscheduled {
+  background: var(--cal-unscheduled-dot);
+}
+
+/* ============================================================ small screens */
+
+@media (max-width: 900px) {
+  .calendarCard {
+    padding: var(--space-4);
+  }
+
+  .monthLabel {
+    font-size: 1.15rem;
+  }
+
+  .navBtn {
+    width: 42px;
+    height: 42px;
+  }
+
+  .cell {
+    font-size: 0.85rem;
+  }
+
+  .weekday {
+    font-size: 0.66rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .grid,
+  .weekHeader {
+    gap: 4px;
+  }
+
+  .cell {
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+  }
+
+  .weekday {
+    font-size: 0.62rem;
+  }
+}

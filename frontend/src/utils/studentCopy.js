@@ -135,40 +135,120 @@ export const NEW_PLAN_WINDOW = {
     `A new plan replaces your old one, so your ${count} unused class${count === 1 ? "" : "es"} will not carry over. If you want to keep them, close this and ask for more time instead.`,
 };
 
+/** The student's own page: their classes, and what they have left. */
+export const HOME = {
+  title: "My classes",
+  subtitle: (teacher) => (teacher ? `Your classes with ${teacher}.` : "Your classes."),
+  classesLeft: "Classes left",
+  of: (total) => `of ${total}`,
+  readyToBook: (count) => `Ready to book: ${count}`,
+  yourClasses: "Your classes",
+  details: "Details",
+  loadingClasses: "Loading your classes...",
+  loadingPlan: "Loading your plan...",
+  noClassesYet: "You have no classes booked yet.",
+  noClassesYetHelp: "Press the green button to book one.",
+  noClassesLeft: "You have no classes left. Please ask the admin for a new plan.",
+  backToMyClasses: "Back to my classes",
+  timeToBeDecided: "Time to be decided",
+  yourClass: "Your class",
+  myClasses: "My classes",
+  allClasses: "All classes",
+  monthClasses: (month) => `Your classes for ${month}.`,
+  allMonthClasses: (month) => `Every class for ${month}.`,
+  noClassesThisMonth: "No classes this month.",
+};
+
+/** The two ways of looking at a calendar. */
+export const VIEW = {
+  month: "Month",
+  list: "List",
+  monthHelp: "The calendar, a month at a time.",
+  listHelp: "Your classes, one after another.",
+};
+
 /** The booking form. */
 export const BOOKING = {
   title: "Book a class",
-  intro: (teacher) => `Pick a day and a time for ${teacher}. You can book up to 3 months ahead.`,
+  intro: (teacher) => `Choose a day and a time with ${teacher}.`,
   noTeacher: "You do not have a teacher yet. Please contact support.",
+
+  /* ---------------------------------------------------------- the wizard */
+
+  // The first question. Two big cards, one word each.
   howToBook: "How do you want to book?",
-  singleTimes: "Pick single times",
-  sameTimeEachWeek: "Same time each week",
+  oneTime: "One time",
+  oneTimeHelp: "Pick one day and one time.",
+  everyWeek: "Every week",
+  everyWeekHelp: "Pick the same day and time every week.",
+
+  // Where the student is. "Step 2 of 3" tells a child the screen is not the
+  // end of it, and that there is something after this one.
+  stepOf: (n, total = 3) => `Step ${n} of ${total}`,
+
+  /* ---------------------------------------------------------- pick a day */
+
   whichDay: "Which day?",
-  day: "Day",
-  dayPlaceholder: "Pick a day on the calendar",
-  tapDay: "Tap a day on the calendar",
-  times: "Times",
-  timesHelp: "Pick one or more times.",
-  whatToLookFor: "What to look for",
-  whichDays: "Which days?",
+  dayHelp: "The green days are free. Pick one.",
+  dayLabel: "Day",
+  timeLabel: "Time",
+  free: "Free",
+  busy: "Busy",
+  noTimes: "No times",
+  noFreeDays: "Your teacher has no free days yet. Please talk to your teacher.",
+  noDaysInThisMonth: "There are no days to pick in this month.",
+  noFreeDaysThisMonth: "Your teacher has no free days in this month. Try another month.",
+  // The student picked a day their plan does not reach.
+  pickBeforePlanEnds: (pretty) => `Please pick a date before your plan ends on ${pretty}.`,
+
+  /* --------------------------------------------------------- pick a time */
+
+  whichTime: "Which time?",
+  timeHelp: "Pick one time.",
+  morning: "Morning",
+  afternoon: "Afternoon",
+  evening: "Evening",
+  taken: "Taken",
+  teacherBusyDay: "Your teacher is busy on this day.",
+  noFreeTimes: "No free times on this day. Please pick another day.",
+  noTimesThatDay: "Your teacher has no classes on this day. Please pick another day.",
+
+  /* ------------------------------------------------------- every week */
+
+  whichDays: "Which days of the week?",
+  daysHelp: "Tap every day you want a class.",
   whatTime: "What time?",
-  findTimes: "Find times",
-  findTimesHelp: "We will look from today up to 3 months ahead.",
-  timesThatWork: (count) => `Times that work (${count})`,
+  timeOfDayHelp: "Pick a time. We will show every free time then.",
+  anotherTime: "Another time",
+  findTimes: "Find my times",
+  findingTimes: "Looking...",
+  foundTimes: (count) => `We found ${count} time${count === 1 ? "" : "s"}.`,
+  foundTimesHelp: "Tap the times you want. Then press Next.",
+  moreTimes: (total) => `There are ${total} times in all. These are the first ones.`,
+  preferred: "You asked for",
+  noTimesFound: "We could not find a free time on those days. Please try other days.",
+  noDaysPicked: "Tap at least one day.",
+  noTimePicked: "Tap a time first.",
+  cannotLookUp: "We could not look up free times. Please try again.",
   addAll: "Add all",
-  added: "Added",
   add: "Add",
-  yourPicks: (count, limit) => `Your picks (${count}/${limit})`,
-  clear: "Clear",
   remove: "Remove",
-  course: "Course",
-  classLength: "Class length",
-  pickTimeFirst: "Pick a time first.",
-  booking: "Booking...",
-  bookOne: "Book class",
+
+  /* ------------------------------------------------------- the last look */
+
+  course: "Class",
+
+  /* ---------------------------------------------------------- the buttons */
+
+  next: "Next",
+  back: "Back",
+  change: "Change",
+  bookOne: "Book it",
   bookMany: (count) => `Book ${count} classes`,
+  booking: "Booking...",
+  cancel: "Cancel",
+  pickTimeFirst: "Pick a time first.",
   noClassesLeft: "You have no classes left. Please contact the admin for a new plan.",
-  sameTime: "Same time",
 };
 
 /** The class the student tapped. */
@@ -208,12 +288,11 @@ export const LEGEND = {
 
 /** The little windows that ask "are you sure?". */
 export const CONFIRM = {
-  bookingTitle: "Check your booking",
-  bookingHelp: "Check the details, then book.",
+  bookingTitle: "Is this right?",
+  bookingHelp: "Look at your class. Then press the button.",
   classes: (count) => `${count} class${count === 1 ? "" : "es"}`,
   minutesEach: (count) => `${count} minutes each`,
   teacher: "Teacher",
-  yesBook: "Yes, book it",
   rescheduleTitle: "Ask to change the time?",
   rescheduleHelp: "Your teacher will say yes or no.",
   now: "Now",
