@@ -1003,6 +1003,62 @@ function requireBodyIdentity(field) {
 }
 
 /**
+ * May this session book a class between these two people?
+ *
+ * !! A student books a class WITH their teacher, so the body names the
+ * !! teacher - and the general "you may only act on your own account" rule
+ * !! refused it, because a teacher's id is not a student's id. Every booking
+ * !! a student made came back 403: they could see the free times, press the
+ * !! button, and nothing happened.
+ * !!
+ * !! So the rule is the relationship, not the id:
+ * !!   - an admin may book for anybody;
+ * !!   - a teacher may book their own class;
+ * !!   - a student may book a class for themselves - but only with the
+ * !!     teacher assigned to them, and not with any teacher who happens to
+ * !!     have a free slot.
+ */
+async function sessionMayBookClass(req) {
+  const session = req.session || {};
+  if (session.role === "admin") return true;
+
+  const { teacher_id, student_id } = req.body || {};
+  const me = String(session.userId);
+
+  if (teacher_id != null && String(teacher_id) === me) return true;
+
+  if (student_id != null && String(student_id) === me) {
+    const [rows] = await pool.query(
+      `SELECT assigned_teacher_id FROM student_profiles WHERE user_id = ? LIMIT 1`,
+      [session.userId]
+    );
+    const assigned = rows[0]?.assigned_teacher_id;
+    return assigned != null && String(assigned) === String(teacher_id);
+  }
+
+  return false;
+}
+
+/**
+ * Middleware: the caller must be one of the two people in the class.
+ */
+function requireClassBookingScope() {
+  return (req, res, next) => {
+    sessionMayBookClass(req)
+      .then((allowed) => {
+        if (!allowed) {
+          return res.status(403).json({ message: "You can only book classes for yourself." });
+        }
+        next();
+      })
+      .catch((err) => {
+        console.error("requireClassBookingScope error:", err);
+        res.status(500).json({ message: "Server error" });
+      });
+  };
+}
+
+/**
  * Middleware: the query must be scoped to the caller.
  *
  * The calendar lists return a person's classes joined with the other party's
@@ -8480,7 +8536,7 @@ app.get("/api/teacher/:teacher_id/class-history", requireSession, async (req, re
 });
 
 // Create a new class
-app.post("/api/calendar/class", requireSession, requireBodyIdentity("teacher_id"), async (req, res) => {
+app.post("/api/calendar/class", requireSession, requireClassBookingScope(), async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const { class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, class_link } = req.body;
