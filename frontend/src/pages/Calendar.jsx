@@ -68,6 +68,11 @@ import {
 // API base
 const API = API_BASE_URL;
 
+// Once the teacher has started the class it is not a class that can be
+// moved any more, so the reschedule request is closed for both sides.
+const RESCHEDULE_CLOSED_AFTER_START_MESSAGE =
+  "This class has already started, so it can no longer be rescheduled.";
+
 // Helper to format date as YYYY-MM-DD in local timezone
 const fmtDate = (d) => {
   if (!d) return "";
@@ -834,6 +839,30 @@ function ClassCard({ classInfo, onOpen, actionLabel, actionDisabled }) {
 }
 
 /**
+ * Shown in place of the "Request for Reschedule" button once the teacher has
+ * started the class. The button simply disappearing would leave the teacher
+ * and the student wondering whether the app had broken.
+ */
+function RescheduleClosedNotice() {
+  return (
+    <div
+      style={{
+        marginTop: "8px",
+        padding: "8px 10px",
+        borderRadius: 6,
+        border: "1px solid rgba(245, 158, 11, 0.32)",
+        background: "rgba(245, 158, 11, 0.12)",
+        color: "#8a5a12",
+        fontSize: "0.78rem",
+        lineHeight: 1.45,
+      }}
+    >
+      {RESCHEDULE_CLOSED_AFTER_START_MESSAGE}
+    </div>
+  );
+}
+
+/**
  * Calendar view for teachers and students. Data is loaded from the backend using
  * the SQL schema tables (teacher_availability, classes, student_class_packages).
  *
@@ -1153,7 +1182,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const selectedClassEnded = Boolean(selectedClassVerification?.teacher_ended_at);
   const selectedClassVerified = selectedVerificationStatus === "verified";
   const canShowClassEntryAction = !selectedClassEnded;
-  const canShowRescheduleAction = !selectedClassEnded && !isAdmin && !requestMode;
+  // A class the teacher has already started is not one that can be moved, so
+  // the reschedule request is closed for the teacher and the student alike.
+  const canShowRescheduleAction =
+    !selectedClassStarted && !selectedClassEnded && !isAdmin && !requestMode;
+  const showRescheduleClosedNotice = selectedClassStarted && !selectedClassEnded && !isAdmin;
   const shouldRemindStartScreenshot =
     localRole === "teacher" &&
     !isAdmin &&
@@ -3002,6 +3035,10 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       setRequestError("Please select a class first");
       return;
     }
+    if (selectedClassStarted) {
+      setRequestError(RESCHEDULE_CLOSED_AFTER_START_MESSAGE);
+      return;
+    }
     if (!requestDate) {
       setRequestError("Please select a new date");
       return;
@@ -3057,6 +3094,10 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     setRequestError("");
     if (!selectedClass || !selectedClass.id) {
       setRequestError("Please select a class first");
+      return;
+    }
+    if (selectedClassStarted) {
+      setRequestError(RESCHEDULE_CLOSED_AFTER_START_MESSAGE);
       return;
     }
     if (!requestDate) {
@@ -5360,7 +5401,18 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                       Request for Reschedule
                     </button>
                   ) }
-                  { requestMode && !selectedClassEnded && (
+                  { showRescheduleClosedNotice && !requestMode && (
+                    <RescheduleClosedNotice />
+                  ) }
+                  { requestMode && selectedClassStarted && (
+                    <div style={{ marginTop: 12, padding: 14, border: "1px solid rgba(245, 158, 11, 0.32)", borderRadius: 8, background: "rgba(245, 158, 11, 0.1)" }}>
+                      <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#8a5a12" }}>Reschedule unavailable</h4>
+                      <p style={{ margin: 0, fontSize: "0.75rem", color: "#8a5a12", lineHeight: 1.4 }}>
+                        {RESCHEDULE_CLOSED_AFTER_START_MESSAGE}
+                      </p>
+                    </div>
+                  ) }
+                  { requestMode && !selectedClassStarted && !selectedClassEnded && (
                     <div style={{ marginTop: 12, padding: 14, border: "1px solid #e0e0e0", borderRadius: 8, background: "#fafafa" }}>
                       <div style={{ marginBottom: 12 }}>
                         <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#333" }}>Request Reschedule</h4>
@@ -6526,7 +6578,18 @@ $5padding: 20,
                         {CLASS_INFO.changeTime}
                       </button>
                     )}
-                    { requestMode && !selectedClassEnded && (
+                    { showRescheduleClosedNotice && !requestMode && (
+                      <RescheduleClosedNotice />
+                    )}
+                    { requestMode && selectedClassStarted && (
+                      <div style={{ marginTop: 12, padding: 14, border: "1px solid rgba(245, 158, 11, 0.32)", borderRadius: 8, background: "rgba(245, 158, 11, 0.1)" }}>
+                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#8a5a12" }}>Reschedule unavailable</h4>
+                        <p style={{ margin: 0, fontSize: "0.75rem", color: "#8a5a12", lineHeight: 1.4 }}>
+                          {RESCHEDULE_CLOSED_AFTER_START_MESSAGE}
+                        </p>
+                      </div>
+                    )}
+                    { requestMode && !selectedClassStarted && !selectedClassEnded && (
                       <div style={{ marginTop: 12, padding: 14, border: "1px solid #e0e0e0", borderRadius: 8, background: "#fafafa" }}>
                       <div style={{ marginBottom: 12 }}>
                         <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#333" }}>{CLASS_INFO.changeTimeTitle}</h4>

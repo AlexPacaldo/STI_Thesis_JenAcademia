@@ -13,6 +13,26 @@ export const DECLINE_REASON_MIN_LENGTH = 5;
 export const DECLINE_REASON_MAX_LENGTH = 500;
 
 /**
+ * The words for a class that has already been held.
+ *
+ * A class the teacher has started is not one that can be moved, so neither
+ * side can ask for a reschedule for it, and a request that was already made
+ * can no longer be approved.
+ */
+export const RESCHEDULE_CLOSED_AFTER_START_MESSAGE =
+  "This class has already started, so it can no longer be rescheduled.";
+
+/**
+ * Whether a class that the teacher has already started can still be moved.
+ *
+ * @param {unknown} teacherStartedAt the class's teacher_started_at
+ * @returns {boolean}
+ */
+export function isRescheduleClosedByStart(teacherStartedAt) {
+  return Boolean(teacherStartedAt);
+}
+
+/**
  * Normalise what the decliner typed.
  *
  * Whitespace is collapsed so a multi-line paste cannot break the one-line
@@ -67,3 +87,4 @@ export function buildOtherPartyDeclineMessage(className, reason, declinerName) {
 
   return `${who} declined the reschedule request for "${className}"\nReason: ${reason}`;
 }
+

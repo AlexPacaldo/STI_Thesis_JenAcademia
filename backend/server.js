@@ -37,8 +37,10 @@ import {
 import { createRateLimiter } from "./rateLimit.js";
 import { readBearerToken, signSessionToken, verifySessionToken } from "./sessionToken.js";
 import {
+  RESCHEDULE_CLOSED_AFTER_START_MESSAGE,
   buildOtherPartyDeclineMessage,
   buildRequesterDeclineMessage,
+  isRescheduleClosedByStart,
   normalizeDeclineReason,
 } from "./rescheduleRequestFlow.js";
 import { signFileLink, verifyFileLink } from "./fileLink.js";
@@ -9129,7 +9131,8 @@ app.post("/api/calendar/reschedule-request", requireSession, requireBodyIdentity
               tea.timezone AS teacher_timezone,
               stu.timezone AS student_timezone,
               ru.first_name AS requester_first,
-              ru.last_name AS requester_last
+              ru.last_name AS requester_last,
+              cal.teacher_started_at AS class_started_at
        FROM classes c
        JOIN users tea ON c.teacher_id = tea.user_id
         AND tea.status = 'active' AND tea.profile_completed = TRUE
@@ -9137,6 +9140,7 @@ app.post("/api/calendar/reschedule-request", requireSession, requireBodyIdentity
         AND stu.status = 'active' AND stu.profile_completed = TRUE
        JOIN users ru ON ru.user_id = ?
         AND ru.status = 'active' AND (ru.role = 'admin' OR ru.profile_completed = TRUE)
+       LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
        WHERE c.class_id = ? AND (c.teacher_id = ? OR c.student_id = ?)`,
       [requested_by_id, class_id, requested_by_id, requested_by_id]
     );
@@ -9146,6 +9150,13 @@ app.post("/api/calendar/reschedule-request", requireSession, requireBodyIdentity
     }
 
     const classData = classRows[0];
+
+    // A class the teacher has already started is not one that can be moved, so
+    // neither side can ask for a reschedule for it any more.
+    if (isRescheduleClosedByStart(classData.class_started_at)) {
+      return res.status(409).json({ message: RESCHEDULE_CLOSED_AFTER_START_MESSAGE });
+    }
+
     const classDuration = parseInt(classData.duration, 10) || DEFAULT_CLASS_DURATION;
     const requestedRange = getRangeMinutes(requestedTimeKey, classDuration);
     if (!requestedRange) {
@@ -9350,17 +9361,19 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
 
     // Get current class end_time to calculate duration
     const [classData] = await pool.query(
-      `SELECT teacher_id,
-              student_id,
-              DATE_FORMAT(scheduled_date, '%Y-%m-%d') AS scheduled_date,
-              start_time,
-              end_time,
-              duration
+      `SELECT c.teacher_id,
+              c.student_id,
+              DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
+              c.start_time,
+              c.end_time,
+              c.duration,
+              cal.teacher_started_at AS class_started_at
        FROM classes c
        JOIN users stu ON c.student_id = stu.user_id
         AND stu.status = 'active' AND stu.profile_completed = TRUE
        JOIN users tea ON c.teacher_id = tea.user_id
         AND tea.status = 'active' AND tea.profile_completed = TRUE
+       LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
        WHERE c.class_id = ?`,
       [class_id]
     );
@@ -9370,6 +9383,14 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
     }
 
     const classInfo = classData[0];
+
+    // The class has already been held, so moving it now would rewrite a class
+    // that already happened. The request stays pending and the other side can
+    // still decline it.
+    if (isRescheduleClosedByStart(classInfo.class_started_at)) {
+      return res.status(409).json({ message: RESCHEDULE_CLOSED_AFTER_START_MESSAGE });
+    }
+
     const previousDate = normalizeDateKey(classInfo.scheduled_date);
     const previousTime = normalizeTimeKey(classInfo.start_time);
     const classDuration = parseInt(classInfo.duration, 10) || DEFAULT_CLASS_DURATION;

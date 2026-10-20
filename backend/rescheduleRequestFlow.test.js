@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import {
   DECLINE_REASON_MAX_LENGTH,
   DECLINE_REASON_MIN_LENGTH,
+  RESCHEDULE_CLOSED_AFTER_START_MESSAGE,
   buildOtherPartyDeclineMessage,
   buildRequesterDeclineMessage,
+  isRescheduleClosedByStart,
   normalizeDeclineReason,
 } from "./rescheduleRequestFlow.js";
 
@@ -105,3 +107,24 @@ test("the other party message falls back when the decliner is unknown", () => {
   assert.match(message, /declined the reschedule request for "Conversational English"/);
   assert.match(message, /Reason: Schedule conflict/);
 });
+
+/* --------------------------------------------- a class that has started */
+
+test("a class the teacher has started can no longer be rescheduled", () => {
+  assert.equal(isRescheduleClosedByStart(new Date("2026-10-20T07:00:00Z")), true);
+});
+
+test("a class the teacher has not started can still be rescheduled", () => {
+  assert.equal(isRescheduleClosedByStart(null), false);
+  assert.equal(isRescheduleClosedByStart(undefined), false);
+});
+
+test("an empty start time is not a started class", () => {
+  assert.equal(isRescheduleClosedByStart(""), false);
+});
+
+test("the closed message says the class has started", () => {
+  assert.match(RESCHEDULE_CLOSED_AFTER_START_MESSAGE, /already started/);
+  assert.match(RESCHEDULE_CLOSED_AFTER_START_MESSAGE, /no longer be rescheduled/);
+});
+

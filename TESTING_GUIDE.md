@@ -66,6 +66,15 @@ are checked on their own:
 node --test backend/rescheduleRequestFlow.test.js
 ```
 
+### Test 3b: Reschedule Closes When The Class Starts
+1. Log in as the **Teacher** of a scheduled class
+2. Start the class from the class detail panel
+3. Look at the class again: the "Request for Reschedule" button is gone, and a
+   note says the class has already started
+4. Log in as the **Student** of that class: the button is gone for them too
+5. A reschedule request that was made before the class started can no longer be
+   approved - the class has been held, so moving it would rewrite it
+
 ### Test 4: Booked Date Detection
 1. Log in as **Student B**
 2. Go to Calendar
@@ -108,9 +117,15 @@ node --test backend/rescheduleRequestFlow.test.js
 - [ ] Submit button disabled for booked slots
 - [ ] Error messages appear for conflicts
 - [ ] Success message on submission
+- [ ] Once the teacher has started the class, the "Request for Reschedule"
+      button is gone for the teacher AND the student, and a note says why
+- [ ] A request cannot be sent for a class that has already started, even if
+      the form was opened before it started
 
 ### Approval/Rejection
 - [ ] Approve button marks request as "approved"
+- [ ] A request for a class the teacher has already started cannot be
+      approved - the class has been held, so moving it would rewrite it
 - [ ] Decline button asks for a reason and refuses to go through without one
 - [ ] The requester is told who declined it and why, in their notification
 - [ ] The reason is stored on the request and shown in the admin request list
