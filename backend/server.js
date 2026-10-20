@@ -34,6 +34,7 @@ import {
   normalizeRequestType,
 } from "./contractRequestFlow.js";
 import { createRateLimiter } from "./rateLimit.js";
+import { describeCorsOrigins, resolveCorsOrigins } from "./corsOrigins.js";
 import {
   contactFormRecipient,
   describeMailConfig,
@@ -188,15 +189,26 @@ const app = express();
 // front of this app; trusting more would let a client forge the header and
 // pick its own bucket.
 app.set("trust proxy", 1);
-app.use(cors({
-  origin: [
-    "https://jenacademia.vercel.app",
-    "http://localhost:5173" // keep for local dev
-  ],
+
+// Which websites may talk to this API.
+//
+// !! One policy, used for the request AND for the preflight. There used to
+// !! be a second `app.options(/(.*)/, cors())` with the library's defaults,
+// !! which allow every origin - so the preflight and the actual request
+// !! could disagree about who was allowed, and which one answered depended
+// !! on the order the middlewares ran in. It is the same list now, and it
+// !! is printed at start-up, because a domain that is not on the list fails
+// !! silently on the server and only visibly in a browser console.
+const CORS_ORIGINS = resolveCorsOrigins();
+console.log(`[cors] Allowed origins: ${describeCorsOrigins(CORS_ORIGINS)}`);
+
+const corsOptions = {
+  origin: CORS_ORIGINS,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   credentials: true
-}));
-app.options(/(.*)/, cors());
+};
+app.use(cors(corsOptions));
+app.options(/(.*)/, cors(corsOptions));
 app.use(express.json());
 
 const ENCRYPTED_VALUE_PREFIX = "enc:v1:";

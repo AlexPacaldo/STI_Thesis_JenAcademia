@@ -283,7 +283,14 @@ export default function Homepage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(contactForm),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      // !! "Contact form is not configured" is what the server says when the
+      // !! mail server has not been set up. It is true and it means nothing
+      // !! to a visitor, who cannot set up a mail server. The address beside
+      // !! the form is the way out, so the message points at it.
+      if (res.status === 503) {
+        throw new Error("Sending messages is not set up yet. Please email us instead.");
+      }
       if (!res.ok) throw new Error(data.message || "Something went wrong");
       setContactStatus({ type: "success", message: "Message sent! We'll get back to you soon." });
       setContactForm({ name: "", email: "", message: "" });

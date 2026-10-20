@@ -23,6 +23,30 @@ DB_CONNECTION_LIMIT=5
 
 Use the exact MySQL service name Railway shows in your canvas. If it is named `mysql` instead of `MySQL`, the reference becomes `${{mysql.MYSQL_URL}}`.
 
+## Which Websites May Call the API
+
+The backend refuses requests from a website that is not on its list, and the refusal happens **in the browser**: the API answers correctly and the browser throws the answer away. The visitor sees "Failed to fetch" and the only trace is a CORS error in the console.
+
+The list always includes:
+
+- `https://jenacademia.com` and `https://www.jenacademia.com` — the live site
+- `https://jenacademia.vercel.app` — the earlier deployment
+- `http://localhost:5173` — local development
+
+To add another, set `CORS_ORIGINS` in the backend service variables with a comma-separated list. It **adds** to the list above rather than replacing it:
+
+```env
+CORS_ORIGINS=https://staging.jenacademia.com,https://new.jenacademia.com
+```
+
+The list is printed when the backend starts, so you can check it without opening a browser console:
+
+```txt
+[cors] Allowed origins: https://jenacademia.com, https://www.jenacademia.com, ...
+```
+
+If the site is on a domain that is not on that line, this is why nothing loads.
+
 ## Email
 
 The app sends three emails over SMTP: an account setup invite, a password reset link, and a message from the contact form.
