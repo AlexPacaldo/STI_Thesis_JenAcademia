@@ -16,6 +16,9 @@ import { API_BASE_URL } from "../utils/api.js";
 
 const API = API_BASE_URL;
 
+const DECLINE_REASON_MIN_LENGTH = 5;
+const DECLINE_REASON_MAX_LENGTH = 500;
+
 export default function NotificationPanel({ userId, isOpen, onClose }) {
   const { notify } = useNotification() || {};
   const navigate = useNavigate();
@@ -26,6 +29,8 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
   const [selectedType, setSelectedType] = useState("all"); // filter by type
   const [actionInProgress, setActionInProgress] = useState(null); // track which notification is being acted on
   const [confirmAction, setConfirmAction] = useState(null);
+  const [declineReason, setDeclineReason] = useState("");
+  const [declineReasonError, setDeclineReasonError] = useState("");
 
   // Fetch all notifications for this user
   const loadNotifications = async (pageNum = 1, type = "all") => {
@@ -118,7 +123,11 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
     }
   };
 
-  const closeConfirmAction = () => setConfirmAction(null);
+  const closeConfirmAction = () => {
+    setConfirmAction(null);
+    setDeclineReason("");
+    setDeclineReasonError("");
+  };
 
   const requestDeleteNotification = (notificationId) => {
     setConfirmAction({
@@ -187,13 +196,16 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
   };
 
   const requestRejectReschedule = (notificationId, relatedId) => {
+    setDeclineReason("");
+    setDeclineReasonError("");
     setConfirmAction({
       type: "reject-reschedule",
       notificationId,
       relatedId,
-      title: "Reject reschedule?",
-      message: "Reject this reschedule request? The requester will be notified.",
-      confirmLabel: "Reject"
+      title: "Decline reschedule request?",
+      message: "Decline this reschedule request? The requester will be notified along with your reason.",
+      confirmLabel: "Decline",
+      requiresReason: true
     });
   };
 
@@ -201,6 +213,23 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
     if (!confirmAction) return;
 
     const action = confirmAction;
+
+    // A decline without a reason tells the requester nothing, so the reason is
+    // validated before anything is sent and the dialog stays open on failure.
+    const trimmedDeclineReason = declineReason.trim();
+    if (action.type === "reject-reschedule") {
+      if (trimmedDeclineReason.length < DECLINE_REASON_MIN_LENGTH) {
+        setDeclineReasonError(
+          `Please give a reason of at least ${DECLINE_REASON_MIN_LENGTH} characters so the requester understands the decision.`
+        );
+        return;
+      }
+      if (trimmedDeclineReason.length > DECLINE_REASON_MAX_LENGTH) {
+        setDeclineReasonError(`Please keep the reason under ${DECLINE_REASON_MAX_LENGTH} characters.`);
+        return;
+      }
+    }
+
     const currentUser = readStoredUser() || {};
     const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
 
@@ -267,14 +296,15 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
       setActionInProgress(action.notificationId);
       try {
         await axios.post(`${API}/api/calendar/reschedule-requests/${action.relatedId}/reject`, {
-          user_id: userId
+          user_id: userId,
+          reason: trimmedDeclineReason
         });
-        notify("Reschedule request rejected", "success");
+        notify("Reschedule request declined and the requester was notified", "success");
         setNotifications(prev => prev.filter(n => n.notification_id !== action.notificationId));
         setTotalNotifications(Math.max(0, totalNotifications - 1));
       } catch (err) {
         console.error("Error rejecting reschedule:", err);
-        notify("Failed to reject reschedule request", "error");
+        notify(err?.response?.data?.message || "Failed to decline reschedule request", "error");
       } finally {
         setActionInProgress(null);
       }
@@ -534,6 +564,52 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
             >
               <h3 style={{ margin: "0 0 12px", fontSize: "1.1rem" }}>{confirmAction.title}</h3>
               <p style={{ margin: "0 0 24px", color: "#55606c", lineHeight: 1.6 }}>{confirmAction.message}</p>
+
+              {confirmAction.requiresReason && (
+                <div style={{ margin: "0 0 20px" }}>
+                  <label
+                    htmlFor="decline-reason-input"
+                    style={{ display: "block", fontSize: "0.85rem", fontWeight: 700, color: "#13251f", marginBottom: "6px" }}
+                  >
+                    Reason for declining
+                    <span style={{ color: "#b4442f" }}> *</span>
+                  </label>
+                  <textarea
+                    id="decline-reason-input"
+                    rows={4}
+                    autoFocus
+                    maxLength={DECLINE_REASON_MAX_LENGTH}
+                    value={declineReason}
+                    onChange={(e) => {
+                      setDeclineReason(e.target.value);
+                      if (declineReasonError) setDeclineReasonError("");
+                    }}
+                    placeholder="Explain why this request is being declined. The requester will see this reason."
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: "12px",
+                      border: declineReasonError ? "1px solid #d66a55" : "1px solid #d0d5db",
+                      fontSize: "0.9rem",
+                      fontFamily: "inherit",
+                      lineHeight: 1.5,
+                      resize: "vertical",
+                      boxSizing: "border-box",
+                      color: "#13251f",
+                    }}
+                  />
+                  {declineReasonError ? (
+                    <p style={{ margin: "6px 0 0", fontSize: "0.8rem", color: "#b4442f", fontWeight: 600 }}>
+                      {declineReasonError}
+                    </p>
+                  ) : (
+                    <p style={{ margin: "6px 0 0", fontSize: "0.78rem", color: "#6b7280" }}>
+                      This reason is shared with the requester. Minimum {DECLINE_REASON_MIN_LENGTH} characters.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
                 <button
                   onClick={closeConfirmAction}
@@ -551,14 +627,18 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                 </button>
                 <button
                   onClick={performConfirmAction}
+                  disabled={confirmAction.requiresReason && declineReason.trim().length < DECLINE_REASON_MIN_LENGTH}
                   style={{
                     padding: "10px 16px",
                     borderRadius: "12px",
                     border: "none",
-                    background: "#26423b",
+                    background: confirmAction.type === "reject-reschedule" ? "#8a3e2e" : "#26423b",
                     color: "#fff",
-                    cursor: "pointer",
+                    cursor: confirmAction.requiresReason && declineReason.trim().length < DECLINE_REASON_MIN_LENGTH
+                      ? "not-allowed"
+                      : "pointer",
                     fontWeight: 600,
+                    opacity: confirmAction.requiresReason && declineReason.trim().length < DECLINE_REASON_MIN_LENGTH ? 0.6 : 1,
                   }}
                 >
                   {confirmAction.confirmLabel}

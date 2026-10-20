@@ -36,6 +36,11 @@ import {
 } from "./contractRequestFlow.js";
 import { createRateLimiter } from "./rateLimit.js";
 import { readBearerToken, signSessionToken, verifySessionToken } from "./sessionToken.js";
+import {
+  buildOtherPartyDeclineMessage,
+  buildRequesterDeclineMessage,
+  normalizeDeclineReason,
+} from "./rescheduleRequestFlow.js";
 import { signFileLink, verifyFileLink } from "./fileLink.js";
 import { deleteRecordingFromDrive, extractDriveFileId, isGoogleDriveConfigured, uploadRecordingToDrive } from "./googleDrive.js";
 import {
@@ -1970,6 +1975,17 @@ async function indexExists(tableName, indexName) {
   return rows.length > 0;
 }
 
+async function tableExists(tableName) {
+  const [rows] = await pool.query(
+    `SELECT TABLE_NAME
+     FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+     LIMIT 1`,
+    [DB_NAME, tableName]
+  );
+  return rows.length > 0;
+}
+
 async function ensureIndex(tableName, indexName, columnsSql) {
   if (await indexExists(tableName, indexName)) return;
   await pool.query(`ALTER TABLE ${tableName} ADD INDEX ${indexName} (${columnsSql})`);
@@ -2142,6 +2158,41 @@ async function ensureRemarkColumns() {
   }
 
   await ensureIndex("class_remarks", "idx_remarks_teacher_status", "teacher_id, status, created_at");
+}
+
+// Declining a reschedule request now requires the decliner to say why, so the
+// requester can be told the reason. The reason lives on the request row itself
+// (encrypted, like the requester's own reason) so it can be re-read later and
+// shown in the admin request list.
+async function ensureRescheduleRequestDeclineReasonColumn() {
+  // The table ships in Database.sql, but an environment created before it did
+  // may not have it yet, so it is created before the column is touched.
+  if (!(await tableExists("reschedule_requests"))) {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS reschedule_requests (
+        request_id INT NOT NULL AUTO_INCREMENT,
+        class_id INT NOT NULL,
+        requested_by_id INT NOT NULL,
+        requested_date DATE NOT NULL,
+        requested_time TIME NOT NULL,
+        reason TEXT DEFAULT NULL,
+        status ENUM('pending','approved','declined') DEFAULT 'pending',
+        decline_reason TEXT DEFAULT NULL,
+        requested_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        resolved_at TIMESTAMP NULL DEFAULT NULL,
+        PRIMARY KEY (request_id),
+        KEY idx_class_id (class_id),
+        KEY idx_status (status),
+        KEY idx_requested_by (requested_by_id),
+        CONSTRAINT reschedule_requests_ibfk_1 FOREIGN KEY (class_id) REFERENCES classes (class_id),
+        CONSTRAINT reschedule_requests_ibfk_2 FOREIGN KEY (requested_by_id) REFERENCES users (user_id)
+      )
+    `);
+  }
+
+  if (!(await columnExists("reschedule_requests", "decline_reason"))) {
+    await pool.query("ALTER TABLE reschedule_requests ADD COLUMN decline_reason TEXT DEFAULT NULL AFTER status");
+  }
 }
 
 async function ensureLessonProgressTable() {
@@ -2926,6 +2977,7 @@ async function encryptExistingSensitiveData() {
     ["users", "birth_date"],
     ["class_remarks", "remarks"],
     ["reschedule_requests", "reason"],
+    ["reschedule_requests", "decline_reason"],
     ["student_contract_requests", "trial_notes"],
     ["student_contract_requests", "ai_criteria"],
     ["student_contract_requests", "admin_response"],
@@ -2939,7 +2991,13 @@ async function encryptExistingSensitiveData() {
   ];
 
   for (const [tableName, columnName] of sensitiveColumns) {
-    await encryptExistingPlaintextColumn(tableName, columnName);
+    // One missing column must not stop the remaining columns from being
+    // encrypted, so each column is handled on its own.
+    try {
+      await encryptExistingPlaintextColumn(tableName, columnName);
+    } catch (err) {
+      console.warn(`Could not encrypt existing ${tableName}.${columnName} values:`, err?.message || err);
+    }
   }
 }
 
@@ -2991,6 +3049,7 @@ const SCHEMA_STEPS = [
   ["assignment attachment columns", ensureAssignmentAttachmentColumns],
   ["books columns", ensureBooksColumns],
   ["remark columns", ensureRemarkColumns],
+  ["reschedule request decline reason column", ensureRescheduleRequestDeclineReasonColumn],
   ["lessons columns", ensureLessonsColumns],
   ["book teachers table", ensureBookTeachersTable],
   ["lesson progress table", ensureLessonProgressTable],
@@ -9245,7 +9304,7 @@ app.get("/api/calendar/my-reschedule-requests/:user_id", requireSession, async (
       [user_id, user_id, user_id]
     );
 
-    res.json({ requests });
+    res.json({ requests: decryptRows(requests, ["reason", "decline_reason"]) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching reschedule requests" });
@@ -9445,6 +9504,13 @@ app.post("/api/calendar/reschedule-requests/:id/reject", requireSession, async (
     const { id } = req.params;
     const { user_id } = req.body;
 
+    // Declining without a reason leaves the requester guessing, so a reason is
+    // mandatory - it is stored on the request and shown back to them.
+    const { value: declineReason, error: declineReasonError } = normalizeDeclineReason(req.body?.reason);
+    if (declineReasonError) {
+      return res.status(400).json({ message: declineReasonError });
+    }
+
     // Verify user is authorized (teacher or student of the class)
     const [authCheck] = await pool.query(
       `SELECT rr.* FROM reschedule_requests rr
@@ -9463,8 +9529,8 @@ app.post("/api/calendar/reschedule-requests/:id/reject", requireSession, async (
 
     const resolvedAt = new Date();
     await pool.query(
-      `UPDATE reschedule_requests SET status = ?, resolved_at = ? WHERE request_id = ?`,
-      ["declined", resolvedAt, id]
+      `UPDATE reschedule_requests SET status = ?, resolved_at = ?, decline_reason = ? WHERE request_id = ?`,
+      ["declined", resolvedAt, encryptNullableText(declineReason), id]
     );
 
     // Get the requester info for notification
@@ -9479,27 +9545,37 @@ app.post("/api/calendar/reschedule-requests/:id/reject", requireSession, async (
     if (requesterInfo.length) {
       const { requested_by_id, teacher_id, student_id, class_name } = requesterInfo[0];
       const otherPartyId = requested_by_id === teacher_id ? student_id : teacher_id;
-      
-      // Create notification for the requester
-      const rejectorName = user_id === teacher_id ? 'Teacher' : 'Student';
-      const notificationMessage = `Your reschedule request for "${class_name}" has been rejected`;
+
+      // Name the person who declined it - "your request was declined" without
+      // an explanation of who said so leaves the requester guessing.
+      const [declinerRows] = await pool.query(
+        `SELECT first_name, last_name FROM users WHERE user_id = ?`,
+        [user_id]
+      );
+      const declinerName = declinerRows.length
+        ? `${declinerRows[0].first_name || ""} ${declinerRows[0].last_name || ""}`.trim()
+        : "";
+      const declinerLabel = declinerName || (user_id === teacher_id ? "Teacher" : "Student");
+
+      // Create notification for the requester, including why it was declined
+      const notificationMessage = buildRequesterDeclineMessage(class_name, declineReason, declinerLabel);
       
       await pool.query(
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [requested_by_id, "reschedule", encryptNullableText("Reschedule Rejected"), encryptNullableText(notificationMessage), id, "reschedule_request"]
+        [requested_by_id, "reschedule", encryptNullableText("Reschedule Declined"), encryptNullableText(notificationMessage), id, "reschedule_request"]
       );
       
       // Create notification for the other party
-      const otherPartyMessage = `${rejectorName} rejected the reschedule request for "${class_name}"`;
+      const otherPartyMessage = buildOtherPartyDeclineMessage(class_name, declineReason, declinerLabel);
       await pool.query(
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [otherPartyId, "reschedule", encryptNullableText("Reschedule Rejected"), encryptNullableText(otherPartyMessage), id, "reschedule_request"]
+        [otherPartyId, "reschedule", encryptNullableText("Reschedule Declined"), encryptNullableText(otherPartyMessage), id, "reschedule_request"]
       );
     }
 
-    res.json({ message: "Reschedule request rejected" });
+    res.json({ message: "Reschedule request declined", reason: declineReason });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error rejecting request" });
@@ -9527,7 +9603,7 @@ app.get("/api/admin/reschedule-requests", requireAdminSession, async (req, res) 
     }
 
     const [rows] = await pool.query(query, params);
-    res.json({ requests: decryptRows(rows, ["reason"]) });
+    res.json({ requests: decryptRows(rows, ["reason", "decline_reason"]) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching reschedule requests" });

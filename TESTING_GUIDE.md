@@ -53,7 +53,18 @@
 2. Click "Approve" button
 3. Should see success notification: "Reschedule request approved!"
 4. Request card should disappear or show "Approved" status
-5. Test "Reject" button with another request
+5. Test "Decline" button with another request
+6. The decline dialog asks for a reason - the "Decline" button stays disabled
+   until at least 5 characters are typed
+7. Log in as the requester and open the bell: the notification says who
+   declined it and shows the reason
+
+The rules that decide what a valid reason is, and how the message is worded,
+are checked on their own:
+
+```bash
+node --test backend/rescheduleRequestFlow.test.js
+```
 
 ### Test 4: Booked Date Detection
 1. Log in as **Student B**
@@ -100,7 +111,9 @@
 
 ### Approval/Rejection
 - [ ] Approve button marks request as "approved"
-- [ ] Reject button marks request as "declined"
+- [ ] Decline button asks for a reason and refuses to go through without one
+- [ ] The requester is told who declined it and why, in their notification
+- [ ] The reason is stored on the request and shown in the admin request list
 - [ ] Both parties can approve/reject (permission check)
 - [ ] Notification count decrements after approval
 - [ ] Resolved date displays after action
@@ -193,6 +206,8 @@ create. Without the driver it skips and passes, so it never blocks a commit.
 - Verify user has permission (must be class participant)
 - Check console for HTTP errors
 - Verify request is in "pending" status
+- A decline that answers `400` was sent without a usable reason - the backend
+  wants at least 5 characters
 
 ---
 
@@ -214,11 +229,14 @@ POST http://localhost:3001/api/calendar/reschedule-requests/1/approve
 Body: { "user_id": 1 }
 ```
 
-### Reject Reschedule Request
+### Decline Reschedule Request
 ```bash
 POST http://localhost:3001/api/calendar/reschedule-requests/1/reject
-Body: { "user_id": 1 }
+Body: { "user_id": 1, "reason": "I already have a class booked that day" }
 ```
+
+`reason` is required: at least 5 characters, at most 500. Without one the
+route answers `400` and the request stays pending.
 
 ### Get Admin View
 ```bash

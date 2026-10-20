@@ -4252,6 +4252,23 @@ export default function AdminDashboard() {
                                   Resolved: {formatDate(r.resolved_at)}
                                 </div>
                               )}
+                              {r.status === "declined" && r.decline_reason && (
+                                <div
+                                  style={{
+                                    fontSize: "0.75em",
+                                    color: "#8a3e2e",
+                                    marginTop: "6px",
+                                    padding: "6px 8px",
+                                    borderRadius: "8px",
+                                    background: "rgba(214, 106, 85, 0.12)",
+                                    borderLeft: "3px solid #d66a55",
+                                    maxWidth: "220px",
+                                  }}
+                                  title={r.decline_reason}
+                                >
+                                  Decline reason: {r.decline_reason}
+                                </div>
+                              )}
                             </td>
                             <td data-label="Actions" style={{ padding: "12px", verticalAlign: "top" }}>
                               <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
