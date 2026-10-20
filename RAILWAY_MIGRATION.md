@@ -23,6 +23,38 @@ DB_CONNECTION_LIMIT=5
 
 Use the exact MySQL service name Railway shows in your canvas. If it is named `mysql` instead of `MySQL`, the reference becomes `${{mysql.MYSQL_URL}}`.
 
+## Email
+
+The app sends three emails over SMTP: an account setup invite, a password reset link, and a message from the contact form.
+
+Add these to the backend service variables:
+
+```env
+SMTP_HOST=smtp.your-provider.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=academy@your-domain.com
+SMTP_PASS=your-app-password
+SMTP_FROM=academy@your-domain.com
+SMTP_FROM_NAME=JEN Academia
+CONTACT_FORM_TO=the-inbox-you-read@example.com
+```
+
+- `SMTP_PORT` 587 is STARTTLS (the usual), 465 is implicit TLS with `SMTP_SECURE=true`.
+- `SMTP_FROM` defaults to `SMTP_USER`, and `SMTP_FROM_NAME` defaults to `JEN Academia`.
+- `CONTACT_FORM_TO` is where the contact form sends. It defaults to the address the website publishes as "Email us".
+- Gmail needs an **app password**, not the account password: turn on 2-Step Verification, then create one at <https://myaccount.google.com/apppasswords>.
+
+The backend prints one line at start-up saying what it will do:
+
+```txt
+[mail] SMTP smtp.your-provider.com:587 as academy@your-domain.com
+```
+
+If it says `not configured`, the three emails above are not being sent. The account setup invite route still returns the invite link, the password reset still answers as if it worked, and the contact form answers "not configured" — so nothing fails loudly, and a broken mail server can sit there for a week unnoticed. That line is the only place it shows up.
+
+**Leave `SMTP_REDIRECT_TO` unset.** It is a development setting that sends every email to one address instead of to the person it is addressed to. The server warns loudly at start-up when it is on.
+
 ## Uploads
 
 The app stores uploaded assignments, profile images, lessons, and book covers on disk. Attach a Railway volume to the backend service and mount it at:

@@ -8,7 +8,6 @@ import fs from "fs";
 import multer from "multer";
 import mysql from "mysql2/promise";
 import path from "path";
-import { Resend } from "resend";
 import { assessClassEvidence } from "./classEvidence.js";
 // Aliased on purpose: the wrapper below owns the throttle and the logging, and two
 // functions called archiveDormantAccounts in one file is how the policy engine and
@@ -35,6 +34,12 @@ import {
   normalizeRequestType,
 } from "./contractRequestFlow.js";
 import { createRateLimiter } from "./rateLimit.js";
+import {
+  contactFormRecipient,
+  describeMailConfig,
+  isMailConfigured,
+  sendMail,
+} from "./mailer.js";
 import { readBearerToken, signSessionToken, verifySessionToken } from "./sessionToken.js";
 import {
   RESCHEDULE_CLOSED_AFTER_START_MESSAGE,
@@ -225,6 +230,29 @@ if (!process.env.SESSION_SECRET) {
   );
 }
 
+// What email is going to do, said out loud at start-up.
+//
+// !! Three messages depend on this - the account setup invite, the password
+// !! reset and the contact form - and all three fail quietly when it is
+// !! misconfigured: the invite route says "prepared, but email was not sent",
+// !! the reset says the same thing it always says, and the contact form says
+// !! "not configured". Nobody sees a failure, so nobody fixes it. One line
+// !! at start-up is the difference between a mail server that is working and
+// !! one that has been broken since Tuesday.
+console.log(`[mail] SMTP ${describeMailConfig()}`);
+if (!isMailConfigured()) {
+  console.warn(
+    "[mail] Email is not configured, so account setup invites, password resets " +
+      "and the contact form will not send anything. Set SMTP_HOST, SMTP_USER and SMTP_PASS."
+  );
+}
+if (String(process.env.SMTP_REDIRECT_TO || "").trim()) {
+  console.warn(
+    `[mail] EVERY email is being redirected to ${process.env.SMTP_REDIRECT_TO}. ` +
+      "Clear SMTP_REDIRECT_TO when this is a real server."
+  );
+}
+
 function encryptNullableText(value) {
   if (value === null || value === undefined) return null;
 
@@ -313,52 +341,6 @@ function escapeEmailHeader(value) {
   return String(value || "").replace(/[\r\n]+/g, " ").trim();
 }
 
-function encodeEmailBody(value) {
-  return String(value || "").replace(/\r?\n/g, "\r\n");
-}
-
-function smtpConfigured() {
-  return Boolean(process.env.RESEND_API_KEY);
-}
-
-// Lazy, so a missing key can never crash the server at startup. Resend's
-// constructor throws synchronously when called without a key, and this module
-// is imported unconditionally - so the old eager construction here took the
-// whole app down with it whenever RESEND_API_KEY was unset. That is the entire
-// reason this is a factory rather than a constant.
-function getResend() {
-  if (!process.env.RESEND_API_KEY) return null;
-  return new Resend(process.env.RESEND_API_KEY);
-}
-
-const RESEND_TEST_EMAIL = "alexpacaldo1105@gmail.com";
-
-async function sendSmtpMail({ to, subject, text }) {
-  if (!smtpConfigured()) {
-    console.warn("Resend is not configured; email was not sent.");
-    return { sent: false, skipped: true };
-  }
-
-  const from = `${process.env.SMTP_FROM_NAME || "JEN Academia"} <onboarding@resend.dev>`;
-  const actualTo = RESEND_TEST_EMAIL;
-  const actualText = to !== RESEND_TEST_EMAIL
-    ? `[DEV] Originally addressed to: ${to}\n\n${text}`
-    : text;
-
-  const resend = getResend();
-  if (!resend) {
-    // smtpConfigured() is false only when the key is missing, and getResend
-    // returns null in that case too, so this is belt-and-braces against a race
-    // where the env is cleared between the check above and here.
-    console.warn("Resend is not configured; email was not sent.");
-    return { sent: false, skipped: true };
-  }
-
-  const { error } = await resend.emails.send({ from, to: actualTo, subject, text: actualText });
-  if (error) throw new Error(error.message);
-  return { sent: true };
-}
-
 async function sendAccountSetupInviteEmail({ email, firstName, role, inviteUrl, expiresAt }) {
   const expiryText = new Date(expiresAt).toLocaleString("en-US", {
     dateStyle: "medium",
@@ -366,7 +348,7 @@ async function sendAccountSetupInviteEmail({ email, firstName, role, inviteUrl, 
   });
   const roleLabel = role === "teacher" ? "teacher" : "student";
 
-  return sendSmtpMail({
+  return sendMail({
     to: email,
     subject: `Set up your JEN Academia ${roleLabel} account`,
     text: [
@@ -4430,12 +4412,18 @@ app.post("/api/contact", async (req, res) => {
       return res.status(400).json({ message: "Message is too long" });
     }
 
-    if (!smtpConfigured()) {
+    if (!isMailConfigured()) {
       return res.status(503).json({ message: "Contact form is not configured" });
     }
 
-    await sendSmtpMail({
-      to: "alexpacaldo1105@gmail.com",
+    // The address the website publishes as "Email us" is where the form goes.
+    //
+    // !! It used to be hard-coded to the mail provider's account holder,
+    // !! because that provider's sandbox domain is only allowed to send to
+    // !! its own account holder. That was not a default - it was a
+    // !! workaround, and it outlived the reason for it.
+    await sendMail({
+      to: contactFormRecipient(),
       subject: `JEN Academia contact form — ${escapeEmailHeader(name)}`,
       text: [
         `Name:    ${name}`,
@@ -4486,22 +4474,35 @@ app.post("/api/forgot-password", async (req, res) => {
 
     const resetUrl = `${getFrontendBaseUrl()}/reset-password/${encodeURIComponent(token)}`;
 
-    await sendSmtpMail({
-      to: email,
-      subject: "Reset your JEN Academia password",
-      text: [
-        `Hi ${user.first_name || "there"},`,
-        "",
-        "We received a request to reset your JEN Academia password.",
-        "Click the link below to set a new password:",
-        "",
-        resetUrl,
-        "",
-        "This link expires in 1 hour.",
-        "",
-        "If you did not request a password reset, you can safely ignore this email.",
-      ].join("\n"),
-    });
+    // A failure here must not change the answer.
+    //
+    // !! The response is deliberately the same whether the account exists,
+    // !! whether it does not, and whether the mail server answered. It used
+    // !! to throw on a send failure, and the route's catch turned that into
+    // !! a 500 - so a real account whose mail failed answered 500 and an
+    // !! account that does not exist answered 200. That difference is how
+    // !! somebody finds out which email addresses are registered, and it was
+    // !! one line of code away from being fixed.
+    try {
+      await sendMail({
+        to: email,
+        subject: "Reset your JEN Academia password",
+        text: [
+          `Hi ${user.first_name || "there"},`,
+          "",
+          "We received a request to reset your JEN Academia password.",
+          "Click the link below to set a new password:",
+          "",
+          resetUrl,
+          "",
+          "This link expires in 1 hour.",
+          "",
+          "If you did not request a password reset, you can safely ignore this email.",
+        ].join("\n"),
+      });
+    } catch (mailErr) {
+      console.error("POST /api/forgot-password: the reset email could not be sent:", mailErr);
+    }
 
     res.json({ message: "If that email exists, a reset link has been sent." });
   } catch (err) {
