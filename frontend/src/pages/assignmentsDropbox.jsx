@@ -9,6 +9,7 @@ import { API_BASE_URL } from "../utils/api.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { apiFetch } from "../utils/apiAuth.js";
 import {
+  downloadAuthenticatedFile,
   openAssignmentFile,
   openSubmissionFile,
   useAuthenticatedFileUrl,
@@ -76,7 +77,7 @@ function SubmissionPreview({ fileUrl, storedPath }) {
 
   if (ext === "pdf") {
     return (
-      <iframe className={styles.previewFrame} src={fileUrl} title={`${fileName} preview`} />
+      <iframe className={styles.previewFrame} src={blobUrl} title={`${fileName} preview`} />
     );
   }
 
@@ -155,7 +156,9 @@ export default function AssignmentsDropbox() {
   const [submitMessage, setSubmitMessage] = useState("");
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [showResubmissionEditor, setShowResubmissionEditor] = useState(false);
+  const [activeTab, setActiveTab] = useState("instructions");
+  const [submissionHistory, setSubmissionHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
@@ -208,6 +211,39 @@ export default function AssignmentsDropbox() {
     };
   }, [assignmentId]);
 
+  useEffect(() => {
+    if (activeTab !== "submissions" || !assignmentId || !hasExistingSubmission) return;
+
+    let ignore = false;
+    setSubmissionHistory([]);
+    setShowHistory(false);
+
+    apiFetch(`${API}/api/assignments/${assignmentId}/submission-history`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) {
+          // History endpoint may not exist on older deployments; ignore silently.
+          if (res.status === 404) return;
+          throw new Error(data.message || "Could not load submission history");
+        }
+        return data.history || [];
+      })
+      .then((history) => {
+        if (ignore) return;
+        if (history.length > 0) {
+          setSubmissionHistory(history);
+          setShowHistory(true);
+        }
+      })
+      .catch((err) => {
+        console.error("Load submission history error:", err);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [activeTab, assignmentId, hasExistingSubmission]);
+
   const assignmentInstructions =
     selectedAssignment?.instructions ||
     selectedAssignment?.description ||
@@ -237,8 +273,8 @@ export default function AssignmentsDropbox() {
   const hasSubmissionContent = Boolean(selectedAssignment?.submissionId && (submittedAnswer || submittedFileUrl));
   const hasExistingSubmission = Boolean(selectedAssignment?.submissionId);
   const canResubmit = hasExistingSubmission && !isAttemptLimitReached;
+  const canSubmit = !isAttemptLimitReached && !isAssignmentPastDue();
   const submitButtonLabel = canResubmit ? "Submit Again" : "Submit";
-  const showResponseEditor = !hasExistingSubmission || showResubmissionEditor;
 
   const onSubmitComment = async () => {
     if (!selectedAssignment) {
@@ -325,7 +361,6 @@ export default function AssignmentsDropbox() {
       return;
     }
 
-    setShowResubmissionEditor(false);
     onSubmitComment();
   };
 
@@ -336,7 +371,23 @@ export default function AssignmentsDropbox() {
           <span className={styles.backArrow} aria-hidden="true">&#9664;</span>
           Back
         </button>
-        <div className={styles.centerContent}>
+
+        <div className={styles.tabBar}>
+          <button
+            type="button"
+            className={`${styles.tabButton} ${activeTab === "instructions" ? styles.activeTab : ""}`}
+            onClick={() => setActiveTab("instructions")}
+          >
+            Instructions
+          </button>
+          <button
+            type="button"
+            className={`${styles.tabButton} ${activeTab === "submissions" ? styles.activeTab : ""}`}
+            onClick={() => setActiveTab("submissions")}
+          >
+            Submissions
+          </button>
+        </div>
 
         {selectedAssignment && isAssignmentPastDue() ? (
           <div className={styles.alertCard}>
@@ -350,11 +401,11 @@ export default function AssignmentsDropbox() {
           </div>
         ) : null}
 
-        <div className={styles.instructionContent}>
-          <div className={styles.leftSide}>
-            {selectedAssignment ? (
-              <>
-                <div className={styles.instructionsPanel}>
+        <div className={styles.contentWrapper}>
+          {activeTab === "instructions" ? (
+            <div className={styles.instructionsPanel}>
+              {selectedAssignment ? (
+                <>
                   <div className={styles.instructionSheet}>
                     <span className={styles.instructionIcon} aria-hidden="true">📝</span>
                     <h2 className={styles.instructionHead}>Assignment Instructions</h2>
@@ -367,105 +418,156 @@ export default function AssignmentsDropbox() {
                       onError={() => notify?.("That file could not be opened. Please try again.", "error")}
                     />
                   </div>
-                </div>
 
-                {canResubmit && !showResubmissionEditor ? (
-                  <button
-                    type="button"
-                    className={styles.cardButton}
-                    onClick={() => setShowResubmissionEditor(true)}
-                    disabled={!selectedAssignment || isAssignmentPastDue() || isAttemptLimitReached}
-                  >
-                    <span className={styles.cardArrow} aria-hidden="true">&#9654;</span>
-                    Open your answer
-                  </button>
-                ) : null}
-
-                {showResponseEditor ? (
-                  <div className={styles.responsePanel}>
-                    <h2 className={styles.responseHead}>Your Answer</h2>
-                    <textarea
-                      className={styles.commentBox}
-                      placeholder="Write your answer"
-                      value={comment}
-                      onChange={(e) => {
-                        setComment(e.target.value);
-                        setSubmitMessage("");
-                      }}
-                    />
-                    <label className={styles.fileLabel}>
-                      <span className={styles.fileIcon} aria-hidden="true">📎</span>
-                      Attach a file
-                    </label>
-                    <input
-                      type="file"
-                      className={styles.fileInput}
-                      onChange={(e) => {
-                        setSelectedFile(e.target.files?.[0] ?? null);
-                        setSubmitMessage("");
-                      }}
-                    />
-                    {selectedFile ? (
-                      <p className={styles.fileInfo}>
-                        <span className={styles.fileIcon} aria-hidden="true">📎</span>
-                        Attached: {selectedFile.name}
-                      </p>
-                    ) : null}
-                    <div className={styles.editorActions}>
-                      <button
-                        type="button"
-                        className={styles.cancelButton}
-                        onClick={() => {
-                          setShowResubmissionEditor(false);
+                  {canSubmit ? (
+                    <div className={styles.responsePanel}>
+                      <h2 className={styles.responseHead}>
+                        {hasExistingSubmission ? "Resubmit your answer" : "Submit your answer"}
+                      </h2>
+                      <textarea
+                        className={styles.commentBox}
+                        placeholder="Write your answer"
+                        value={comment}
+                        onChange={(e) => {
+                          setComment(e.target.value);
                           setSubmitMessage("");
                         }}
+                      />
+                      <label className={styles.fileLabel}>
+                        <span className={styles.fileIcon} aria-hidden="true">📎</span>
+                        Attach a file
+                      </label>
+                      <input
+                        type="file"
+                        className={styles.fileInput}
+                        onChange={(e) => {
+                          setSelectedFile(e.target.files?.[0] ?? null);
+                          setSubmitMessage("");
+                        }}
+                      />
+                      {selectedFile ? (
+                        <p className={styles.fileInfo}>
+                          <span className={styles.fileIcon} aria-hidden="true">📎</span>
+                          Attached: {selectedFile.name}
+                        </p>
+                      ) : null}
+                      <div className={styles.editorActions}>
+                        <button
+                          type="button"
+                          className={styles.submitComment}
+                          onClick={requestSubmitAssignment}
+                          disabled={!selectedAssignment || isAssignmentPastDue() || isAttemptLimitReached}
+                        >
+                          {submitButtonLabel}
+                        </button>
+                      </div>
+                      {submitMessage ? (
+                        <p className={styles.submitMessage}>{submitMessage}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <p>{submitMessage || "Please open your assignment from the list."}</p>
+              )}
+            </div>
+          ) : (
+            <div className={styles.submissionPanel}>
+              {hasExistingSubmission ? (
+                <div className={styles.submissionCard}>
+                  <h2 className={styles.submissionHead}>Your submission</h2>
+                  {submittedAnswer ? (
+                    <div className={styles.submissionAnswerBlock}>
+                      <p className={styles.submissionAnswerText}>{submittedAnswer}</p>
+                    </div>
+                  ) : null}
+                  <div className={styles.submittedFileInfo}>
+                    <span className={styles.submittedFileLabel}>SUBMITTED FILE</span>
+                    <p className={styles.submissionFileName}>
+                      {getFileName(submittedFileUrl)}
+                    </p>
+                  </div>
+                  {submittedFileUrl ? (
+                    <div className={styles.submissionFileActions}>
+                      <button
+                        type="button"
+                        className={styles.submissionFileButton}
+                        onClick={() =>
+                          openSubmissionFile(submittedFileUrl).catch(() =>
+                            notify?.("That file could not be opened. Please try again.", "error")
+                          )
+                        }
                       >
-                        Cancel
+                        Open file
                       </button>
                       <button
                         type="button"
-                        className={styles.submitComment}
-                        onClick={requestSubmitAssignment}
-                        disabled={!selectedAssignment || isAssignmentPastDue() || isAttemptLimitReached}
+                        className={styles.submissionFileButton}
+                        onClick={() => downloadAuthenticatedFile(submittedFileUrl)}
                       >
-                        {submitButtonLabel}
+                        Download
                       </button>
                     </div>
-                    {submitMessage ? (
-                      <p className={styles.submitMessage}>{submitMessage}</p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <p>{submitMessage || "Please open your assignment from the list."}</p>
-            )}
-          </div>
+                  ) : null}
+                  <SubmissionPreview fileUrl={submittedFileUrl} />
 
-          <div className={styles.rightSide}>
-            <div className={styles.summaryCard}>
-              <div className={styles.summaryHeader}>
-                <span className={styles.statusPill}>{submissionStatus}</span>
-                <span className={styles.coursePill}>{selectedAssignment?.subject || "General"}</span>
-              </div>
-              <div className={styles.detailGrid}>
-                <div className={styles.detailItem}>
-                  <span>Due</span>
-                  <strong>{formatDueDate(selectedAssignment)}</strong>
+                  {submissionHistory.length > 0 ? (
+                    <div className={styles.submissionHistory}>
+                      <button
+                        type="button"
+                        className={styles.historyButton}
+                        onClick={() => setShowHistory(!showHistory)}
+                        aria-expanded={showHistory}
+                      >
+                        {showHistory ? "Hide history" : "View submission history"}
+                      </button>
+                      {showHistory && (
+                        <div className={styles.historyList}>
+                          {submissionHistory.map((item) => (
+                            <div key={item.history_id} className={styles.historyItem}>
+                              <div className={styles.historyMeta}>
+                                <span className={styles.historyAttempt}>
+                                  Attempt {item.attempt_count}
+                                </span>
+                                <span className={styles.historyDate}>
+                                  {new Date(item.submitted_at).toLocaleString()}
+                                </span>
+                              </div>
+                              {item.submission_text ? (
+                                <p className={styles.historyText}>{item.submission_text}</p>
+                              ) : null}
+                              {item.file_url ? (
+                                <div className={styles.historyFile}>
+                                  <button
+                                    type="button"
+                                    className={styles.historyFileButton}
+                                    onClick={() =>
+                                      openSubmissionFile(item.file_url).catch(() =>
+                                        notify?.("That file could not be opened.", "error")
+                                      )
+                                    }
+                                  >
+                                    {getFileName(item.file_url)}
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
-                <div className={styles.detailItem}>
-                  <span>Tries used</span>
-                  <strong>
-                    {attemptsUsed}
-                    {attemptLimit !== null ? ` of ${attemptLimit}` : " unlimited"}
-                  </strong>
+              ) : (
+                <div className={styles.emptySubmission}>
+                  <span className={styles.emptyIcon} aria-hidden="true">📭</span>
+                  <p className={styles.emptyText}>No submission yet.</p>
                 </div>
-              </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
-  </div>
   );
 }

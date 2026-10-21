@@ -2062,6 +2062,24 @@ async function ensureAssignmentAttachmentColumns() {
   }
 }
 
+async function ensureSubmissionHistoryTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS submission_history (
+      history_id INT AUTO_INCREMENT PRIMARY KEY,
+      assignment_id INT NOT NULL,
+      student_id INT NOT NULL,
+      submission_text LONGTEXT,
+      file_url VARCHAR(1000) DEFAULT NULL,
+      file_name VARCHAR(255) DEFAULT NULL,
+      submitted_at DATETIME NOT NULL,
+      attempt_count INT NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_assignment_student (assignment_id, student_id),
+      INDEX idx_created_at (created_at)
+    )
+  `);
+}
+
 async function ensureBooksColumns() {
   if (!(await columnExists("books", "teacher_id"))) {
     await pool.query("ALTER TABLE books ADD COLUMN teacher_id INT DEFAULT NULL AFTER course_id");
@@ -3043,6 +3061,7 @@ async function encryptExistingPlaintextMessages() {
 const SCHEMA_STEPS = [
   ["assignment attempt columns", ensureAssignmentAttemptColumns],
   ["assignment attachment columns", ensureAssignmentAttachmentColumns],
+  ["submission history table", ensureSubmissionHistoryTable],
   ["books columns", ensureBooksColumns],
   ["remark columns", ensureRemarkColumns],
   ["reschedule request decline reason column", ensureRescheduleRequestDeclineReasonColumn],
@@ -11334,7 +11353,7 @@ app.post("/api/assignments/:assignment_id/submissions", requireSession, optional
     }
 
     const [existingSubmissionRows] = await conn.query(
-      `SELECT submission_id, attempt_count
+      `SELECT submission_id, attempt_count, submission_text, file_url, file_name, submitted_at
        FROM assignment_submissions
        WHERE assignment_id = ? AND student_id = ?
        LIMIT 1
@@ -11342,13 +11361,23 @@ app.post("/api/assignments/:assignment_id/submissions", requireSession, optional
       [assignment_id, resolvedStudentId]
     );
     const attemptsUsed = Number(existingSubmissionRows[0]?.attempt_count || 0);
-    const attemptLimit = assignment.attempt_limit === null ? null : Number(assignment.attempt_limit);
+    const attemptLimit = assignment.attempt_limit === null ? null : Number(assignment.attemptLimit ?? assignment.attempt_limit);
 
     if (attemptLimit !== null && attemptsUsed >= attemptLimit) {
       await conn.rollback();
       return res.status(400).json({
         message: `Attempt limit reached. This assignment only allows ${attemptLimit} submission${attemptLimit === 1 ? "" : "s"}.`,
       });
+    }
+
+    // Archive the current submission into history before it gets overwritten.
+    if (existingSubmissionRows.length > 0) {
+      const prev = existingSubmissionRows[0];
+      await conn.query(
+        `INSERT INTO submission_history (assignment_id, student_id, submission_text, file_url, file_name, submitted_at, attempt_count)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [assignment_id, resolvedStudentId, prev.submission_text, prev.file_url, prev.file_name, prev.submitted_at, prev.attempt_count]
+      );
     }
 
     const [result] = await conn.query(
@@ -11403,6 +11432,30 @@ app.post("/api/assignments/:assignment_id/submissions", requireSession, optional
     });
   } finally {
     conn.release();
+  }
+});
+
+// Get submission history for an assignment (past attempts when resubmitted).
+app.get("/api/assignments/:assignment_id/submission-history", requireSession, async (req, res) => {
+  try {
+    const { assignment_id } = req.params;
+
+    if (!(await sessionMayReadAssignment(req, assignment_id))) {
+      return res.status(403).json({ message: "You can only view your own assignments." });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT history_id, submission_text, file_url, file_name, submitted_at, attempt_count, created_at
+       FROM submission_history
+       WHERE assignment_id = ? AND student_id = ?
+       ORDER BY created_at DESC`,
+      [assignment_id, sessionIdentity(req).studentId]
+    );
+
+    res.json({ history: decryptRows(rows, ["submission_text"]) });
+  } catch (err) {
+    console.error("GET /api/assignments/:assignment_id/submission-history error:", err);
+    res.status(500).json({ message: "Error fetching submission history" });
   }
 });
 

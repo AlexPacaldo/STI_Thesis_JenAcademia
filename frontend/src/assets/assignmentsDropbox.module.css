@@ -1,123 +1,179 @@
 /*
- * Assignments dropbox — kid-friendly.
- *
- * Big buttons, big text, simple sections. One thing at a time.
+ * Assignments dropbox — matches reference UI.
+ * Two tabs: Instructions | Submissions. Content panels on the right in cards.
+ * Responsive across desktop, tablet, and mobile.
  */
+
+:root {
+  --radius-xl: 16px;
+  --radius-lg: 12px;
+  --radius-md: 8px;
+  --radius-pill: 999px;
+  --control-radius: 8px;
+  --neu-shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --surface: #ffffff;
+  --surface-raised: #f7f9f8;
+  --surface-recessed: #f1f5f4;
+  --surface-soft: #eef4f2;
+  --bg-alt: #f1f5f4;
+  --text: #1a2e29;
+  --text-mid: #4a6b64;
+  --muted: #6b8a84;
+  --muted-light: #8fa8a3;
+  --text-danger: #b94a3b;
+  --primary: #2e7d5b;
+  --primary-mid: #276a4c;
+  --brand-green: #2e7d5b;
+  --brand-lime: #8bc34a;
+  --accent: #4caf8a;
+  --border: #cdd6d3;
+  --border-mid: #b9c9c4;
+  --pill-danger: #fdecea;
+  --duration-fast: 0.18s;
+  --ease-out: ease-out;
+}
 
 .cont {
   font-family: "Poppins", sans-serif;
   color: var(--text);
   min-height: calc(100vh - 160px);
-  padding-bottom: 60px;
+  padding-bottom: 20px;
+  background: #fafbfa;
 }
 
 .center {
-  max-width: 900px;
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 24px;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 20px;
-}
-
-.centerContent {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
+  align-items: stretch;
+  gap: 16px;
 }
 
 .backButton {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 48px;
-  padding: 6px 16px;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  align-self: flex-start;
   cursor: pointer;
-  border: 2px solid var(--border-mid);
+  border: 1px solid var(--border-mid);
   border-radius: var(--control-radius);
   background: var(--surface);
-  color: var(--primary);
-  font-size: 1rem;
-  font-weight: 800;
-  text-decoration: none;
+  color: var(--text-mid);
+  font-size: 0.9rem;
+  font-weight: 600;
   transition:
     border-color var(--duration-fast) var(--ease-out),
     background var(--duration-fast) var(--ease-out);
+  box-sizing: border-box;
 }
 
 .backButton:hover:not(:disabled) {
-  transform: translateY(-2px);
+  border-color: var(--brand-lime);
+  background: var(--surface-soft);
+  color: var(--primary);
+}
+
+.backArrow {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+/* ---------- Tabs ---------- */
+
+.tabBar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.tabButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 28px;
+  cursor: pointer;
+  border: 2px solid var(--border-mid);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  color: var(--text-mid);
+  font-size: 1.25rem;
+  font-weight: 800;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+  box-sizing: border-box;
+}
+
+.tabButton:hover:not(:disabled) {
   border-color: var(--brand-lime);
   background: var(--surface-soft);
 }
 
-.backArrow {
-  font-size: 0.95rem;
-  line-height: 1;
+.tabButton.activeTab {
+  background: var(--brand-green);
+  border-color: var(--brand-green);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(47, 122, 61, 0.25);
 }
 
-.centerContent h1 {
-  margin: 0;
-  font-size: 2.25rem;
-  font-weight: 800;
-  line-height: 1.2;
-  color: var(--primary);
-}
-
-.assignmentMeta {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--text-mid);
-}
+/* ---------- Alert cards ---------- */
 
 .alertCard {
   display: inline-flex;
   align-items: center;
-  gap: 14px;
-  padding: 18px 24px;
+  gap: 12px;
+  padding: 14px 20px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(168, 58, 52, 0.2);
   background: var(--pill-danger);
   color: var(--text-danger);
-  font-size: 1.25rem;
+  font-size: 1rem;
   font-weight: 700;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .alertIcon {
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   line-height: 1;
 }
 
-/* ---------- Instruction content ---------- */
+/* ---------- Content wrapper (right-side panels) ---------- */
 
-.instructionContent {
-  display: grid;
-  gap: 24px;
+.contentWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   min-width: 0;
 }
 
-.leftSide {
-  min-width: 0;
-}
+/* ---------- Instructions panel card ---------- */
 
 .instructionsPanel {
   background: var(--surface);
-  border: 2px solid var(--border-mid);
+  border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   padding: 0;
   box-shadow: var(--neu-shadow-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .instructionSheet {
   display: grid;
-  gap: 10px;
-  padding: 20px;
+  gap: 16px;
+  padding: 24px;
 }
 
 .instructionIcon {
-  font-size: 2.5rem;
+  font-size: 2rem;
   line-height: 1;
 }
 
@@ -130,7 +186,7 @@
 }
 
 .instructionText {
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   line-height: 1.5;
   color: var(--text);
 }
@@ -139,14 +195,14 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  min-height: 56px;
-  padding: 0 20px;
+  min-height: 48px;
+  padding: 0 18px;
   cursor: pointer;
   border: 2px solid var(--border-mid);
   border-radius: var(--control-radius);
   background: var(--surface);
   color: var(--primary);
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 800;
   transition:
     border-color var(--duration-fast) var(--ease-out),
@@ -154,7 +210,6 @@
 }
 
 .cardAttachment:hover:not(:disabled) {
-  transform: translateY(-2px);
   border-color: var(--brand-lime);
   background: var(--surface-soft);
 }
@@ -164,55 +219,23 @@
   line-height: 1;
 }
 
-/* Open answer button */
-.cardButton {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-height: 72px;
-  padding: 0 28px;
-  cursor: pointer;
-  border: none;
-  border-radius: var(--radius-xl);
-  background: var(--brand-green);
-  color: #fff;
-  font-size: 1.5rem;
-  font-weight: 800;
-  text-decoration: none;
-  box-shadow: 0 10px 24px rgba(47, 122, 61, 0.32);
-  transition:
-    background var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
-}
-
-.cardButton:hover:not(:disabled) {
-  background: var(--primary-mid);
-  transform: translateY(-2px);
-}
-
-.cardButton:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-.cardArrow {
-  font-size: 1.5rem;
-  line-height: 1;
-}
-
-/* ---------- Response editor ---------- */
+/* ---------- Response panel ---------- */
 
 .responsePanel {
   background: var(--surface);
-  border: 2px solid var(--border-mid);
+  border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  padding: 28px;
+  padding: 20px;
   box-shadow: var(--neu-shadow-lg);
-  margin-top: 24px;
+  margin-top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .responseHead {
-  margin: 0 0 16px 0;
-  font-size: 1.75rem;
+  margin: 0 0 8px 0;
+  font-size: 1.25rem;
   font-weight: 800;
   line-height: 1.25;
   color: var(--primary);
@@ -220,16 +243,16 @@
 
 .commentBox {
   width: 100%;
-  min-height: 180px;
-  padding: 18px;
-  font-size: 1.2rem;
+  min-height: 140px;
+  padding: 14px;
+  font-size: 1rem;
   font-family: inherit;
-  border: 2px solid var(--border-mid);
+  border: 1px solid var(--border-mid);
   border-radius: var(--control-radius);
   background: var(--surface-recessed);
   color: var(--text);
   resize: vertical;
-  margin-bottom: 16px;
+  box-sizing: border-box;
 }
 
 .commentBox:focus {
@@ -240,9 +263,9 @@
 .fileLabel {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-  font-size: 1.25rem;
+  gap: 8px;
+  margin: 0;
+  font-size: 1rem;
   font-weight: 800;
   color: var(--text-mid);
 }
@@ -254,13 +277,13 @@
 
 .fileInput {
   width: 100%;
-  padding: 12px;
-  border: 2px solid var(--border-mid);
+  padding: 10px;
+  border: 1px solid var(--border-mid);
   border-radius: var(--control-radius);
   background: var(--surface-recessed);
   color: var(--text);
-  font-size: 1.1rem;
-  margin-bottom: 16px;
+  font-size: 1rem;
+  box-sizing: border-box;
 }
 
 .fileInput:focus {
@@ -270,54 +293,30 @@
 
 .fileInfo {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--text-mid);
 }
 
 .editorActions {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   flex-wrap: wrap;
-  margin-top: 20px;
-}
-
-.cancelButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 56px;
-  padding: 0 20px;
-  cursor: pointer;
-  border: 2px solid var(--border-mid);
-  border-radius: var(--control-radius);
-  background: var(--surface);
-  color: var(--primary);
-  font-size: 1.25rem;
-  font-weight: 800;
-  transition:
-    border-color var(--duration-fast) var(--ease-out),
-    background var(--duration-fast) var(--ease-out);
-}
-
-.cancelButton:hover:not(:disabled) {
-  transform: translateY(-2px);
-  border-color: var(--brand-lime);
-  background: var(--surface-soft);
+  margin-top: 0;
 }
 
 .submitComment {
   flex: 1;
-  min-height: 72px;
-  padding: 0 28px;
+  min-height: 48px;
+  padding: 0 22px;
   cursor: pointer;
   border: none;
   border-radius: var(--radius-xl);
   background: var(--brand-green);
   color: #fff;
-  font-size: 1.5rem;
+  font-size: 1.1rem;
   font-weight: 800;
-  box-shadow: 0 10px 24px rgba(47, 122, 61, 0.32);
+  box-shadow: 0 4px 12px rgba(47, 122, 61, 0.25);
   transition:
     background var(--duration-fast) var(--ease-out),
     transform var(--duration-fast) var(--ease-out);
@@ -339,102 +338,114 @@
 }
 
 .submitMessage {
-  margin: 16px 0 0 0;
-  font-size: 1.25rem;
+  margin: 0;
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--text-danger);
 }
 
-/* ---------- Right side summary ---------- */
+/* ---------- Submissions panel card ---------- */
 
-.rightSide {
+.submissionPanel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 0;
+  box-shadow: var(--neu-shadow-lg);
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  min-width: 0;
+  overflow: hidden;
 }
 
-.summaryCard {
+.submissionCard {
   background: var(--surface);
-  border: 2px solid var(--border-mid);
-  border-radius: var(--radius-xl);
-  padding: 28px;
-  box-shadow: var(--neu-shadow-lg);
-}
-
-.summaryHeader {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-}
-
-.statusPill {
-  display: inline-flex;
-  align-items: center;
-  padding: 8px 16px;
-  border-radius: var(--radius-pill);
-  font-size: 0.95rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.statusPill[class*="statusPill"] {
-  /* base handled by class */
-}
-
-.coursePill {
-  display: inline-flex;
-  align-items: center;
-  padding: 8px 16px;
-  border-radius: var(--radius-pill);
-  background: var(--bg-alt);
   border: 1px solid var(--border);
-  font-size: 0.95rem;
+  border-radius: var(--radius-xl);
+  padding: 0;
+  box-shadow: var(--neu-shadow-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.submissionHead {
+  margin: 0;
+  padding: 20px 24px 0 24px;
+  font-size: 1.5rem;
   font-weight: 800;
+  line-height: 1.25;
   color: var(--primary);
 }
 
-.detailGrid {
-  display: grid;
-  gap: 16px;
-  min-width: 0;
+.submittedFileInfo {
+  padding: 12px 24px 0 24px;
 }
 
-.detailItem {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.detailItem:last-child {
-  border-bottom: 0;
-}
-
-.detailItem span {
-  font-size: 1.1rem;
+.submittedFileLabel {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted-light);
+  font-size: 0.75rem;
   font-weight: 700;
-  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.detailItem strong {
-  font-size: 1.25rem;
-  font-weight: 800;
+.submissionFileName {
+  margin: 0 0 16px 0;
   color: var(--text);
+  font-weight: 700;
+  font-size: 1.1rem;
+  overflow-wrap: anywhere;
 }
 
-/* ---------- Submission preview (kept but bigger) ---------- */
+.submissionFileActions {
+  display: flex;
+  gap: 12px;
+  padding: 0 24px 16px 24px;
+}
+
+.submissionFileButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  flex: 1;
+  padding: 0 18px;
+  cursor: pointer;
+  border: 2px solid var(--border-mid);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 1rem;
+  font-weight: 800;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+  box-sizing: border-box;
+}
+
+.submissionFileButton:hover:not(:disabled) {
+  border-color: var(--brand-lime);
+  background: var(--surface-soft);
+}
 
 .previewMedia,
 .previewImage,
 .previewFrame {
   width: 100%;
+  max-width: 100%;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--surface-recessed);
+  display: block;
+}
+
+.previewFrame {
+  min-height: 320px;
+  height: auto;
+  aspect-ratio: 16 / 9;
 }
 
 .previewUnsupported {
@@ -443,90 +454,308 @@
   border-radius: var(--radius-md);
   background: var(--surface-recessed);
   color: var(--muted);
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 700;
   text-align: center;
 }
 
-/* ---------- Small screens ---------- */
+.emptySubmission {
+  padding: 40px 24px;
+  border-radius: var(--radius-xl);
+  background: var(--surface-recessed);
+  text-align: center;
+}
 
-@media (max-width: 640px) {
+.emptyIcon {
+  font-size: 2.5rem;
+  line-height: 1;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.emptyText {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* ---------- Submission history ---------- */
+
+.submissionHistory {
+  margin-top: 16px;
+  padding: 0 24px 24px 24px;
+}
+
+.historyButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 16px;
+  cursor: pointer;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.historyButton:hover:not(:disabled) {
+  border-color: var(--brand-lime);
+  background: var(--surface-soft);
+}
+
+.historyList {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.historyItem {
+  padding: 12px 16px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.historyMeta {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.historyAttempt {
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.historyDate {
+  font-size: 0.85rem;
+}
+
+.historyText {
+  margin: 0 0 8px 0;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.historyFile {
+  margin-top: 8px;
+}
+
+.historyFileButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  cursor: pointer;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.historyFileButton:hover:not(:disabled) {
+  border-color: var(--brand-lime);
+  background: var(--surface-soft);
+}
+
+/* ---------- Tablets ---------- */
+
+@media (max-width: 1024px) {
   .center {
-    padding: 0 16px;
+    max-width: 100%;
+    padding: 0 20px;
   }
 
-  .centerContent {
-    gap: 16px;
+  .tabButton {
+    min-height: 44px;
+    font-size: 1.15rem;
+    padding: 0 20px;
   }
 
-  .centerContent h1 {
-    font-size: 1.75rem;
+  .previewFrame {
+    min-height: 260px;
   }
 
-  .assignmentMeta {
-    font-size: 1.1rem;
-  }
-
-  .backButton {
-    min-height: 48px;
-    font-size: 1.1rem;
-  }
-
-  .alertCard {
-    font-size: 1.1rem;
-    padding: 14px 20px;
-  }
-
-  .instructionHead {
-    font-size: 1.4rem;
-  }
-
-  .instructionText {
-    font-size: 1.1rem;
-  }
-
-  .cardAttachment,
-  .cardButton {
-    min-height: 64px;
-    font-size: 1.25rem;
-    padding: 0 24px;
-  }
-
-  .responsePanel {
+  .instructionSheet,
+  .responsePanel,
+  .submissionCard {
     padding: 20px;
   }
 
+  .submissionFileActions {
+    padding: 0 20px 14px 20px;
+  }
+
+  .submissionHistory {
+    padding: 0 20px 16px 20px;
+  }
+
+  .historyButton {
+    min-height: 36px;
+    font-size: 0.9rem;
+    padding: 0 14px;
+  }
+}
+
+/* ---------- Mobile phones ---------- */
+
+@media (max-width: 640px) {
+  .cont {
+    padding-bottom: 16px;
+  }
+
+  .center {
+    padding: 0 16px;
+    gap: 12px;
+  }
+
+  .backButton {
+    min-height: 40px;
+    font-size: 0.9rem;
+    padding: 0 12px;
+  }
+
+  .tabBar {
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .tabButton {
+    min-height: 44px;
+    font-size: 1.1rem;
+    padding: 0 16px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .alertCard {
+    font-size: 0.95rem;
+    padding: 12px 16px;
+  }
+
+  .instructionSheet {
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .instructionHead {
+    font-size: 1.3rem;
+  }
+
+  .instructionText {
+    font-size: 1rem;
+  }
+
+  .responsePanel {
+    padding: 16px;
+    gap: 10px;
+  }
+
   .responseHead {
-    font-size: 1.4rem;
+    font-size: 1.2rem;
   }
 
   .commentBox {
-    min-height: 140px;
-    font-size: 1.1rem;
+    min-height: 120px;
+    font-size: 0.95rem;
+    padding: 12px;
   }
 
   .fileLabel {
-    font-size: 1.1rem;
+    font-size: 0.95rem;
   }
 
   .editorActions {
     flex-direction: column;
   }
 
-  .cancelButton,
   .submitComment {
     width: 100%;
+    font-size: 1.05rem;
+    min-height: 44px;
   }
 
-  .summaryCard {
-    padding: 20px;
+  .submissionCard,
+  .instructionsPanel {
+    padding: 0;
   }
 
-  .detailItem span {
+  .submissionHead {
+    padding: 16px 16px 0 16px;
+    font-size: 1.3rem;
+  }
+
+  .submittedFileInfo {
+    padding: 12px 16px 0 16px;
+  }
+
+  .submissionFileActions {
+    flex-direction: column;
+    padding: 0 16px 14px 16px;
+  }
+
+  .submissionFileActions .submissionFileButton {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .previewFrame {
+    min-height: 220px;
+  }
+
+  .emptySubmission {
+    padding: 32px 16px;
+  }
+
+  .emptyText {
     font-size: 1rem;
   }
 
-  .detailItem strong {
-    font-size: 1.1rem;
+  .submissionHistory {
+    padding: 0 16px 16px 16px;
+  }
+
+  .historyButton {
+    min-height: 36px;
+    font-size: 0.9rem;
+    padding: 0 14px;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .historyText {
+    font-size: 0.9rem;
+    padding: 8px 12px;
+  }
+
+  .historyFileButton {
+    min-height: 36px;
+    font-size: 0.9rem;
+    padding: 0 14px;
+    width: 100%;
+    justify-content: center;
   }
 }
