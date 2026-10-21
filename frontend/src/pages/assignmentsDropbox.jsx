@@ -176,6 +176,11 @@ export default function AssignmentsDropbox() {
   const currentUser = useMemo(getCurrentUser, []);
   const currentStudentId = currentUser.id ?? currentUser.user_id ?? null;
 
+  // Derived from selectedAssignment; must be declared before the useEffect hooks
+  // that reference it in their dependency arrays.
+  const hasExistingSubmission = Boolean(selectedAssignment?.submissionId);
+  const canResubmit = hasExistingSubmission && !isAttemptLimitReached;
+
   useEffect(() => {
     if (!assignmentId) return;
 
@@ -271,8 +276,6 @@ export default function AssignmentsDropbox() {
   const submittedAnswer = selectedAssignment?.comments || "";
   const submittedFileUrl = normalizeFileUrl(selectedAssignment?.fileUrl);
   const hasSubmissionContent = Boolean(selectedAssignment?.submissionId && (submittedAnswer || submittedFileUrl));
-  const hasExistingSubmission = Boolean(selectedAssignment?.submissionId);
-  const canResubmit = hasExistingSubmission && !isAttemptLimitReached;
   const canSubmit = !isAttemptLimitReached && !isAssignmentPastDue();
   const submitButtonLabel = canResubmit ? "Submit Again" : "Submit";
 
