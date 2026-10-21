@@ -175,14 +175,16 @@
 }
 
 .submissionText {
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   line-height: 1.6;
   color: var(--text);
   white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   background: var(--surface-recessed);
   padding: 18px;
   border-radius: var(--control-radius);
   border: 1px solid var(--border);
+  overflow-x: auto;
 }
 
 .submissionFile {
