@@ -42,20 +42,24 @@ function readSetting(key) {
   const fromEnv = String(process.env[key] || "").trim();
   if (fromEnv) return fromEnv;
 
-  const envPath = path.join(repoRoot, "backend", ".env");
-  if (!fs.existsSync(envPath)) return "";
+  for (const envPath of [
+    path.join(repoRoot, "backend", ".env"),
+    path.join(repoRoot, "frontend", ".env"),
+  ]) {
+    if (!fs.existsSync(envPath)) continue;
 
-  for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
-    const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-    if (!match || match[1] !== key) continue;
-    let value = match[2].trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
+    for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
+      const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+      if (!match || match[1] !== key) continue;
+      let value = match[2].trim();
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      return value;
     }
-    return value;
   }
 
   return "";
@@ -165,32 +169,43 @@ async function main() {
   const apiKey = readSetting("MAIL_API_KEY");
   const provider = (readSetting("MAIL_API_PROVIDER") || "resend").toLowerCase();
   const toAddress = process.argv[2] || "";
+  // The deployed server, when there is one. The frontend's .env points at
+  // it, so it does not have to be typed in.
+  const liveUrl = (
+    readSetting("API_URL") ||
+    readSetting("VITE_API_URL") ||
+    ""
+  ).replace(/\/+$/, "");
 
   heading(`Mail setup (${provider})`);
 
-  if (provider !== "resend") {
+  if (!apiKey && !liveUrl) {
+    say("No API key here, and no deployed server to ask.");
+    say("");
+    say("Put a key in backend/.env, or point API_URL at the deployed server:");
+    say("  API_URL=https://your-backend.up.railway.app");
+    process.exitCode = 1;
+    return;
+  }
+
+  if (provider !== "resend" && apiKey) {
     say(`This script only knows how to check Resend. MAIL_API_PROVIDER is "${provider}".`);
     say("Set MAIL_API_PROVIDER=resend, or check the other provider's dashboard by hand.");
     return;
   }
 
   if (!apiKey) {
-    say("No API key yet.");
+    say("No API key on this machine - so the DNS records cannot be checked");
+    say("from here. The deployed server below is the one that matters.");
     say("");
-    say("Put one in backend/.env:");
-    say("  MAIL_API_PROVIDER=resend");
-    say("  MAIL_API_KEY=re_...");
-    say("");
-    say("Create one at resend.com -> API Keys -> Create API Key.");
-    process.exitCode = 1;
-    return;
+  } else {
+    say(`API key: found (${apiKey.slice(0, 6)}...)`);
   }
 
-  say(`API key: found (${apiKey.slice(0, 6)}...)`);
-
   let domains = [];
-  let keyCanReadDomains = true;
+  let keyCanReadDomains = Boolean(apiKey);
   try {
+    if (!apiKey) throw new Error("no key");
     domains = await fetchDomains(apiKey);
   } catch (err) {
     if (err.restricted) {
@@ -204,6 +219,8 @@ async function main() {
       say("That is the right permission for a key on a server. The DNS check");
       say("below is skipped; the records are on the Domains page in the");
       say("dashboard, and the test message is what proves the setup works.");
+    } else if (err.message === "no key") {
+      // Nothing to check without a key. The live check below covers it.
     } else {
       say("");
       say(`The provider would not answer: ${err.message}`);
@@ -281,6 +298,62 @@ async function main() {
       say(`  MAIL_API_KEY=${apiKey.slice(0, 6)}... (the key you just pasted in)`);
       say(`  MAIL_API_FROM=academy@${domains[0].name}`);
       say("then redeploy the backend service.");
+    }
+  }
+
+  /* --------------------------------------------------- the deployed server */
+
+  // !! The live check asks the DEPLOYED server what it thinks of itself. It
+  // !! needs no key on this machine, which matters when the key lives only
+  // !! in the server's environment - and it tests the thing that actually
+  // !! matters: whether a message sent by the live site arrives.
+  if (liveUrl) {
+    heading(`The deployed server (${liveUrl})`);
+
+    let response;
+    try {
+      response = await fetch(`${liveUrl}/api/contact`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Setup Check",
+          email: "setup-check@example.com",
+          message: `Mail setup check, sent ${new Date().toISOString()}`,
+        }),
+      });
+    } catch (err) {
+      say(`Could not reach the server: ${err.message}`);
+      say("");
+      say("The service may be down, or the address may be wrong.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const body = await response.text();
+    say(`  HTTP ${response.status}`);
+    say(`  ${body}`);
+
+    if (response.status === 200) {
+      say("");
+      say("The live server sent the message. Check the inbox the site");
+      say("publishes as \"Email us\" - that is where the contact form sends.");
+    } else if (response.status === 503) {
+      say("");
+      say("The live server could not send. The reason is in the service logs,");
+      say("on the line that starts with \"POST /api/contact error:\".");
+      say("A timeout means the mail server could not be reached. A refusal");
+      say("means the provider said no, and says why.");
+    } else {
+      say("");
+      say("The live server answered 500.");
+      say("");
+      say("That is what the OLD code does when it cannot reach a mail server:");
+      say("it waits, times out after 15 seconds, and gives up. Once the new");
+      say("code is deployed, a mail failure answers 503 and names the reason,");
+      say("so a 500 means something else is wrong.");
+      say("");
+      say("The reason is in the service logs, on the line that starts with");
+      say("\"POST /api/contact error:\".");
     }
   }
 
