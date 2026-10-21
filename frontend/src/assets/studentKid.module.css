@@ -1858,8 +1858,10 @@
   }
 
   /* Still a finger-sized button, but not a full-width slab under the
-     title - it pushes the classes down the screen for no reason. */
+     title - it pushes the classes down the screen for no reason.
+     margin-left, not align-self: the button wraps onto its own line, and
+     align-self is the cross axis, which in a row is the vertical one. */
   .refreshBtn {
-    align-self: flex-end;
+    margin-left: auto;
   }
 }
