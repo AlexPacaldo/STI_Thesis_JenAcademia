@@ -286,6 +286,45 @@ export const LEGEND = {
   hint: "Tap a day to see what is on it",
 };
 
+/**
+ * The student's own past classes.
+ *
+ * !! This is the one screen a child opens to look back at what they have
+ * !! done. It used to be the teacher's review screen with the teacher's
+ * !! words on it - "verification status", "evidence", "missing items" - which
+ * !! is a screen for the adult who has to check the paperwork.
+ * !!
+ * !! So the words here are the child's: who taught the class, how long it
+ * !! was, what they did, and one friendly word for how it went. The proof,
+ * !! the recording and the review are the teacher's business.
+ */
+export const HISTORY = {
+  title: "My classes",
+  subtitle: "Every class you have had.",
+  refresh: "Refresh",
+  looking: "Looking for your classes...",
+  emptyTitle: "You have not had a class yet.",
+  emptyHelp: "Your classes will show up here.",
+  yourTeacher: "Your teacher",
+  howLong: "How long",
+  whatYouDid: "What you did",
+  watchAgain: "Watch the class again",
+  showMore: (count) => `Show ${count} more class${count === 1 ? "" : "es"}`,
+  minutes: (count) => `${count} minute${count === 1 ? "" : "s"}`,
+  noMinutes: "We do not know yet",
+  today: "Today",
+  yesterday: "Yesterday",
+
+  /* The one word that says how the class went. */
+  done: "All done!",
+  checking: "Your teacher is checking",
+  joined: "You joined!",
+  goingOn: "Still going on",
+  waiting: "Waiting to start",
+  almost: "Almost done",
+  notFinished: "Not finished yet",
+};
+
 /** The little windows that ask "are you sure?". */
 export const CONFIRM = {
   bookingTitle: "Is this right?",

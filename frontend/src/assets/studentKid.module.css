@@ -1458,6 +1458,279 @@
   border-style: dashed;
 }
 
+/* --------------------------------------------------------- class history */
+
+/* The one screen a child opens to look back at what they have done.
+   It reads top to bottom like the home page does: the title, then the
+   classes, each one a card with a picture and a word. */
+.history {
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-2) 0 var(--space-8);
+}
+
+.historyHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.historyTitle {
+  margin: 0;
+  font-size: 1.7rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--primary);
+}
+
+.historySubtitle {
+  margin: 4px 0 0 0;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* A button a child can hit. The Refresh button is not the biggest thing on
+   the page, but it is still a finger-sized target. */
+.refreshBtn {
+  min-height: 60px;
+  padding: 14px 24px;
+  border-radius: var(--control-radius);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 1.1rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.refreshBtn:hover:not(:disabled) {
+  background: var(--bg-alt);
+  transform: translateY(-1px);
+}
+
+.refreshBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.historyList {
+  display: grid;
+  gap: var(--space-4);
+}
+
+/* One class. A picture, the name of the class, one word for how it went,
+   then the facts - each one a row with a picture of its own. */
+.pastCard {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 2px solid var(--border-mid);
+  box-shadow: var(--neu-shadow-lg);
+}
+
+.pastHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.pastIcon {
+  width: 62px;
+  height: 62px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  font-size: 2rem;
+}
+
+.pastName {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+.pastWhen {
+  margin: 4px 0 0 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* The one word that says how the class went.
+   !! Every coloured thing in Kid Mode also carries a word, because a child
+   !! who cannot read the badge yet still has to know what it means. */
+.pastStatus {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: var(--radius-pill);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.pastStatusDone {
+  background: var(--pill-success);
+  color: var(--text-success);
+}
+
+.pastStatusChecking {
+  background: var(--pill-info);
+  color: var(--text-info);
+}
+
+.pastStatusAlmost {
+  background: var(--pill-warn);
+  color: var(--text-warn);
+}
+
+.pastStatusWaiting {
+  background: var(--surface-recessed);
+  color: var(--text-mid);
+}
+
+.pastFacts {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.pastFact {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+}
+
+.pastFactIcon {
+  font-size: 1.5rem;
+  line-height: 1;
+  text-align: center;
+}
+
+.pastFactLabel {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pastFactValue {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* What the teacher wrote about the class. A sentence, not a wall. */
+.pastSummary {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.55;
+  color: var(--text-mid);
+}
+
+/* The one thing a child can do here. Green, because green says you can
+   press this. */
+.watchBtn {
+  min-height: 60px;
+  width: 100%;
+  padding: 14px 22px;
+  border: none;
+  border-radius: var(--control-radius);
+  background: var(--brand-green);
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(47, 122, 61, 0.28);
+  transition: background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.watchBtn:hover:not(:disabled) {
+  background: var(--primary-mid);
+  transform: translateY(-1px);
+}
+
+.watchBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* "Show 10 more classes". A wall of 200 cards is not a list. */
+.moreBtn {
+  min-height: 60px;
+  width: 100%;
+  padding: 14px 22px;
+  border-radius: var(--control-radius);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 1.1rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.moreBtn:hover:not(:disabled) {
+  background: var(--bg-alt);
+  transform: translateY(-1px);
+}
+
+.moreBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* The empty state. A dashed ghost card, a big picture, and one sentence
+   saying what to do next. */
+.historyEmpty {
+  display: grid;
+  gap: var(--space-2);
+  place-items: center;
+  text-align: center;
+  padding: var(--space-8) var(--space-5);
+  border-radius: var(--radius-lg);
+  border: 2px dashed var(--border-strong);
+  background: var(--surface-soft);
+}
+
+.historyEmptyIcon {
+  font-size: 3rem;
+  line-height: 1;
+}
+
+.historyEmptyTitle {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.historyEmptyHelp {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
 /* --------------------------------------------------------- small screens */
 
 @media (max-width: 640px) {
@@ -1568,5 +1841,25 @@
 
   .summaryRemove {
     width: 100%;
+  }
+
+  /* The class card on a phone: the picture and the name on top, the facts
+     under them, and the button full width so it is not a small target. */
+  .pastCard {
+    padding: var(--space-4);
+  }
+
+  .pastFact {
+    grid-template-columns: 36px 1fr;
+  }
+
+  .historyTitle {
+    font-size: 1.45rem;
+  }
+
+  /* Still a finger-sized button, but not a full-width slab under the
+     title - it pushes the classes down the screen for no reason. */
+  .refreshBtn {
+    align-self: flex-end;
   }
 }

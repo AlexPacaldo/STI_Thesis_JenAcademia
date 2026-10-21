@@ -151,6 +151,27 @@ export function formatLongDate(dateKey) {
 }
 
 /**
+ * "2026-10-21" -> "Wednesday, October 21".
+ *
+ * The day and the month in words, with no year.
+ *
+ * !! The year is left out because a class a child has just had does not need
+ * !! one, and a number on a screen is one more thing to read past. The full
+ * !! date, with the year, is still available above for the screens that want
+ * !! it.
+ */
+export function formatFriendlyDate(dateKey) {
+  if (!dateKey) return "";
+  const date = new Date(`${dateKey}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return String(dateKey);
+  return date.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+/**
  * The name of the part of the day a time falls in.
  *
  * A student who cannot tell 8:03 AM from 17:03 needs the words, not the

@@ -1111,6 +1111,38 @@ Below `640px`:
 
 ---
 
+### 5.13 The student's class history
+
+`frontend/src/pages/StudentClassHistoryKid.jsx`, with its styles in `studentKid.module.css` and its words in the `HISTORY` group of `studentCopy.js`.
+
+This screen used to be the teacher's review screen with the teacher's words on it — "verification status", "evidence", "missing items". A child opening it to remember what they did on Tuesday was being shown the paperwork.
+
+So it is a different screen, not a restyled one. It asks one question — **which class do you want to look at?** — and answers it with a list of cards:
+
+```
+MY CLASSES                              [ Refresh ]
+Every class you have had.
+
+┌ 📘  Business English - Weekend Group ┐
+│  Saturday, October 17 · Morning       │
+│  🎉 All done!                         │
+│  👩‍🏫 YOUR TEACHER   Maia Cruz         │
+│  ⏱️ HOW LONG        52 minutes        │
+│  📝 WHAT YOU DID    Practised ...     │
+│  [  ▶️  Watch the class again  ]       │
+└────────────────────────────────────────┘
+```
+
+- **The class name is the heading.** The date and the part of the day go under it, because a child cannot read a clock.
+- **One word says how the class went** — "All done!", "You joined!", "Your teacher is checking", "Still going on", "Waiting to start", "Almost done", "Not finished yet". The word comes first and the colour second, because a child who cannot read the badge yet still has to know what it means.
+- **The proof, the review and the missing items are not here.** They are the teacher's business. The recording is, because the child may want to watch their own class again, and it is the one thing on this screen they can press.
+- **Six classes at a time**, then "Show 6 more classes". A wall of two hundred cards is not a list.
+- **No filters.** A child who wants to find a class wants the one they are thinking of, and a strip of filters is a wall of choices.
+
+The teacher's version of the same data is untouched, and stays a review screen.
+
+---
+
 ## The teacher's and the admin's calendar
 
 **Where it lives:** `frontend/src/assets/calendar.module.css`, used by `frontend/src/pages/Calendar.jsx` and `frontend/src/pages/teacherScheduleEditor.jsx`.

@@ -21,6 +21,7 @@ import {
   BOOKING,
   CLASS_INFO,
   CONFIRM,
+  HISTORY,
   HOME,
   LEGEND,
   LOADING,
@@ -89,6 +90,7 @@ const GROUPS = {
   BOOKING,
   CLASS_INFO,
   LEGEND,
+  HISTORY,
   CONFIRM,
   LOADING,
 };
