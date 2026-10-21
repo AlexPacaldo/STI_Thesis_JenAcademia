@@ -1026,7 +1026,7 @@ export default function AdminDashboard() {
       if (response.data?.inviteEmailSent) {
         notify("Teacher created and setup invite sent to their email.", "success");
       } else {
-        notify("Teacher created. Setup invite was prepared, but email was not sent. Check SMTP settings.", "warning");
+        notify("Teacher created. Setup invite was prepared, but email was not sent. Check email settings.", "warning");
       }
       setTForm({
         firstName: "",
@@ -1074,7 +1074,7 @@ export default function AdminDashboard() {
       if (response.data?.inviteEmailSent) {
         notify("Student created and setup invite sent to their email.", "success");
       } else {
-        notify("Student created. Setup invite was prepared, but email was not sent. Check SMTP settings.", "warning");
+        notify("Student created. Setup invite was prepared, but email was not sent. Check email settings.", "warning");
       }
       setSForm({
         firstName: "",
@@ -1554,7 +1554,7 @@ export default function AdminDashboard() {
       notify(
         response.data?.inviteEmailSent
           ? "Email updated and new setup invite sent."
-          : "Email updated. Invite was prepared, but email was not sent. Check SMTP settings.",
+          : "Email updated. Invite was prepared, but email was not sent. Check email settings.",
         response.data?.inviteEmailSent ? "success" : "warning"
       );
       await loadUsers();
@@ -1604,7 +1604,7 @@ export default function AdminDashboard() {
         notify(
           response.data?.inviteEmailSent
             ? "Setup invite resent to the student's email."
-            : "Invite was prepared, but email was not sent. Check SMTP settings.",
+            : "Invite was prepared, but email was not sent. Check email settings.",
           response.data?.inviteEmailSent ? "success" : "warning"
         );
       }
