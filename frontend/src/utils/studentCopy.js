@@ -315,9 +315,23 @@ export const HISTORY = {
   today: "Today",
   yesterday: "Yesterday",
 
-  /* The filter. One question, one row of big buttons. */
-  whichClass: "Which class?",
+  /* The filter. Three small questions, in one window. */
   noneInThisClass: "You have not had a class in this one yet.",
+  filter: "Filter",
+  filterTitle: "Filter your classes",
+  filterSub: "Choose which classes you want to see.",
+  filterByClass: "Class",
+  filterByOutcome: "How it went",
+  filterByWhen: "When",
+  all: "All",
+  allTimes: "All times",
+  thisWeek: "This week",
+  thisMonth: "This month",
+  earlier: "Earlier",
+  showClasses: (count) => `Show ${count} class${count === 1 ? "" : "es"}`,
+  showing: (shown, total) =>
+    `Showing ${shown} of ${total} class${total === 1 ? "" : "es"}.`,
+  closeFilter: "Close",
 
   /* The one word that says how the class went. */
   done: "All done!",

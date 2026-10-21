@@ -1529,21 +1529,24 @@
   gap: var(--space-3);
 }
 
-.chipRow {
+/* The bar above the classes: the button that opens the filter, and the
+   line that says how much is showing. */
+.historyBar {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
   flex-wrap: wrap;
-  gap: var(--space-2);
 }
 
-/* A button a child can hit. The label is the class, and the number beside
-   it says how many there are - the number is the picture. */
-.chip {
+/* The way into the filter. A child's finger, not a mouse pointer. */
+.filterOpenBtn {
   display: inline-flex;
   align-items: center;
   gap: 10px;
   min-height: 60px;
-  padding: 12px 22px;
-  border-radius: var(--radius-md);
+  padding: 12px 24px;
+  border-radius: var(--radius-pill);
   border: 2px solid var(--border-mid);
   background: var(--surface);
   color: var(--primary);
@@ -1555,41 +1558,205 @@
     transform var(--duration-fast) var(--ease-out);
 }
 
-.chip:hover:not(:disabled) {
+.filterOpenBtn:hover:not(:disabled) {
   border-color: var(--brand-green);
   background: var(--bg-alt);
   transform: translateY(-1px);
 }
 
-.chip:active:not(:disabled) {
+.filterOpenBtn:active:not(:disabled) {
   transform: scale(0.97);
 }
 
-/* The chosen one. Green says "this is the one you picked", and the label
-   says it too - the colour is never the only sign. */
-.chipActive,
-.chipActive:hover:not(:disabled) {
-  background: var(--brand-green);
-  border-color: var(--brand-green);
-  color: #fff;
+.historySummary {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--muted);
 }
 
-.chipCount {
-  display: inline-grid;
+/* --------------------------------------------------------- the filter window */
+
+.filterBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
   place-items: center;
-  min-width: 30px;
-  height: 30px;
-  padding: 0 8px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-recessed);
-  color: var(--text-mid);
-  font-size: 0.85rem;
-  font-weight: 800;
+  padding: 20px;
+  overflow-y: auto;
+  background: rgba(15, 25, 20, 0.45);
 }
 
-.chipActive .chipCount {
-  background: rgba(255, 255, 255, 0.24);
+.filterDialog {
+  width: 100%;
+  max-width: 660px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  background: var(--surface);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-xl);
+}
+
+.filterHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.filterTitle {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--primary);
+}
+
+.filterSub {
+  margin: 6px 0 0 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.filterClose {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 1.5rem;
+  line-height: 1;
+  transition: background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.filterClose:hover:not(:disabled) {
+  background: var(--bg-alt);
+  transform: translateY(-1px);
+}
+
+.filterClose:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.filterBody {
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-5) 0;
+}
+
+/* One question per row: the label on the left, the answers on the right. */
+.filterGroup {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-3);
+}
+
+.filterLabel {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-top: 18px;
+}
+
+.filterPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* A pill a child can hit. The chosen one is solid green, and the number
+   beside the name says how many there are - the number is the picture. */
+.filterPill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 56px;
+  padding: 10px 18px;
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 800;
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.filterPill:hover:not(:disabled) {
+  border-color: var(--brand-lime);
+  color: var(--primary);
+}
+
+.filterPill:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.filterPillActive,
+.filterPillActive:hover:not(:disabled) {
+  border-color: var(--brand-green);
+  background: var(--brand-green);
   color: #fff;
+}
+
+/* The number behind a name. Quieter than the name, so the eye reads the
+   name first. */
+.filterNum {
+  margin-left: 6px;
+  font-weight: 700;
+  opacity: 0.65;
+}
+
+.filterPillActive .filterNum {
+  opacity: 0.85;
+}
+
+/* The one button that says what pressing it will do. */
+.filterApply {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 60px;
+  padding: 12px 22px;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--control-radius);
+  background: var(--brand-green);
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 800;
+  box-shadow: 0 8px 20px rgba(47, 122, 61, 0.28);
+  transition: background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.filterApply:hover:not(:disabled) {
+  background: var(--primary-mid);
+  transform: translateY(-1px);
+}
+
+.filterApply:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 /* One class. A picture, the name of the class, one word for how it went,
