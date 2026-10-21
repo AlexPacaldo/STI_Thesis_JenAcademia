@@ -267,6 +267,24 @@ if (String(process.env.SMTP_REDIRECT_TO || "").trim()) {
   );
 }
 
+// Where the links inside those emails point.
+//
+// !! The setup invite link and the password reset link are built from this,
+// !! and if it is wrong every one of them is a dead link. The fallback is
+// !! localhost, which is right on a laptop and useless to a student on a
+// !! phone, so it is said out loud for the same reason the mail setup is.
+console.log(`[frontend] base URL: ${getFrontendBaseUrl()}`);
+if (
+  process.env.NODE_ENV === "production" &&
+  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(getFrontendBaseUrl())
+) {
+  console.warn(
+    "[frontend] The base URL is still localhost, so every setup invite link and " +
+      "every password reset link will point at a developer's own machine " +
+      "instead of the live site. Set FRONTEND_BASE_URL."
+  );
+}
+
 function encryptNullableText(value) {
   if (value === null || value === undefined) return null;
 
