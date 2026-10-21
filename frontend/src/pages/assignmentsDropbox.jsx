@@ -178,6 +178,10 @@ export default function AssignmentsDropbox() {
 
   // Derived from selectedAssignment; must be declared before the useEffect hooks
   // that reference it in their dependency arrays.
+  const attemptLimit = getAttemptLimit(selectedAssignment);
+  const attemptsUsed = getAttemptsUsed(selectedAssignment);
+  const isAttemptLimitReached = attemptLimit !== null && attemptsUsed >= attemptLimit;
+
   const hasExistingSubmission = Boolean(selectedAssignment?.submissionId);
   const canResubmit = hasExistingSubmission && !isAttemptLimitReached;
 
@@ -267,10 +271,6 @@ export default function AssignmentsDropbox() {
     }
     return dueDateTime < now;
   };
-
-  const attemptLimit = getAttemptLimit(selectedAssignment);
-  const attemptsUsed = getAttemptsUsed(selectedAssignment);
-  const isAttemptLimitReached = attemptLimit !== null && attemptsUsed >= attemptLimit;
 
   const submissionStatus = selectedAssignment?.submissionId ? "Submitted" : "Not submitted";
   const submittedAnswer = selectedAssignment?.comments || "";
