@@ -47,7 +47,7 @@
 }
 
 .backButton:hover:not(:disabled) {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   border-color: var(--brand-lime);
   background: var(--surface-soft);
 }
@@ -94,12 +94,111 @@
 
 .instructionContent {
   display: grid;
+  grid-template-columns: 1fr 340px;
   gap: 24px;
   min-width: 0;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .instructionContent {
+    grid-template-columns: 1fr;
+  }
 }
 
 .leftSide {
   min-width: 0;
+}
+
+/* ---------- Tab bar (shown when a submission exists) ---------- */
+
+.tabBar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabButton {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 20px;
+  margin-bottom: -1px;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.tabButton:hover:not(.tabActive) {
+  background: var(--bg-alt);
+  color: var(--text);
+}
+
+.tabActive {
+  background: var(--surface);
+  color: var(--primary);
+  border-color: var(--border);
+  border-bottom: 2px solid var(--brand-green);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------- Submission panel (past submission view) ---------- */
+
+.submissionPanel {
+  background: var(--surface);
+  border: 2px solid var(--border-mid);
+  border-radius: var(--radius-xl);
+  padding: 0;
+  box-shadow: var(--neu-shadow-sm);
+  transition:
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.submissionPanel:hover {
+  box-shadow: var(--neu-shadow-lg);
+  transform: translateY(-2px);
+}
+
+.submissionSheet {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+}
+
+.submissionText {
+  font-size: 1.15rem;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  background: var(--surface-recessed);
+  padding: 18px;
+  border-radius: var(--control-radius);
+  border: 1px solid var(--border);
+}
+
+.submissionFile {
+  margin-top: 8px;
+}
+
+.emptySubmission {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+  padding: 24px;
+  background: var(--surface-recessed);
+  border-radius: var(--control-radius);
+  border: 1px solid var(--border);
 }
 
 .instructionsPanel {
@@ -107,7 +206,15 @@
   border: 2px solid var(--border-mid);
   border-radius: var(--radius-xl);
   padding: 0;
+  box-shadow: var(--neu-shadow-sm);
+  transition:
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.instructionsPanel:hover {
   box-shadow: var(--neu-shadow-lg);
+  transform: translateY(-2px);
 }
 
 .instructionSheet {
@@ -154,7 +261,7 @@
 }
 
 .cardAttachment:hover:not(:disabled) {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   border-color: var(--brand-lime);
   background: var(--surface-soft);
 }
@@ -173,11 +280,11 @@
   padding: 0 28px;
   cursor: pointer;
   border: none;
-  border-radius: var(--radius-xl);
+  border-radius: var(--control-radius);
   background: var(--brand-green);
   color: #fff;
   font-size: 1.5rem;
-  font-weight: 800;
+  font-weight: 700;
   text-decoration: none;
   box-shadow: 0 10px 24px rgba(47, 122, 61, 0.32);
   transition:
@@ -187,7 +294,7 @@
 
 .cardButton:hover:not(:disabled) {
   background: var(--primary-mid);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .cardButton:active:not(:disabled) {
@@ -206,8 +313,16 @@
   border: 2px solid var(--border-mid);
   border-radius: var(--radius-xl);
   padding: 28px;
-  box-shadow: var(--neu-shadow-lg);
+  box-shadow: var(--neu-shadow-sm);
   margin-top: 24px;
+  transition:
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.responsePanel:hover {
+  box-shadow: var(--neu-shadow-lg);
+  transform: translateY(-2px);
 }
 
 .responseHead {
@@ -301,7 +416,7 @@
 }
 
 .cancelButton:hover:not(:disabled) {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   border-color: var(--brand-lime);
   background: var(--surface-soft);
 }
@@ -312,11 +427,11 @@
   padding: 0 28px;
   cursor: pointer;
   border: none;
-  border-radius: var(--radius-xl);
+  border-radius: var(--control-radius);
   background: var(--brand-green);
   color: #fff;
   font-size: 1.5rem;
-  font-weight: 800;
+  font-weight: 700;
   box-shadow: 0 10px 24px rgba(47, 122, 61, 0.32);
   transition:
     background var(--duration-fast) var(--ease-out),
@@ -325,7 +440,7 @@
 
 .submitComment:hover:not(:disabled) {
   background: var(--primary-mid);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .submitComment:active:not(:disabled) {
@@ -359,7 +474,15 @@
   border: 2px solid var(--border-mid);
   border-radius: var(--radius-xl);
   padding: 28px;
+  box-shadow: var(--neu-shadow-sm);
+  transition:
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.summaryCard:hover {
   box-shadow: var(--neu-shadow-lg);
+  transform: translateY(-2px);
 }
 
 .summaryHeader {

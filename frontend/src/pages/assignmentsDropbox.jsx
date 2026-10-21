@@ -156,6 +156,7 @@ export default function AssignmentsDropbox() {
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showResubmissionEditor, setShowResubmissionEditor] = useState(false);
+  const [activeTab, setActiveTab] = useState("instructions");
   const location = useLocation();
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
@@ -234,11 +235,9 @@ export default function AssignmentsDropbox() {
   const submissionStatus = selectedAssignment?.submissionId ? "Submitted" : "Not submitted";
   const submittedAnswer = selectedAssignment?.comments || "";
   const submittedFileUrl = normalizeFileUrl(selectedAssignment?.fileUrl);
-  const hasSubmissionContent = Boolean(selectedAssignment?.submissionId && (submittedAnswer || submittedFileUrl));
   const hasExistingSubmission = Boolean(selectedAssignment?.submissionId);
   const canResubmit = hasExistingSubmission && !isAttemptLimitReached;
   const submitButtonLabel = canResubmit ? "Submit Again" : "Submit";
-  const showResponseEditor = !hasExistingSubmission || showResubmissionEditor;
 
   const onSubmitComment = async () => {
     if (!selectedAssignment) {
@@ -354,6 +353,130 @@ export default function AssignmentsDropbox() {
           <div className={styles.leftSide}>
             {selectedAssignment ? (
               <>
+                {hasExistingSubmission ? (
+              <>
+                <div className={styles.tabBar}>
+                  <button
+                    type="button"
+                    className={`${styles.tabButton} ${activeTab === "instructions" ? styles.tabActive : ""}`}
+                    onClick={() => setActiveTab("instructions")}
+                  >
+                    Instructions
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.tabButton} ${activeTab === "submission" ? styles.tabActive : ""}`}
+                    onClick={() => setActiveTab("submission")}
+                  >
+                    My Submission
+                  </button>
+                </div>
+
+                {activeTab === "instructions" && (
+                  <>
+                    <div className={styles.instructionsPanel}>
+                      <div className={styles.instructionSheet}>
+                        <span className={styles.instructionIcon} aria-hidden="true">📝</span>
+                        <h2 className={styles.instructionHead}>Assignment Instructions</h2>
+                        <div className={styles.instructionText}>
+                          {assignmentInstructions || "No instructions were provided for this assignment."}
+                        </div>
+                        <AssignmentAttachment
+                          url={selectedAssignment?.attachmentUrl}
+                          name={selectedAssignment?.attachmentName}
+                          onError={() => notify?.("That file could not be opened. Please try again.", "error")}
+                        />
+                      </div>
+                    </div>
+
+                    <div className={styles.responsePanel}>
+                      <h2 className={styles.responseHead}>Your Answer</h2>
+                      <textarea
+                        className={styles.commentBox}
+                        placeholder="Write your answer"
+                        value={comment}
+                        onChange={(e) => {
+                          setComment(e.target.value);
+                          setSubmitMessage("");
+                        }}
+                      />
+                      <label className={styles.fileLabel}>
+                        <span className={styles.fileIcon} aria-hidden="true">📎</span>
+                        Attach a file
+                      </label>
+                      <input
+                        type="file"
+                        className={styles.fileInput}
+                        onChange={(e) => {
+                          setSelectedFile(e.target.files?.[0] ?? null);
+                          setSubmitMessage("");
+                        }}
+                      />
+                      {selectedFile ? (
+                        <p className={styles.fileInfo}>
+                          <span className={styles.fileIcon} aria-hidden="true">📎</span>
+                          Attached: {selectedFile.name}
+                        </p>
+                      ) : null}
+                      <div className={styles.editorActions}>
+                        <button
+                          type="button"
+                          className={styles.cancelButton}
+                          onClick={() => {
+                            setShowResubmissionEditor(false);
+                            setSubmitMessage("");
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.submitComment}
+                          onClick={requestSubmitAssignment}
+                          disabled={!selectedAssignment || isAssignmentPastDue() || isAttemptLimitReached}
+                        >
+                          {submitButtonLabel}
+                        </button>
+                      </div>
+                      {submitMessage ? (
+                        <p className={styles.submitMessage}>{submitMessage}</p>
+                      ) : null}
+                    </div>
+                  </>
+                )}
+
+                {activeTab === "submission" && (
+                  <div className={styles.submissionPanel}>
+                    <div className={styles.submissionSheet}>
+                      <span className={styles.instructionIcon} aria-hidden="true">📄</span>
+                      <h2 className={styles.instructionHead}>Your Submitted Answer</h2>
+                      {submittedAnswer || submittedFileUrl ? (
+                        <>
+                          {submittedAnswer ? (
+                            <div className={styles.submissionText}>
+                              {submittedAnswer}
+                            </div>
+                          ) : null}
+                          {submittedFileUrl && (
+                            <div className={styles.submissionFile}>
+                              <SubmissionPreview
+                                fileUrl={submittedFileUrl}
+                                storedPath={selectedAssignment?.fileUrl}
+                              />
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <p className={styles.emptySubmission}>
+                          No submission content found.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
                 <div className={styles.instructionsPanel}>
                   <div className={styles.instructionSheet}>
                     <span className={styles.instructionIcon} aria-hidden="true">📝</span>
@@ -369,78 +492,67 @@ export default function AssignmentsDropbox() {
                   </div>
                 </div>
 
-                {canResubmit && !showResubmissionEditor ? (
-                  <button
-                    type="button"
-                    className={styles.cardButton}
-                    onClick={() => setShowResubmissionEditor(true)}
-                    disabled={!selectedAssignment || isAssignmentPastDue() || isAttemptLimitReached}
-                  >
-                    <span className={styles.cardArrow} aria-hidden="true">&#9654;</span>
-                    Open your answer
-                  </button>
-                ) : null}
-
-                {showResponseEditor ? (
-                  <div className={styles.responsePanel}>
-                    <h2 className={styles.responseHead}>Your Answer</h2>
-                    <textarea
-                      className={styles.commentBox}
-                      placeholder="Write your answer"
-                      value={comment}
-                      onChange={(e) => {
-                        setComment(e.target.value);
-                        setSubmitMessage("");
-                      }}
-                    />
-                    <label className={styles.fileLabel}>
+                <div className={styles.responsePanel}>
+                  <h2 className={styles.responseHead}>Your Answer</h2>
+                  <textarea
+                    className={styles.commentBox}
+                    placeholder="Write your answer"
+                    value={comment}
+                    onChange={(e) => {
+                      setComment(e.target.value);
+                      setSubmitMessage("");
+                    }}
+                  />
+                  <label className={styles.fileLabel}>
+                    <span className={styles.fileIcon} aria-hidden="true">📎</span>
+                    Attach a file
+                  </label>
+                  <input
+                    type="file"
+                    className={styles.fileInput}
+                    onChange={(e) => {
+                      setSelectedFile(e.target.files?.[0] ?? null);
+                      setSubmitMessage("");
+                    }}
+                  />
+                  {selectedFile ? (
+                    <p className={styles.fileInfo}>
                       <span className={styles.fileIcon} aria-hidden="true">📎</span>
-                      Attach a file
-                    </label>
-                    <input
-                      type="file"
-                      className={styles.fileInput}
-                      onChange={(e) => {
-                        setSelectedFile(e.target.files?.[0] ?? null);
+                      Attached: {selectedFile.name}
+                    </p>
+                  ) : null}
+                  <div className={styles.editorActions}>
+                    <button
+                      type="button"
+                      className={styles.cancelButton}
+                      onClick={() => {
+                        setShowResubmissionEditor(false);
                         setSubmitMessage("");
                       }}
-                    />
-                    {selectedFile ? (
-                      <p className={styles.fileInfo}>
-                        <span className={styles.fileIcon} aria-hidden="true">📎</span>
-                        Attached: {selectedFile.name}
-                      </p>
-                    ) : null}
-                    <div className={styles.editorActions}>
-                      <button
-                        type="button"
-                        className={styles.cancelButton}
-                        onClick={() => {
-                          setShowResubmissionEditor(false);
-                          setSubmitMessage("");
-                        }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.submitComment}
-                        onClick={requestSubmitAssignment}
-                        disabled={!selectedAssignment || isAssignmentPastDue() || isAttemptLimitReached}
-                      >
-                        {submitButtonLabel}
-                      </button>
-                    </div>
-                    {submitMessage ? (
-                      <p className={styles.submitMessage}>{submitMessage}</p>
-                    ) : null}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.submitComment}
+                      onClick={requestSubmitAssignment}
+                      disabled={!selectedAssignment || isAssignmentPastDue() || isAttemptLimitReached}
+                    >
+                      {submitButtonLabel}
+                    </button>
                   </div>
-                ) : null}
+                  {submitMessage ? (
+                    <p className={styles.submitMessage}>{submitMessage}</p>
+                  ) : null}
+                </div>
               </>
-            ) : (
-              <p>{submitMessage || "Please open your assignment from the list."}</p>
             )}
+          </>
+        ) : (
+          <p>{submitMessage || "Please open your assignment from the list."}</p>
+        )}
           </div>
+        </div>
 
           <div className={styles.rightSide}>
             <div className={styles.summaryCard}>
@@ -466,6 +578,5 @@ export default function AssignmentsDropbox() {
         </div>
       </div>
     </div>
-  </div>
   );
 }
