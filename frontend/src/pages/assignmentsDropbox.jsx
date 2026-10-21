@@ -148,6 +148,20 @@ function getAttemptLimit(assignment) {
   return Number.isInteger(limit) && limit > 0 ? limit : null;
 }
 
+function isSubmissionError(text) {
+  try {
+    const parsed = JSON.parse(text);
+    return (
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      typeof parsed.message === "string"
+    );
+  } catch {
+    return false;
+  }
+}
+
 export default function AssignmentsDropbox() {
   const { notify } = useNotification() || {};
   const [comment, setComment] = useState("");
@@ -452,11 +466,6 @@ export default function AssignmentsDropbox() {
                       <h2 className={styles.instructionHead}>Your Submitted Answer</h2>
                       {submittedAnswer || submittedFileUrl ? (
                         <>
-                          {submittedAnswer ? (
-                            <div className={styles.submissionText}>
-                              {submittedAnswer}
-                            </div>
-                          ) : null}
                           {submittedFileUrl && (
                             <div className={styles.submissionFile}>
                               <SubmissionPreview
@@ -465,6 +474,18 @@ export default function AssignmentsDropbox() {
                               />
                             </div>
                           )}
+                          {submittedAnswer ? (
+                            <>
+                              {isSubmissionError(submittedAnswer) && (
+                                <p className={styles.errorNote}>
+                                  ⚠️ This looks like an error response, not your answer.
+                                </p>
+                              )}
+                              <div className={styles.submissionText}>
+                                {submittedAnswer}
+                              </div>
+                            </>
+                          ) : null}
                         </>
                       ) : (
                         <p className={styles.emptySubmission}>

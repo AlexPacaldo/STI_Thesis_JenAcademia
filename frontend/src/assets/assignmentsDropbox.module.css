@@ -203,6 +203,17 @@
   border: 1px solid var(--border);
 }
 
+.errorNote {
+  margin: 0 0 12px 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-danger);
+  background: var(--pill-danger);
+  border: 1px solid rgba(138, 62, 46, 0.2);
+  padding: 10px 16px;
+  border-radius: var(--control-radius);
+}
+
 .instructionsPanel {
   background: var(--surface);
   border: 2px solid var(--border-mid);
@@ -557,9 +568,12 @@
 .previewImage,
 .previewFrame {
   width: 100%;
+  height: 300px;
+  min-height: 300px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--surface-recessed);
+  object-fit: contain;
 }
 
 .previewUnsupported {
