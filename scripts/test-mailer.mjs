@@ -16,11 +16,13 @@
  */
 
 import fs from "node:fs";
+import http from "node:http";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  MailTransportError,
   contactFormRecipient,
   describeMailConfig,
   isMailConfigured,
@@ -165,6 +167,12 @@ function setEnv(values) {
     "SMTP_EHLO_DOMAIN",
     "SMTP_REDIRECT_TO",
     "CONTACT_FORM_TO",
+    "MAIL_TRANSPORT",
+    "MAIL_API_PROVIDER",
+    "MAIL_API_KEY",
+    "MAIL_API_URL",
+    "MAIL_API_FROM",
+    "MAIL_API_FROM_NAME",
   ]) {
     delete process.env[key];
   }
@@ -176,7 +184,11 @@ function setEnv(values) {
 setEnv({});
 
 check("with nothing set, email is not configured", isMailConfigured(), false);
-check("and it says what is missing", mailConfig().missing, ["SMTP_HOST", "SMTP_USER", "SMTP_PASS"]);
+check(
+  "and it says what is missing",
+  mailConfig().missing,
+  ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "MAIL_API_KEY", "MAIL_API_FROM"]
+);
 check("and it does not say configured", describeMailConfig().includes("not configured"), true);
 
 setEnv({ SMTP_HOST: "smtp.example.com", SMTP_USER: "a@b.com", SMTP_PASS: "hunter2" });
@@ -204,6 +216,68 @@ check("the contact form address can be changed", contactFormRecipient(), "inbox@
 setEnv({ SMTP_HOST: "smtp.example.com", SMTP_USER: "a@b.com", SMTP_PASS: "hunter2" });
 check("the description never includes the password", describeMailConfig().includes("hunter2"), false);
 check("but it does say which account it uses", describeMailConfig().includes("a@b.com"), true);
+
+/* ------------------------------------------------- which transport is used */
+
+// !! The HTTPS mail API is used when it is set up, because it is the one that
+// !! works from every host. Railway blocks SMTP below the Pro plan, and a
+// !! blocked port hangs until it times out, so a server with both set up
+// !! would otherwise spend fifteen seconds on every message and then fail.
+setEnv({ SMTP_HOST: "smtp.example.com", SMTP_USER: "a@b.com", SMTP_PASS: "x" });
+check("with only SMTP set up, SMTP is used", mailConfig().transport, "smtp");
+
+setEnv({ MAIL_API_KEY: "re_test_key", MAIL_API_FROM: "academy@jenacademia.com" });
+check("with only the mail API set up, the mail API is used", mailConfig().transport, "api");
+check("and it is configured", isMailConfigured(), true);
+check("and the default provider is the one the app knows", mailConfig().apiProvider, "resend");
+check("and the provider's own endpoint is used", mailConfig().apiUrl, "https://api.resend.com/emails");
+check("and the description names the provider", describeMailConfig().includes("Resend"), true);
+check("and the description never includes the key", describeMailConfig().includes("re_test_key"), false);
+
+setEnv({
+  SMTP_HOST: "smtp.example.com",
+  SMTP_USER: "a@b.com",
+  SMTP_PASS: "x",
+  MAIL_API_KEY: "re_test_key",
+  MAIL_API_FROM: "academy@jenacademia.com",
+});
+check("with both set up, the mail API is used", mailConfig().transport, "api");
+
+setEnv({
+  SMTP_HOST: "smtp.example.com",
+  SMTP_USER: "a@b.com",
+  SMTP_PASS: "x",
+  MAIL_API_KEY: "re_test_key",
+  MAIL_API_FROM: "academy@jenacademia.com",
+  MAIL_TRANSPORT: "smtp",
+});
+check("SMTP can be forced", mailConfig().transport, "smtp");
+
+setEnv({
+  MAIL_API_KEY: "re_test_key",
+  MAIL_API_FROM: "academy@jenacademia.com",
+  MAIL_TRANSPORT: "smtp",
+});
+check("forcing SMTP when there is none says what is missing", mailConfig().missing, [
+  "SMTP_HOST",
+  "SMTP_USER",
+  "SMTP_PASS",
+]);
+check("and it is not configured", isMailConfigured(), false);
+
+setEnv({ MAIL_API_PROVIDER: "postmark", MAIL_API_KEY: "pm_test_key", MAIL_API_FROM: "academy@jenacademia.com" });
+check("postmark is a provider the app knows", mailConfig().apiProviderLabel, "Postmark");
+check("and it has its own endpoint", mailConfig().apiUrl, "https://api.postmarkapp.com/email");
+
+setEnv({ MAIL_API_PROVIDER: "nonsense", MAIL_API_KEY: "x", MAIL_API_FROM: "academy@jenacademia.com" });
+check("a provider nobody knows is not a provider", isMailConfigured(), false);
+check("and it is named", mailConfig().missing.includes("MAIL_API_PROVIDER"), true);
+
+setEnv({ MAIL_API_KEY: "re_test_key" });
+check("the mail API needs a from address", mailConfig().missing.includes("MAIL_API_FROM"), true);
+
+setEnv({ SMTP_FROM: "noreply@jenacademia.com", MAIL_API_KEY: "re_test_key" });
+check("and it falls back to the SMTP from address", mailConfig().apiFrom, "noreply@jenacademia.com");
 
 /* --------------------------------------------- nothing configured is safe */
 
@@ -297,21 +371,165 @@ const notRedirected = await sendMail({ to: "student@example.com", subject: "Hell
 check("with no redirect set, the message goes to the student", smtp.messages[smtp.messages.length - 1].to, ["student@example.com"]);
 check("and nothing says it was redirected", notRedirected.redirectedTo, undefined);
 
+/* ------------------------------ a message, end to end, over the HTTPS API */
+
+/**
+ * A very small HTTP server that stands in for a mail API.
+ *
+ * !! The transport is tested against a real request rather than a mock,
+ * !! because a mock proves that the code calls the right function and not
+ * !! that a request leaves the building. The request that arrives is read
+ * !! back and checked: the address it went to, the key it carried, and the
+ * !! body it carried.
+ */
+function startFakeMailApi() {
+  const requests = [];
+  const answers = [];
+
+  const server = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (chunk) => {
+      raw += chunk.toString("utf8");
+    });
+    req.on("end", () => {
+      let json = null;
+      try {
+        json = JSON.parse(raw);
+      } catch {
+        json = null;
+      }
+      requests.push({ method: req.method, url: req.url, headers: req.headers, raw, json });
+
+      const answer = answers.shift() || { status: 200, body: { id: "msg_123" } };
+      res.writeHead(answer.status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(answer.body));
+    });
+  });
+
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve({
+        port: server.address().port,
+        requests,
+        // The next answer the server gives. Tests that want a refusal queue
+        // one up before they send.
+        answer(status, body) {
+          answers.push({ status, body });
+        },
+        close: () => new Promise((done) => server.close(done)),
+      });
+    });
+  });
+}
+
+const api = await startFakeMailApi();
+
+setEnv({
+  MAIL_API_PROVIDER: "resend",
+  MAIL_API_KEY: "re_test_key",
+  MAIL_API_FROM: "academy@jenacademia.com",
+  MAIL_API_URL: `http://127.0.0.1:${api.port}/emails`,
+});
+
+const sentViaApi = await sendMail({
+  to: "student@example.com",
+  subject: "Set up your JEN Academia student account",
+  text: "Hi Alex,\n\nPlease use this link:\n\nhttps://example.com/setup/abc123\n",
+});
+
+check("the message was sent over the API", sentViaApi.sent, true);
+check("one request arrived", api.requests.length, 1);
+
+const [apiRequest] = api.requests;
+check("it was a POST", apiRequest.method, "POST");
+check("the key was sent as a bearer token", apiRequest.headers.authorization, "Bearer re_test_key");
+check("it was sent as JSON", apiRequest.headers["content-type"], "application/json");
+check("the address came from the setting", apiRequest.json.from, '"JEN Academia" <academy@jenacademia.com>');
+check("it went to the student", apiRequest.json.to, ["student@example.com"]);
+check("the subject is the subject", apiRequest.json.subject, "Set up your JEN Academia student account");
+check("the body is the body", apiRequest.json.text.includes("https://example.com/setup/abc123"), true);
+check("the body keeps its lines", apiRequest.json.text.includes("Hi Alex,"), true);
+
+setEnv({
+  MAIL_API_PROVIDER: "postmark",
+  MAIL_API_KEY: "pm_test_key",
+  MAIL_API_FROM: "academy@jenacademia.com",
+  MAIL_API_URL: `http://127.0.0.1:${api.port}/email`,
+});
+
+await sendMail({ to: "student@example.com", subject: "Reset your password", text: "https://example.com/reset/xyz789" });
+
+const postmarkRequest = api.requests[api.requests.length - 1];
+check("postmark carries the key in its own header", postmarkRequest.headers["x-postmark-server-token"], "pm_test_key");
+check("postmark spells the body its own way", postmarkRequest.json.From, '"JEN Academia" <academy@jenacademia.com>');
+check("postmark sends one address, not a list", postmarkRequest.json.To, "student@example.com");
+check("postmark calls the subject the subject", postmarkRequest.json.Subject, "Reset your password");
+check("postmark calls the body the text body", postmarkRequest.json.TextBody.includes("https://example.com/reset/xyz789"), true);
+
+// !! A refusal has to say why. A mail API that answers "no" without a reason
+// !! leaves nobody able to fix anything, and the message is usually in the
+// !! body of the answer.
+api.answer(401, { message: "API key is invalid" });
+setEnv({
+  MAIL_API_PROVIDER: "resend",
+  MAIL_API_KEY: "re_test_key",
+  MAIL_API_FROM: "academy@jenacademia.com",
+  MAIL_API_URL: `http://127.0.0.1:${api.port}/emails`,
+});
+
+let refused = null;
+try {
+  await sendMail({ to: "student@example.com", subject: "Hello", text: "Hi" });
+} catch (err) {
+  refused = err;
+}
+
+check("a refusal is thrown rather than swallowed", refused instanceof MailTransportError, true);
+check("and it is a refusal, not a dead connection", refused?.reason, "refused");
+check("and it says what the API said", refused?.message.includes("API key is invalid"), true);
+
+// !! A host that blocks the port does not refuse the connection - it drops
+// !! the packets and lets the connection hang until it times out. That is
+// !! what Railway does to SMTP below the Pro plan, and it has to be told
+// !! apart from a refusal, because the fix is different.
+setEnv({
+  MAIL_API_PROVIDER: "resend",
+  MAIL_API_KEY: "re_test_key",
+  MAIL_API_FROM: "academy@jenacademia.com",
+  MAIL_API_URL: "http://127.0.0.1:1/emails",
+});
+
+let unreachable = null;
+try {
+  await sendMail({ to: "student@example.com", subject: "Hello", text: "Hi" });
+} catch (err) {
+  unreachable = err;
+}
+
+check("a dead connection is thrown too", unreachable instanceof MailTransportError, true);
+check("and it is told apart from a refusal", unreachable?.reason, "unreachable");
+check("and it names the address that could not be reached", unreachable?.message.includes("127.0.0.1:1"), true);
+
+await api.close();
 await smtp.close();
 
-/* --------------------------------------------- the whole system, no Resend */
+/* ------------------------------------------ one mailer, in one file, only */
 
-// !! "Resend" is also an ordinary English word - "ask the admin to resend it",
-// !! "Resend Invite" on a button - so the guard looks for the SERVICE and not
-// !! for the word. A guard that flagged the word would have had to be turned
-// !! off, and a guard that gets turned off is not a guard.
-const RESEND_MARKERS = [
+// !! The mail service is spoken to in exactly one file: backend/mailer.js.
+// !! That is the whole point of the module. The app once had two ways to send
+// !! - one in server.js and one in a mailer - and the two disagreed about
+// !! what "configured" meant, so the contact form said "not configured" while
+// !! the invite email went out. A second copy of that rule is how a mail
+// !! server sits broken for a week with nobody noticing.
+const MAIL_SERVICE_MARKERS = [
   "RESEND_API_KEY",
   "resend.emails",
   "new Resend",
   'from "resend"',
   "@resend.dev",
   "RESEND_TEST_EMAIL",
+  "api.resend.com",
+  "api.postmarkapp.com",
 ];
 
 const SOURCES = [
@@ -333,12 +551,15 @@ for (const rel of SOURCES) {
     continue;
   }
   const source = fs.readFileSync(full, "utf8");
-  for (const marker of RESEND_MARKERS) {
-    check(`${rel} does not use "${marker}"`, source.includes(marker), false);
+  // mailer.js is the one file that is allowed to name a mail service.
+  if (rel === "backend/mailer.js") continue;
+  for (const marker of MAIL_SERVICE_MARKERS) {
+    check(`${rel} does not talk to the mail service itself ("${marker}")`, source.includes(marker), false);
   }
 }
 
-// The dependency itself has to be gone, not just the imports.
+// The dependency itself has to be gone, not just the imports. The HTTPS mail
+// API is spoken with native fetch, so it brings no package with it.
 const backendPackage = JSON.parse(fs.readFileSync(path.join(repoRoot, "backend/package.json"), "utf8"));
 check("the resend package is not a dependency", backendPackage.dependencies?.resend, undefined);
 check("nodemailer is a dependency", typeof backendPackage.dependencies?.nodemailer, "string");
@@ -351,9 +572,21 @@ check("and never invents its own", serverSource.includes("smtpConfigured"), fals
 check("and never calls the old sender", serverSource.includes("sendSmtpMail"), false);
 check("the contact form does not hard-code an address", serverSource.includes('to: "alexpacaldo1105@gmail.com"'), false);
 
+// !! A visitor cannot fix a mail server. When the mail service cannot be
+// !! reached, the answer has to point at the email address printed beside
+// !! the form instead of saying "server error" and asking them to try again.
+check(
+  "a mail failure answers the visitor with the email address",
+  /err instanceof MailTransportError[\s\S]{0,300}res\.status\(503\)/.test(serverSource),
+  true
+);
+
 // The env template has to teach the new settings.
 const envExample = fs.readFileSync(path.join(repoRoot, "backend/.env.example"), "utf8");
 for (const key of ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"]) {
+  check(`.env.example documents ${key}`, envExample.includes(`${key}=`), true);
+}
+for (const key of ["MAIL_TRANSPORT", "MAIL_API_PROVIDER", "MAIL_API_KEY", "MAIL_API_FROM"]) {
   check(`.env.example documents ${key}`, envExample.includes(`${key}=`), true);
 }
 check(".env.example does not document RESEND_API_KEY", envExample.includes("RESEND_API_KEY"), false);

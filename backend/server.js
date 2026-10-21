@@ -36,6 +36,7 @@ import {
 import { createRateLimiter } from "./rateLimit.js";
 import { describeCorsOrigins, resolveCorsOrigins } from "./corsOrigins.js";
 import {
+  MailTransportError,
   contactFormRecipient,
   describeMailConfig,
   isMailConfigured,
@@ -251,11 +252,12 @@ if (!process.env.SESSION_SECRET) {
 // !! "not configured". Nobody sees a failure, so nobody fixes it. One line
 // !! at start-up is the difference between a mail server that is working and
 // !! one that has been broken since Tuesday.
-console.log(`[mail] SMTP ${describeMailConfig()}`);
+console.log(`[mail] ${describeMailConfig()}`);
 if (!isMailConfigured()) {
   console.warn(
     "[mail] Email is not configured, so account setup invites, password resets " +
-      "and the contact form will not send anything. Set SMTP_HOST, SMTP_USER and SMTP_PASS."
+      "and the contact form will not send anything. Set MAIL_API_KEY (for the " +
+      "HTTPS mail API), or SMTP_HOST, SMTP_USER and SMTP_PASS."
   );
 }
 if (String(process.env.SMTP_REDIRECT_TO || "").trim()) {
@@ -4468,6 +4470,19 @@ app.post("/api/contact", async (req, res) => {
     res.json({ message: "Message sent successfully." });
   } catch (err) {
     console.error("POST /api/contact error:", err);
+
+    // !! A visitor cannot fix a mail server. When the mail service could not
+    // !! be reached - a host that blocks the port, a wrong key, an API that is
+    // !! down - the only way out for the person who filled the form in is the
+    // !! address printed beside it. So the answer says so, instead of
+    // !! "server error", which tells a visitor nothing and asks them to try
+    // !! again for a result that will be the same.
+    if (err instanceof MailTransportError) {
+      return res.status(503).json({
+        message: "Sending messages is not set up yet. Please email us instead.",
+      });
+    }
+
     res.status(500).json({ message: "Server error. Please try again later." });
   }
 });

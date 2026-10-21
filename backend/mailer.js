@@ -1,22 +1,28 @@
 // mailer.js
 /**
- * Sending email over SMTP.
+ * Sending email.
  *
- * !! Extracted from server.js for the same reason dbConfig.js was extracted:
- * !! the credentials have to be read in ONE place, by everything that needs
- * !! them, and the rule about what "configured" means has to be the same
- * !! everywhere. A second copy of "is SMTP configured" is how a contact form
- * !! ends up answering "not configured" while the invite email goes out.
+ * !! Two transports, one place: raw SMTP and an HTTPS mail API.
+ * !!
+ * !! SMTP is what a mail server speaks. It is also the one thing a host like
+ * !! Railway will not let out: outbound SMTP (ports 25, 465, 587) is blocked
+ * !! below the Pro plan, and the block drops packets instead of refusing
+ * !! them, so the connection hangs until it times out. That is not a
+ * !! misconfiguration that can be fixed with a different password - the port
+ * !! is closed from the outside, and the only way out is an HTTPS API, which
+ * !! goes out on 443 like every other request the app makes.
+ * !!
+ * !! Both transports live in this file on purpose. The rule about what
+ * !! "configured" means has to be the same everywhere, and the two used to
+ * !! disagree: the contact form answered "not configured" while the invite
+ * !! email went out. A second copy of that rule is how a mail server ends up
+ * !! broken for a week with nobody noticing.
  *
- * !! Why SMTP and not an HTTP mail API: the app sends its email from an
- * !! account it already has, with a password it already has. The HTTP API
- * !! needed a domain verified with a third party before a single message
- * !! could go to a real student - and until that was done, every message had
- * !! to be redirected to the account owner's own inbox, because the sandbox
- * !! domain is not allowed to send to anyone else. That redirect was not a
- * !! safety net. It was the only way a message could leave the building, and
- * !! it meant a student's setup invite and a student's password reset both
- * !! went to one person's inbox instead of to the student.
+ * !! Why the HTTPS API is not the only transport: it is the only one that
+ * !! works from every host, but it needs an account with a provider and a
+ * !! sending domain that has been verified. SMTP needs a mail server and a
+ * !! password. Which one is used is decided by what is configured, and can be
+ * !! forced with MAIL_TRANSPORT.
  *
  * !! Everything here is plain text. No HTML, no attachments, no template
  * !! engine. The three messages this app sends are an invite link, a
@@ -27,7 +33,7 @@
 import nodemailer from "nodemailer";
 
 /**
- * How long to wait for the SMTP server before giving up.
+ * How long to wait for the mail server before giving up.
  *
  * !! A request that waits for a mail server that is not answering holds an
  * !! HTTP connection open until the browser gives up, and the person waiting
@@ -36,6 +42,11 @@ import nodemailer from "nodemailer";
  * !! of a page that spins for two minutes.
  */
 const SMTP_TIMEOUT_MS = 15000;
+
+/**
+ * The same timeout for the HTTPS mail API.
+ */
+const API_TIMEOUT_MS = 15000;
 
 /**
  * Where the contact form sends its messages.
@@ -49,8 +60,71 @@ const SMTP_TIMEOUT_MS = 15000;
  */
 const DEFAULT_CONTACT_TO = "jenacademia@gmail.com";
 
+/**
+ * The HTTPS mail APIs this app knows how to speak.
+ *
+ * !! Each one is a POST with a JSON body, and each one spells the body
+ * !! differently. The differences are small but they are not interchangeable:
+ * !! a body sent to the wrong API is refused with a message about a missing
+ * !! field, and the message says nothing about which field was missing.
+ * !!
+ * !! No SDK is used. The whole request is a POST of a JSON object, and an SDK
+ * !! for that is a dependency that has to be kept up to date for the sake of
+ * !! four lines of code.
+ */
+const MAIL_API_PROVIDERS = {
+  resend: {
+    label: "Resend",
+    defaultUrl: "https://api.resend.com/emails",
+    buildRequest({ key, from, to, subject, text }) {
+      return {
+        headers: {
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+        },
+        body: { from, to: [to], subject, text },
+      };
+    },
+  },
+  postmark: {
+    label: "Postmark",
+    defaultUrl: "https://api.postmarkapp.com/email",
+    buildRequest({ key, from, to, subject, text }) {
+      return {
+        headers: {
+          "X-Postmark-Server-Token": key,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: { From: from, To: to, Subject: subject, TextBody: text },
+      };
+    },
+  },
+};
+
 let cachedTransport = null;
 let cachedTransportKey = "";
+
+/**
+ * A failure that happened while sending, as opposed to a failure that
+ * happened in the app.
+ *
+ * !! The difference decides what the visitor is told. A transport failure is
+ * !! the server's problem, not the visitor's, and the visitor has exactly one
+ * !! way out: the email address printed beside the form. A bug in the app is
+ * !! a different thing and must not be dressed up as "email is switched off".
+ */
+export class MailTransportError extends Error {
+  /**
+   * @param {string} message what went wrong, in plain words
+   * @param {"unreachable"|"refused"} reason what kind of failure it was
+   */
+  constructor(message, reason = "refused") {
+    super(message);
+    this.name = "MailTransportError";
+    this.reason = reason;
+  }
+}
 
 /**
  * The mail settings, resolved from the environment.
@@ -81,12 +155,62 @@ export function mailConfig() {
   const secure =
     String(process.env.SMTP_SECURE || "").trim().toLowerCase() === "true" || port === 465;
 
-  const missing = [];
-  if (!host) missing.push("SMTP_HOST");
-  if (!user) missing.push("SMTP_USER");
-  if (!pass) missing.push("SMTP_PASS");
+  // The HTTPS mail API.
+  const apiProviderId = String(process.env.MAIL_API_PROVIDER || "resend").trim().toLowerCase();
+  const apiProvider = MAIL_API_PROVIDERS[apiProviderId] || null;
+  const apiKey = String(process.env.MAIL_API_KEY || "").trim();
+  const apiUrl = String(process.env.MAIL_API_URL || "").trim() || apiProvider?.defaultUrl || "";
+  // The address the message claims to be from. The API provider insists that
+  // it is a domain the account has verified, so it cannot be invented here -
+  // but it does not have to be a different setting from the SMTP one, and
+  // falling back to it means most setups need one address, not two.
+  const apiFrom = String(process.env.MAIL_API_FROM || "").trim() || from;
+  const apiFromName = String(process.env.MAIL_API_FROM_NAME || "").trim() || fromName;
+
+  // Which transport to use. "auto" means: the HTTPS API when it is set up,
+  // because it is the one that works from every host, and SMTP otherwise.
+  const transportPreference = String(process.env.MAIL_TRANSPORT || "auto").trim().toLowerCase();
+
+  const smtpMissing = [];
+  if (!host) smtpMissing.push("SMTP_HOST");
+  if (!user) smtpMissing.push("SMTP_USER");
+  if (!pass) smtpMissing.push("SMTP_PASS");
+
+  const apiMissing = [];
+  if (!apiProvider) apiMissing.push("MAIL_API_PROVIDER");
+  if (!apiKey) apiMissing.push("MAIL_API_KEY");
+  if (!apiFrom) apiMissing.push("MAIL_API_FROM");
+  if (apiProvider && !apiUrl) apiMissing.push("MAIL_API_URL");
+
+  const smtpReady = smtpMissing.length === 0;
+  const apiReady = apiMissing.length === 0;
+
+  let transport = null;
+  if (transportPreference === "smtp") {
+    transport = smtpReady ? "smtp" : null;
+  } else if (transportPreference === "api") {
+    transport = apiReady ? "api" : null;
+  } else if (apiReady) {
+    transport = "api";
+  } else if (smtpReady) {
+    transport = "smtp";
+  }
+
+  // What is missing, for the transport that was asked for.
+  let missing = [];
+  if (transportPreference === "smtp") {
+    missing = smtpMissing;
+  } else if (transportPreference === "api") {
+    missing = apiMissing;
+  } else if (!transport) {
+    missing = [...smtpMissing];
+    for (const key of apiMissing) {
+      if (!missing.includes(key)) missing.push(key);
+    }
+  }
 
   return {
+    // SMTP
     host,
     port,
     secure,
@@ -97,8 +221,20 @@ export function mailConfig() {
     ehlo,
     redirectTo,
     contactTo,
-    configured: missing.length === 0,
+    // The HTTPS mail API
+    apiProvider: apiProviderId,
+    apiProviderLabel: apiProvider?.label || apiProviderId,
+    apiKey,
+    apiUrl,
+    apiFrom,
+    apiFromName,
+    // Which one is in use, and what it is still waiting for
+    transportPreference,
+    transport,
+    configured: transport !== null,
     missing,
+    smtpMissing,
+    apiMissing,
   };
 }
 
@@ -115,16 +251,37 @@ export function isMailConfigured() {
 /**
  * A one-line description of the mail setup, for the start-up log.
  *
- * !! It never includes the password. A credential printed to a log is a
- * !! credential in every log aggregator, every crash reporter and every
- * !! screenshot of the console.
+ * !! It never includes the password or the API key. A credential printed to a
+ * !! log is a credential in every log aggregator, every crash reporter and
+ * !! every screenshot of the console.
  */
 export function describeMailConfig() {
   const config = mailConfig();
   if (!config.configured) {
     return `not configured (missing: ${config.missing.join(", ")})`;
   }
-  return `${config.host}:${config.port} as ${config.user}${config.redirectTo ? " (redirecting all mail)" : ""}`;
+  const suffix = config.redirectTo ? " (redirecting all mail)" : "";
+  if (config.transport === "api") {
+    return `${config.apiProviderLabel} over HTTPS as ${config.apiFrom}${suffix}`;
+  }
+  return `SMTP ${config.host}:${config.port} as ${config.user}${suffix}`;
+}
+
+/**
+ * What is not set up, said in a way that names both transports.
+ *
+ * !! The start-up log is the only place this shows up, so it has to say which
+ * !! setting is missing - not just that something is.
+ */
+function describeMissing(config) {
+  const parts = [];
+  if (config.transportPreference !== "api") {
+    parts.push(`SMTP is not configured (missing ${config.smtpMissing.join(", ")})`);
+  }
+  if (config.transportPreference !== "smtp") {
+    parts.push(`the mail API is not configured (missing ${config.apiMissing.join(", ")})`);
+  }
+  return parts.join(" and ");
 }
 
 /**
@@ -156,6 +313,96 @@ function getTransport(config) {
 }
 
 /**
+ * The failures that mean "the mail server could not be reached at all".
+ *
+ * !! These are the ones worth telling apart from a refused message, because
+ * !! a refused message means the server answered and said no (a wrong
+ * !! password, an unverified sender), while an unreachable one means nothing
+ * !! came back at all - which is what a host that blocks the port looks like.
+ */
+const UNREACHABLE_CODES = new Set([
+  "ETIMEDOUT",
+  "ESOCKETTIMEDOUT",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+]);
+
+/**
+ * Send one message over the HTTPS mail API.
+ *
+ * !! Native fetch, no SDK. The request is a POST of a JSON object and a
+ * !! response that says whether it was accepted.
+ */
+async function sendViaApi(config, { to, subject, text }) {
+  const provider = MAIL_API_PROVIDERS[config.apiProvider];
+  const from = config.apiFromName ? `"${config.apiFromName}" <${config.apiFrom}>` : config.apiFrom;
+  const { headers, body } = provider.buildRequest({
+    key: config.apiKey,
+    from,
+    to,
+    subject,
+    text,
+  });
+
+  let response;
+  try {
+    response = await fetch(config.apiUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
+    });
+  } catch (err) {
+    throw new MailTransportError(
+      `Could not reach ${provider.label} at ${config.apiUrl}: ${err.message}`,
+      "unreachable"
+    );
+  }
+
+  const raw = await response.text();
+  if (!response.ok) {
+    throw new MailTransportError(
+      `${provider.label} refused the message (HTTP ${response.status}): ${readApiError(raw)}`,
+      "refused"
+    );
+  }
+
+  return raw;
+}
+
+/**
+ * The reason a mail API refused a message, in one line.
+ *
+ * !! The API says what is wrong in a JSON body, and the body is different for
+ * !! every provider. A refusal that arrives with no reason is a refusal that
+ * !! cannot be acted on, so the raw text is used when the JSON does not
+ * !! explain it.
+ */
+function readApiError(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return "no reason was returned";
+
+  try {
+    const payload = JSON.parse(text);
+    const detail =
+      payload?.message ||
+      payload?.Message ||
+      payload?.error?.message ||
+      (typeof payload?.error === "string" ? payload.error : "") ||
+      payload?.errors?.[0]?.message;
+    if (detail) return String(detail);
+  } catch {
+    // Not JSON. The text below is the reason.
+  }
+
+  return text.slice(0, 300);
+}
+
+/**
  * Send one plain-text email.
  *
  * !! It returns { sent: false, skipped: true } when email is not configured,
@@ -165,8 +412,8 @@ function getTransport(config) {
  * !! down routes that had nothing to do with email.
  *
  * !! It DOES throw when the mail server is configured and then fails. That is
- * !! a different thing - the message was meant to go out and did not - and
- * !! the callers need to know, because a student who never receives their
+ * !! a different thing - the message was meant to go out and did not - and the
+ * !! callers need to know, because a student who never receives their
  * !! password reset has to be told something other than "we sent it".
  *
  * @param {{to: string, subject: string, text: string}} mail
@@ -176,9 +423,7 @@ export async function sendMail({ to, subject, text }) {
   const config = mailConfig();
 
   if (!config.configured) {
-    console.warn(
-      `Email was not sent: SMTP is not configured (missing ${config.missing.join(", ")}).`
-    );
+    console.warn(`Email was not sent: ${describeMissing(config)}.`);
     return { sent: false, skipped: true };
   }
 
@@ -199,31 +444,67 @@ export async function sendMail({ to, subject, text }) {
     ? `[DEV] Originally addressed to: ${recipient}\n\n${text}`
     : text;
 
-  const transport = getTransport(config);
-  await transport.sendMail({
-    from: config.fromName ? `"${config.fromName}" <${config.from}>` : config.from,
-    to: actualTo,
-    subject: actualSubject,
-    text: actualText,
-  });
+  if (config.transport === "api") {
+    await sendViaApi(config, {
+      to: actualTo,
+      subject: actualSubject,
+      text: actualText,
+    });
+  } else {
+    const transport = getTransport(config);
+    try {
+      await transport.sendMail({
+        from: config.fromName ? `"${config.fromName}" <${config.from}>` : config.from,
+        to: actualTo,
+        subject: actualSubject,
+        text: actualText,
+      });
+    } catch (err) {
+      const code = String(err?.code || "");
+      const reason = UNREACHABLE_CODES.has(code) ? "unreachable" : "refused";
+      throw new MailTransportError(
+        `Could not send over SMTP (${config.host}:${config.port}): ${err?.message || String(err)}`,
+        reason
+      );
+    }
+  }
 
   return redirectedTo ? { sent: true, redirectedTo } : { sent: true };
 }
 
 /**
- * Check that the mail server answers and the credentials work.
+ * Check that the mail service answers.
  *
  * !! Separate from sending on purpose: it opens a connection and says
  * !! nothing, so it can be run on its own to find out whether a mail server
  * !! is reachable. Sending a message to find that out would leave a message
- * !! in somebody's inbox every time someone tested the settings.
+ * !! in somebody's inbox every time somebody tested the settings.
  *
- * @returns {Promise<{ok: boolean, error?: string}>}
+ * !! For the HTTPS mail API there is no "verify" call, so this only proves
+ * !! that the API answered - not that the key is good. The key is proved by
+ * !! sending, which is the thing that has to be right anyway.
+ *
+ * @returns {Promise<{ok: boolean, error?: string, note?: string}>}
  */
 export async function verifyMailConnection() {
   const config = mailConfig();
   if (!config.configured) {
-    return { ok: false, error: `SMTP is not configured (missing ${config.missing.join(", ")})` };
+    return { ok: false, error: `Mail is not configured (missing ${config.missing.join(", ")})` };
+  }
+
+  if (config.transport === "api") {
+    try {
+      const response = await fetch(config.apiUrl, {
+        method: "GET",
+        signal: AbortSignal.timeout(API_TIMEOUT_MS),
+      });
+      return {
+        ok: true,
+        note: `${config.apiProviderLabel} answered with HTTP ${response.status}; the API key was not checked`,
+      };
+    } catch (err) {
+      return { ok: false, error: `Could not reach ${config.apiProviderLabel}: ${err.message}` };
+    }
   }
 
   try {

@@ -49,35 +49,69 @@ If the site is on a domain that is not on that line, this is why nothing loads.
 
 ## Email
 
-The app sends three emails over SMTP: an account setup invite, a password reset link, and a message from the contact form.
+The app sends three emails: an account setup invite, a password reset link, and a message from the contact form.
 
-Add these to the backend service variables:
+### Railway blocks SMTP below the Pro plan
 
-```env
-SMTP_HOST=smtp.your-provider.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=academy@your-domain.com
-SMTP_PASS=your-app-password
-SMTP_FROM=academy@your-domain.com
-SMTP_FROM_NAME=JEN Academia
-CONTACT_FORM_TO=the-inbox-you-read@example.com
-```
+Outbound SMTP (ports 25, 465 and 587) is **disabled on Railway's Free, Trial and Hobby plans**. It is only available on Pro and above. The block drops packets instead of refusing them, so the connection does not fail — it hangs until it times out, and the visitor sees "Server error. Please try again later." after a quarter of a minute.
 
-- `SMTP_PORT` 587 is STARTTLS (the usual), 465 is implicit TLS with `SMTP_SECURE=true`.
-- `SMTP_FROM` defaults to `SMTP_USER`, and `SMTP_FROM_NAME` defaults to `JEN Academia`.
-- `CONTACT_FORM_TO` is where the contact form sends. It defaults to the address the website publishes as "Email us".
-- Gmail needs an **app password**, not the account password: turn on 2-Step Verification, then create one at <https://myaccount.google.com/apppasswords>.
+That is not a password that needs fixing. The port is closed from the outside.
+
+Two ways out:
+
+1. **Use the HTTPS mail API** (works on every plan, port 443). This is the recommended route. Add to the backend service variables:
+
+   ```env
+   MAIL_TRANSPORT=api
+   MAIL_API_PROVIDER=resend
+   MAIL_API_KEY=re_your_key_here
+   MAIL_API_FROM=academy@jenacademia.com
+   ```
+
+   - `MAIL_API_PROVIDER` is `resend` or `postmark`.
+   - `MAIL_API_FROM` must be a domain the provider has verified for that account. With Resend, add the domain in the dashboard and put the DNS records it gives you in your DNS host. Until the domain is verified, Resend's shared `onboarding@resend.dev` sender will only deliver to the address that owns the API key.
+   - `MAIL_API_FROM_NAME` sets the name the recipient sees. It defaults to "JEN Academia".
+
+2. **Upgrade to the Pro plan** and redeploy the backend service. Then plain SMTP works and no code change is needed:
+
+   ```env
+   SMTP_HOST=smtp.your-provider.com
+   SMTP_PORT=587
+   SMTP_SECURE=false
+   SMTP_USER=academy@your-domain.com
+   SMTP_PASS=your-app-password
+   SMTP_FROM=academy@your-domain.com
+   SMTP_FROM_NAME=JEN Academia
+   ```
+
+   - `SMTP_PORT` 587 is STARTTLS (the usual), 465 is implicit TLS with `SMTP_SECURE=true`.
+   - `SMTP_FROM` defaults to `SMTP_USER`, and `SMTP_FROM_NAME` defaults to `JEN Academia`.
+   - Gmail needs an **app password**, not the account password: turn on 2-Step Verification, then create one at <https://myaccount.google.com/apppasswords>.
 
 The backend prints one line at start-up saying what it will do:
 
 ```txt
+[mail] Resend over HTTPS as academy@jenacademia.com
 [mail] SMTP smtp.your-provider.com:587 as academy@your-domain.com
 ```
+
+`CONTACT_FORM_TO` is where the contact form sends, whichever transport is in use. It defaults to the address the website publishes as "Email us".
 
 If it says `not configured`, the three emails above are not being sent. The account setup invite route still returns the invite link, the password reset still answers as if it worked, and the contact form answers "not configured" — so nothing fails loudly, and a broken mail server can sit there for a week unnoticed. That line is the only place it shows up.
 
 **Leave `SMTP_REDIRECT_TO` unset.** It is a development setting that sends every email to one address instead of to the person it is addressed to. The server warns loudly at start-up when it is on.
+
+### Which transport is used
+
+`MAIL_TRANSPORT` decides:
+
+| `MAIL_TRANSPORT` | What happens |
+| --- | --- |
+| `auto` (default) | The HTTPS mail API when `MAIL_API_KEY` is set, otherwise SMTP. |
+| `api` | The HTTPS mail API only. |
+| `smtp` | SMTP only. |
+
+The default is `auto` because the HTTPS mail API is the one that works from every host. Set `MAIL_TRANSPORT=smtp` to force SMTP on a Pro plan.
 
 ## Uploads
 
