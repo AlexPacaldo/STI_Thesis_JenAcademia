@@ -5,7 +5,6 @@ import styles from "../assets/account.module.css";
 import kid from "../assets/studentKid.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
-import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
 import { describeStudentContract } from "../utils/contractExpiry.js";
 import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
 import { formatTimezoneLabel, getTimezoneOptions, getUserTimezone, parseServerTimestamp } from "../utils/timezone.js";
@@ -151,6 +150,23 @@ function calculateAge(birthDate) {
   return age >= 0 ? age : null;
 }
 
+/**
+ * "2003-10-11" -> "11 October 2003".
+ *
+ * !! A birthday is not a date range and not a database value. It is a day
+ * !! somebody was born, and it reads better in words.
+ */
+function formatBirthday(value) {
+  if (!value) return "";
+  const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 function formatAccountDate(value, timezone) {
   if (!value) return "Not available";
   // created_at is a CURRENT_TIMESTAMP column: UTC, not local wall-clock.
@@ -161,15 +177,6 @@ function formatAccountDate(value, timezone) {
 
 function isCompleteUser(user) {
   return Boolean(user?.profileCompleted);
-}
-
-function Stat({ label, value }) {
-  return (
-    <div className={styles.stat}>
-      <span>{label}</span>
-      <strong>{formatValue(value)}</strong>
-    </div>
-  );
 }
 
 export default function Account() {
@@ -733,113 +740,6 @@ export default function Account() {
     }
   }
 
-  function renderContractSummary() {
-    if (contract.state === "none") {
-      // Said explicitly rather than left blank. A missing row reads as a page
-      // that failed to load; this states the fact, which is different and
-      // actionable - it is what the contract request button is for.
-      return (
-        <section className={styles.card}>
-          <div className={styles.cardHeader}>
-            <h2>Contract</h2>
-            <span>Student</span>
-          </div>
-          <p style={{ margin: 0, color: "#5b6b64", fontSize: "0.92em", lineHeight: 1.5 }}>
-            You do not have a class contract yet. Once one is set up, its length,
-            what you have used and the date it ends will be shown here.
-          </p>
-        </section>
-      );
-    }
-
-    const tone = {
-      expired: { bg: "#fdecec", border: "#e5a3a3", text: "#8c2020" },
-      soon: { bg: "#fdf3e3", border: "#e0b872", text: "#7a5210" },
-      ok: { bg: "#eef5f0", border: "#a9c9b4", text: "#2f5a43" },
-      cancelled: { bg: "#f1f2f4", border: "#c9ced6", text: "#4a5260" },
-    }[contract.state] || { bg: "#f1f2f4", border: "#c9ced6", text: "#4a5260" };
-
-    const headline = {
-      expired: "Contract expired",
-      soon: "Contract ends soon",
-      ok: "Contract ends",
-      cancelled: "Contract cancelled",
-    }[contract.state] || "Contract";
-
-    const explanation = {
-      expired:
-        "This contract has run out. Classes you have not booked before the end date are no longer available. Ask for a new contract to continue.",
-      soon: `Your contract ends ${contract.expiry.when}. Any classes you have not booked by then will be lost.`,
-      ok: "Book classes before the end date. Anything left unused when the contract ends is lost.",
-      cancelled:
-        "This contract was cancelled, so the end date below is the date it was set to end on rather than one you can rely on.",
-    }[contract.state] || "";
-
-    const progressPct =
-      contract.total > 0 ? Math.min(100, Math.round((contract.used / contract.total) * 100)) : 0;
-
-    // Shown only when the stored value exists. A package with no duration on
-    // record leaves this blank rather than claiming a number - a plausible guess
-    // here is worse than an empty cell, because the student would book against it.
-    const classDuration = details.class_duration != null ? `${details.class_duration} min` : null;
-
-    return (
-      <section className={styles.card}>
-        <div className={styles.cardHeader}>
-          <h2>Contract</h2>
-          <span>Student</span>
-        </div>
-
-        <div
-          style={{
-            border: `1px solid ${tone.border}`,
-            background: tone.bg,
-            borderRadius: 12,
-            padding: "14px 16px",
-            display: "grid",
-            gap: 10,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <strong style={{ color: tone.text, fontSize: "1.02em" }}>{headline}</strong>
-            {/* The same badge the Dashboard, Calendar, Students page and admin
-                Contracts page use, so the colour rules cannot drift apart. It was
-                imported on this page from the start and never rendered. */}
-            <ContractExpiryBadge
-              expiresAt={details.package_expires_at}
-              size="sm"
-            />
-          </div>
-
-          {explanation && (
-            <p style={{ margin: 0, color: tone.text, fontSize: "0.9em", lineHeight: 1.5 }}>
-              {explanation}
-            </p>
-          )}
-
-          <div className={styles.statsGrid}>
-            <Stat label="Class duration" value={classDuration} />
-            <Stat label="Classes in contract" value={contract.total || null} />
-            <Stat label="Classes used" value={contract.used || 0} />
-            <Stat label="Classes left" value={contract.state === "cancelled" ? null : contract.left} />
-            <Stat label="Ends on" value={contract.expiry.detail?.replace(/^Contract ends /, "") || null} />
-          </div>
-
-          {contract.total > 0 && contract.state !== "cancelled" && (
-            <div>
-              <div style={{ height: 8, background: "rgba(0,0,0,0.07)", borderRadius: 8, overflow: "hidden" }}>
-                <div style={{ width: `${progressPct}%`, height: "100%", background: tone.text, opacity: 0.7 }} />
-              </div>
-              <div style={{ marginTop: 6, fontSize: "0.84em", color: tone.text }}>
-                {contract.used} of {contract.total} classes used ({progressPct}%)
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
-    );
-  }
-
   /**
    * The student's own account page.
    *
@@ -867,13 +767,7 @@ export default function Account() {
     const planEnd =
       contract.expiry?.detail?.replace(/^Contract ends /, "") || contract.expiry?.when || "";
 
-    const birthday = form.birthDate
-      ? new Date(`${form.birthDate}T00:00:00`).toLocaleDateString(undefined, {
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        })
-      : "";
+    const birthday = formatBirthday(form.birthDate);
 
     const details_rows = [
       { label: ACCOUNT.yourName, value: fullName },
@@ -1196,47 +1090,138 @@ export default function Account() {
     );
   }
 
-  function renderRolePanel() {
-    if (user.role === "student") {
-      return (
-        <>
-          <section className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h2>Learning Profile</h2>
-              <span>Student</span>
+  /**
+   * A teacher's and an admin's account page.
+   *
+   * !! The same shape as the student's page - a stack of cards, one thing in
+   * !! each - at an adult's proportions. One product, two sizes.
+   *
+   * !! The big change is that the details are READ, not edited. The old page
+   * !! showed a form of disabled inputs with a "Locked" badge over it, which
+   * !! is a form you cannot use and a badge that says "no". Now the facts are
+   * !! a list, and "Edit details" turns the list into inputs.
+   */
+  function renderStaffAccount() {
+    const isAdmin = user.role === "admin";
+
+    const facts = [
+      { label: "First name", value: form.firstName },
+      { label: "Last name", value: form.lastName },
+      { label: "Email", value: form.email },
+      { label: "Country", value: form.country },
+      { label: "Birthday", value: formatBirthday(form.birthDate) },
+      { label: "Age", value: age === null ? "" : `${age} years old` },
+      { label: "Contact number", value: form.contact },
+      { label: "Time zone", value: form.timezone ? formatTimezoneLabel(form.timezone) : "" },
+    ].filter((fact) => fact.value);
+
+    return (
+      <div className={styles.proPage}>
+        {/* Who this is. */}
+        <section className={styles.proHero}>
+          <div className={styles.avatarWrap}>
+            <button
+              type="button"
+              className={styles.avatarButton}
+              onClick={() => setAvatarMenuOpen((open) => !open)}
+              aria-label="Open profile picture options"
+            >
+              <AuthenticatedImage
+                className={styles.avatar}
+                src={user?.profileImageUrl}
+                alt={`${fullName} profile`}
+                fallback={<img className={styles.avatar} src={pfp} alt={`${fullName} profile`} />}
+              />
+              <span className={styles.avatarEditMark}>+</span>
+            </button>
+            {avatarMenuOpen && (
+              <div className={styles.avatarMenu}>
+                <button type="button" onClick={() => { setPreviewOpen(true); setAvatarMenuOpen(false); }}>
+                  See profile picture
+                </button>
+                <button type="button" onClick={chooseProfilePicture} disabled={pictureUploading}>
+                  Upload file
+                </button>
+                <button type="button" onClick={takeProfilePicture} disabled={pictureUploading}>
+                  Take picture
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className={styles.proHeroText}>
+            <h1 className={styles.proHeroName}>{fullName}</h1>
+            <div className={styles.proHeroMeta}>
+              <span className={styles.proBadge}>{formatRole(user.role)}</span>
+              <span className={styles.proBadge}>{formatRole(user.status)}</span>
             </div>
-            <div className={styles.statsGrid}>
-              <Stat label="Course" value={details.course_name} />
-              <Stat label="Teacher" value={details.teacher_first_name ? `${details.teacher_first_name} ${details.teacher_last_name || ""}`.trim() : details.teacher_name} />
-              <Stat label="Proficiency" value={details.proficiency_level} />
+            <p className={styles.proHeroEmail}>{form.email}</p>
+          </div>
+        </section>
+
+        {/* The work: what this person is here to do. */}
+        {isAdmin ? (
+          <section className={styles.proCard}>
+            <div className={styles.proCardHead}>
+              <h2 className={styles.proCardTitle}>Administration</h2>
+              <span className={styles.proBadge}>Admin</span>
+            </div>
+            <div className={styles.proStatGrid}>
+              <div className={styles.proStat}>
+                <span className={styles.proStatLabel}>Active students</span>
+                <span className={styles.proStatValue}>{details.active_students ?? 0}</span>
+              </div>
+              <div className={styles.proStat}>
+                <span className={styles.proStatLabel}>Active teachers</span>
+                <span className={styles.proStatValue}>{details.active_teachers ?? 0}</span>
+              </div>
+              <div className={styles.proStat}>
+                <span className={styles.proStatLabel}>Archived users</span>
+                <span className={styles.proStatValue}>{details.archived_users ?? 0}</span>
+              </div>
+              <div className={styles.proStat}>
+                <span className={styles.proStatLabel}>Account status</span>
+                <span className={styles.proStatValue}>{formatRole(user.status)}</span>
+              </div>
             </div>
           </section>
-          {/* Contract lives in its own card rather than as another stat in the
-              profile. It needs the progress bar, the badge and a sentence of
-              explanation, and cramming all that into a stat grid cell is what
-              made the earlier version read as one more number nobody looks at. */}
-          {renderContractSummary()}
-        </>
-      );
-    }
+        ) : (
+          <section className={styles.proCard}>
+            <div className={styles.proCardHead}>
+              <h2 className={styles.proCardTitle}>Teaching profile</h2>
+              <span className={styles.proBadge}>Teacher</span>
+            </div>
 
-    if (user.role === "teacher") {
-      return (
-        <section className={styles.card}>
-          <div className={styles.cardHeader}>
-            <h2>Teaching Profile</h2>
-            <span>Teacher</span>
-          </div>
-          <div className={styles.statsGrid}>
-            <Stat label="Active Students" value={details.active_students ?? 0} />
-            <Stat label="Upcoming Classes" value={details.upcoming_classes ?? 0} />
-            <Stat label="Experience" value={details.experience_years ? `${details.experience_years} years` : null} />
-            <Stat label="Specialization" value={details.specialization} />
-          </div>
-          <div className={styles.detailList}>
-            <p><strong>Courses:</strong> {formatValue(details.courses)}</p>
-          </div>
-          <div className={styles.detailList} style={{ marginTop: "12px" }}>
+            <div className={styles.proStatGrid}>
+              <div className={styles.proStat}>
+                <span className={styles.proStatLabel}>Active students</span>
+                <span className={styles.proStatValue}>{details.active_students ?? 0}</span>
+              </div>
+              <div className={styles.proStat}>
+                <span className={styles.proStatLabel}>Upcoming classes</span>
+                <span className={styles.proStatValue}>{details.upcoming_classes ?? 0}</span>
+              </div>
+              <div className={styles.proStat}>
+                <span className={styles.proStatLabel}>Experience</span>
+                <span className={styles.proStatValue}>
+                  {details.experience_years ? `${details.experience_years} years` : "—"}
+                </span>
+              </div>
+              <div className={styles.proStat}>
+                <span className={styles.proStatLabel}>Specialization</span>
+                <span className={styles.proStatValue}>
+                  {details.specialization || "—"}
+                </span>
+              </div>
+            </div>
+
+            <div className={styles.proFacts}>
+              <div className={styles.proFact}>
+                <span className={styles.proFactLabel}>Courses</span>
+                <span className={styles.proFactValue}>{formatValue(details.courses)}</span>
+              </div>
+            </div>
+
             <label className={styles.checkboxOption} htmlFor="teacher-teaches-children">
               <input
                 id="teacher-teaches-children"
@@ -1247,7 +1232,7 @@ export default function Account() {
               />
               <span>
                 I will teach students of any age, including children under 13
-                <p className={styles.checkboxOptionHint} style={{ color: "#666" }}>
+                <p className={styles.checkboxOptionHint}>
                   {teachesChildren
                     ? "You can be recommended for any student."
                     : "You will not be recommended for students under 13. The school is told this, and your other settings are unchanged."}
@@ -1255,24 +1240,239 @@ export default function Account() {
                 </p>
               </span>
             </label>
+          </section>
+        )}
+
+        {/* The details. Read them, then change them. */}
+        <section className={styles.proCard}>
+          <div className={styles.proCardHead}>
+            <h2 className={styles.proCardTitle}>Profile information</h2>
+            {!profileEditing ? (
+              <button
+                type="button"
+                className={styles.proBtnGhost}
+                onClick={() => setProfileEditing(true)}
+              >
+                Edit details
+              </button>
+            ) : null}
+          </div>
+
+          {profileEditing ? (
+            <form onSubmit={saveProfile} className={styles.proForm}>
+              <div className={styles.proRow}>
+                <label className={styles.proField}>
+                  <span className={styles.proLabel}>First name</span>
+                  <input
+                    className={styles.proInput}
+                    name="firstName"
+                    value={form.firstName}
+                    onChange={onChange}
+                    required
+                  />
+                </label>
+                <label className={styles.proField}>
+                  <span className={styles.proLabel}>Last name</span>
+                  <input
+                    className={styles.proInput}
+                    name="lastName"
+                    value={form.lastName}
+                    onChange={onChange}
+                    required
+                  />
+                </label>
+              </div>
+
+              <label className={styles.proField}>
+                <span className={styles.proLabel}>Email</span>
+                <input
+                  className={styles.proInput}
+                  type="email"
+                  name="email"
+                  value={form.email}
+                  onChange={onChange}
+                  required
+                />
+              </label>
+
+              <div className={styles.proRow}>
+                <label className={styles.proField}>
+                  <span className={styles.proLabel}>Country</span>
+                  <select
+                    className={styles.proInput}
+                    name="country"
+                    value={form.country}
+                    onChange={onChange}
+                  >
+                    <option value="">Select country</option>
+                    {COUNTRY_OPTIONS.map((country) => (
+                      <option key={country} value={country}>{country}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.proField}>
+                  <span className={styles.proLabel}>Birthday</span>
+                  <input
+                    className={styles.proInput}
+                    type="date"
+                    name="birthDate"
+                    value={form.birthDate}
+                    onChange={onChange}
+                  />
+                </label>
+              </div>
+
+              <div className={styles.proRow}>
+                <label className={styles.proField}>
+                  <span className={styles.proLabel}>Contact number</span>
+                  <input
+                    className={styles.proInput}
+                    name="contact"
+                    value={form.contact}
+                    onChange={onChange}
+                    placeholder="09xx xxx xxxx"
+                    required
+                  />
+                </label>
+                <label className={styles.proField}>
+                  <span className={styles.proLabel}>Time zone</span>
+                  <input
+                    className={styles.proInput}
+                    name="timezone"
+                    value={form.timezone}
+                    onChange={onChange}
+                    required
+                  />
+                </label>
+              </div>
+
+              <div className={styles.proActions}>
+                <button
+                  type="button"
+                  className={styles.proBtnGhost}
+                  onClick={cancelProfileEdit}
+                >
+                  Cancel
+                </button>
+                <button className={styles.proBtn} disabled={saving}>
+                  {saving ? "Saving..." : "Save changes"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className={styles.proFacts}>
+              {facts.map((fact) => (
+                <div key={fact.label} className={styles.proFact}>
+                  <span className={styles.proFactLabel}>{fact.label}</span>
+                  <span className={styles.proFactValue}>{fact.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* The password. */}
+        <section className={styles.proCard}>
+          <div className={styles.proCardHead}>
+            <h2 className={styles.proCardTitle}>Security</h2>
+            {!passwordEditing ? (
+              <button
+                type="button"
+                className={styles.proBtnGhost}
+                onClick={() => setPasswordEditing(true)}
+              >
+                Change password
+              </button>
+            ) : null}
+          </div>
+
+          {passwordEditing ? (
+            <form onSubmit={changePassword} className={styles.proForm}>
+              <div className={styles.proRow}>
+                <label className={styles.proField}>
+                  <span className={styles.proLabel}>Current password</span>
+                  <input
+                    className={styles.proInput}
+                    type="password"
+                    value={pwd.current}
+                    onChange={(e) => setPwd((p) => ({ ...p, current: e.target.value }))}
+                    required
+                  />
+                </label>
+                <label className={styles.proField}>
+                  <span className={styles.proLabel}>New password</span>
+                  <input
+                    className={styles.proInput}
+                    type="password"
+                    value={pwd.next}
+                    onChange={(e) => setPwd((p) => ({ ...p, next: e.target.value }))}
+                    required
+                  />
+                </label>
+              </div>
+
+              <label className={styles.proField}>
+                <span className={styles.proLabel}>Confirm new password</span>
+                <input
+                  className={styles.proInput}
+                  type="password"
+                  value={pwd.confirm}
+                  onChange={(e) => setPwd((p) => ({ ...p, confirm: e.target.value }))}
+                  required
+                />
+              </label>
+
+              <div className={styles.proActions}>
+                <button
+                  type="button"
+                  className={styles.proBtnGhost}
+                  onClick={cancelPasswordEdit}
+                >
+                  Cancel
+                </button>
+                <button className={styles.proBtn} disabled={pwdSaving}>
+                  {pwdSaving ? "Updating..." : "Update password"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <p className={styles.proFactValue}>
+              Your password is not shown to anyone, including the admin.
+            </p>
+          )}
+        </section>
+
+        {/* The facts about the account itself, and the way out. */}
+        <section className={styles.proCard}>
+          <div className={styles.proCardHead}>
+            <h2 className={styles.proCardTitle}>Account</h2>
+            <span className={styles.proBadge}>
+              {user.profileCompleted ? "Complete" : "Incomplete"}
+            </span>
+          </div>
+          <div className={styles.proFacts}>
+            <div className={styles.proFact}>
+              <span className={styles.proFactLabel}>User ID</span>
+              <span className={styles.proFactValue}>{user.id}</span>
+            </div>
+            <div className={styles.proFact}>
+              <span className={styles.proFactLabel}>Role</span>
+              <span className={styles.proFactValue}>{formatRole(user.role)}</span>
+            </div>
+            <div className={styles.proFact}>
+              <span className={styles.proFactLabel}>Created</span>
+              <span className={styles.proFactValue}>
+                {formatAccountDate(user.createdAt, user.timezone)}
+              </span>
+            </div>
+          </div>
+          <div className={styles.proActions}>
+            <button className={styles.proLogout} type="button" onClick={handleLogout}>
+              Log out
+            </button>
           </div>
         </section>
-      );
-    }
-
-    return (
-      <section className={styles.card}>
-        <div className={styles.cardHeader}>
-          <h2>Administration</h2>
-          <span>Admin</span>
-        </div>
-        <div className={styles.statsGrid}>
-          <Stat label="Active Students" value={details.active_students ?? 0} />
-          <Stat label="Active Teachers" value={details.active_teachers ?? 0} />
-          <Stat label="Archived Users" value={details.archived_users ?? 0} />
-          <Stat label="Account Status" value={user.status} />
-        </div>
-      </section>
+      </div>
     );
   }
 
@@ -1314,213 +1514,7 @@ export default function Account() {
               </section>
             )}
 
-        <section className={styles.hero}>
-          <div className={styles.avatarWrap}>
-            <button
-              type="button"
-              className={styles.avatarButton}
-              onClick={() => setAvatarMenuOpen((open) => !open)}
-              aria-label="Open profile picture options"
-            >
-              <AuthenticatedImage
-            className={styles.avatar}
-            src={user?.profileImageUrl}
-            alt={`${fullName} profile`}
-            fallback={<img className={styles.avatar} src={pfp} alt={`${fullName} profile`} />}
-          />
-              <span className={styles.avatarEditMark}>+</span>
-            </button>
-            {avatarMenuOpen && (
-              <div className={styles.avatarMenu}>
-                <button type="button" onClick={() => { setPreviewOpen(true); setAvatarMenuOpen(false); }}>
-                  See profile picture
-                </button>
-                <button type="button" onClick={chooseProfilePicture} disabled={pictureUploading}>
-                  Upload file
-                </button>
-                <button type="button" onClick={takeProfilePicture} disabled={pictureUploading}>
-                  Take picture
-                </button>
-              </div>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              className={styles.fileInput}
-              onChange={(e) => handleProfileFile(e.target.files?.[0])}
-            />
-          </div>
-
-          <div className={styles.heroContent}>
-            <div>
-              <h1>{fullName}</h1>
-              <div className={styles.badges}>
-                <span>{formatRole(user.role)}</span>
-                <span>{formatRole(user.status)}</span>
-              </div>
-            </div>
-            <p>{user.email}</p>
-          </div>
-        </section>
-
-        <section className={styles.mainGrid}>
-          <section className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h2>Profile Information</h2>
-              <span>{profileEditing ? "Editing" : "Locked"}</span>
-            </div>
-            <form onSubmit={saveProfile} className={styles.form}>
-              <div className={styles.row}>
-                <label>
-                  First Name
-                  <input name="firstName" value={form.firstName} onChange={onChange} disabled={!profileEditing} required />
-                </label>
-                <label>
-                  Last Name
-                  <input name="lastName" value={form.lastName} onChange={onChange} disabled={!profileEditing} required />
-                </label>
-              </div>
-
-              <div className={styles.row}>
-                <label>
-                  Email
-                  <input type="email" name="email" value={form.email} onChange={onChange} disabled={!profileEditing} required />
-                </label>
-              </div>
-
-              <div className={styles.row}>
-                <label>
-                  Country
-                  <select name="country" value={form.country} onChange={onChange} disabled={!profileEditing}>
-                    <option value="">Select Country</option>
-                    {COUNTRY_OPTIONS.map((country) => (
-                      <option key={country} value={country}>{country}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Birthday
-                  <input type="date" name="birthDate" value={form.birthDate} onChange={onChange} disabled={!profileEditing} />
-                </label>
-              </div>
-
-              <div className={styles.row}>
-                <label>
-                  Contact Number
-                  <input name="contact" value={form.contact} onChange={onChange} disabled={!profileEditing} placeholder="09xx xxx xxxx" required />
-                </label>
-                <label>
-                  Age
-                  <input value={age === null ? "Not set" : `${age} years old`} disabled readOnly />
-                </label>
-              </div>
-
-              <div className={styles.row}>
-                <label>
-                  Timezone
-                  <div className={styles.timezoneControl}>
-                    <select name="timezone" value={form.timezone} onChange={onChange} disabled={!profileEditing} required>
-                      <option value="">Select timezone</option>
-                      {form.timezone && !TIMEZONE_OPTIONS.includes(form.timezone) && (
-                        <option value={form.timezone}>{formatTimezoneLabel(form.timezone)}</option>
-                      )}
-                      {TIMEZONE_OPTIONS.map((timezone) => (
-                        <option key={timezone} value={timezone}>{formatTimezoneLabel(timezone)}</option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className={styles.detectBtn}
-                      onClick={autoDetectTimezone}
-                      disabled={!profileEditing}
-                    >
-                      Auto Detect
-                    </button>
-                  </div>
-                </label>
-              </div>
-
-              <div className={styles.actions}>
-                {profileEditing && (
-                  <button type="button" className={styles.textBtn} onClick={cancelProfileEdit}>
-                    Cancel
-                  </button>
-                )}
-                <button className={styles.primaryBtn} disabled={saving}>
-                  {profileEditing ? (saving ? "Saving..." : "Save Changes") : "Update Profile"}
-                </button>
-              </div>
-            </form>
-          </section>
-
-          {renderRolePanel()}
-
-          <section className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h2>Security</h2>
-              <span>{passwordEditing ? "Editing" : "Locked"}</span>
-            </div>
-            <form onSubmit={changePassword} className={styles.form}>
-              <div className={styles.row}>
-                <label>
-                  Current Password
-                  <input
-                    type="password"
-                    value={pwd.current}
-                    disabled={!passwordEditing}
-                    onChange={(e) => setPwd((p) => ({ ...p, current: e.target.value }))}
-                    required={passwordEditing}
-                  />
-                </label>
-                <label>
-                  New Password
-                  <input
-                    type="password"
-                    value={pwd.next}
-                    disabled={!passwordEditing}
-                    onChange={(e) => setPwd((p) => ({ ...p, next: e.target.value }))}
-                    required={passwordEditing}
-                  />
-                </label>
-               <label>
-                  Confirm Password
-                  <input
-                    type="password"
-                    value={pwd.confirm}
-                    disabled={!passwordEditing}
-                    onChange={(e) => setPwd((p) => ({ ...p, confirm: e.target.value }))}
-                    required={passwordEditing}
-                  />
-                </label>
-              </div>
-
-              <div className={styles.actions}>
-                {passwordEditing && (
-                  <button type="button" className={styles.textBtn} onClick={cancelPasswordEdit}>
-                    Cancel
-                  </button>
-                )}
-                <button className={styles.primaryBtn} disabled={pwdSaving}>
-                  {passwordEditing ? (pwdSaving ? "Updating..." : "Save Password") : "Update Password"}
-                </button>
-              </div>
-            </form>
-          </section>
-
-          <section className={`${styles.card} ${styles.accountMeta}`}>
-            <div className={styles.cardHeader}>
-              <h2>Account</h2>
-              <span>{user.profileCompleted ? "Complete" : "Incomplete"}</span>
-            </div>
-            <div className={styles.detailList}>
-              <p><strong>User ID:</strong> {user.id}</p>
-              <p><strong>Role:</strong> {formatRole(user.role)}</p>
-              <p><strong>Created:</strong> {formatAccountDate(user.createdAt, user.timezone)}</p>
-            </div>
-            <button className={styles.logoutBtn} type="button" onClick={handleLogout}>Log out</button>
-          </section>
-        </section>
+          {renderStaffAccount()}
           </>
         )}
       </div>

@@ -817,3 +817,306 @@ label.checkboxOption > input[type='checkbox']:disabled {
   font-weight: 400;
   line-height: 1.45;
 }
+
+/* ============================================================
+   THE STAFF ACCOUNT PAGE - a teacher and an admin
+   ============================================================ */
+
+/*
+ * !! The same shape as the student's page - a stack of cards, one thing in
+ * !! each - at an adult's proportions. One product, two sizes.
+ *
+ * !! The two pages are the same idea because a teacher and a student are
+ * !! looking at the same account. The differences are the words and the
+ * !! size of the type, not the shape of the page.
+ */
+
+.proPage {
+  display: grid;
+  gap: 16px;
+}
+
+/* Who this is. */
+.proHero {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 22px 24px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--neu-shadow-lg);
+}
+
+.proHeroText {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.proHeroName {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--primary);
+}
+
+.proHeroMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.proBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(145, 167, 154, 0.16);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.proHeroEmail {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 600;
+  word-break: break-word;
+}
+
+/* A card. One thing in it. */
+.proCard {
+  display: grid;
+  gap: 16px;
+  padding: 22px 24px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--neu-shadow-lg);
+}
+
+.proCardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.proCardTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+/* The facts. The label is quiet; the value is what you check. */
+.proFacts {
+  display: grid;
+  gap: 8px;
+}
+
+.proFact {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 11px 14px;
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+}
+
+.proFactLabel {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.proFactValue {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* The numbers, each one a tile. */
+.proStatGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.proStat {
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+}
+
+.proStatLabel {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.proStatValue {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--primary);
+  overflow-wrap: anywhere;
+}
+
+/* The form. */
+.proForm {
+  display: grid;
+  gap: 14px;
+}
+
+.proRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.proField {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.proLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-mid);
+}
+
+.proInput {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  outline: none;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.proInput:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(121, 168, 71, 0.18);
+}
+
+.proActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.proBtn {
+  min-height: 44px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--control-radius);
+  background: var(--primary);
+  color: #fff;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.proBtn:hover:not(:disabled) {
+  background: var(--primary-mid);
+  transform: translateY(-1px);
+}
+
+.proBtn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.proBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.proBtnGhost {
+  min-height: 44px;
+  padding: 10px 20px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--primary);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.proBtnGhost:hover:not(:disabled) {
+  background: var(--bg-alt);
+  transform: translateY(-1px);
+}
+
+.proBtnGhost:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* The way out. */
+.proLogout {
+  min-height: 44px;
+  padding: 10px 20px;
+  border: 1px solid rgba(168, 58, 52, 0.2);
+  border-radius: var(--control-radius);
+  background: var(--pill-danger);
+  color: var(--text-danger);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.proLogout:hover {
+  background: #f8ded9;
+}
+
+/* --------------------------------------------------------- small screens */
+
+@media (max-width: 720px) {
+  .proRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .proFact {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .proCard,
+  .proHero {
+    padding: 18px;
+  }
+}

@@ -1141,6 +1141,8 @@ Every class you have had.
 - **The counts update as they choose**, and they are the number of classes in that pill *with the other two questions already answered*. So "This week 1" means one class this week, right now, not a number from before.
 - **"When" is three words, not a calendar.** "This week", "this month" and "earlier" cannot be got wrong. A child cannot read a date range, and a calendar of the past is a puzzle.
 
+The teacher's version of the same data is untouched, and stays a review screen.
+
 ### 5.14 The account menu
 
 `frontend/src/components/AccountMenu.jsx`, with its styles in `AccountMenu.module.css` and its words in the `ACCOUNT` group of `studentCopy.js`.
@@ -1201,7 +1203,31 @@ The account page was the admin's screen with the admin's words on it — "Profil
 - **One green button per card**, and it says what it does: "Save my details", "Save my password".
 - **A teacher's and an admin's account page are untouched.** Their pages carry a teaching profile and an administration panel, and neither is a screen for a five-year-old.
 
-The teacher's version of the same data is untouched, and stays a review screen.
+### 5.16 A teacher's and an admin's account page
+
+`frontend/src/pages/account.jsx` (the staff branch), with its styles in `account.module.css`.
+
+**The same shape as the student's page — a stack of cards, one thing in each — at an adult's proportions.** One product, two sizes. A teacher and a student are looking at the same account, so the page has the same shape; the differences are the words and the size of the type, not the structure.
+
+```
+┌ 📷  Jennifer Santos                              ┐
+│      Admin · Active                               │
+│      admin@jenacademia.local                     │
+└───────────────────────────────────────────────────┘
+┌ ADMINISTRATION ───────────────────────────────────┐
+│  ACTIVE STUDENTS  ACTIVE TEACHERS  ARCHIVED USERS  │
+│  6               7              0                  │
+└───────────────────────────────────────────────────┘
+┌ PROFILE INFORMATION ─────────────────── [Edit details] ┐
+│  FIRST NAME    Jennifer                                │
+│  BIRTHDAY      8 April 1987                            │
+└─────────────────────────────────────────────────────────┘
+```
+
+- **The details are READ, not edited.** The old page showed a form of disabled inputs under a badge that said "Locked" — a form you cannot use, and a badge that says "no". Now the facts are a list and "Edit details" turns the list into inputs.
+- **The numbers are tiles**, each one a number with a quiet label above it.
+- **One primary action per card**, and it says what it does: "Save changes", "Update password".
+- **The way out is red**, like the student's.
 
 ---
 
