@@ -484,35 +484,37 @@ export default function AssignmentsDropbox() {
                       <p className={styles.submissionAnswerText}>{submittedAnswer}</p>
                     </div>
                   ) : null}
-                  <div className={styles.submittedFileInfo}>
-                    <span className={styles.submittedFileLabel}>SUBMITTED FILE</span>
-                    <p className={styles.submissionFileName}>
-                      {getFileName(submittedFileUrl)}
-                    </p>
-                  </div>
                   {submittedFileUrl ? (
-                    <div className={styles.submissionFileActions}>
-                      <button
-                        type="button"
-                        className={styles.submissionFileButton}
-                        onClick={() =>
-                          openSubmissionFile(submittedFileUrl).catch(() =>
-                            notify?.("That file could not be opened. Please try again.", "error")
-                          )
-                        }
-                      >
-                        Open file
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.submissionFileButton}
-                        onClick={() => downloadAuthenticatedFile(submittedFileUrl)}
-                      >
-                        Download
-                      </button>
-                    </div>
+                    <>
+                      <div className={styles.submittedFileInfo}>
+                        <span className={styles.submittedFileLabel}>SUBMITTED FILE</span>
+                        <p className={styles.submissionFileName}>
+                          {getFileName(submittedFileUrl)}
+                        </p>
+                      </div>
+                      <div className={styles.submissionFileActions}>
+                        <button
+                          type="button"
+                          className={styles.submissionFileButton}
+                          onClick={() =>
+                            openSubmissionFile(submittedFileUrl).catch(() =>
+                              notify?.("That file could not be opened. Please try again.", "error")
+                            )
+                          }
+                        >
+                          Open file
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.submissionFileButton}
+                          onClick={() => downloadAuthenticatedFile(submittedFileUrl)}
+                        >
+                          Download
+                        </button>
+                      </div>
+                      <SubmissionPreview fileUrl={submittedFileUrl} />
+                    </>
                   ) : null}
-                  <SubmissionPreview fileUrl={submittedFileUrl} />
 
                   {submissionHistory.length > 0 ? (
                     <div className={styles.submissionHistory}>

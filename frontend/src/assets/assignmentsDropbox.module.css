@@ -36,19 +36,23 @@
 .cont {
   font-family: "Poppins", sans-serif;
   color: var(--text);
-  min-height: calc(100vh - 160px);
-  padding-bottom: 20px;
-  background: #fafbfa;
+  min-height: max(0px, calc(100vh - 160px));
+  min-height: max(0px, calc(100dvh - 160px));
+  padding-bottom: clamp(16px, 2vh, 28px);
+  background: transparent;
+  box-sizing: border-box;
 }
 
 .center {
-  max-width: 1100px;
+  width: min(100%, 1680px);
+  max-width: none;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 clamp(0px, 1.4vw, 22px);
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 16px;
+  gap: clamp(12px, 1.4vw, 20px);
+  box-sizing: border-box;
 }
 
 .backButton {
@@ -86,6 +90,7 @@
 
 .tabBar {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 4px;
 }
@@ -101,7 +106,7 @@
   border-radius: var(--radius-xl);
   background: var(--surface);
   color: var(--text-mid);
-  font-size: 1.25rem;
+  font-size: clamp(1rem, 1.15vw, 1.25rem);
   font-weight: 800;
   transition:
     border-color var(--duration-fast) var(--ease-out),
@@ -149,7 +154,8 @@
 .contentWrapper {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  flex: 1;
+  gap: clamp(12px, 1.4vw, 20px);
   min-width: 0;
 }
 
@@ -168,8 +174,8 @@
 
 .instructionSheet {
   display: grid;
-  gap: 16px;
-  padding: 24px;
+  gap: clamp(12px, 1.4vw, 20px);
+  padding: clamp(20px, 2vw, 32px);
 }
 
 .instructionIcon {
@@ -189,6 +195,7 @@
   font-size: 1.05rem;
   line-height: 1.5;
   color: var(--text);
+  overflow-wrap: anywhere;
 }
 
 .cardAttachment {
@@ -225,7 +232,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  padding: 20px;
+  padding: clamp(18px, 2vw, 28px);
   box-shadow: var(--neu-shadow-lg);
   margin-top: 0;
   display: flex;
@@ -243,7 +250,7 @@
 
 .commentBox {
   width: 100%;
-  min-height: 140px;
+  min-height: clamp(120px, 20vh, 240px);
   padding: 14px;
   font-size: 1rem;
   font-family: inherit;
@@ -347,6 +354,9 @@
 /* ---------- Submissions panel card ---------- */
 
 .submissionPanel {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
@@ -358,27 +368,47 @@
 }
 
 .submissionCard {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  padding: 0;
-  box-shadow: var(--neu-shadow-lg);
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: clamp(20px, 2.2vw, 36px);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  gap: clamp(14px, 1.5vw, 22px);
 }
 
 .submissionHead {
   margin: 0;
-  padding: 20px 24px 0 24px;
-  font-size: 1.5rem;
+  padding: 0;
+  font-size: clamp(1.3rem, 1.8vw, 1.75rem);
   font-weight: 800;
   line-height: 1.25;
   color: var(--primary);
 }
 
+.submissionAnswerBlock {
+  margin: 0;
+  padding: clamp(16px, 1.8vw, 24px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.submissionAnswerText {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(1rem, 1.15vw, 1.15rem);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .submittedFileInfo {
-  padding: 12px 24px 0 24px;
+  padding: 0;
 }
 
 .submittedFileLabel {
@@ -392,7 +422,7 @@
 }
 
 .submissionFileName {
-  margin: 0 0 16px 0;
+  margin: 0;
   color: var(--text);
   font-weight: 700;
   font-size: 1.1rem;
@@ -402,7 +432,7 @@
 .submissionFileActions {
   display: flex;
   gap: 12px;
-  padding: 0 24px 16px 24px;
+  padding: 0;
 }
 
 .submissionFileButton {
@@ -440,12 +470,20 @@
   border: 1px solid var(--border);
   background: var(--surface-recessed);
   display: block;
+  box-sizing: border-box;
+}
+
+.previewMedia {
+  max-height: 72vh;
+}
+
+.previewImage {
+  max-height: 72vh;
+  object-fit: contain;
 }
 
 .previewFrame {
-  min-height: 320px;
-  height: auto;
-  aspect-ratio: 16 / 9;
+  height: clamp(320px, 65vh, 900px);
 }
 
 .previewUnsupported {
@@ -483,8 +521,8 @@
 /* ---------- Submission history ---------- */
 
 .submissionHistory {
-  margin-top: 16px;
-  padding: 0 24px 24px 24px;
+  margin-top: 0;
+  padding: 0;
 }
 
 .historyButton {
@@ -585,32 +623,22 @@
 
 @media (max-width: 1024px) {
   .center {
-    max-width: 100%;
-    padding: 0 20px;
+    width: 100%;
+    padding: 0;
   }
 
   .tabButton {
     min-height: 44px;
-    font-size: 1.15rem;
+    font-size: clamp(1rem, 2vw, 1.15rem);
     padding: 0 20px;
   }
 
   .previewFrame {
-    min-height: 260px;
+    height: clamp(280px, 55vh, 640px);
   }
 
-  .instructionSheet,
-  .responsePanel,
   .submissionCard {
-    padding: 20px;
-  }
-
-  .submissionFileActions {
-    padding: 0 20px 14px 20px;
-  }
-
-  .submissionHistory {
-    padding: 0 20px 16px 20px;
+    padding: clamp(20px, 3vw, 30px);
   }
 
   .historyButton {
@@ -624,11 +652,11 @@
 
 @media (max-width: 640px) {
   .cont {
-    padding-bottom: 16px;
+    min-height: 0;
+    padding-bottom: 12px;
   }
 
   .center {
-    padding: 0 16px;
     gap: 12px;
   }
 
@@ -640,13 +668,13 @@
 
   .tabBar {
     gap: 8px;
-    margin-bottom: 4px;
+    margin-bottom: 0;
   }
 
   .tabButton {
     min-height: 44px;
-    font-size: 1.1rem;
-    padding: 0 16px;
+    font-size: 1rem;
+    padding: 0 12px;
     flex: 1;
     min-width: 0;
   }
@@ -703,18 +731,28 @@
     padding: 0;
   }
 
+  .submissionCard {
+    padding: 18px;
+    gap: 14px;
+  }
+
   .submissionHead {
-    padding: 16px 16px 0 16px;
-    font-size: 1.3rem;
+    padding: 0;
+    font-size: 1.25rem;
   }
 
   .submittedFileInfo {
-    padding: 12px 16px 0 16px;
+    padding: 0;
+  }
+
+  .submissionAnswerBlock {
+    margin: 0;
+    padding: 14px;
   }
 
   .submissionFileActions {
     flex-direction: column;
-    padding: 0 16px 14px 16px;
+    padding: 0;
   }
 
   .submissionFileActions .submissionFileButton {
@@ -723,7 +761,12 @@
   }
 
   .previewFrame {
-    min-height: 220px;
+    height: clamp(220px, 55vh, 480px);
+  }
+
+  .previewMedia,
+  .previewImage {
+    max-height: 55vh;
   }
 
   .emptySubmission {
@@ -735,7 +778,7 @@
   }
 
   .submissionHistory {
-    padding: 0 16px 16px 16px;
+    padding: 0;
   }
 
   .historyButton {
