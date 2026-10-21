@@ -25,15 +25,19 @@ import { clearStoredUser } from "../utils/sessionUser.js";
  * !! The same picture the header shows, so the person recognises themselves.
  * !! A stored photo sits behind the session, so it is resolved to a blob:
  * !! URL the same way the header does it - a plain <img> would be refused.
+ *
+ * !! Two sizes: small in the header, where it sits beside 42px buttons and
+ * !! a 38px picture is what looks right, and large in the menu, where it is
+ * !! the first thing on the panel.
  */
-function AccountAvatar({ user }) {
+function AccountAvatar({ user, className = "" }) {
   const url = user?.profileImageUrl || user?.profile_image_url;
   return (
     <AuthenticatedImage
       src={url}
       alt=""
-      className={styles.avatar}
-      fallback={<img className={styles.avatar} src={pfp} alt="" />}
+      className={`${styles.avatar} ${className}`}
+      fallback={<img className={`${styles.avatar} ${className}`} src={pfp} alt="" />}
     />
   );
 }
@@ -87,7 +91,7 @@ export default function AccountMenu({ user, role, classHistoryPath = "/classHist
         aria-label={ACCOUNT.menuLabel}
       >
         <span className={styles.triggerName}>{fullName}</span>
-        <AccountAvatar user={user} />
+        <AccountAvatar user={user} className={styles.avatarSmall} />
         <i className={`bi bi-chevron-down ${styles.triggerCaret}`} aria-hidden="true" />
       </button>
 

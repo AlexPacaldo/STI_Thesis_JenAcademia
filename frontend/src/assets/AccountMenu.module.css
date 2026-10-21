@@ -111,6 +111,16 @@
   border: 1px solid var(--border);
 }
 
+/* The picture in the header.
+   !! The chat and bell buttons beside it are 42px, and a 52px picture next
+   !! to them is the loudest thing in the header for no reason. This is the
+   !! size the header used before the menu existed. */
+.avatarSmall {
+  width: 38px;
+  height: 38px;
+  box-shadow: 0 2px 8px rgba(18, 34, 30, 0.1);
+}
+
 .avatarFallback {
   display: grid;
   place-items: center;
