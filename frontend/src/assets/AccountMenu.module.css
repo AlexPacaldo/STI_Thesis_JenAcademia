@@ -1,0 +1,211 @@
+/*
+ * The menu that opens from the name in the header.
+ *
+ * The shape is the one everybody already knows: the person at the top, a
+ * list of places to go, the way out, and a quiet line at the bottom.
+ *
+ * !! Every row is 60px tall. A child's finger is not a mouse pointer, and a
+ * !! row that is 40px is a row they miss.
+ */
+
+.wrapper {
+  position: relative;
+  min-width: 0;
+}
+
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px;
+  border-radius: 14px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) ease,
+    transform var(--duration-fast) ease;
+}
+
+.trigger:hover {
+  background: rgba(38, 66, 59, 0.06);
+  transform: translateY(-1px);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.triggerName {
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+.triggerCaret {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------- the menu */
+
+.menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 1100;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 0 4px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-xl);
+  animation: enterUp var(--duration-base) var(--ease-out);
+}
+
+/* Who this is. */
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-3);
+}
+
+.headText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.headName {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.headRole {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.avatar,
+.avatarFallback {
+  width: 52px;
+  height: 52px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+}
+
+.avatarFallback {
+  display: grid;
+  place-items: center;
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.divider {
+  height: 1px;
+  margin: 6px 0;
+  background: var(--border);
+}
+
+.items {
+  display: grid;
+}
+
+/* A row. A picture, a word, and a chevron that says "there is more here". */
+.item {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 60px;
+  padding: 8px var(--space-4);
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.item:hover,
+.item:focus-visible {
+  background: var(--surface-soft);
+}
+
+.item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.itemIcon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--surface-recessed);
+  color: var(--primary);
+  font-size: 1.1rem;
+}
+
+.itemLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemChevron {
+  font-size: 0.8rem;
+  color: var(--muted-light);
+}
+
+/* The quiet line at the bottom. */
+.footer {
+  margin: 6px 0 0;
+  padding: var(--space-2) var(--space-4) var(--space-1);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted-light);
+}
+
+/* ------------------------------------------------------------ small screens */
+
+@media (max-width: 640px) {
+  .menu {
+    position: fixed;
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
+    max-width: none;
+    border-radius: var(--radius-xl);
+  }
+
+  .triggerName {
+    max-width: 110px;
+  }
+}

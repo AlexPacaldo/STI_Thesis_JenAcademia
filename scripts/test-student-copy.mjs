@@ -17,6 +17,7 @@
  */
 
 import {
+  ACCOUNT,
   BANNED_STUDENT_WORDS,
   BOOKING,
   CLASS_INFO,
@@ -91,6 +92,7 @@ const GROUPS = {
   CLASS_INFO,
   LEGEND,
   HISTORY,
+  ACCOUNT,
   CONFIRM,
   LOADING,
 };

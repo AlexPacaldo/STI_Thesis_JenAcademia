@@ -1141,6 +1141,66 @@ Every class you have had.
 - **The counts update as they choose**, and they are the number of classes in that pill *with the other two questions already answered*. So "This week 1" means one class this week, right now, not a number from before.
 - **"When" is three words, not a calendar.** "This week", "this month" and "earlier" cannot be got wrong. A child cannot read a date range, and a calendar of the past is a puzzle.
 
+### 5.14 The account menu
+
+`frontend/src/components/AccountMenu.jsx`, with its styles in `AccountMenu.module.css` and its words in the `ACCOUNT` group of `studentCopy.js`.
+
+It is shaped like the menu everybody already knows from every other app: **the person at the top, a list of places to go, the way out, and a quiet line at the bottom.** A child who has used any phone can use this without being told.
+
+```
+┌──────────────────────────────────┐
+│ [avatar]  Alex Pacaldo            │
+│           Student                 │
+│ ───────────────────────────────  │
+│ [👤] My account                 › │
+│ [🕘] My classes                › │
+│ [❓] Get help                   › │
+│ ───────────────────────────────  │
+│ [🚪] Log out                      │
+│                                  │
+│ JEN Academia                      │
+└──────────────────────────────────┘
+```
+
+- **Every row is 60px tall.** A child's finger is not a mouse pointer.
+- **Every row has a picture AND a word.** A child who cannot read the icon yet still knows what it is for. The picture is in a circle, the word beside it.
+- **The chevron says there is more.** It is decoration, and it is `aria-hidden`.
+- **The way out is red**, because a button that undoes something should not look like a button that does something.
+- **Clicking anywhere else closes it, and so does Escape.** Escape also puts the focus back on the name, so the keyboard does not lose its place.
+- **On a phone it is a sheet at the bottom of the screen**, not a panel hanging off an edge the student cannot reach.
+
+### 5.15 The student's account page
+
+`frontend/src/pages/account.jsx` (the student branch), with its styles in `studentKid.module.css` and its words in the `ACCOUNT` group.
+
+The account page was the admin's screen with the admin's words on it — "Profile Information", a "Locked" badge over a form of disabled inputs, a "Security" card, a "Contract" card, and a table of user IDs. So the student's page is a different screen, not a restyled one:
+
+```
+┌ 📷  Hi, Alex                                  ┐
+│      STUDENT                                  │
+│      alexpacaldo@gmail.com                    │
+└───────────────────────────────────────────────┘
+┌ CLASSES LEFT ─────────────────────────────────┐
+│  12  of 20                                    │
+│  ▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+│  Your plan ends on 10 Jan 2027                │
+└───────────────────────────────────────────────┘
+┌ YOUR CLASS ─────────┐ ┌ YOUR TEACHER ────────┐
+│ Conversational Eng. │ │ Richard Santos        │
+└─────────────────────┘ └──────────────────────┘
+┌ ABOUT YOU ─────────────────────── [Change my details] ┐
+│  YOUR NAME      Alex Pacaldo                            │
+│  BIRTHDAY       10 November 2003                        │
+│  COUNTRY        Philippines                             │
+└─────────────────────────────────────────────────────────┘
+```
+
+- **The number is the picture**, and it is the same counter the home page has — so a student learns one shape and sees it everywhere.
+- **The page is read, not edited.** The details are a list: the label is quiet, the value is what you check. "Change my details" turns the list into big inputs.
+- **The inputs are 60px tall.** Reading small print is work, and the work is what stops a child.
+- **One green button per card**, and it says what it does: "Save my details", "Save my password".
+- **A teacher's and an admin's account page are untouched.** Their pages carry a teaching profile and an administration panel, and neither is a screen for a five-year-old.
+
 The teacher's version of the same data is untouched, and stays a review screen.
 
 ---

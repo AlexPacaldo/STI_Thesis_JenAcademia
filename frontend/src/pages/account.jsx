@@ -2,6 +2,7 @@ import axios from "axios";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "../assets/account.module.css";
+import kid from "../assets/studentKid.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
@@ -12,6 +13,7 @@ import { API_BASE_URL } from "../utils/api.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { compressFileIfImage } from "../utils/imageCompression.js";
 import ModalPortal from "../utils/ModalPortal.jsx";
+import { ACCOUNT } from "../utils/studentCopy.js";
 
 const API = API_BASE_URL;
 const CROP_SIZE = 320;
@@ -838,6 +840,362 @@ export default function Account() {
     );
   }
 
+  /**
+   * The student's own account page.
+   *
+   * !! This was the admin's screen with the admin's words on it: "Profile
+   * !! Information", a "Locked" badge over a form of disabled inputs, a
+   * !! "Security" card, a "Contract" card, and a table of user IDs.
+   * !!
+   * !! So it is a different screen, not a restyled one. It answers the three
+   * !! questions a student has about their own account - how many classes
+   * !! are left, what am I learning, and who is my teacher - and then lets
+   * !! them change their picture, their details and their password.
+   * !!
+   * !! The number is the picture, and it is the same counter the home page
+   * !! has, so a student learns one shape and sees it everywhere.
+   */
+  function renderStudentAccount() {
+    const classesTotal = Number(contract.total || 0);
+    const classesLeft = contract.state === "cancelled" ? 0 : Number(contract.left || 0);
+    const usedPct = classesTotal > 0 ? Math.min(100, Math.round((contract.used / classesTotal) * 100)) : 0;
+
+    const teacherName = details.teacher_first_name
+      ? `${details.teacher_first_name} ${details.teacher_last_name || ""}`.trim()
+      : details.teacher_name;
+
+    const planEnd =
+      contract.expiry?.detail?.replace(/^Contract ends /, "") || contract.expiry?.when || "";
+
+    const birthday = form.birthDate
+      ? new Date(`${form.birthDate}T00:00:00`).toLocaleDateString(undefined, {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      : "";
+
+    const details_rows = [
+      { label: ACCOUNT.yourName, value: fullName },
+      { label: ACCOUNT.birthday, value: birthday },
+      { label: ACCOUNT.country, value: form.country },
+      { label: ACCOUNT.phone, value: form.contact },
+      {
+        label: ACCOUNT.timeZone,
+        value: form.timezone ? formatTimezoneLabel(form.timezone) : "",
+      },
+      { label: ACCOUNT.email, value: form.email },
+    ].filter((row) => row.value);
+
+    return (
+      <div className={kid.kidAccount}>
+        {/* Something still to do. */}
+        {isProfileIncomplete ? (
+          <section className={kid.kidNotice}>
+            <h2 className={kid.kidNoticeTitle}>{ACCOUNT.finishProfile}</h2>
+            <p className={kid.kidNoticeBody}>{ACCOUNT.finishProfileHelp}</p>
+            <ul className={kid.kidNoticeList}>
+              <li className={kid.kidNoticeItem}>
+                <span className={kid.kidNoticeTick} aria-hidden="true">
+                  {user?.profileImageUrl ? "✓" : "•"}
+                </span>
+                {ACCOUNT.needPicture}
+              </li>
+              <li className={kid.kidNoticeItem}>
+                <span className={kid.kidNoticeTick} aria-hidden="true">
+                  {String(form.contact || "").trim() ? "✓" : "•"}
+                </span>
+                {ACCOUNT.needPhone}
+              </li>
+            </ul>
+          </section>
+        ) : null}
+
+        {/* Who this is. */}
+        <section className={kid.kidAccountHero}>
+          <div className={kid.kidAvatarWrap}>
+            <button
+              type="button"
+              className={kid.kidAvatarButton}
+              onClick={() => setAvatarMenuOpen((open) => !open)}
+              aria-label={ACCOUNT.changePicture}
+            >
+              <AuthenticatedImage
+                className={kid.kidAvatar}
+                src={user?.profileImageUrl}
+                alt={`${fullName} profile`}
+                fallback={<img className={kid.kidAvatar} src={pfp} alt={`${fullName} profile`} />}
+              />
+              <span className={kid.kidAvatarEdit} aria-hidden="true">
+                +
+              </span>
+            </button>
+            {avatarMenuOpen && (
+              <div className={styles.avatarMenu}>
+                <button type="button" onClick={() => { setPreviewOpen(true); setAvatarMenuOpen(false); }}>
+                  See profile picture
+                </button>
+                <button type="button" onClick={chooseProfilePicture} disabled={pictureUploading}>
+                  Upload file
+                </button>
+                <button type="button" onClick={takeProfilePicture} disabled={pictureUploading}>
+                  Take picture
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className={kid.kidHeroText}>
+            <h1 className={kid.kidHeroName}>{ACCOUNT.hello(form.firstName || fullName)}</h1>
+            <span className={kid.kidHeroRole}>{formatRole(user.role)}</span>
+            <p className={kid.kidHeroEmail}>{form.email}</p>
+          </div>
+        </section>
+
+        {/* The number is the picture. */}
+        {classesTotal > 0 ? (
+          <section className={kid.kidPlanCard}>
+            <p className={kid.sectionTitle}>{ACCOUNT.classesLeft}</p>
+            <div className={kid.kidCounterRow}>
+              <span className={kid.kidCounterNumber}>{classesLeft}</span>
+              <span className={kid.kidCounterOf}>{ACCOUNT.of(classesTotal)}</span>
+            </div>
+            <div className={kid.kidCounterBar}>
+              <div className={kid.kidCounterBarFill} style={{ width: `${usedPct}%` }} />
+            </div>
+            {planEnd ? <p className={kid.kidPlanNote}>{ACCOUNT.planEnds(planEnd)}</p> : null}
+          </section>
+        ) : null}
+
+        {/* What the student is learning, and who is teaching them. */}
+        <div className={kid.kidTwoUp}>
+          <section className={kid.kidInfoCard}>
+            <p className={kid.sectionTitle}>{ACCOUNT.yourClass}</p>
+            <p className={kid.kidInfoValue}>{details.course_name || ACCOUNT.notSet}</p>
+          </section>
+          <section className={kid.kidInfoCard}>
+            <p className={kid.sectionTitle}>{ACCOUNT.yourTeacher}</p>
+            <p className={kid.kidInfoValue}>{teacherName || ACCOUNT.notSet}</p>
+          </section>
+        </div>
+
+        {/* About you. Read it, then change it. */}
+        <section className={kid.kidCard}>
+          <div className={kid.kidCardHead}>
+            <h2 className={kid.kidCardTitle}>{ACCOUNT.aboutYou}</h2>
+            {!profileEditing ? (
+              <button
+                type="button"
+                className={kid.kidGhostBtn}
+                onClick={() => setProfileEditing(true)}
+              >
+                {ACCOUNT.changeDetails}
+              </button>
+            ) : null}
+          </div>
+
+          {profileEditing ? (
+            <form onSubmit={saveProfile} className={kid.kidForm}>
+              <div className={kid.kidRow}>
+                <label className={kid.kidField}>
+                  <span className={kid.kidFieldLabel}>{ACCOUNT.firstName}</span>
+                  <input
+                    className={kid.kidInput}
+                    name="firstName"
+                    value={form.firstName}
+                    onChange={onChange}
+                    required
+                  />
+                </label>
+                <label className={kid.kidField}>
+                  <span className={kid.kidFieldLabel}>{ACCOUNT.lastName}</span>
+                  <input
+                    className={kid.kidInput}
+                    name="lastName"
+                    value={form.lastName}
+                    onChange={onChange}
+                    required
+                  />
+                </label>
+              </div>
+
+              <label className={kid.kidField}>
+                <span className={kid.kidFieldLabel}>{ACCOUNT.email}</span>
+                <input
+                  className={kid.kidInput}
+                  type="email"
+                  name="email"
+                  value={form.email}
+                  onChange={onChange}
+                  required
+                />
+              </label>
+
+              <div className={kid.kidRow}>
+                <label className={kid.kidField}>
+                  <span className={kid.kidFieldLabel}>{ACCOUNT.country}</span>
+                  <select
+                    className={kid.kidInput}
+                    name="country"
+                    value={form.country}
+                    onChange={onChange}
+                  >
+                    <option value="">-</option>
+                    {COUNTRY_OPTIONS.map((country) => (
+                      <option key={country} value={country}>{country}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className={kid.kidField}>
+                  <span className={kid.kidFieldLabel}>{ACCOUNT.birthday}</span>
+                  <input
+                    className={kid.kidInput}
+                    type="date"
+                    name="birthDate"
+                    value={form.birthDate}
+                    onChange={onChange}
+                  />
+                </label>
+              </div>
+
+              <label className={kid.kidField}>
+                <span className={kid.kidFieldLabel}>{ACCOUNT.phone}</span>
+                <input
+                  className={kid.kidInput}
+                  name="contact"
+                  value={form.contact}
+                  onChange={onChange}
+                  placeholder="09xx xxx xxxx"
+                  required
+                />
+              </label>
+
+              <label className={kid.kidField}>
+                <span className={kid.kidFieldLabel}>{ACCOUNT.timeZone}</span>
+                <div className={styles.timezoneControl}>
+                  <select
+                    className={kid.kidInput}
+                    name="timezone"
+                    value={form.timezone}
+                    onChange={onChange}
+                    required
+                  >
+                    <option value="">-</option>
+                    {form.timezone && !TIMEZONE_OPTIONS.includes(form.timezone) && (
+                      <option value={form.timezone}>{formatTimezoneLabel(form.timezone)}</option>
+                    )}
+                    {TIMEZONE_OPTIONS.map((timezone) => (
+                      <option key={timezone} value={timezone}>{formatTimezoneLabel(timezone)}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className={styles.detectBtn}
+                    onClick={autoDetectTimezone}
+                  >
+                    Auto Detect
+                  </button>
+                </div>
+              </label>
+
+              <div className={kid.kidActions}>
+                <button
+                  type="button"
+                  className={kid.kidGhostBtn}
+                  onClick={cancelProfileEdit}
+                >
+                  {ACCOUNT.cancel}
+                </button>
+                <button className={kid.kidPrimaryBtn} disabled={saving}>
+                  {saving ? ACCOUNT.savingDetails : ACCOUNT.saveDetails}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className={kid.kidList}>
+              {details_rows.map((row) => (
+                <div key={row.label} className={kid.kidListRow}>
+                  <span className={kid.kidListLabel}>{row.label}</span>
+                  <span className={kid.kidListValue}>{row.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* The password. */}
+        <section className={kid.kidCard}>
+          <div className={kid.kidCardHead}>
+            <h2 className={kid.kidCardTitle}>{ACCOUNT.yourPassword}</h2>
+            {!passwordEditing ? (
+              <button
+                type="button"
+                className={kid.kidGhostBtn}
+                onClick={() => setPasswordEditing(true)}
+              >
+                {ACCOUNT.changePassword}
+              </button>
+            ) : null}
+          </div>
+
+          {passwordEditing ? (
+            <form onSubmit={changePassword} className={kid.kidForm}>
+              <label className={kid.kidField}>
+                <span className={kid.kidFieldLabel}>{ACCOUNT.currentPassword}</span>
+                <input
+                  className={kid.kidInput}
+                  type="password"
+                  value={pwd.current}
+                  onChange={(e) => setPwd((p) => ({ ...p, current: e.target.value }))}
+                  required
+                />
+              </label>
+              <div className={kid.kidRow}>
+                <label className={kid.kidField}>
+                  <span className={kid.kidFieldLabel}>{ACCOUNT.newPassword}</span>
+                  <input
+                    className={kid.kidInput}
+                    type="password"
+                    value={pwd.next}
+                    onChange={(e) => setPwd((p) => ({ ...p, next: e.target.value }))}
+                    required
+                  />
+                </label>
+                <label className={kid.kidField}>
+                  <span className={kid.kidFieldLabel}>{ACCOUNT.confirmPassword}</span>
+                  <input
+                    className={kid.kidInput}
+                    type="password"
+                    value={pwd.confirm}
+                    onChange={(e) => setPwd((p) => ({ ...p, confirm: e.target.value }))}
+                    required
+                  />
+                </label>
+              </div>
+
+              <div className={kid.kidActions}>
+                <button
+                  type="button"
+                  className={kid.kidGhostBtn}
+                  onClick={cancelPasswordEdit}
+                >
+                  {ACCOUNT.cancel}
+                </button>
+                <button className={kid.kidPrimaryBtn} disabled={pwdSaving}>
+                  {pwdSaving ? ACCOUNT.savingPassword : ACCOUNT.savePassword}
+                </button>
+              </div>
+            </form>
+          ) : null}
+        </section>
+
+        <button className={kid.kidLogout} type="button" onClick={handleLogout}>
+          {ACCOUNT.menuLogOut}
+        </button>
+      </div>
+    );
+  }
+
   function renderRolePanel() {
     if (user.role === "student") {
       return (
@@ -932,21 +1290,29 @@ export default function Account() {
   return (
     <main className={styles.pageShell}>
       <div className={styles.accountPage}>
-        {isProfileIncomplete && (
-          <section className={styles.notice}>
-            <div>
-              <strong>Complete your profile</strong>
-              <span>Upload a profile picture and add your contact number to access your dashboard.</span>
-            </div>
-            <ul className={styles.requirementList}>
-              {completionItems.map((item) => (
-                <li key={item.label} className={item.complete ? styles.completeItem : styles.incompleteItem}>
-                  {item.label}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+        {/* A student gets the Kid Mode account page. A teacher and an admin
+            keep the professional one: their pages carry a teaching profile
+            and an administration panel, and neither is a screen for a
+            five-year-old. */}
+        {user.role === "student" ? (
+          renderStudentAccount()
+        ) : (
+          <>
+            {isProfileIncomplete && (
+              <section className={styles.notice}>
+                <div>
+                  <strong>Complete your profile</strong>
+                  <span>Upload a profile picture and add your contact number to access your dashboard.</span>
+                </div>
+                <ul className={styles.requirementList}>
+                  {completionItems.map((item) => (
+                    <li key={item.label} className={item.complete ? styles.completeItem : styles.incompleteItem}>
+                      {item.label}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
         <section className={styles.hero}>
           <div className={styles.avatarWrap}>
@@ -1155,6 +1521,8 @@ export default function Account() {
             <button className={styles.logoutBtn} type="button" onClick={handleLogout}>Log out</button>
           </section>
         </section>
+          </>
+        )}
       </div>
 
       {cropModal && (

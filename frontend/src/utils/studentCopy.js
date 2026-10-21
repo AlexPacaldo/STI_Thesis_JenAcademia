@@ -343,6 +343,60 @@ export const HISTORY = {
   notFinished: "Not finished yet",
 };
 
+/**
+ * The student's own account page, and the menu that opens from the name in
+ * the header.
+ *
+ * !! The account page was the admin's screen with the admin's words on it -
+ * "Profile Information", "Locked", "Security", "Contract" - shown to a child
+ * !! who wants to change their picture.
+ */
+export const ACCOUNT = {
+  /* The menu in the header. */
+  menuLabel: "Your account menu",
+  menuMyAccount: "My account",
+  menuMyClasses: "My classes",
+  menuGetHelp: "Get help",
+  menuLogOut: "Log out",
+  menuFooter: "JEN Academia",
+
+  /* The page. */
+  title: "My account",
+  hello: (name) => `Hi, ${name}`,
+  changePicture: "Change my picture",
+  classesLeft: "Classes left",
+  of: (total) => `of ${total}`,
+  planEnds: (when) => `Your plan ends on ${when}`,
+  yourClass: "Your class",
+  yourTeacher: "Your teacher",
+  aboutYou: "About you",
+  changeDetails: "Change my details",
+  saveDetails: "Save my details",
+  savingDetails: "Saving...",
+  cancel: "Cancel",
+  yourPassword: "Your password",
+  changePassword: "Change my password",
+  savePassword: "Save my password",
+  savingPassword: "Saving...",
+  firstName: "First name",
+  lastName: "Last name",
+  yourName: "Your name",
+  birthday: "Birthday",
+  country: "Country",
+  phone: "Phone number",
+  timeZone: "Time zone",
+  email: "Email",
+  currentPassword: "Your old password",
+  newPassword: "New password",
+  confirmPassword: "Type the new password again",
+  notSet: "Not set yet",
+  finishProfile: "Finish your profile",
+  finishProfileHelp: "Add your picture and your phone number to see your classes.",
+  needPicture: "Your picture",
+  needPhone: "Your phone number",
+  done: "Done",
+};
+
 /** The little windows that ask "are you sure?". */
 export const CONFIRM = {
   bookingTitle: "Is this right?",

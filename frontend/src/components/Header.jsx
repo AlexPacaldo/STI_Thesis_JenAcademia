@@ -2,31 +2,15 @@ import axios from "axios";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import styles from "../assets/header.module.css";
-import pfp from "../assets/img/Navbar/user.jpg";
 import { getLocalUnreadCount } from "../utils/localNotificationStore.js";
 import ChatPanel from "./ChatPanel";
 import NotificationPanel from "./NotificationPanel";
-import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
+import AccountMenu from "./AccountMenu";
+import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
-import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 
 const API = API_BASE_URL;
 const BADGE_REFRESH_MS = 60 * 1000;
-
-// <img src> cannot send the session header, so a stored profile photo is
-// resolved to a blob: URL first. The bundled placeholder stands in while it
-// loads and if it fails, so the header avatar never flashes empty.
-function ProfilePic({ user, className }) {
-  const url = user?.profileImageUrl || user?.profile_image_url;
-  return (
-    <AuthenticatedImage
-      src={url}
-      alt="Profile"
-      className={className}
-      fallback={<img src={pfp} alt="Profile" className={className} />}
-    />
-  );
-}
 
 function Header({ isSidebarOpen = false, onMenuClick }) {
   const location = useLocation();
@@ -37,7 +21,6 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
-  const [studentPackage, setStudentPackage] = useState(null);
   const [isScrolled, setIsScrolled] = useState(false);
   const currentUserId = user?.id || user?.user_id || user?.userId;
 
@@ -198,17 +181,10 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
     return () => window.removeEventListener("chatUpdated", refreshChatBadge);
   }, [currentUserId]);
 
-  useEffect(() => {
-    if (role !== "student" || !currentUserId) {
-      setStudentPackage(null);
-      return;
-    }
-
-    axios
-      .get(`${API}/api/calendar/student-package/${currentUserId}`)
-      .then((response) => setStudentPackage(response.data.package || null))
-      .catch(() => setStudentPackage(null));
-  }, [currentUserId, role, location]);
+  // !! The student package used to be fetched here to decide whether the
+  // !! header should warn a student with no classes left. That warning was
+  // !! never built, so the fetch was a request on every page load for a
+  // !! number nothing read. The page that needs the number asks for it.
 
   const fetchUnreadCount = async () => {
     const currentUser = readStoredUser() || {};
@@ -232,7 +208,6 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
   const isCallPage = path.startsWith("/call");
 
   const isAdminDashboardPage = path === "/AdminDashboard";
-  const studentHasNoClassesLeft = role === "student" && studentPackage && Number(studentPackage.classes_left) <= 0;
 
   const isStudentDashboardPage = path === "/StudentDashboard";
   const isAssignmentsDropbox = path === "/assignmentsDropbox";
@@ -374,12 +349,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
 
               <span className={styles.headerSeparator} aria-hidden="true">|</span>
 
-              <Link to="/account" className={styles.StudentAccount}>
-                <div className={styles.account}>
-                  {`${user?.firstName || ""} ${user?.lastName || ""}`}
-                </div>
-                <ProfilePic user={user} className={styles.profilePic} />
-              </Link>
+              <AccountMenu user={user} role={role} classHistoryPath="/classHistory" />
 
              
             </>
@@ -406,12 +376,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
 
               <span className={styles.headerSeparator} aria-hidden="true">|</span>
 
-              <Link to="/account" className={styles.TeacherAccount}>
-                <div className={styles.account}>
-                  {`${user?.firstName || ""} ${user?.lastName || ""}`}
-                </div>
-                <ProfilePic user={user} className={styles.profilePic} />
-              </Link>
+              <AccountMenu user={user} role={role} classHistoryPath="/teacherClassHistory" />
 
               
             </>
@@ -441,12 +406,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
 
               <span className={styles.headerSeparator} aria-hidden="true">|</span>
 
-              <Link to="/account" className={styles.TeacherAccount}>
-                <div className={styles.account}>
-                  {`${user?.firstName || ""} ${user?.lastName || ""}`}
-                </div>
-                <ProfilePic user={user} className={styles.profilePic} />
-              </Link>
+              <AccountMenu user={user} role={role} classHistoryPath="/teacherClassHistory" />
 
               
             </>

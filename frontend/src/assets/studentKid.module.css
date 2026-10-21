@@ -1968,6 +1968,417 @@
   color: var(--muted);
 }
 
+/* --------------------------------------------------------- the account page */
+
+.kidAccount {
+  display: grid;
+  gap: var(--space-5);
+}
+
+/* Who this is. The picture is big enough to be the first thing you see. */
+.kidAccountHero {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+  padding: var(--space-6);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  border: 2px solid var(--border-mid);
+  box-shadow: var(--neu-shadow-lg);
+}
+
+.kidAvatarWrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.kidAvatarButton {
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.kidAvatar {
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--surface);
+  box-shadow: var(--neu-shadow-md);
+}
+
+.kidAvatarEdit {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--brand-green);
+  color: #fff;
+  font-size: 1.3rem;
+  font-weight: 800;
+  border: 3px solid var(--surface);
+}
+
+.kidHeroText {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kidHeroName {
+  margin: 0;
+  font-size: 1.7rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--primary);
+}
+
+.kidHeroRole {
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kidHeroEmail {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-mid);
+  word-break: break-word;
+}
+
+/* The number is the picture. The same counter the home page has, so the
+   student learns one shape and sees it everywhere. */
+.kidPlanCard {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  border: 2px solid var(--border-mid);
+  box-shadow: var(--neu-shadow-lg);
+}
+
+.kidCounterRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.kidCounterNumber {
+  font-size: 3.4rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--primary);
+}
+
+.kidCounterOf {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* 16px tall, so it can be seen at a glance and does not need reading. */
+.kidCounterBar {
+  height: 16px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-recessed);
+  overflow: hidden;
+}
+
+.kidCounterBarFill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--brand-green);
+  transition: width var(--duration-base) var(--ease-out);
+}
+
+.kidPlanNote {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Two facts, side by side. */
+.kidTwoUp {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
+}
+
+.kidInfoCard {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 2px solid var(--border-mid);
+  box-shadow: var(--neu-shadow-md);
+}
+
+.kidInfoValue {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+/* A card with a heading and a button. */
+.kidCard {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  border: 2px solid var(--border-mid);
+  box-shadow: var(--neu-shadow-lg);
+}
+
+.kidCardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+/* The button beside a heading hugs its words. A button that grows to fill
+   the row stops being a button and starts being a banner. */
+.kidCardHead .kidGhostBtn {
+  flex: 0 0 auto;
+}
+
+.kidCardTitle {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+/* The list of facts. The label is quiet; the value is what you check. */
+.kidList {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.kidListRow {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+}
+
+.kidListLabel {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kidListValue {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  word-break: break-word;
+}
+
+/* The edit form. Big inputs, because reading small print is work, and the
+   work is what stops a child. */
+.kidForm {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.kidField {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.kidFieldLabel {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-mid);
+}
+
+.kidInput {
+  width: 100%;
+  min-height: 60px;
+  padding: 12px 18px;
+  border-radius: var(--control-radius);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 1.05rem;
+  font-weight: 600;
+  outline: none;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.kidInput:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(121, 168, 71, 0.18);
+}
+
+.kidRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+.kidActions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.kidPrimaryBtn {
+  flex: 2 1 220px;
+  min-height: 60px;
+  padding: 14px 22px;
+  border: none;
+  border-radius: var(--control-radius);
+  background: var(--brand-green);
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(47, 122, 61, 0.28);
+  transition: background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.kidPrimaryBtn:hover:not(:disabled) {
+  background: var(--primary-mid);
+  transform: translateY(-1px);
+}
+
+.kidPrimaryBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.kidPrimaryBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.kidGhostBtn {
+  flex: 1 1 160px;
+  min-height: 60px;
+  padding: 14px 22px;
+  border-radius: var(--control-radius);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 1.1rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.kidGhostBtn:hover:not(:disabled) {
+  background: var(--bg-alt);
+  transform: translateY(-1px);
+}
+
+.kidGhostBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* The way out. Red, because a button that undoes something should not look
+   like a button that does something. */
+.kidLogout {
+  min-height: 60px;
+  width: 100%;
+  padding: 14px 22px;
+  border-radius: var(--control-radius);
+  border: 2px solid rgba(168, 58, 52, 0.2);
+  background: var(--pill-danger);
+  color: var(--text-danger);
+  font-size: 1.1rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.kidLogout:hover {
+  background: #f8ded9;
+}
+
+/* Something still to do. A card, not a paragraph - the student has to read
+   the situation AND press a button about it, and both need room. */
+.kidNotice {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--pill-warn);
+  border: 1px solid rgba(209, 138, 16, 0.28);
+}
+
+.kidNoticeTitle {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-warn);
+}
+
+.kidNoticeBody {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-warn);
+}
+
+.kidNoticeList {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kidNoticeItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-warn);
+}
+
+.kidNoticeTick {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
 /* --------------------------------------------------------- small screens */
 
 @media (max-width: 640px) {
