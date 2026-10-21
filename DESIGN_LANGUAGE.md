@@ -1169,7 +1169,7 @@ It is shaped like the menu everybody already knows from every other app: **the p
 - **The chevron says there is more.** It is decoration, and it is `aria-hidden`.
 - **The way out is red**, because a button that undoes something should not look like a button that does something.
 - **Clicking anywhere else closes it, and so does Escape.** Escape also puts the focus back on the name, so the keyboard does not lose its place.
-- **On a phone it is a sheet at the bottom of the screen**, not a panel hanging off an edge the student cannot reach.
+- **On a phone it still hangs under the picture**, right-aligned to it. The name is hidden there — the picture *is* the account, and the space the name took was squeezing "JEN Academia" down to "J...". A menu that appears where the finger already was is a menu that appears under the thumb.
 
 ### 5.15 The student's account page
 

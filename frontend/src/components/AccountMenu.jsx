@@ -31,9 +31,6 @@ import { clearStoredUser } from "../utils/sessionUser.js";
 /** The width of the panel on a screen with room for it. */
 const PANEL_WIDTH = 320;
 
-/** Below this the panel is a sheet at the bottom of the screen. */
-const PHONE_WIDTH = 640;
-
 /**
  * The picture in the menu.
  *
@@ -72,23 +69,19 @@ export default function AccountMenu({ user, role, classHistoryPath = "/classHist
   /**
    * Where the panel goes.
    *
-   * !! On a screen with room, it hangs under the name and lines up with its
-   * !! right edge - the way every other menu does it. On a phone there is no
-   * !! edge to line up with and no room to hang anything, so it is a sheet
-   * !! at the bottom of the screen instead.
+   * !! It hangs under the name and lines up with its right edge, on every
+   * !! screen. A phone has room for it: the header is at the top, and the
+   * !! panel is narrower than the screen, so there is nothing to gain from
+   * !! moving it to the bottom - and a lot to lose, because a menu that
+   * !! appears where the finger already was is a menu that appears under
+   * !! the thumb.
    */
   const placePanel = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    if (window.innerWidth <= PHONE_WIDTH) {
-      setPanel({ mode: "sheet" });
-      return;
-    }
-    const left = Math.max(
-      12,
-      Math.min(rect.right - PANEL_WIDTH, window.innerWidth - PANEL_WIDTH - 12)
-    );
-    setPanel({ mode: "anchored", top: Math.round(rect.bottom + 8), left });
+    const width = Math.min(PANEL_WIDTH, window.innerWidth - 24);
+    const left = Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12));
+    setPanel({ top: Math.round(rect.bottom + 8), left, width });
   }, []);
 
   const openMenu = () => {
@@ -137,8 +130,9 @@ export default function AccountMenu({ user, role, classHistoryPath = "/classHist
     window.location.href = "/";
   };
 
-  const panelStyle =
-    panel?.mode === "anchored" ? { top: panel.top, left: panel.left } : undefined;
+  const panelStyle = panel
+    ? { top: panel.top, left: panel.left, width: panel.width }
+    : undefined;
 
   return (
     <div className={styles.wrapper} ref={wrapperRef}>
@@ -158,15 +152,9 @@ export default function AccountMenu({ user, role, classHistoryPath = "/classHist
 
       {open ? (
         <ModalPortal>
-          {/* On a phone the sheet is a layer over the page, so it needs
-              something behind it to say so. */}
-          {panel?.mode === "sheet" ? (
-            <div className={styles.backdrop} onClick={closeMenu} />
-          ) : null}
-
           <div
             ref={menuRef}
-            className={`${styles.menu} ${panel?.mode === "sheet" ? styles.menuSheet : ""}`}
+            className={styles.menu}
             style={panelStyle}
             role="menu"
             aria-label={ACCOUNT.menuLabel}
