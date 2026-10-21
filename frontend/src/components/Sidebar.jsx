@@ -187,6 +187,11 @@ function Sidebar({ isMobileOpen = false, onClose }) {
     student: [
       { to: "/StudentDashboard", label: "Home", icon: "bi-house-door-fill" },
       { to: "/Calendar", label: "Calendar", icon: "bi-calendar3" },
+      // The same page the teacher has, with the teacher side of it switched
+      // off: the student's own attendance, duration and class summary. It
+      // has been a route and a screen for a while - it just was not
+      // reachable from the menu.
+      { to: "/classHistory", label: "Class history", icon: "bi-clock-history" },
       { to: "/assignments", label: "Assignments", icon: "bi-journal-text" },
       { to: "/remarks", label: "Remarks", icon: "bi-chat-left-text" },
       { to: "/booksLessons", label: "Books/Lessons", icon: "bi-book" },
