@@ -2,12 +2,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import styles from "../assets/assignments.module.css";
-import { getStoredUserTimezone, formatServerTimestamp } from "../utils/timezone.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { apiFetch } from "../utils/apiAuth.js";
-import { openAssignmentFile } from "../utils/authenticatedFile.js";
-import { useNotification } from "../components/NotificationContainer.jsx";
 
 const API = API_BASE_URL;
 
@@ -15,51 +12,7 @@ function getAssignmentDisplayText(row) {
   return row.instructions || row.description || row.name || "Assignment";
 }
 
-function formatDueDate(row) {
-  const dueDate = row.dueDate || "";
-  const dueTime = row.dueTime || "";
-
-  if (dueDate) {
-    const [year, month, day] = dueDate.split("-").map(Number);
-    const [hour = 0, minute = 0] = dueTime.split(":").map(Number);
-    const date = new Date(year, month - 1, day, hour, minute);
-
-    if (!Number.isNaN(date.getTime())) {
-      return date.toLocaleString(undefined, {
-        timeZone: getStoredUserTimezone(),
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: dueTime ? "numeric" : undefined,
-        minute: dueTime ? "2-digit" : undefined,
-      });
-    }
-  }
-
-  if (row.due) {
-    return String(row.due).replace("T", " ");
-  }
-
-  return "No due date";
-}
-
-function formatDateGiven(row) {
-  const postedAt = row.postedAt || row.createdAt || "";
-  if (!postedAt) return "Not available";
-
-  // created_at is a CURRENT_TIMESTAMP column, so it is UTC and arrives as a
-  // naive string. Rendering it in the user's timezone is what makes it read as
-  // the moment the assignment was actually posted - see parseServerTimestamp.
-  const formatted = formatServerTimestamp(postedAt, getStoredUserTimezone());
-  return formatted || String(postedAt);
-}
-
-function hasDueDate(row) {
-  return Boolean(row.dueDate || row.due);
-}
-
 export default function Assignments() {
-  const { notify } = useNotification() || {};
   const [rows, setRows] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -105,102 +58,48 @@ export default function Assignments() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.tableWrap}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th scope="col">Assignment</th>
-              <th scope="col">Date and Time</th>
-              <th scope="col">Due</th>
-              <th scope="col">Subject</th>
-              <th scope="col" className={styles.actionHeader}>Action</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td colSpan="5">
-                  <p className={styles.stateCell}>Loading assignments…</p>
-                </td>
-              </tr>
-            ) : error ? (
-              <tr>
-                <td colSpan="5">
-                  <p className={`${styles.stateCell} ${styles.stateCellError}`}>{error}</p>
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan="5">
-                  <div className={styles.emptyState}>
-                    <span className={styles.emptyIcon} aria-hidden="true">
-                      <i className="bi bi-inbox" />
-                    </span>
-                    <p className={styles.emptyTitle}>No assignments yet</p>
-                    <p className={styles.emptyText}>
-                      When a teacher posts homework, it will show up here.
-                    </p>
-                  </div>
-                </td>
-              </tr>
-            ) : (
-              rows.map((r) => (
-                <tr key={r.id}>
-                  <td data-label="Assignment">
-                    <span className={styles.assignmentTitle}>
-                      {getAssignmentDisplayText(r)}
-                    </span>
-                    {/* Shortcut to the teacher's worksheet. A button rather than
-                        an <a href> because /uploads needs the session token, which
-                        a plain link cannot carry. */}
-                    {r.attachmentUrl ? (
-                      <button
-                        type="button"
-                        className={styles.attachmentBadge}
-                        onClick={() =>
-                          openAssignmentFile(r.attachmentUrl).catch(() =>
-                            notify?.("That file could not be opened. Please try again.", "error")
-                          )
-                        }
-                        title={`Open ${r.attachmentName || "the attached file"} in a new tab`}
-                      >
-                        <i className="bi bi-paperclip" aria-hidden="true" />
-                        <span>{r.attachmentName || "Attachment"}</span>
-                      </button>
-                    ) : null}
-                  </td>
-                  <td data-label="Date">
-                    <time className={styles.dateCell} dateTime={r.postedAt || r.createdAt || undefined}>
-                      {formatDateGiven(r)}
-                    </time>
-                  </td>
-                  <td data-label="Due">
-                    {hasDueDate(r) ? (
-                      <span className={styles.duePill}>{formatDueDate(r)}</span>
-                    ) : (
-                      <span className={styles.noDue}>No due date</span>
-                    )}
-                  </td>
-                  <td data-label="Subject">
-                    <span className={styles.subjectPill}>{r.subject || "General"}</span>
-                  </td>
-                  <td data-label="Action" className={styles.actionCell}>
-                    <Link
-                      to={`/assignmentsDropbox?assignmentId=${r.id}`}
-                      className={styles.submitButton}
-                      aria-label={`View ${getAssignmentDisplayText(r)}`}
-                    >
-                      View
-                      <i className="bi bi-arrow-right" aria-hidden="true" />
-                    </Link>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      {isLoading ? (
+        <div className={styles.loadingCard}>
+          <span className={styles.loadingText}>Loading your assignments...</span>
+        </div>
+      ) : error ? (
+        <div className={styles.errorBanner}>{error}</div>
+      ) : rows.length === 0 ? (
+        <div className={styles.emptyCard}>
+          <span className={styles.emptyIcon} aria-hidden="true">📭</span>
+          <h2 className={styles.emptyTitle}>No assignments yet</h2>
+          <p className={styles.emptyText}>
+            When your teacher gives you homework, it will show up here.
+          </p>
+        </div>
+      ) : (
+        <>
+          <h2 className={styles.sectionTitle}>Your assignments</h2>
+          {rows.map((r) => (
+            <article key={r.id} className={styles.assignmentCard}>
+              <div className={styles.cardInfo}>
+                <span className={styles.cardTitle}>{getAssignmentDisplayText(r)}</span>
+                {r.subject && (
+                  <span className={styles.cardSubject}>{r.subject}</span>
+                )}
+                <span className={styles.cardStatus}>
+                  {r.submissionId ? "Done" : "Not done yet"}
+                </span>
+              </div>
+              <div className={styles.actions}>
+                <Link
+                  to={`/assignmentsDropbox?assignmentId=${r.id}`}
+                  className={styles.cardButton}
+                  aria-label={`Open ${getAssignmentDisplayText(r)}`}
+                >
+                  Open
+                  <span className={styles.cardArrow} aria-hidden="true">&#9654;</span>
+                </Link>
+              </div>
+            </article>
+          ))}
+        </>
+      )}
     </div>
   );
 }

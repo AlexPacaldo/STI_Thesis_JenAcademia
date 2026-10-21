@@ -1,1057 +1,532 @@
+/*
+ * Assignments dropbox — kid-friendly.
+ *
+ * Big buttons, big text, simple sections. One thing at a time.
+ */
+
 .cont {
-  display: flex;
-  justify-content: center;
-  color: var(--text);
   font-family: "Poppins", sans-serif;
-  padding: 32px 28px 56px;
+  color: var(--text);
+  min-height: calc(100vh - 160px);
+  padding-bottom: 60px;
 }
 
 .center {
-  width: 100%;
-  max-width: 1500px;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 20px;
   display: flex;
   flex-direction: column;
-  /* Was unset, so the header block, the past-due alert, the tab bar and the
-     content grid were all flush against each other. */
-  gap: 22px;
-  min-width: 0;
+  align-items: flex-start;
+  gap: 20px;
 }
 
-.leftCard,
-.rightCard {
-  background: #fff;
-  border: 1px solid rgba(38, 66, 59, 0.1);
-  border-radius: 24px;
-  box-shadow:
-    6px 6px 16px rgba(18, 34, 30, 0.16),
-    -4px -4px 12px rgba(255, 255, 255, 0.72);
-  padding: 16px;
-}
-
-.leftCard {
+.centerContent {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  max-height: 72vh;
-  overflow: auto;
+  gap: 24px;
 }
 
-.boxCard {
-  display: flex;
+.backButton {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(38, 66, 59, 0.1);
-  background: var(--surface-raised);
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
-}
-
-.boxCard:hover {
-  transform: translateY(-2px);
-  border-color: rgba(145, 167, 154, 0.8);
-  box-shadow: 0 14px 28px rgba(18, 34, 30, 0.08);
+  gap: 8px;
+  min-height: 48px;
+  padding: 6px 16px;
   cursor: pointer;
-}
-
-.selected {
-  background: rgba(145, 167, 154, 0.16);
-  border-color: rgba(145, 167, 154, 0.9);
-}
-
-.boxCard h1 {
+  border: 2px solid var(--border-mid);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--primary);
   font-size: 1rem;
+  font-weight: 800;
+  text-decoration: none;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.backButton:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--brand-lime);
+  background: var(--surface-soft);
+}
+
+.backArrow {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.centerContent h1 {
   margin: 0;
-  color: var(--text);
+  font-size: 2.25rem;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--primary);
+}
+
+.assignmentMeta {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-mid);
+}
+
+.alertCard {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 24px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(168, 58, 52, 0.2);
+  background: var(--pill-danger);
+  color: var(--text-danger);
+  font-size: 1.25rem;
   font-weight: 700;
 }
 
-.boxCard p {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 0.88rem;
+.alertIcon {
+  font-size: 1.75rem;
+  line-height: 1;
 }
 
-.rightContent {
-  width: 100%;
+/* ---------- Instruction content ---------- */
+
+.instructionContent {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
 }
 
-.user {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 14px;
+.leftSide {
+  min-width: 0;
 }
 
-.user img {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 1px solid rgba(38, 66, 59, 0.1);
+.instructionsPanel {
+  background: var(--surface);
+  border: 2px solid var(--border-mid);
+  border-radius: var(--radius-xl);
+  padding: 0;
+  box-shadow: var(--neu-shadow-lg);
 }
 
-.user h1 {
+.instructionSheet {
+  display: grid;
+  gap: 10px;
+  padding: 20px;
+}
+
+.instructionIcon {
+  font-size: 2.5rem;
+  line-height: 1;
+}
+
+.instructionHead {
   margin: 0;
-  font-size: 1.12rem;
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--primary);
+}
+
+.instructionText {
+  font-size: 1.15rem;
+  line-height: 1.5;
   color: var(--text);
 }
 
-.bottomInfo {
+.cardAttachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 20px;
+  cursor: pointer;
+  border: 2px solid var(--border-mid);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 1.1rem;
+  font-weight: 800;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.cardAttachment:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--brand-lime);
+  background: var(--surface-soft);
+}
+
+.cardAttachmentIcon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+/* Open answer button */
+.cardButton {
   display: flex;
-  gap: 16px;
-  align-items: flex-start;
+  align-items: center;
+  gap: 14px;
+  min-height: 72px;
+  padding: 0 28px;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius-xl);
+  background: var(--brand-green);
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 0 10px 24px rgba(47, 122, 61, 0.32);
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
-.infoCard,
-.remarksBox {
-  flex: 1;
-  padding: 14px;
-  border-radius: 20px;
-  background: var(--surface-raised);
-  border: 1px solid rgba(38, 66, 59, 0.1);
+.cardButton:hover:not(:disabled) {
+  background: var(--primary-mid);
+  transform: translateY(-2px);
 }
 
-.infoCard h1,
-.remarksBox h1 {
-  margin: 0 0 8px;
-  font-size: 1rem;
-  color: var(--text);
+.cardButton:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.cardArrow {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+/* ---------- Response editor ---------- */
+
+.responsePanel {
+  background: var(--surface);
+  border: 2px solid var(--border-mid);
+  border-radius: var(--radius-xl);
+  padding: 28px;
+  box-shadow: var(--neu-shadow-lg);
+  margin-top: 24px;
+}
+
+.responseHead {
+  margin: 0 0 16px 0;
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--primary);
 }
 
 .commentBox {
   width: 100%;
   min-height: 180px;
-  min-width: 0;
-  box-sizing: border-box;
-  display: block;
-  padding: 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(38, 66, 59, 0.14);
+  padding: 18px;
+  font-size: 1.2rem;
+  font-family: inherit;
+  border: 2px solid var(--border-mid);
+  border-radius: var(--control-radius);
+  background: var(--surface-recessed);
+  color: var(--text);
   resize: vertical;
-  font-size: 0.95rem;
-  color: var(--text);
-  background: #fff;
+  margin-bottom: 16px;
 }
 
-.submitComment {
-  margin-top: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: auto;
-  flex: 1;
-  background: var(--primary);
-  color: #fff;
-  border: 1px solid var(--primary);
-  padding: 14px 16px;
-  border-radius: 18px;
-  cursor: pointer;
-  font-weight: 700;
-}
-
-.submitComment:hover:not(:disabled) {
-  background: var(--primary-mid);
-}
-
-/* Deliberately NOT reusing .submitComment: that has `flex: 1`, which is right
-   inside the row-based .editorActions but wrong here. .leftSide is a COLUMN
-   flex container, so flex: 1 made this button grow to fill all leftover height
-   and stretch full width. */
-.resubmitButton {
-  flex: 0 0 auto;
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 9px 18px;
-  border-radius: 999px;
-  border: 1px solid var(--primary);
-  background: var(--primary);
-  color: #fff;
-  font-family: inherit;
-  font-size: 0.88rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background-color 0.18s ease, transform 0.18s ease;
-}
-
-.resubmitButton:hover:not(:disabled) {
-  background: var(--primary-mid);
-  transform: translateY(-1px);
-}
-
-.resubmitButton:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.resubmitButton:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
-.editorActions {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin-top: 18px;
-}
-
-.cancelButton {
-  flex: 1;
-  min-height: 52px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  border: 1px solid rgba(38, 66, 59, 0.14);
-  background: var(--bg-alt);
-  color: var(--primary);
-  font-weight: 700;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.cancelButton:hover {
-  background: #e3ede7;
-}
-
-.emptyState {
-  color: var(--muted);
-  padding: 1rem 0;
-  text-align: center;
-}
-
-.centerContent {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  /* Was 8px, which crammed the back button, the 2.5rem title and the meta line
-     into each other. */
-  gap: 14px;
-}
-
-.centerContent h1 {
-  margin: 0;
-  font-size: clamp(1.8rem, 2.3vw, 2.5rem);
-  line-height: 1.12;
-  color: var(--text);
-  letter-spacing: -0.02em;
-}
-
-.backButton {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  /* No margin here: the parent's gap handles it. An extra margin on top of a
-     flex gap is what made the spacing unpredictable to tune. */
-  margin: 0;
-  padding: 10px 16px;
-  border-radius: 18px;
-  border: 1px solid rgba(38, 66, 59, 0.12);
-  background: var(--bg-alt);
-  color: var(--primary);
-  font-family: inherit;
-  font-size: 0.92rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.backButton:hover {
-  background: #e3ede7;
-  transform: translateY(-1px);
-  box-shadow: 0 14px 30px rgba(18, 34, 30, 0.08);
-}
-
-.backButton:active {
-  transform: translateY(0);
-}
-
-.backButton:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
-.assignmentMeta {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.98rem;
-  font-weight: 600;
-}
-
-.pastDueAlert {
-  margin: 0.75rem 0 0;
-  padding: 0.95rem 1rem;
-  border-radius: 18px;
-  border: 1px solid rgba(214, 106, 85, 0.45);
-  background: var(--pill-danger);
-  color: #8a3e2e;
-  font-weight: 600;
-  text-align: center;
-}
-
-.instructionContent {
-  display: grid;
-  /* Narrower summary column: it was taking 440px of dead space while the
-     instructions/submission side - which holds video and documents - was
-     squeezed. */
-  grid-template-columns: minmax(0, 1fr) minmax(290px, 380px);
-  gap: 20px;
-  align-items: start;
-  min-width: 0;
-}
-
-.leftSide,
-.rightSide,
-.card {
-  border: 1px solid rgba(38, 66, 59, 0.1);
-  border-radius: 28px;
-  background: #fff;
-  box-shadow:
-    6px 6px 16px rgba(18, 34, 30, 0.16),
-    -4px -4px 12px rgba(255, 255, 255, 0.72);
-}
-
-.leftSide,
-.rightSide {
-  width: auto;
-  min-width: 0;
-  padding: 24px;
-  background: linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-raised) 100%);
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.leftSide {
-  min-height: 620px;
-}
-
-.rightSide {
-  min-height: 440px;
-  position: sticky;
-  top: 96px;
-}
-
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 22px;
-}
-
-.instructionsPanel {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.instructionSheet {
-  position: relative;
-  overflow: hidden;
-  padding: 22px;
-  border-radius: 24px;
-  border: 1px solid rgba(38, 66, 59, 0.12);
-  background:
-    linear-gradient(135deg, rgba(145, 167, 154, 0.16) 0%, rgba(255, 255, 255, 0) 45%),
-    #fff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
-}
-
-.instructionSheet::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 6px;
-  background: var(--primary);
-}
-
-.instructionHeader {
-  display: flex;
-  gap: 14px;
-  align-items: center;
-  margin-bottom: 18px;
-}
-
-.instructionIcon {
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: var(--primary);
-  color: #fff;
-  font-weight: 800;
-  font-size: 1.1rem;
-  font-family: Georgia, serif;
-}
-
-.instructionHeader span:not(.instructionIcon) {
-  display: block;
-  margin-bottom: 2px;
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.instructionHeader h4 {
-  margin: 0;
-  color: var(--text);
-  font-size: 1.28rem;
-  line-height: 1.25;
-}
-
-.instructionText {
-  min-height: 190px;
-  padding: 20px;
-  border-radius: 20px;
-  border: 1px solid rgba(38, 66, 59, 0.1);
-  background: rgba(255, 255, 255, 0.72);
-  color: var(--text);
-  font-size: 1rem;
-  line-height: 1.75;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.responsePanel {
-  margin-top: 4px;
-  display: grid;
-  gap: 14px;
-}
-
-.responseLabel {
-  display: block;
-  color: var(--text);
-  font-size: 0.95rem;
+.commentBox:focus {
+  border-color: var(--accent);
+  outline: none;
 }
 
 .fileLabel {
-  display: block;
-  margin: 0.6rem 0 0.4rem;
-  color: var(--text);
-  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-mid);
+}
+
+.fileIcon {
+  font-size: 1.5rem;
+  line-height: 1;
 }
 
 .fileInput {
   width: 100%;
-  min-width: 0;
-  padding: 0.95rem 1rem;
-  border-radius: 18px;
-  border: 1px solid rgba(38, 66, 59, 0.14);
-  background: #fff;
+  padding: 12px;
+  border: 2px solid var(--border-mid);
+  border-radius: var(--control-radius);
+  background: var(--surface-recessed);
   color: var(--text);
+  font-size: 1.1rem;
+  margin-bottom: 16px;
 }
 
-.fileInput::file-selector-button {
-  margin-right: 12px;
-  border: 0;
-  border-radius: 10px;
-  background: rgba(145, 167, 154, 0.18);
-  color: var(--primary);
-  padding: 8px 12px;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
+.fileInput:focus {
+  border-color: var(--accent);
+  outline: none;
 }
 
 .fileInfo {
-  margin-top: 0.5rem;
-  color: var(--muted);
-  font-size: 0.95rem;
-  overflow-wrap: anywhere;
-}
-
-/* The teacher's attachment, sitting directly under the instruction text it
-   belongs with. Reads as a card rather than a bare link so it is obviously
-   something to open, and is sized as a target - it is the whole point of a
-   task that has one. */
-.attachmentLink {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 16px;
-  padding: 14px 16px;
-  border: 1px solid rgba(38, 66, 59, 0.14);
-  border-radius: 18px;
-  background: var(--surface-raised);
-  color: var(--primary);
-  text-decoration: none;
-  transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
-}
-
-.attachmentLink:hover {
-  border-color: var(--accent);
-  background: #fff;
-  transform: translateY(-1px);
-}
-
-.attachmentLink:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
-.attachmentLinkText {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-
-.attachmentLinkText strong {
-  font-size: 0.92rem;
+  margin: 0;
+  font-size: 1.1rem;
   font-weight: 700;
-  /* Filenames are user-supplied and unbounded, so this is what stops a long
-     one from pushing the card's arrow icon off the right edge. */
-  overflow-wrap: anywhere;
+  color: var(--text-mid);
 }
 
-.attachmentLinkText span {
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 600;
+.editorActions {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 20px;
 }
 
-.teacherImg {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 1px solid rgba(38, 66, 59, 0.1);
+.cancelButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 20px;
+  cursor: pointer;
+  border: 2px solid var(--border-mid);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 1.25rem;
+  font-weight: 800;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.cancelButton:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--brand-lime);
+  background: var(--surface-soft);
+}
+
+.submitComment {
+  flex: 1;
+  min-height: 72px;
+  padding: 0 28px;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius-xl);
+  background: var(--brand-green);
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 800;
+  box-shadow: 0 10px 24px rgba(47, 122, 61, 0.32);
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.submitComment:hover:not(:disabled) {
+  background: var(--primary-mid);
+  transform: translateY(-2px);
+}
+
+.submitComment:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.submitComment:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
 }
 
 .submitMessage {
-  margin-top: 0.2rem;
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-
-.tabContainer {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.tabButton,
-.activeTab {
-  padding: 0.6rem 1.05rem;
-  border-radius: 999px;
-  border: 1px solid rgba(38, 66, 59, 0.12);
-  background: var(--surface-raised);
-  color: var(--primary);
-  font-family: inherit;
-  font-size: 0.88rem;
+  margin: 16px 0 0 0;
+  font-size: 1.25rem;
   font-weight: 700;
-  cursor: pointer;
-  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  color: var(--text-danger);
 }
 
-.tabButton:focus-visible,
-.activeTab:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
+/* ---------- Right side summary ---------- */
 
-.activeTab {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: #fff;
-  box-shadow: 0 10px 20px rgba(38, 66, 59, 0.16);
-}
-
-.submissionTab {
-  background: var(--bg-alt);
-  color: var(--primary);
-}
-
-.submissionTab:hover {
-  border-color: rgba(38, 66, 59, 0.35);
-  background: #e3ede7;
-}
-
-.modalBackdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.48);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1200;
-  padding: 24px;
-  animation: fadeInFast 0.18s ease-out;
-}
-
-.confirmModal {
-  width: min(100%, 440px);
-  background: #fff;
-  border-radius: 24px;
-  padding: 24px;
-  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
-  border: 1px solid rgba(38, 66, 59, 0.12);
-  animation: scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.modalHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.modalHeader h2 {
-  margin: 0;
-  font-size: 1.2rem;
-  font-weight: 800;
-  color: var(--text);
-}
-
-.modalBody {
-  margin-bottom: 20px;
-  color: var(--muted);
-  line-height: 1.6;
-  font-size: 0.95rem;
-}
-
-.modalActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.textBtn {
-  min-width: 100px;
-  border: 1px solid rgba(38, 66, 59, 0.14);
-  background: #fff;
-  color: var(--primary);
-  border-radius: 14px;
-  padding: 10px 18px;
-  font-weight: 700;
-  cursor: pointer;
-  min-height: 42px;
-}
-
-.textBtn:hover {
-  background: var(--surface-raised);
-}
-
-.primaryBtn {
-  min-width: 100px;
-  border: 1px solid var(--primary);
-  background: var(--primary);
-  color: #fff;
-  border-radius: 14px;
-  padding: 10px 18px;
-  font-weight: 700;
-  cursor: pointer;
-  min-height: 42px;
-}
-
-.primaryBtn:hover {
-  background: var(--primary-mid);
-}
-
-.submissionViewer {
-  display: grid;
-  gap: 18px;
-  padding: 20px;
-  border-radius: 22px;
-  border: 1px solid rgba(38, 66, 59, 0.12);
-  background: #fff;
-  box-shadow: 0 14px 30px rgba(18, 34, 30, 0.05);
-}
-
-.submissionViewerHeader {
-  display: flex;
-  justify-content: space-between;
-  /* Wraps instead of forcing "Submitted Work" onto two lines when the column
-     is narrow. */
-  flex-wrap: wrap;
-  gap: 6px 16px;
-  align-items: baseline;
-  padding-bottom: 14px;
-  border-bottom: 1px solid rgba(38, 66, 59, 0.08);
-}
-
-.submissionViewerHeader span,
-.submittedAnswer span,
-.submittedFile span {
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.submissionViewerHeader span {
-  white-space: nowrap;
-}
-
-.submissionViewerHeader strong {
-  color: var(--text);
-  font-size: 0.85rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.submittedAnswer,
-.submittedFile {
-  /* Lighter than the 14px it replaced: this sits inside .submissionViewer
-     (20px) inside .leftSide (24px), so every extra layer ate into the width
-     left for the video. */
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: var(--surface-raised);
-  border: 1px solid rgba(38, 66, 59, 0.09);
-}
-
-.submittedFile {
+.rightSide {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-}
-
-.submittedFileHeader {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px 14px;
-  flex-wrap: wrap;
-}
-
-.submittedFileHeader span {
-  flex-shrink: 0;
-}
-
-.submittedFileHeader a {
-  /* Upload names carry timestamps and run long. Truncate on one line instead of
-     breaking mid-token; the full name is in the title attribute. */
-  flex: 1 1 160px;
+  gap: 16px;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--primary);
-  font-size: 0.84rem;
-  font-weight: 700;
 }
-
-.submittedFileHeader a:hover {
-  text-decoration: underline;
-}
-
-/* ---------- Inline submission preview ---------- */
-
-.previewMedia,
-.previewFrame {
-  width: 100%;
-  border-radius: 14px;
-  border: 1px solid rgba(38, 66, 59, 0.12);
-  background: #0f1f1a;
-}
-
-.previewMedia {
-  /* Cap the height so a long video can't push the rest of the page away. */
-  max-height: 420px;
-  display: block;
-}
-
-audio.previewMedia {
-  background: var(--surface-recessed);
-}
-
-.previewFrame {
-  height: 420px;
-  display: block;
-}
-
-.previewImage {
-  width: 100%;
-  max-height: 420px;
-  object-fit: contain;
-  border-radius: 14px;
-  border: 1px solid rgba(38, 66, 59, 0.12);
-  background: var(--surface-recessed);
-  display: block;
-}
-
-.previewUnsupported {
-  margin: 0;
-  padding: 14px;
-  border-radius: 12px;
-  background: var(--bg-alt);
-  color: var(--muted);
-  font-size: 0.84rem;
-  text-align: center;
-}
-
-.submittedAnswer p {
-  margin: 8px 0 0;
-  color: var(--text);
-  line-height: 1.65;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-/* Was .submittedFile a - replaced by .submittedFileHeader a, which keeps the
-   link inline beside the "File" label instead of forcing it onto its own line. */
 
 .summaryCard {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  padding: 22px;
-  border-radius: 24px;
-  border: 1px solid rgba(38, 66, 59, 0.1);
-  background: #fff;
-  box-shadow:
-    6px 6px 16px rgba(18, 34, 30, 0.16),
-    -4px -4px 12px rgba(255, 255, 255, 0.72);
-  min-width: 0;
+  background: var(--surface);
+  border: 2px solid var(--border-mid);
+  border-radius: var(--radius-xl);
+  padding: 28px;
+  box-shadow: var(--neu-shadow-lg);
 }
 
 .summaryHeader {
   display: flex;
+  gap: 12px;
   flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.statusPill,
-.coursePill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  font-size: 0.82rem;
-  font-weight: 800;
+  margin-bottom: 20px;
 }
 
 .statusPill {
-  color: #fff;
-  background: var(--primary);
-}
-
-.coursePill {
-  color: var(--primary);
-  background: rgba(145, 167, 154, 0.18);
-}
-
-.peopleBlock {
-  display: grid;
-  gap: 12px;
-}
-
-.personRow {
-  display: flex;
-  gap: 12px;
+  display: inline-flex;
   align-items: center;
-  padding: 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(38, 66, 59, 0.1);
-  background: var(--surface-raised);
-}
-
-.profileImg {
-  width: 58px;
-  height: 58px;
-  flex: 0 0 58px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid #fff;
-  box-shadow: 0 8px 18px rgba(18, 34, 30, 0.1);
-}
-
-.personRow div {
-  min-width: 0;
-}
-
-.personRow strong {
-  display: block;
-  color: var(--text);
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.kicker {
-  display: block;
-  margin-bottom: 3px;
-  color: var(--muted);
-  font-size: 0.76rem;
+  padding: 8px 16px;
+  border-radius: var(--radius-pill);
+  font-size: 0.95rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+.statusPill[class*="statusPill"] {
+  /* base handled by class */
+}
+
+.coursePill {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--primary);
 }
 
 .detailGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.wideDetail {
-  grid-column: 1 / -1;
+  gap: 16px;
+  min-width: 0;
 }
 
 .detailItem {
-  min-height: 104px;
   display: flex;
-  flex-direction: column;
   justify-content: space-between;
-  gap: 16px;
-  padding: 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(38, 66, 59, 0.1);
-  background: linear-gradient(180deg, var(--surface-white) 0%, var(--surface-raised) 100%);
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
 }
 
-.detailItem span,
-.progressBlock span {
+.detailItem:last-child {
+  border-bottom: 0;
+}
+
+.detailItem span {
+  font-size: 1.1rem;
+  font-weight: 700;
   color: var(--muted);
-  font-size: 0.78rem;
+}
+
+.detailItem strong {
+  font-size: 1.25rem;
   font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.detailItem strong,
-.progressBlock strong {
   color: var(--text);
-  font-size: 0.98rem;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
 }
 
-.progressBlock {
-  margin-top: auto;
+/* ---------- Submission preview (kept but bigger) ---------- */
+
+.previewMedia,
+.previewImage,
+.previewFrame {
+  width: 100%;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-recessed);
+}
+
+.previewUnsupported {
+  margin: 0;
   padding: 16px;
-  border-radius: 20px;
-  background: var(--surface-raised);
-  border: 1px solid rgba(38, 66, 59, 0.1);
+  border-radius: var(--radius-md);
+  background: var(--surface-recessed);
+  color: var(--muted);
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-align: center;
 }
 
-.progressBlock > div:first-child {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  align-items: center;
-}
+/* ---------- Small screens ---------- */
 
-.progressTrack {
-  margin-top: 14px;
-  height: 10px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(38, 66, 59, 0.12);
-}
-
-.progressTrack span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--accent);
-  transition: width 180ms ease;
-}
-
-@media (max-width: 1180px) {
-  .cont {
-    padding: 28px 20px 48px;
+@media (max-width: 640px) {
+  .center {
+    padding: 0 16px;
   }
 
-  .instructionContent {
-    grid-template-columns: 1fr;
-  }
-
-  .leftSide {
-    min-height: auto;
-  }
-
-  .rightSide {
-    min-height: auto;
-    position: static;
-  }
-
-  .summaryCard {
-    height: auto;
-  }
-}
-
-@media (max-width: 900px) {
-  .instructionContent {
-    grid-template-columns: 1fr;
-  }
-
-  .rightSide {
-    width: auto;
-    min-height: auto;
-    position: static;
-  }
-}
-
-@media (max-width: 560px) {
-  .leftSide,
-  .rightSide {
-    padding: 16px;
-    border-radius: 20px;
+  .centerContent {
+    gap: 16px;
   }
 
   .centerContent h1 {
-    font-size: clamp(1.45rem, 8vw, 1.9rem);
+    font-size: 1.75rem;
   }
 
   .assignmentMeta {
-    font-size: 0.9rem;
+    font-size: 1.1rem;
   }
 
-  .instructionSheet,
-  .summaryCard {
-    padding: 16px;
-    border-radius: 20px;
+  .backButton {
+    min-height: 48px;
+    font-size: 1.1rem;
+  }
+
+  .alertCard {
+    font-size: 1.1rem;
+    padding: 14px 20px;
+  }
+
+  .instructionHead {
+    font-size: 1.4rem;
   }
 
   .instructionText {
-    padding: 16px;
+    font-size: 1.1rem;
+  }
+
+  .cardAttachment,
+  .cardButton {
+    min-height: 64px;
+    font-size: 1.25rem;
+    padding: 0 24px;
+  }
+
+  .responsePanel {
+    padding: 20px;
+  }
+
+  .responseHead {
+    font-size: 1.4rem;
+  }
+
+  .commentBox {
     min-height: 140px;
-    border-radius: 18px;
+    font-size: 1.1rem;
   }
 
-  .detailGrid {
-    grid-template-columns: 1fr;
+  .fileLabel {
+    font-size: 1.1rem;
   }
 
-  .tabButton,
-  .activeTab {
-    width: 100%;
-    text-align: center;
-  }
-}
-
-@media (max-width: 880px) {
-  .center {
-    grid-template-columns: 1fr;
-  }
-
-  .bottomInfo {
+  .editorActions {
     flex-direction: column;
   }
-}
 
-@media (max-width: 560px) {
-  .cont {
-    padding: 18px 12px 36px;
+  .cancelButton,
+  .submitComment {
+    width: 100%;
+  }
+
+  .summaryCard {
+    padding: 20px;
+  }
+
+  .detailItem span {
+    font-size: 1rem;
+  }
+
+  .detailItem strong {
+    font-size: 1.1rem;
   }
 }

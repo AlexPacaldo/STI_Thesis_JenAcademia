@@ -185,21 +185,20 @@ function Sidebar({ isMobileOpen = false, onClose }) {
 
   const navConfig = {
     student: [
-      { to: "/StudentDashboard", label: "Dashboard", icon: "bi-house-door-fill" },
+      { to: "/StudentDashboard", label: "Home", icon: "bi-house-door-fill" },
       { to: "/Calendar", label: "Calendar", icon: "bi-calendar3" },
       { to: "/assignments", label: "Assignments", icon: "bi-journal-text" },
       { to: "/remarks", label: "Remarks", icon: "bi-chat-left-text" },
-      { to: "/classHistory", label: "Class History", icon: "bi-clock-history" },
-      { to: "/booksLessons", label: "Books / Lessons", icon: "bi-book" },
+      { to: "/booksLessons", label: "Books/Lessons", icon: "bi-book" },
     ],
     teacher: [
-      { to: "/TeacherDashboard", label: "Dashboard", icon: "bi-house-door-fill" },
+      { to: "/TeacherDashboard", label: "Home", icon: "bi-house-door-fill" },
       { to: "/Calendar", label: "Calendar", icon: "bi-calendar3" },
-      { to: "/teacherStudents", label: "Students", icon: "bi-people" },
-      { to: "/teacherClassHistory", label: "Class History", icon: "bi-clock-history" },
+      { to: "/teacherStudents", label: "My students", icon: "bi-people" },
+      { to: "/teacherClassHistory", label: "Class history", icon: "bi-clock-history" },
       { to: "/PassRemarks", label: "Remarks", icon: "bi-chat-left-text" },
       { to: "/teacherAssignment", label: "Assignments", icon: "bi-journal-text" },
-      { to: "/teacherBooksLessons", label: "Books / Lessons", icon: "bi-book" },
+      { to: "/teacherBooksLessons", label: "My books", icon: "bi-book" },
     ],
     admin: [
       // First because it is where an admin should land, and because every entry

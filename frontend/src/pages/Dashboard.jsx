@@ -1,19 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import styles from "../assets/Dashboard.module.css";
-import {
-  DEFAULT_TIMEZONE,
-  convertDateTime,
-  formatDateInTimezone,
-  getStoredUserTimezone,
-  getUserTimezone,
-  humanTime as formatHumanTime,
-  parseServerTimestamp,
-} from "../utils/timezone.js";
 import { readStoredUser } from "../utils/sessionUser.js";
-import { formatProficiencyLevel } from "../utils/proficiencyLevels.js";
 import { API_BASE_URL } from "../utils/api.js";
 
 const API = API_BASE_URL;
@@ -22,171 +11,25 @@ function getCurrentUser() {
   return readStoredUser() || {};
 }
 
-function getTodayDate() {
-  const user = getCurrentUser();
-  return formatDateInTimezone(new Date(), getUserTimezone(user));
-}
-
-function formatClassTime(cls, viewerTimezone) {
-  const sourceTimezone = cls.teacher_timezone || DEFAULT_TIMEZONE;
-  const start = convertDateTime(cls.scheduled_date, cls.start_time, sourceTimezone, viewerTimezone);
-  const end = convertDateTime(cls.scheduled_date, cls.end_time, sourceTimezone, viewerTimezone);
-  return `${formatHumanTime(start.time)} - ${formatHumanTime(end.time)}`;
-}
-
-function getClassDateForViewer(cls, viewerTimezone) {
-  const sourceTimezone = cls.teacher_timezone || DEFAULT_TIMEZONE;
-  return convertDateTime(cls.scheduled_date, cls.start_time, sourceTimezone, viewerTimezone).date;
-}
-
-function formatDate(value) {
-  if (!value) return "No date";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-// For the CURRENT_TIMESTAMP columns - submitted_at, created_at - which are UTC.
-// formatDate above is kept for the wall-clock columns (a scheduled_date is the
-// user's local intent and must not be shifted); routing a date-only value
-// through a UTC parse would move it to the previous day for anyone west of
-// Greenwich.
-function formatServerDate(value) {
-  if (!value) return "No date";
-  const instant = parseServerTimestamp(value);
-  if (!instant) return String(value).slice(0, 10);
-  return instant.toLocaleDateString(undefined, {
-    timeZone: getStoredUserTimezone(),
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function getAssignmentText(assignment) {
-  return assignment.instructions || assignment.description || assignment.name || "Assignment";
-}
-
-function isOpenAssignment(assignment) {
-  return !assignment.submissionId && assignment.status !== "submitted";
-}
-
 function getDisplayName(user) {
   return (
     `${user.firstName || user.first_name || ""} ${user.lastName || user.last_name || ""}`.trim() ||
     user.name ||
     user.fullName ||
-    "You"
+    "Friend"
   );
-}
-
-function getTeacherName(teacher) {
-  if (!teacher) return "Teacher";
-  return (
-    `${teacher.first_name || teacher.firstName || ""} ${teacher.last_name || teacher.lastName || ""}`.trim() ||
-    teacher.name ||
-    teacher.fullName ||
-    "Teacher"
-  );
-}
-
-function getCourseName(courseMap, courseId) {
-  if (!courseId) return "";
-  return courseMap.get(String(courseId)) || "";
-}
-
-function DashboardIcon({ name }) {
-  const common = {
-    width: 22,
-    height: 22,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.8,
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-    "aria-hidden": true,
-  };
-
-  if (name === "calendar") {
-    return (
-      <svg {...common}>
-        <rect x="3" y="4" width="18" height="17" rx="3" />
-        <path d="M8 2v4" />
-        <path d="M16 2v4" />
-        <path d="M3 9h18" />
-      </svg>
-    );
-  }
-
-  if (name === "users") {
-    return (
-      <svg {...common}>
-        <path d="M16 11a4 4 0 1 0-8 0" />
-        <path d="M4 20c0-3 3-5 8-5s8 2 8 5" />
-        <circle cx="12" cy="8" r="3" />
-      </svg>
-    );
-  }
-
-  if (name === "file") {
-    return (
-      <svg {...common}>
-        <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
-        <path d="M14 2v5h5" />
-        <path d="M8 13h8" />
-        <path d="M8 17h8" />
-      </svg>
-    );
-  }
-
-  if (name === "book") {
-    return (
-      <svg {...common}>
-        <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H20v16H6.5A2.5 2.5 0 0 0 4 22z" />
-        <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H20" />
-        <path d="M8 8h8" />
-        <path d="M8 12h8" />
-      </svg>
-    );
-  }
-
-  if (name === "note") {
-    return (
-      <svg {...common}>
-        <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
-        <path d="M14 2v5h5" />
-        <path d="M9 13h6" />
-        <path d="M9 17h6" />
-      </svg>
-    );
-  }
-
-  return null;
 }
 
 export default function Dashboard({ mode }) {
   const navigate = useNavigate();
   const user = getCurrentUser();
   const isTeacher = mode === "teacher";
-  const viewerTimezone = getUserTimezone(user);
   const currentUserId = user.id ?? user.user_id ?? null;
   const displayName = getDisplayName(user);
-  const todayDate = getTodayDate();
-  const todayLabel = useMemo(() => new Date().toLocaleDateString(undefined, {
-    timeZone: viewerTimezone,
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  }), [viewerTimezone]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [courseMap, setCourseMap] = useState(new Map());
+
   const [teacherData, setTeacherData] = useState({
     classesToday: [],
     students: [],
@@ -196,13 +39,10 @@ export default function Dashboard({ mode }) {
   });
   const [studentData, setStudentData] = useState({
     classesToday: [],
-    remarks: [],
     assignments: [],
-    books: [],
+    remarks: [],
     package: null,
     latest_package: null,
-    lessonProgress: [],
-    assignedTeacher: null,
     teachers: [],
   });
 
@@ -229,9 +69,7 @@ export default function Dashboard({ mode }) {
       try {
         let dashboard = {};
         try {
-          const dashboardRes = await axios.get(`${API}/api/dashboard/${isTeacher ? "teacher" : "student"}/${currentUserId}`, {
-            params: { scheduled_date: getTodayDate() },
-          });
+          const dashboardRes = await axios.get(`${API}/api/dashboard/${isTeacher ? "teacher" : "student"}/${currentUserId}`);
           dashboard = dashboardRes.data || {};
         } catch (dashboardErr) {
           console.warn("Fast dashboard endpoint unavailable; using legacy dashboard requests.", dashboardErr);
@@ -246,10 +84,7 @@ export default function Dashboard({ mode }) {
           if (isTeacher) {
             const [classesRes, studentsRes, assignmentsRes, submissionsRes, booksRes, coursesRes] = await Promise.all([
               safeGet(`${API}/api/calendar/classes-by-date`, {
-                params: {
-                  teacher_id: currentUserId,
-                  scheduled_date: getTodayDate(),
-                },
+                params: { teacher_id: currentUserId },
               }),
               safeGet(`${API}/api/teacher/${currentUserId}/students`),
               safeGet(`${API}/api/teacher/${currentUserId}/assignments`),
@@ -267,22 +102,20 @@ export default function Dashboard({ mode }) {
               courses: coursesRes?.data?.courses || [],
             };
           } else {
-            const [classesRes, remarksRes, assignmentsRes, booksRes, progressRes, packageRes, assignedTeacherRes, teachersRes, coursesRes] =
+            const [classesRes, booksRes, progressRes, packageRes, assignedTeacherRes, teachersRes, coursesRes,
+              assignmentsRes, remarksRes] =
               await Promise.all([
                 safeGet(`${API}/api/calendar/classes-by-date`, {
-                  params: {
-                    student_id: currentUserId,
-                    scheduled_date: getTodayDate(),
-                  },
+                  params: { student_id: currentUserId },
                 }),
-                safeGet(`${API}/api/student/${currentUserId}/remarks`),
-                safeGet(`${API}/api/student/${currentUserId}/assignments`),
                 safeGet(`${API}/api/books`, { params: { student_id: currentUserId } }),
                 safeGet(`${API}/api/lesson-progress`, { params: { student_id: currentUserId } }),
                 safeGet(`${API}/api/calendar/student-package/${currentUserId}`),
                 safeGet(`${API}/api/student/assigned-teacher/${currentUserId}`),
                 safeGet(`${API}/api/admin/users?role=teacher&status=active`),
                 coursesPromise,
+                safeGet(`${API}/api/student/${currentUserId}/assignments`),
+                safeGet(`${API}/api/student/${currentUserId}/remarks`),
               ]);
 
             const teachers = Array.isArray(teachersRes?.data) ? teachersRes.data : [];
@@ -292,36 +125,26 @@ export default function Dashboard({ mode }) {
 
             dashboard = {
               classes: classesRes.data?.classes || [],
-              remarks: remarksRes.data?.remarks || [],
-              assignments: assignmentsRes.data?.assignments || [],
               books: booksRes.data?.books || [],
               progress: progressRes.data?.progress || [],
               package: packageRes?.data?.package || null,
               assignedTeacher,
               courses: coursesRes?.data?.courses || [],
+              assignments: assignmentsRes.data?.assignments || [],
+              remarks: remarksRes.data?.remarks || [],
             };
           }
         }
 
         if (isTeacher) {
           if (ignore) return;
-
-          const courses = dashboard.courses || [];
-          const nextCourseMap = new Map(courses.map((course) => [String(course.course_id), course.course_name]));
-          setCourseMap(nextCourseMap);
-
           setTeacherData({
-            classesToday: (dashboard.classes || [])
-              .filter((cls) => getClassDateForViewer(cls, viewerTimezone) === todayDate)
-              .map((cls) => ({
+            classesToday: (dashboard.classes || []).map((cls) => ({
               id: cls.class_id || cls.id,
               student: cls.student_name
                 ? `${cls.student_name} ${cls.student_last_name || ""}`.trim()
                 : cls.studentName || "Student",
               subject: cls.class_name || cls.className || "Class",
-              time: formatClassTime(cls, viewerTimezone),
-              scheduledDate: getClassDateForViewer(cls, viewerTimezone) || cls.scheduled_date || null,
-              raw: cls,
             })),
             students: dashboard.students || [],
             assignments: dashboard.assignments || [],
@@ -330,39 +153,25 @@ export default function Dashboard({ mode }) {
           });
         } else {
           if (ignore) return;
-
-          const teachers = dashboard.assignedTeacher ? [dashboard.assignedTeacher] : [];
-          const courses = dashboard.courses || [];
-          const nextCourseMap = new Map(courses.map((course) => [String(course.course_id), course.course_name]));
-          setCourseMap(nextCourseMap);
-
           setStudentData({
-            classesToday: (dashboard.classes || [])
-              .filter((cls) => getClassDateForViewer(cls, viewerTimezone) === todayDate)
-              .map((cls) => ({
+            classesToday: (dashboard.classes || []).map((cls) => ({
               id: cls.class_id || cls.id,
               title: cls.class_name || cls.className || cls.subject || "Class",
               teacher: cls.teacher_name ? `${cls.teacher_name} ${cls.teacher_last_name || ""}`.trim() : cls.teacherName || "Teacher",
-              time: formatClassTime(cls, viewerTimezone),
-              scheduledDate: getClassDateForViewer(cls, viewerTimezone) || cls.scheduled_date || cls.date || null,
-              raw: cls,
             })),
-            remarks: dashboard.remarks || [],
-            assignments: dashboard.assignments || [],
             books: dashboard.books || [],
+            assignments: dashboard.assignments || [],
+            remarks: dashboard.remarks || [],
             package: dashboard.package || null,
-            // Carried alongside `package`, which is null once a contract has
-            // run out. Display only - no booking decision reads this.
             latest_package: dashboard.latest_package || null,
-            lessonProgress: dashboard.progress || [],
             assignedTeacher: dashboard.assignedTeacher || null,
-            teachers,
+            teachers: dashboard.assignedTeacher ? [dashboard.assignedTeacher] : [],
           });
         }
       } catch (err) {
         console.error("Dashboard load error:", err);
         if (!ignore) {
-          setError("Could not load dashboard data.");
+          setError("Could not load your classes.");
         }
       } finally {
         if (!ignore) setLoading(false);
@@ -374,263 +183,168 @@ export default function Dashboard({ mode }) {
     return () => {
       ignore = true;
     };
-  }, [currentUserId, isTeacher, todayDate, viewerTimezone]);
+  }, [currentUserId, isTeacher]);
 
-  const stats = useMemo(() => {
-    if (isTeacher) {
-      return [
-        { label: "Classes Today", value: String(teacherData.classesToday.length), hint: "Scheduled sessions", icon: "calendar" },
-        { label: "Students", value: String(teacherData.students.length), hint: "Active learners", icon: "users" },
-        { label: "Submissions", value: String(teacherData.submissions.length), hint: "Submitted work", icon: "file" },
-      ];
-    }
-
-    const openAssignments = studentData.assignments.filter(isOpenAssignment);
-
-    // The expiry comes from the most recent package, not the active one, so a
-    // student whose contract has run out still sees that it did. `package` is
-    // null in that case and stays null - nothing here makes an expired contract
-    // bookable - but silence would read as "no contract", not "contract ended".
-    const contractExpiryAt =
-      studentData.package?.expires_at ?? studentData.latest_package?.expires_at ?? null;
-    const contractIsOver = !studentData.package && studentData.latest_package?.expires_at;
-
-    return [
-      {
-        label: "Classes Left",
-        value: String(studentData.package?.classes_left ?? 0),
-        icon: "book",
-        hint: contractExpiryAt ? (
-          <span style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-            <span>{contractIsOver ? "Contract ended" : "Current package"}</span>
-            <ContractExpiryBadge expiresAt={contractExpiryAt} size="sm" />
-          </span>
-        ) : (
-          "No contract"
-        ),
-      },
-      { label: "Open Assignments", value: String(openAssignments.length), hint: "Waiting on you", icon: "file" },
-      { label: "Books", value: String(studentData.books.length), hint: "Available lessons", icon: "book" },
-    ];
-  }, [isTeacher, studentData, teacherData]);
-
-  const teacherSections = useMemo(() => {
-    const recentStudents = [...teacherData.students]
-      .slice(0, 3)
-      .map((student) => ({
-        id: student.user_id || student.id,
-        primary: `${student.first_name || student.firstName || ""} ${student.last_name || student.lastName || ""}`.trim() || "Student",
-        secondary: `${formatProficiencyLevel(student.proficiency_level)}${student.course_id ? ` • ${getCourseName(courseMap, student.course_id) || `Course ${student.course_id}`}` : ""}`,
-        meta: student.email || "",
-      }));
-
-    const recentSubmissions = [...teacherData.submissions]
-      .slice(0, 3)
-      .map((submission) => ({
-        id: submission.submissionId || submission.id,
-        primary: submission.assignmentName || "Assignment",
-        secondary: submission.student || "Student",
-        meta: `${submission.status || "Submitted"} • ${formatServerDate(submission.submittedAt)}`,
-      }));
-
-    return [
-      {
-        title: "Today's Classes",
-        meta: `${teacherData.classesToday.length} scheduled`,
-        empty: "No classes scheduled for today.",
-        rows: teacherData.classesToday.slice(0, 3).map((cls) => ({
-          id: cls.id,
-          to: "/Calendar",
-          primary: cls.student,
-          secondary: cls.subject,
-          meta: cls.time,
-        })),
-        actionLabel: "Open calendar",
-        actionTo: "/Calendar",
-      },
-      {
-        title: "Assigned Students",
-        meta: `${teacherData.students.length} learners`,
-        empty: "No assigned students yet.",
-        rows: recentStudents,
-        actionLabel: "View students",
-        actionTo: "/teacherStudents",
-      },
-      {
-        title: "Recent Submissions",
-        meta: `${teacherData.submissions.length} total`,
-        empty: "No submissions yet.",
-        rows: recentSubmissions,
-        actionLabel: "Review submissions",
-        actionTo: "/teacherAssignment",
-      },
-    ];
-  }, [courseMap, teacherData]);
-
-  const studentSections = useMemo(() => {
-    const openAssignments = studentData.assignments.filter(isOpenAssignment);
-    const remarks = [...studentData.remarks].slice(0, 3);
-    const bookRows = [...studentData.books].slice(0, 3).map((book) => ({
-      id: book.book_id,
-      to: `/booksContent/${book.book_id}`,
-      primary: book.title || "Book",
-      secondary: book.author || book.teacher_name || "Your teacher",
-      meta: `${book.lesson_count || 0} lessons`,
-    }));
-
-    return [
-      {
-        title: "Today's Classes",
-        meta: `${studentData.classesToday.length} scheduled`,
-        empty: "No classes scheduled for today.",
-        rows: studentData.classesToday.slice(0, 3).map((cls) => ({
-          id: cls.id,
-          to: "/Calendar",
-          primary: cls.title,
-          secondary: cls.teacher,
-          meta: cls.time,
-        })),
-        actionLabel: "Open calendar",
-        actionTo: "/Calendar",
-      },
-      {
-        title: "Open Assignments",
-        meta: `${openAssignments.length} waiting`,
-        empty: "No open assignments right now.",
-        rows: openAssignments.slice(0, 3).map((assignment) => ({
-          id: assignment.id,
-          to: `/assignmentsDropbox?assignmentId=${assignment.id}`,
-          primary: getAssignmentText(assignment),
-          secondary: assignment.subject || "Assignment",
-          meta: assignment.dueDate ? `Due ${formatDate(assignment.dueDate)}` : "No due date",
-        })),
-        actionLabel: "Open assignments",
-        actionTo: "/assignments",
-      },
-      {
-        title: "Latest Remarks",
-        meta: `${studentData.remarks.length} remarks`,
-        empty: "No remarks yet.",
-        rows: remarks.map((remark) => ({
-          id: remark.remark_id,
-          to: "/remarks",
-          primary: remark.remarks || "Teacher remark",
-          secondary: remark.class_name || remark.teacher_name || "Remark",
-          // created_at is UTC; scheduled_date is a wall-clock date. Only the former may
-// be shifted, so the source is checked rather than assuming which arrived.
-meta: remark.created_at
-            ? formatServerDate(remark.created_at)
-            : formatDate(remark.scheduled_date),
-        })),
-        actionLabel: "View remarks",
-        actionTo: "/remarks",
-      },
-    ];
-  }, [studentData]);
-
-  const sections = isTeacher ? teacherSections : studentSections;
-
-  const heroActions = isTeacher ? (
-    <Link to="/Calendar" className={styles.heroButton}>View Calendar</Link>
-  ) : (
-    null
-  );
+  const classesLeft = studentData.package?.classes_left ?? 0;
+  const readyToBook =
+    studentData.package?.bookable_classes != null
+      ? Number(studentData.package.bookable_classes || 0)
+      : (studentData.package?.classes_left ?? 0) - (studentData.package?.classes_used ?? 0);
 
   return (
     <main className={styles.page}>
       <section className={styles.shell}>
+        {/* Big, simple greeting */}
         <header className={styles.hero}>
-          <div className={styles.heroCopy}>
-            <p className={styles.kicker}>{isTeacher ? "Teacher Dashboard" : "Student Dashboard"}</p>
-            <h1><b>{isTeacher ? `Welcome back, ${displayName}` : `Your day at a glance, ${displayName}`}</b></h1>
-            <p>
-              {isTeacher
-                ? "Keep your classes, students, submissions, and lesson materials moving in one place."
-                : "Track classes, assignments, remarks, and lesson progress without digging around the app."}
-            </p>
-            {heroActions ? <div className={styles.heroActions}>{heroActions}</div> : null}
-          </div>
-
-          <div className={styles.heroAside}>
-            <div className={styles.heroDate}>
-              <DashboardIcon name="calendar" />
-              <span>{todayLabel}</span>
-            </div>
-          </div>
+          <p className={styles.kicker}>Hi, {displayName}</p>
+          <h1>
+            {isTeacher ? "Time to teach" : "Time for class"}
+          </h1>
         </header>
 
-        <section className={styles.statsGrid}>
-          {stats.map((stat) => (
-            <article key={stat.label} className={styles.statCard}>
-              <div className={`${styles.statIcon} ${styles[`statIcon${stat.icon}`]}`}>
-                <DashboardIcon name={stat.icon} />
-              </div>
-              <div className={styles.statCopy}>
-              <span className={styles.statLabel}><b>{stat.label}</b></span>
-              <strong className={styles.statValue}>{stat.value}</strong>
-              <span className={styles.statHint}>{stat.hint}</span>
-              </div>
-            </article>
-          ))}
-        </section>
-
+        {/* Error banner */}
         {error ? <div className={styles.errorBanner}>{error}</div> : null}
 
-        <section className={styles.panelGrid}>
-          {sections.map((section) => (
-            <article
-              key={section.title}
-              className={styles.panel}
-            >
-              <div className={styles.panelHeader}>
-                <div className={styles.panelHeading}>
-                  <span className={styles.panelIcon}>
-                    <strong><DashboardIcon name={section.title === "Today's Classes" ? "calendar" : section.title === "Assigned Students" ? "users" : section.title === "Recent Submissions" || section.title === "Open Assignments" ? "file" : section.title === "Latest Remarks" ? "note" : "book"} /></strong>
-                  </span>
-                  <div>
-                    <h2>{section.title}</h2>
-                    <p>{section.meta}</p>
-                  </div>
-                </div>
-                {section.actionTo ? (
-                  <Link to={section.actionTo} className={styles.panelAction}>
-                    {section.actionLabel}
-                  </Link>
-                ) : null}
-              </div>
-
-              <div className={styles.list}>
-                {loading ? (
-                  <div className={styles.emptyState}>Loading dashboard data...</div>
-                ) : section.rows.length ? (
-                  section.rows.map((row) => {
-                    const content = (
-                      <>
-                        <div className={styles.itemMain}>
-                          <div className={styles.itemTitle}>{row.primary}</div>
-                          <div className={styles.itemSub}>{row.secondary}</div>
-                        </div>
-                        <div className={styles.itemMeta}>{row.meta}</div>
-                      </>
-                    );
-
-                    return row.to ? (
-                      <Link key={row.id} to={row.to} className={styles.itemRow}>
-                        {content}
-                      </Link>
-                    ) : (
-                      <div key={row.id} className={styles.itemRow}>
-                        {content}
-                      </div>
-                    );
-                  })
+        {/* Loading state */}
+        {loading ? (
+          <div className={styles.loadingCard}>
+            <span className={styles.loadingText}>Loading...</span>
+          </div>
+        ) : (
+          <>
+            {/* The one big number: classes left */}
+            {!isTeacher && (
+              <article className={styles.counterCard}>
+                <span className={styles.counterLabel}>Classes left</span>
+                <span className={styles.counterNumber}>{classesLeft}</span>
+                {readyToBook > 0 ? (
+                  <span className={styles.counterReady}>Ready to book: {readyToBook}</span>
                 ) : (
-                  <div className={styles.emptyState}>{section.empty}</div>
+                  <span className={styles.counterZero}>No classes left. Ask your teacher for more.</span>
                 )}
-              </div>
-            </article>
-          ))}
-        </section>
+              </article>
+            )}
+
+            {/* The one big action: book a class */}
+            {!isTeacher && (
+              <Link to="/Calendar" className={styles.bookButton}>
+                <span className={styles.bookIcon} aria-hidden="true">&#128197;</span>
+                Book a class
+              </Link>
+            )}
+
+            {/* Today's classes - simple big cards */}
+            <section className={styles.classesSection}>
+              <h2 className={styles.sectionTitle}>
+                {isTeacher ? "Classes today" : "My classes today"}
+              </h2>
+              {loading ? null : (() => {
+                const classes = isTeacher ? teacherData.classesToday : studentData.classesToday;
+                if (classes.length === 0) {
+                  return (
+                    <div className={styles.emptyCard}>
+                      <span className={styles.emptyIcon} aria-hidden="true">&#128198;</span>
+                      <p className={styles.emptyText}>
+                        {isTeacher ? "No classes today." : "No classes today. Press the green button above to book one."}
+                      </p>
+                    </div>
+                  );
+                }
+                return classes.map((cls) => (
+                  <Link
+                    key={cls.id}
+                    to="/Calendar"
+                    className={styles.classCard}
+                  >
+                    <div className={styles.classInfo}>
+                      <span className={styles.classTitle}>{cls.student || cls.title}</span>
+                      <span className={styles.classSubtitle}>
+                        {isTeacher ? cls.subject : cls.teacher}
+                      </span>
+                    </div>
+                    <span className={styles.classArrow} aria-hidden="true">&#9654;</span>
+                  </Link>
+                ));
+              })()}
+            </section>
+
+            {/* My assignments - simple big cards */}
+            {!isTeacher && (
+              <section className={styles.classesSection}>
+                <h2 className={styles.sectionTitle}>My assignments</h2>
+                {studentData.assignments.filter((a) => !a.submissionId && a.status !== "submitted").length === 0 ? (
+                  <div className={styles.emptyCard}>
+                    <span className={styles.emptyIcon} aria-hidden="true">&#128196;</span>
+                    <p className={styles.emptyText}>No assignments waiting for you.</p>
+                  </div>
+                ) : (
+                  studentData.assignments.filter((a) => !a.submissionId && a.status !== "submitted").map((assignment) => (
+                    <Link
+                      key={assignment.id}
+                      to={`/assignmentsDropbox?assignmentId=${assignment.id}`}
+                      className={styles.classCard}
+                    >
+                      <div className={styles.classInfo}>
+                        <span className={styles.classTitle}>
+                          {assignment.instructions || assignment.description || assignment.name || "Assignment"}
+                        </span>
+                        <span className={styles.classSubtitle}>
+                          {assignment.subject || "Assignment"}
+                        </span>
+                      </div>
+                      <span className={styles.classArrow} aria-hidden="true">&#9654;</span>
+                    </Link>
+                  ))
+                )}
+              </section>
+            )}
+
+            {/* My remarks - simple big cards */}
+            {!isTeacher && (
+              <section className={styles.classesSection}>
+                <h2 className={styles.sectionTitle}>My remarks</h2>
+                {studentData.remarks.length === 0 ? (
+                  <div className={styles.emptyCard}>
+                    <span className={styles.emptyIcon} aria-hidden="true">&#128172;</span>
+                    <p className={styles.emptyText}>No remarks yet.</p>
+                  </div>
+                ) : (
+                  studentData.remarks.map((remark) => (
+                    <Link
+                      key={remark.remark_id}
+                      to="/remarks"
+                      className={styles.classCard}
+                    >
+                      <div className={styles.classInfo}>
+                        <span className={styles.classTitle}>
+                          {remark.remarks || "Teacher remark"}
+                        </span>
+                        <span className={styles.classSubtitle}>
+                          {remark.class_name || remark.teacher_name || "Remark"}
+                        </span>
+                      </div>
+                      <span className={styles.classArrow} aria-hidden="true">&#9654;</span>
+                    </Link>
+                  ))
+                )}
+              </section>
+            )}
+
+            {/* Teacher quick actions */}
+            {isTeacher && (
+              <section className={styles.actionsSection}>
+                <Link to="/Calendar" className={styles.actionButton}>
+                  <span className={styles.actionIcon} aria-hidden="true">&#128197;</span>
+                  Open calendar
+                </Link>
+                <Link to="/teacherStudents" className={styles.actionButton}>
+                  <span className={styles.actionIcon} aria-hidden="true">&#128100;</span>
+                  My students
+                </Link>
+              </section>
+            )}
+          </>
+        )}
       </section>
     </main>
   );

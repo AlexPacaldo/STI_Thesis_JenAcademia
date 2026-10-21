@@ -1,414 +1,191 @@
-/* The surrounding .content-inner already supplies the white surface, radius and
-   shadow, so this is a plain layout container. The previous duplicate card used
-   `margin: -1.8rem` to bleed over it, which double-counted the padding and
-   pushed the panel ~28px past the viewport edge (silently clipped by
-   `overflow-x: hidden` on html/body). */
-.CenterContent {
+/*
+ * Remarks — kid-friendly.
+ *
+ * Big cards, simple words. One note at a time.
+ */
+
+.page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
   font-family: "Poppins", sans-serif;
   color: var(--text);
-  /* Fill the space below the 72px sticky header so a short list doesn't leave the
-     panel floating in dead space. 100vh - 72px header - 32px outer gutter
-     - 56px contributed by .content-inner padding. */
   min-height: calc(100vh - 160px);
+  padding-bottom: 60px;
 }
 
-/* ---------- Page header ---------- */
-
-.pageHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+.loadingCard {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  min-height: 300px;
+  padding: 40px;
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--neu-shadow-lg);
 }
 
-.pageHeaderText {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-.pageEyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  align-self: flex-start;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(145, 167, 154, 0.16);
-  color: var(--primary);
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.pageEyebrow i {
-  font-size: 0.85rem;
+.loadingIcon {
+  font-size: 3rem;
   line-height: 1;
+  margin-bottom: 12px;
 }
 
-.CenterContent h1 {
-  font-size: clamp(1.6rem, 2.2vw, 2rem);
-  margin: 0;
-  color: var(--primary);
-  letter-spacing: -0.02em;
-  line-height: 1.15;
+.loadingText {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text-mid);
 }
 
-.pageSubtitle {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.92rem;
+.errorBanner {
+  padding: 18px 20px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(168, 58, 52, 0.2);
+  background: var(--pill-danger);
+  color: var(--text-danger);
+  font-size: 1rem;
+  font-weight: 700;
   line-height: 1.5;
 }
 
-.countPill {
-  flex-shrink: 0;
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: var(--primary);
-  color: #eef6ef;
-  font-size: 0.8rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-/* ---------- Loading / empty / error states ---------- */
-
-.stateCard {
-  /* Grow into the container's min-height so loading/empty/error fill the panel. */
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+.emptyCard {
+  display: grid;
+  gap: 14px;
+  place-items: center;
   text-align: center;
-  gap: 6px;
-  padding: 44px 24px;
-  border-radius: 20px;
-  border: 1px dashed rgba(38, 66, 59, 0.18);
-  background: var(--surface-raised);
-}
-
-.stateIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 52px;
-  height: 52px;
-  margin-bottom: 8px;
-  border-radius: 50%;
-  background: var(--bg-alt);
+  min-height: 300px;
+  padding: 40px;
+  border-radius: var(--radius-xl);
+  border: 2px dashed var(--border-strong);
+  background: var(--surface-soft);
   color: var(--muted);
-  font-size: 1.4rem;
 }
 
-.stateTitle {
+.emptyIcon {
+  font-size: 4rem;
+  line-height: 1;
+}
+
+.emptyTitle {
   margin: 0;
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+.emptyText {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--text-mid);
+}
+
+.sectionTitle {
+  margin: 0 0 16px 0;
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
   color: var(--primary);
 }
 
-.stateText {
-  margin: 0;
-  max-width: 42ch;
-  color: var(--muted);
-  font-size: 0.9rem;
-  line-height: 1.55;
-}
+/* ---------- Remark cards ---------- */
 
-.stateCardError {
-  border-style: solid;
-  border-color: rgba(220, 38, 38, 0.22);
-  background: var(--pill-danger);
-}
-
-.stateCardError .stateIcon {
-  background: rgba(220, 38, 38, 0.1);
-  color: #dc2626;
-}
-
-.stateCardError .stateTitle {
-  color: #b91c1c;
-}
-
-/* ---------- Remark list ---------- */
-
-/* Remarks are short notes, so a single full-width column wasted most of the
-   screen on wide monitors. Auto-fill flows them into as many columns as fit. */
-.remarkList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 14px;
-  /* Grow into the container's min-height and stretch the rows, so a short list
-     fills the panel instead of leaving a void underneath. Self-limiting: the
-     extra height is shared across rows, so it vanishes as rows are added. */
-  flex: 1 1 auto;
-  align-content: stretch;
-}
-
-/* A single remark drops the grid and becomes a plain flex item, which fills the
-   panel height directly instead of depending on grid row-stretch behaviour. */
-.remarkListSolo {
+.remarkCard {
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  gap: 16px;
+  min-height: 92px;
+  padding: 20px 24px;
+  border-radius: var(--radius-xl);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
-.remarkListSolo .remarksCard {
-  flex: 1 1 auto;
-}
-
-/* ---------- Featured (single remark) ---------- */
-
-.remarksCardFeatured {
-  padding: 28px;
-}
-
-.remarksCardFeatured .avatar {
-  width: 68px;
-  height: 68px;
-  border-width: 3px;
-}
-
-.remarksCardFeatured .teacherNames h3 {
-  font-size: 1.3rem;
-}
-
-.remarksCardFeatured .teacherRole {
-  font-size: 0.9rem;
-}
-
-.remarksCardFeatured .date {
-  font-size: 0.88rem;
-  padding: 9px 16px;
-}
-
-.remarksCardFeatured .remarkBody {
-  font-size: 1.2rem;
-  line-height: 1.8;
-  padding: 22px 26px 28px;
-  border-left-width: 4px;
-}
-
-.remarksCardFeatured .metaItem {
-  font-size: 0.92rem;
-  gap: 8px;
-}
-
-.remarksCardFeatured .metaValue {
-  font-size: 0.95rem;
-}
-
-.remarksCard {
-
-  display: flex;
-  flex-direction: column;
-  background: var(--surface-raised);
-  border: 1px solid rgba(38, 66, 59, 0.1);
-  border-radius: 20px;
-  width: 100%;
-  padding: 18px;
-  box-shadow:
-    4px 4px 12px rgba(18, 34, 30, 0.13),
-    -3px -3px 9px rgba(255, 255, 255, 0.7);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-}
-
-.remarksCard:hover {
+.remarkCard:hover {
   transform: translateY(-2px);
-  border-color: rgba(38, 66, 59, 0.2);
-  box-shadow: 0 18px 36px rgba(18, 34, 30, 0.1);
+  border-color: var(--brand-lime);
+  box-shadow: var(--shadow-md);
 }
 
-.remarksHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 14px;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.teacherInfo {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
+.remarkCard:active {
+  transform: scale(0.98);
 }
 
 .avatar {
   flex-shrink: 0;
-  width: 46px;
-  height: 46px;
-  background-color: #dce7e2;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   object-fit: cover;
-  border: 2px solid #fff;
-  box-shadow: 0 4px 12px rgba(18, 34, 30, 0.14);
+  border: 2px solid var(--border);
 }
 
-.teacherNames {
+.cardText {
+  min-width: 0;
+}
+
+.cardTeacher {
+  display: block;
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+
+.cardTextBody {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.5;
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+
+.remarkInfo {
   display: flex;
   flex-direction: column;
+  gap: 4px;
   min-width: 0;
 }
 
-.teacherNames h3 {
-  margin: 0;
-  font-size: 1.08rem;
-  font-weight: 700;
-  color: var(--text);
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-}
-
-.teacherRole {
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 500;
-}
-
-.date {
-  flex-shrink: 0;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(145, 167, 154, 0.16);
-  color: var(--primary);
-  font-size: 0.8rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-/* ---------- Remark body ---------- */
-
-.remarkBody {
-  /* Auto top/bottom margins split the leftover height of a stretched card
-     evenly, centring the remark between the header and the meta row. With no
-     leftover space they collapse to 0, so short cards are unaffected. The
-     separation from the meta row comes from the extra bottom padding rather
-     than a margin, which would otherwise take priority over the centring. */
-  margin: auto 0;
-  padding: 14px 16px 20px;
-  border-left: 3px solid var(--accent);
-  border-radius: 0 14px 14px 0;
-  background: #fff;
-  color: var(--text);
-  font-size: 1rem;
-  line-height: 1.7;
-  overflow-wrap: anywhere;
-}
-
-/* ---------- Meta row ---------- */
-
-.metaRow {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-  /* No margin-top: auto here - the centred .remarkBody already absorbs the
-     leftover height, which pushes this row to the bottom edge. */
-  padding-top: 14px;
-  border-top: 1px solid rgba(38, 66, 59, 0.1);
-}
-
-.metaItem {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 0.85rem;
-  color: var(--muted);
-  min-width: 0;
-}
-
-.metaItem i {
-  color: var(--accent);
-  font-size: 0.95rem;
-  flex-shrink: 0;
-}
-
-.metaLabel {
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  font-size: 0.7rem;
-  color: var(--muted-light);
-}
-
-.metaValue {
-  font-weight: 600;
-  color: var(--primary);
-  overflow-wrap: anywhere;
-}
-
-.metaDivider {
-  width: 1px;
-  height: 16px;
-  background: rgba(38, 66, 59, 0.14);
-  flex-shrink: 0;
-}
-
-/* ---------- Responsive ---------- */
+/* ---------- Small screens ---------- */
 
 @media (max-width: 640px) {
-  .CenterContent {
+  .page {
+    gap: 16px;
+    padding-bottom: 48px;
+  }
+
+  .sectionTitle {
+    font-size: 1.4rem;
+  }
+
+  .remarkCard {
+    min-height: 84px;
+    padding: 16px 20px;
     gap: 14px;
-    /* Header + outer gutter still apply, but drop the height fill on short
-       viewports so the empty/loading state never overflows. */
-    min-height: 0;
   }
 
-  /* One column once 360px tracks no longer fit. */
-  .remarkList {
-    grid-template-columns: 1fr;
+  .avatar {
+    width: 48px;
+    height: 48px;
   }
 
-  /* The featured scale is too large for a phone - fall back to normal sizing. */
-  .remarksCardFeatured {
-    padding: 18px;
+  .cardTeacher {
+    font-size: 1.1rem;
   }
 
-  .remarksCardFeatured .avatar {
-    width: 46px;
-    height: 46px;
-    border-width: 2px;
-  }
-
-  .remarksCardFeatured .teacherNames h3 {
-    font-size: 1.08rem;
-  }
-
-  .remarksCardFeatured .remarkBody {
+  .cardTextBody {
     font-size: 1rem;
-    line-height: 1.7;
-    padding: 14px 16px 20px;
-    border-left-width: 3px;
-  }
-
-  .remarksHeader {
-    align-items: flex-start;
-  }
-
-  .metaDivider {
-    display: none;
-  }
-
-  .metaRow {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .metaItem {
-    align-items: flex-start;
-    flex-wrap: wrap;
   }
 }

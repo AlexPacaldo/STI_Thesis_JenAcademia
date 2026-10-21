@@ -5,7 +5,6 @@ import styles from "../assets/assignmentsDropbox.module.css";
 import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
-import { getStoredUserTimezone, formatServerTimestamp } from "../utils/timezone.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { apiFetch } from "../utils/apiAuth.js";
@@ -18,7 +17,6 @@ import { compressFileIfImage } from "../utils/imageCompression.js";
 import ModalPortal from "../utils/ModalPortal.jsx";
 
 const API = API_BASE_URL;
-
 
 function normalizeFileUrl(url) {
   if (!url) return "";
@@ -43,24 +41,18 @@ function getFileExtension(url) {
   return clean.includes(".") ? clean.split(".").pop().toLowerCase() : "";
 }
 
-// Renders the submitted media inline instead of only offering a download link,
-// so a student can review their own work without leaving the page.
 function SubmissionPreview({ fileUrl, storedPath }) {
-  // Fetched with the session token and handed over as a blob: URL: these are
-  // <img>/<video>/<audio> sources, which cannot send an Authorization header.
   const { url: blobUrl, error, loading } = useAuthenticatedFileUrl(storedPath ?? fileUrl);
   const ext = getFileExtension(fileUrl);
   const fileName = getFileName(fileUrl);
 
   if (loading) return <p className={styles.fileInfo}>Loading file…</p>;
-  if (error) {
-    return <p className={styles.fileInfo}>This file could not be loaded.</p>;
-  }
+  if (error) return <p className={styles.fileInfo}>This file could not be loaded.</p>;
 
   if (VIDEO_EXTENSIONS.includes(ext)) {
     return (
       <video className={styles.previewMedia} controls preload="metadata" src={blobUrl}>
-        Your browser cannot play this video.{" "}
+        Your browser cannot play this video.
         <button
           type="button"
           onClick={() => openSubmissionFile(storedPath ?? fileUrl).catch(() => {})}
@@ -74,12 +66,7 @@ function SubmissionPreview({ fileUrl, storedPath }) {
 
   if (IMAGE_EXTENSIONS.includes(ext)) {
     return (
-      <img
-        className={styles.previewImage}
-        src={blobUrl}
-        alt={fileName}
-        loading="lazy"
-      />
+      <img className={styles.previewImage} src={blobUrl} alt={fileName} loading="lazy" />
     );
   }
 
@@ -89,18 +76,12 @@ function SubmissionPreview({ fileUrl, storedPath }) {
 
   if (ext === "pdf") {
     return (
-      <iframe
-        className={styles.previewFrame}
-        src={fileUrl}
-        title={`${fileName} preview`}
-      />
+      <iframe className={styles.previewFrame} src={fileUrl} title={`${fileName} preview`} />
     );
   }
 
   return (
-    <p className={styles.previewUnsupported}>
-      No inline preview available for this file type.
-    </p>
+    <p className={styles.previewUnsupported}>No preview for this kind of file.</p>
   );
 }
 
@@ -123,7 +104,6 @@ function formatDueDate(assignment) {
 
     if (!Number.isNaN(date.getTime())) {
       return date.toLocaleString(undefined, {
-        timeZone: getStoredUserTimezone(),
         year: "numeric",
         month: "short",
         day: "numeric",
@@ -141,65 +121,25 @@ function formatDueDate(assignment) {
   return "No due date";
 }
 
-function formatPostedDate(assignment) {
-  const postedAt = assignment?.postedAt || assignment?.createdAt || "";
-  if (!postedAt) return "Not available";
-
-  // UTC, from CURRENT_TIMESTAMP. See parseServerTimestamp - rendering it as
-  // browser-local shifted it by the UTC offset.
-  const formatted = formatServerTimestamp(postedAt, getStoredUserTimezone());
-  return formatted || String(postedAt);
-}
-
-function formatSubmissionDate(value) {
-  if (!value) return "";
-  const formatted = formatServerTimestamp(value, getStoredUserTimezone());
-  return formatted || String(value);
-}
-
 function getAttemptsUsed(assignment) {
   return Number(assignment?.attemptsUsed ?? assignment?.attemptCount ?? 0);
 }
 
-/**
- * The worksheet the teacher attached to the task, as a link that opens in a new
- * tab.
- *
- * Deliberately a button driving openAuthenticatedFile rather than an <a href>.
- * /uploads sits behind the session token, and a plain link cannot send the
- * Authorization header, so the raw href would come back 401. That helper fetches
- * the file with the header and hands the blob: URL to window.open instead.
- *
- * Opening in a new tab (rather than previewing inline) keeps the instructions
- * and the submit box on screen, which is where a student needs to stay while
- * working through the attached material.
- */
 function AssignmentAttachment({ url, name, onError }) {
   if (!url) return null;
 
   const label = name || getFileName(url);
 
   return (
-    <a
-      href="#"
-      className={styles.attachmentLink}
-      onClick={(event) => {
-        event.preventDefault();
-        // Rejects when the file cannot be fetched, which a bare href would
-        // surface as an unstyled error tab or a silent no-op behind a
-        // pop-up blocker. Either way the student needs to know why nothing
-        // happened.
-        openAssignmentFile(url).catch(onError);
-      }}
+    <button
+      type="button"
+      className={styles.cardAttachment}
+      onClick={() => openAssignmentFile(url).catch(onError)}
       title={`Open ${label} in a new tab`}
     >
-      <i className="bi bi-paperclip" aria-hidden="true" />
-      <span className={styles.attachmentLinkText}>
-        <strong>{label}</strong>
-        <span>Open in a new tab</span>
-      </span>
-      <i className="bi bi-box-arrow-up-right" aria-hidden="true" />
-    </a>
+      <span className={styles.cardAttachmentIcon} aria-hidden="true">📎</span>
+      {label}
+    </button>
   );
 }
 
@@ -215,18 +155,13 @@ export default function AssignmentsDropbox() {
   const [submitMessage, setSubmitMessage] = useState("");
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [showSubmission, setShowSubmission] = useState(false);
   const [showResubmissionEditor, setShowResubmissionEditor] = useState(false);
-  const [confirmAction, setConfirmAction] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
   const assignmentId = searchParams.get("assignmentId");
 
   const handleBack = () => {
-    // Only pop the history stack when there is an in-app entry behind us.
-    // On a direct link / refresh there is nothing to go back to, so fall back
-    // to the assignments list instead of leaving the site.
     const historyIndex = typeof window !== "undefined" ? window.history.state?.idx : 0;
     if (typeof historyIndex === "number" && historyIndex > 0) {
       navigate(-1);
@@ -244,8 +179,6 @@ export default function AssignmentsDropbox() {
     let ignore = false;
     setIsLoading(true);
     setSubmitMessage("");
-    setShowSubmission(false);
-    setShowResubmissionEditor(false);
 
     apiFetch(`${API}/api/assignments/${assignmentId}`)
       .then(async (res) => {
@@ -258,11 +191,6 @@ export default function AssignmentsDropbox() {
       .then((assignment) => {
         if (ignore) return;
         setSelectedAssignment(assignment);
-        setComment(assignment.comments || "");
-        if (assignment.submissionId) {
-          const submittedAt = formatSubmissionDate(assignment.submittedAt);
-          setSubmitMessage(submittedAt ? `Submitted on ${submittedAt}.` : "Submitted.");
-        }
       })
       .catch((err) => {
         console.error("Load assignment detail error:", err);
@@ -307,10 +235,6 @@ export default function AssignmentsDropbox() {
   const submittedAnswer = selectedAssignment?.comments || "";
   const submittedFileUrl = normalizeFileUrl(selectedAssignment?.fileUrl);
   const hasSubmissionContent = Boolean(selectedAssignment?.submissionId && (submittedAnswer || submittedFileUrl));
-  // Guards against showSubmission staying true after the submission disappears,
-  // which would otherwise hide the instructions behind a tab that no longer
-  // exists.
-  const isViewingSubmission = showSubmission && hasSubmissionContent;
   const hasExistingSubmission = Boolean(selectedAssignment?.submissionId);
   const canResubmit = hasExistingSubmission && !isAttemptLimitReached;
   const submitButtonLabel = canResubmit ? "Submit Again" : "Submit";
@@ -323,7 +247,7 @@ export default function AssignmentsDropbox() {
     }
 
     if (!currentStudentId) {
-      setSubmitMessage("Please log in as a student before submitting.");
+      setSubmitMessage("Please log in before submitting.");
       return;
     }
 
@@ -333,12 +257,12 @@ export default function AssignmentsDropbox() {
     }
 
     if (isAttemptLimitReached) {
-      setSubmitMessage("Attempt limit reached. You can no longer submit this assignment.");
+      setSubmitMessage("You have used all your tries. You can no longer submit this assignment.");
       return;
     }
 
     if (!comment.trim() && !selectedFile) {
-      setSubmitMessage("Please write a comment or attach a file before submitting.");
+      setSubmitMessage("Please write an answer or attach a file before submitting.");
       return;
     }
 
@@ -363,20 +287,9 @@ export default function AssignmentsDropbox() {
         throw new Error(data.message || "Could not submit assignment");
       }
 
-      const submittedAt = formatSubmissionDate(data.submission?.submittedAt || new Date());
-      setSelectedAssignment((prev) => ({
-        ...prev,
-        submissionId: data.submission?.submissionId,
-        comments: data.submission?.comments || comment.trim(),
-        fileUrl: data.submission?.fileUrl || prev?.fileUrl,
-        attemptLimit: data.submission?.attemptLimit ?? prev?.attemptLimit,
-        attemptsUsed: data.submission?.attemptsUsed ?? data.submission?.attemptCount ?? (getAttemptsUsed(prev) + 1),
-        attemptCount: data.submission?.attemptCount ?? data.submission?.attemptsUsed ?? (getAttemptsUsed(prev) + 1),
-        submittedAt,
-        status: "submitted",
-      }));
-      notify?.("Assignment has been submitted!", "success");
-      setSubmitMessage(submittedAt ? `Submitted on ${submittedAt}.` : "Submitted.");
+      setSelectedAssignment((prev) => ({ ...prev, submissionId: data.submission?.submissionId }));
+      notify?.("Assignment submitted!", "success");
+      setSubmitMessage("Submitted!");
       setComment("");
       setSelectedFile(null);
     } catch (err) {
@@ -386,8 +299,6 @@ export default function AssignmentsDropbox() {
     }
   };
 
-  const closeConfirmAction = () => setConfirmAction(null);
-
   const requestSubmitAssignment = () => {
     if (!selectedAssignment) {
       setSubmitMessage("Please open an assignment before submitting.");
@@ -395,7 +306,7 @@ export default function AssignmentsDropbox() {
     }
 
     if (!currentStudentId) {
-      setSubmitMessage("Please log in as a student before submitting.");
+      setSubmitMessage("Please log in before submitting.");
       return;
     }
 
@@ -405,166 +316,75 @@ export default function AssignmentsDropbox() {
     }
 
     if (isAttemptLimitReached) {
-      setSubmitMessage("Attempt limit reached. You can no longer submit this assignment.");
+      setSubmitMessage("You have used all your tries. You can no longer submit this assignment.");
       return;
     }
 
     if (!comment.trim() && !selectedFile) {
-      setSubmitMessage("Please write a comment or attach a file before submitting.");
+      setSubmitMessage("Please write an answer or attach a file before submitting.");
       return;
     }
 
-    setConfirmAction({
-      type: "submit-assignment",
-      title: submitButtonLabel === "Submit Again" ? "Submit again?" : "Submit assignment?",
-      message: `Are you sure you want to ${submitButtonLabel.toLowerCase()}?`,
-      confirmLabel: submitButtonLabel,
-    });
-  };
-
-  const performConfirmAction = async () => {
-    if (!confirmAction) return;
-    if (confirmAction.type === "submit-assignment") {
-      await onSubmitComment();
-    }
-    closeConfirmAction();
+    setShowResubmissionEditor(false);
+    onSubmitComment();
   };
 
   return (
     <div className={styles.cont}>
       <div className={styles.center}>
+        <button type="button" className={styles.backButton} onClick={handleBack}>
+          <span className={styles.backArrow} aria-hidden="true">&#9664;</span>
+          Back
+        </button>
         <div className={styles.centerContent}>
-          <button type="button" className={styles.backButton} onClick={handleBack}>
-            <i className="bi bi-arrow-left" aria-hidden="true" />
-            <span>Back to Assignments</span>
-          </button>
-          <h1><b>{selectedAssignment ? getAssignmentDisplayText(selectedAssignment) : (isLoading ? "Loading assignment..." : "Assignment")}</b></h1>
-          {selectedAssignment ? (
-            <p className={styles.assignmentMeta}>
-              {selectedAssignment.subject || "General"} | {submissionStatus}
-            </p>
-          ) : null}
-        </div>
+
         {selectedAssignment && isAssignmentPastDue() ? (
-          <div className={styles.pastDueAlert}>
-            ⚠️ This assignment is past due and cannot be submitted
+          <div className={styles.alertCard}>
+            <span className={styles.alertIcon} aria-hidden="true">⏰</span>
+            This assignment is past due and cannot be submitted.
           </div>
         ) : selectedAssignment && isAttemptLimitReached ? (
-          <div className={styles.pastDueAlert}>
-            Attempt limit reached. You can no longer submit this assignment.
+          <div className={styles.alertCard}>
+            <span className={styles.alertIcon} aria-hidden="true">🚫</span>
+            You have used all your tries for this assignment.
           </div>
         ) : null}
-
-        <div className={styles.tabContainer} role="tablist" aria-label="Assignment views">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={!isViewingSubmission}
-            className={`${styles.tabButton} ${!isViewingSubmission ? styles.activeTab : ""}`}
-            onClick={() => setShowSubmission(false)}
-          >
-            Instructions
-          </button>
-          {hasSubmissionContent ? (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={isViewingSubmission}
-              className={`${styles.tabButton} ${isViewingSubmission ? styles.activeTab : styles.submissionTab}`}
-              onClick={() => setShowSubmission((current) => !current)}
-            >
-              {isViewingSubmission ? "Hide submission" : "View submission"}
-            </button>
-          ) : null}
-        </div>
 
         <div className={styles.instructionContent}>
           <div className={styles.leftSide}>
             {selectedAssignment ? (
               <>
-                {/* Shown ABOVE the instructions: this used to render below them,
-                    so clicking "View submissions" appeared to do nothing until
-                    you scrolled past the whole instruction sheet. */}
-                {isViewingSubmission ? (
-                  <section className={styles.submissionViewer}>
-                    <div className={styles.submissionViewerHeader}>
-                      <span>Submitted Work</span>
-                      <strong>{selectedAssignment?.submittedAt ? `Submitted on ${formatSubmissionDate(selectedAssignment.submittedAt)}` : "Submitted"}</strong>
+                <div className={styles.instructionsPanel}>
+                  <div className={styles.instructionSheet}>
+                    <span className={styles.instructionIcon} aria-hidden="true">📝</span>
+                    <h2 className={styles.instructionHead}>Assignment Instructions</h2>
+                    <div className={styles.instructionText}>
+                      {assignmentInstructions || "No instructions were provided for this assignment."}
                     </div>
-                    {submittedAnswer ? (
-                      <div className={styles.submittedAnswer}>
-                        <span>Answer</span>
-                        <p>{submittedAnswer}</p>
-                      </div>
-                    ) : null}
-                    {submittedFileUrl ? (
-                      <div className={styles.submittedFile}>
-                        <div className={styles.submittedFileHeader}>
-                          <span>File</span>
-                          <button
-                            type="button"
-                            className={styles.textBtn}
-                            onClick={() =>
-                              openSubmissionFile(selectedAssignment?.fileUrl).catch((err) =>
-                                notify?.(err.message, "error")
-                              )
-                            }
-                            title={getFileName(submittedFileUrl)}
-                          >
-                            {getFileName(submittedFileUrl)}
-                          </button>
-                        </div>
-                        <SubmissionPreview fileUrl={submittedFileUrl} storedPath={selectedAssignment?.fileUrl} />
-                      </div>
-                    ) : null}
-                  </section>
-                ) : null}
-
-                {/* Instructions are hidden while viewing the submission - the two
-                    tabs now swap content instead of stacking it. */}
-                {!isViewingSubmission ? (
-                  <div className={styles.instructionsPanel}>
-                    <section className={styles.instructionSheet}>
-                      <div className={styles.instructionHeader}>
-                        <span className={styles.instructionIcon}>i</span>
-                        <div>
-                          <span>Assignment Instructions</span>
-                          <h4>Read before submitting</h4>
-                        </div>
-                      </div>
-                      <div className={styles.instructionText}>
-                        {assignmentInstructions || "No instructions were provided for this assignment."}
-                      </div>
-                      <AssignmentAttachment
-                        url={selectedAssignment?.attachmentUrl}
-                        name={selectedAssignment?.attachmentName}
-                        onError={() =>
-                          notify?.("That file could not be opened. Please try again.", "error")
-                        }
-                      />
-                    </section>
+                    <AssignmentAttachment
+                      url={selectedAssignment?.attachmentUrl}
+                      name={selectedAssignment?.attachmentName}
+                      onError={() => notify?.("That file could not be opened. Please try again.", "error")}
+                    />
                   </div>
-                ) : null}
+                </div>
 
                 {canResubmit && !showResubmissionEditor ? (
                   <button
                     type="button"
-                    className={styles.resubmitButton}
+                    className={styles.cardButton}
                     onClick={() => setShowResubmissionEditor(true)}
                     disabled={!selectedAssignment || isAssignmentPastDue() || isAttemptLimitReached}
                   >
-                    <i className="bi bi-arrow-repeat" aria-hidden="true" />
-                    Submit Again
+                    <span className={styles.cardArrow} aria-hidden="true">&#9654;</span>
+                    Open your answer
                   </button>
                 ) : null}
 
                 {showResponseEditor ? (
                   <div className={styles.responsePanel}>
-                    <label htmlFor="studentComment" className={styles.responseLabel}>
-                      <b>Your Answer:</b>
-                    </label>
+                    <h2 className={styles.responseHead}>Your Answer</h2>
                     <textarea
-                      id="studentComment"
                       className={styles.commentBox}
                       placeholder="Write your answer"
                       value={comment}
@@ -573,11 +393,11 @@ export default function AssignmentsDropbox() {
                         setSubmitMessage("");
                       }}
                     />
-                    <label htmlFor="submissionFile" className={styles.fileLabel}>
-                      Upload file (any type)
+                    <label className={styles.fileLabel}>
+                      <span className={styles.fileIcon} aria-hidden="true">📎</span>
+                      Attach a file
                     </label>
                     <input
-                      id="submissionFile"
                       type="file"
                       className={styles.fileInput}
                       onChange={(e) => {
@@ -586,36 +406,22 @@ export default function AssignmentsDropbox() {
                       }}
                     />
                     {selectedFile ? (
-                      <p className={styles.fileInfo}>Attached: {selectedFile.name}</p>
-                    ) : selectedAssignment?.fileUrl ? (
                       <p className={styles.fileInfo}>
-                        Current file:{" "}
-                        <button
-                          type="button"
-                          className={styles.textBtn}
-                          onClick={() =>
-                              openSubmissionFile(selectedAssignment.fileUrl).catch((err) =>
-                                notify?.(err.message, "error")
-                              )
-                            }
-                        >
-                          {selectedAssignment.fileUrl.split("/").pop()}
-                        </button>
+                        <span className={styles.fileIcon} aria-hidden="true">📎</span>
+                        Attached: {selectedFile.name}
                       </p>
                     ) : null}
                     <div className={styles.editorActions}>
-                      {canResubmit ? (
-                        <button
-                          type="button"
-                          className={styles.cancelButton}
-                          onClick={() => {
-                            setShowResubmissionEditor(false);
-                            setSubmitMessage("");
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      ) : null}
+                      <button
+                        type="button"
+                        className={styles.cancelButton}
+                        onClick={() => {
+                          setShowResubmissionEditor(false);
+                          setSubmitMessage("");
+                        }}
+                      >
+                        Cancel
+                      </button>
                       <button
                         type="button"
                         className={styles.submitComment}
@@ -626,17 +432,13 @@ export default function AssignmentsDropbox() {
                       </button>
                     </div>
                     {submitMessage ? (
-                      <p className={styles.submitMessage} style={{ color: isAssignmentPastDue() || isAttemptLimitReached ? "#dc2626" : "#374151" }}>
-                        {submitMessage}
-                      </p>
+                      <p className={styles.submitMessage}>{submitMessage}</p>
                     ) : null}
                   </div>
                 ) : null}
               </>
             ) : (
-              <p>
-                {submitMessage || "No assignment is currently selected. Please return to the assignments list and open your assigned task."}
-              </p>
+              <p>{submitMessage || "Please open your assignment from the list."}</p>
             )}
           </div>
 
@@ -646,68 +448,24 @@ export default function AssignmentsDropbox() {
                 <span className={styles.statusPill}>{submissionStatus}</span>
                 <span className={styles.coursePill}>{selectedAssignment?.subject || "General"}</span>
               </div>
-
-              <div className={styles.peopleBlock}>
-                <div className={styles.personRow}>
-                  <AuthenticatedImage
-                    src={
-                      selectedAssignment?.teacherProfileImageUrl ||
-                      selectedAssignment?.teacher_profile_image_url
-                    }
-                    alt="Teacher profile"
-                    className={styles.profileImg}
-                    fallback={<img src={teacherPic} alt="Teacher profile" className={styles.profileImg} />}
-                  />
-                  <div>
-                    <span className={styles.kicker}>Teacher</span>
-                    <strong>{selectedAssignment?.teacherName || "Teacher Jen"}</strong>
-                  </div>
-                </div>
-              </div>
-
               <div className={styles.detailGrid}>
                 <div className={styles.detailItem}>
-                  <span>Due Date</span>
+                  <span>Due</span>
                   <strong>{formatDueDate(selectedAssignment)}</strong>
                 </div>
                 <div className={styles.detailItem}>
-                  <span>Attempts</span>
+                  <span>Tries used</span>
                   <strong>
                     {attemptsUsed}
-                    {attemptLimit !== null ? ` / ${attemptLimit}` : " / Unlimited"}
+                    {attemptLimit !== null ? ` of ${attemptLimit}` : " unlimited"}
                   </strong>
-                </div>
-                <div className={`${styles.detailItem} ${styles.wideDetail}`}>
-                  <span>Posted</span>
-                  <strong>{formatPostedDate(selectedAssignment)}</strong>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-      {confirmAction && (
-        <ModalPortal>
-          <div className={styles.modalBackdrop} onClick={closeConfirmAction}>
-            <section className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
-              <div className={styles.modalHeader}>
-                <h2>{confirmAction.title}</h2>
-              </div>
-              <div className={styles.modalBody}>
-                <p>{confirmAction.message}</p>
-              </div>
-              <div className={styles.modalActions}>
-                <button type="button" className={styles.textBtn} onClick={closeConfirmAction}>
-                  Cancel
-                </button>
-                <button type="button" className={styles.primaryBtn} onClick={performConfirmAction}>
-                  {confirmAction.confirmLabel}
-                </button>
-              </div>
-            </section>
-          </div>
-        </ModalPortal>
-      )}
     </div>
+  </div>
   );
 }

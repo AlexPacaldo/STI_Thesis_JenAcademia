@@ -1,357 +1,259 @@
+/*
+ * Assignments — kid-friendly.
+ *
+ * Big cards, big buttons, simple words. One thing at a time.
+ */
+
 .page {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 24px;
   font-family: "Poppins", sans-serif;
   color: var(--text);
-  /* Fill the viewport below the 72px sticky header: 100vh - 72px header
-     - 32px outer gutter - 56px from .content-inner padding. */
   min-height: calc(100vh - 160px);
+  padding-bottom: 60px;
 }
 
-/* ---------- Table ---------- */
-
-.tableWrap {
-  flex: 1 1 auto;
-  /* min-height: 0 lets this actually shrink inside the flex column so the
-     scroll container works instead of overflowing the page. */
-  min-height: 0;
-  background: var(--surface-white);
-  border: 1px solid var(--border);
-  border-radius: 24px;
-  box-shadow:
-    6px 6px 16px rgba(18, 34, 30, 0.16),
-    -4px -4px 12px rgba(255, 255, 255, 0.72);
-  /* Scrolls internally once the list outgrows the viewport. Both axes scroll:
-     a fixed min-width table would otherwise be clipped on narrow screens. */
-  overflow-y: auto;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* Scoped: bare `table`/`th`/`td` selectors in a module still leak globally and
-   were styling every table in the app. */
-.table {
-  width: 100%;
-  /* height: 100% is what makes the rows stretch to fill the panel instead of
-     stopping after the last one and leaving a void underneath. Rows still keep
-     their min-content height, so a long list overflows and scrolls. */
-  height: 100%;
-  border-collapse: collapse;
-  font-size: 0.92rem;
-}
-
-.table th {
-  /* Stays put while a long list scrolls inside the panel. */
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: 14px 18px;
-  text-align: left;
-  background: var(--surface-recessed);
-  color: var(--primary);
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.table td {
-  padding: 14px 18px;
-  text-align: left;
-  border-top: 1px solid var(--border);
-  color: var(--text);
-  vertical-align: middle;
-}
-
-.table tbody tr {
-  transition: background-color 0.16s ease;
-}
-
-.table tbody tr:hover {
-  background: var(--surface-raised);
-}
-
-.actionHeader {
-  text-align: right;
-}
-
-.actionCell {
-  text-align: right;
-  white-space: nowrap;
-}
-
-.assignmentTitle {
-  font-weight: 600;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-/* Shortcut to the worksheet a teacher attached, shown beneath the assignment
-   text. Kept visually subordinate to the title - it is a shortcut, not the
-   main action, which is still the View button at the end of the row. */
-.attachmentBadge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  margin-top: 8px;
-  padding: 4px 10px;
-  border: 1px solid rgba(38, 66, 59, 0.14);
-  border-radius: 999px;
-  background: var(--surface-raised);
-  color: var(--primary);
-  font-family: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 0.18s ease, background-color 0.18s ease;
-}
-
-.attachmentBadge:hover {
-  border-color: var(--accent);
-  background: #fff;
-}
-
-.attachmentBadge:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
-.attachmentBadge span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dateCell {
-  color: var(--muted);
-  font-size: 0.88rem;
-  white-space: nowrap;
-}
-
-.duePill {
-  display: inline-flex;
-  align-items: center;
-  padding: 5px 11px;
-  border-radius: 999px;
-  background: rgba(145, 167, 154, 0.16);
-  color: var(--primary);
-  font-size: 0.8rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.noDue {
-  color: var(--muted-light);
-  font-size: 0.85rem;
-  font-style: italic;
-}
-
-.subjectPill {
-  display: inline-flex;
-  align-items: center;
-  padding: 5px 11px;
-  border-radius: 999px;
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  color: var(--primary);
-  font-size: 0.8rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.submitButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 36px;
-  padding: 8px 15px;
-  border-radius: 999px;
-  background: var(--primary);
-  color: var(--surface-white);
-  text-decoration: none;
-  font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: 700;
-  border: none;
-  cursor: pointer;
-  transition: transform 0.18s ease, background-color 0.18s ease;
-}
-
-.submitButton:hover,
-.submitButton:focus-visible {
-  background-color: var(--primary-mid);
-  transform: translateY(-1px);
-  outline: none;
-}
-
-.submitButton:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
-/* ---------- States ---------- */
-
-.stateCell {
-  margin: 0;
-  padding: 32px 18px;
+.loadingCard {
+  display: grid;
+  place-items: center;
   text-align: center;
-  color: var(--muted);
-  font-size: 0.92rem;
+  min-height: 300px;
+  padding: 40px;
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--neu-shadow-lg);
 }
 
-.stateCellError {
+.loadingText {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text-mid);
+}
+
+.errorBanner {
+  padding: 18px 20px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(168, 58, 52, 0.2);
+  background: var(--pill-danger);
   color: var(--text-danger);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
-.emptyState {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+.emptyCard {
+  display: grid;
+  gap: 14px;
+  place-items: center;
   text-align: center;
-  gap: 6px;
-  padding: 40px 18px;
+  min-height: 300px;
+  padding: 40px;
+  border-radius: var(--radius-xl);
+  border: 2px dashed var(--border-strong);
+  background: var(--surface-soft);
+  color: var(--muted);
 }
 
 .emptyIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 50px;
-  height: 50px;
-  margin-bottom: 8px;
-  border-radius: 50%;
-  background: var(--bg-alt);
-  color: var(--muted);
-  font-size: 1.35rem;
+  font-size: 4rem;
+  line-height: 1;
 }
 
 .emptyTitle {
   margin: 0;
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--primary);
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--text);
 }
 
 .emptyText {
   margin: 0;
-  color: var(--muted);
-  font-size: 0.88rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--text-mid);
 }
 
-/* ---------- Responsive ---------- */
+.sectionTitle {
+  margin: 0 0 16px 0;
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--primary);
+}
 
-@media (max-width: 760px) {
-  /* On phones the table collapses into stacked cards so nothing scrolls
-     sideways and every field keeps its label. Each `td` already carries a
-     `data-label` attribute rendered in assignments.jsx. */
-  .tableWrap {
-    overflow-x: hidden;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+/* ---------- Assignment cards ---------- */
+
+.assignmentCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 100px;
+  padding: 24px 28px;
+  border-radius: var(--radius-xl);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.assignmentCard:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-mid);
+  box-shadow: var(--shadow-md);
+}
+
+.assignmentCard:active {
+  transform: scale(0.98);
+}
+
+.assignmentCard:focus-visible {
+  outline: none;
+  border-color: var(--border-mid);
+  box-shadow: none;
+}
+
+.cardInfo {
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cardTitle {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+
+.cardSubject {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.cardStatus {
+  margin-top: 6px;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+/* Big "Open" button on each card */
+.cardButton {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 72px;
+  padding: 0 28px;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius-xl);
+  background: var(--brand-green);
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 0 10px 24px rgba(47, 122, 61, 0.32);
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.cardButton:hover:not(:disabled) {
+  background: var(--primary-mid);
+  transform: translateY(-2px);
+}
+
+.cardButton:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.cardArrow {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+/* Attachment shortcut (worksheet from the teacher) */
+.cardAttachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 20px;
+  cursor: pointer;
+  border: 2px solid var(--border-mid);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 1.1rem;
+  font-weight: 800;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.cardAttachment:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--brand-lime);
+  background: var(--surface-soft);
+}
+
+.cardAttachmentIcon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+/* ---------- Small screens ---------- */
+
+@media (max-width: 640px) {
+  .page {
+    gap: 16px;
+    padding-bottom: 48px;
   }
 
-  .table,
-  .table thead,
-  .table tbody,
-  .table tr,
-  .table th,
-  .table td {
-    display: block;
-    width: 100%;
+  .sectionTitle {
+    font-size: 1.4rem;
   }
 
-  .table thead tr {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    padding: 0;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    border: 0;
-    white-space: nowrap;
+  .assignmentCard {
+    min-height: 92px;
+    padding: 20px 24px;
+    gap: 16px;
   }
 
-  .table tbody tr {
-    display: flex;
-    flex-direction: column;
-    padding: 16px 18px;
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    background: #fff;
-    margin-bottom: 14px;
-    box-shadow: 0 8px 20px rgba(47, 77, 62, 0.06);
-    transition: transform 0.16s ease, box-shadow 0.16s ease;
+  .cardTitle {
+    font-size: 1.25rem;
   }
 
-  .table tbody tr:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 14px 28px rgba(47, 77, 62, 0.08);
-    border-color: rgba(145, 167, 154, 0.8);
+  .cardSubject,
+  .cardStatus {
+    font-size: 1rem;
   }
 
-  .table td {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 10px;
-    padding: 7px 0;
-    border-bottom: 1px solid rgba(38, 66, 59, 0.06);
-    border-top: 0;
+  .cardButton {
+    min-height: 64px;
+    font-size: 1.25rem;
+    padding: 0 24px;
   }
 
-  .table td:last-child {
-    border-bottom: 0;
-  }
-
-  .table td::before {
-    content: attr(data-label);
-    display: block;
-    color: var(--muted);
-    font-size: 0.68rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    text-align: left;
-  }
-
-  .table td:not([data-label])::before {
-    content: none;
-  }
-
-  .actionHeader,
-  .actionCell {
-    text-align: left;
-    white-space: normal;
-  }
-
-  .actionCell {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 0;
-  }
-
-  .actionCell::before {
-    content: none;
-  }
-
-  .submitButton {
-    width: auto;
-    min-height: 40px;
-    padding: 8px 16px;
-    font-size: 0.85rem;
-  }
-
-  .attachmentBadge {
-    margin-top: 6px;
-    align-self: flex-start;
-  }
-
-  .dateCell {
-    white-space: normal;
+  .cardAttachment {
+    min-height: 48px;
+    font-size: 1rem;
   }
 }
