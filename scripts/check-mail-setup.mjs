@@ -91,6 +91,15 @@ async function fetchDomains(apiKey) {
     } catch {
       // Not JSON. The raw text is the reason.
     }
+    // !! A key that may only send is refused here, and it says so in a way
+    // !! that looks like a revoked key. "restricted_api_key" means the key
+    // !! is fine and is simply not allowed to read the domains - which is
+    // !! the right permission for a key that lives on a server.
+    if (/restricted_api_key/i.test(String(detail))) {
+      const error = new Error("this key may only send, so it cannot read the domains");
+      error.restricted = true;
+      throw error;
+    }
     if (response.status === 401) {
       throw new Error("the key was refused (401). It was revoked, or copied with a space in it");
     }
@@ -152,109 +161,133 @@ function normalizeName(name, domain) {
 
 /* --------------------------------------------------------------- the check */
 
-const apiKey = readSetting("MAIL_API_KEY");
-const provider = (readSetting("MAIL_API_PROVIDER") || "resend").toLowerCase();
-const toAddress = process.argv[2] || "";
+async function main() {
+  const apiKey = readSetting("MAIL_API_KEY");
+  const provider = (readSetting("MAIL_API_PROVIDER") || "resend").toLowerCase();
+  const toAddress = process.argv[2] || "";
 
-heading(`Mail setup (${provider})`);
+  heading(`Mail setup (${provider})`);
 
-if (provider !== "resend") {
-  say(`This script only knows how to check Resend. MAIL_API_PROVIDER is "${provider}".`);
-  say("Set MAIL_API_PROVIDER=resend, or check the other provider's dashboard by hand.");
-  process.exit(0);
-}
+  if (provider !== "resend") {
+    say(`This script only knows how to check Resend. MAIL_API_PROVIDER is "${provider}".`);
+    say("Set MAIL_API_PROVIDER=resend, or check the other provider's dashboard by hand.");
+    return;
+  }
 
-if (!apiKey) {
-  say("No API key yet.");
-  say("");
-  say("Put one in backend/.env:");
-  say("  MAIL_API_PROVIDER=resend");
-  say("  MAIL_API_KEY=re_...");
-  say("");
-  say("Create one at resend.com -> API Keys -> Create API Key.");
-  process.exit(1);
-}
+  if (!apiKey) {
+    say("No API key yet.");
+    say("");
+    say("Put one in backend/.env:");
+    say("  MAIL_API_PROVIDER=resend");
+    say("  MAIL_API_KEY=re_...");
+    say("");
+    say("Create one at resend.com -> API Keys -> Create API Key.");
+    process.exitCode = 1;
+    return;
+  }
 
-say(`API key: found (${apiKey.slice(0, 6)}...)`);
+  say(`API key: found (${apiKey.slice(0, 6)}...)`);
 
-let domains = [];
-try {
-  domains = await fetchDomains(apiKey);
-} catch (err) {
-  say("");
-  say(`The provider would not answer: ${err.message}`);
-  say("");
-  say("A key that was revoked, or copied with a space in it, is refused here.");
-  process.exit(1);
-}
-
-if (!domains.length) {
-  say("");
-  say("The key works, but no domains are on the account yet.");
-  say("Add one at resend.com -> Domains -> Add Domain, and this script will");
-  say("print the exact DNS records to paste into your domain host.");
-  process.exit(1);
-}
-
-heading("Domains");
-for (const domain of domains) {
-  say(`${domain.name}  [${domain.status}]`);
-}
-
-let allRecordsInPlace = true;
-for (const domain of domains) {
-  const records = Array.isArray(domain.records) ? domain.records : [];
-  if (!records.length) continue;
-
-  heading(`DNS records for ${domain.name}`);
-  for (const record of records) {
-    const name = normalizeName(record.name, domain.name);
-    const result = await checkRecord({ ...record, name });
-    if (result.ok) {
-      say(`  ok       ${record.type.padEnd(5)} ${name}`);
+  let domains = [];
+  let keyCanReadDomains = true;
+  try {
+    domains = await fetchDomains(apiKey);
+  } catch (err) {
+    if (err.restricted) {
+      // !! A key that may only send is the RIGHT key for a server. It just
+      // !! cannot read the domains, so the DNS check is skipped - the records
+      // !! are on the domain page in the dashboard, and the test message
+      // !! below is what actually proves the setup works.
+      keyCanReadDomains = false;
+      say("");
+      say("This key may only send, so it cannot list the domains.");
+      say("That is the right permission for a key on a server. The DNS check");
+      say("below is skipped; the records are on the Domains page in the");
+      say("dashboard, and the test message is what proves the setup works.");
     } else {
-      allRecordsInPlace = false;
-      say(`  MISSING  ${record.type.padEnd(5)} ${name}`);
-      say(`          value: ${record.value}`);
-      if (record.priority) say(`          priority: ${record.priority}`);
-      if (result.found?.length) say(`          there now: ${result.found.join(", ")}`);
+      say("");
+      say(`The provider would not answer: ${err.message}`);
+      say("");
+      say("A key that was revoked, or copied with a space in it, is refused here.");
+      process.exitCode = 1;
+      return;
     }
   }
-}
 
-const domainStatus = domains.map((domain) => domain.status);
-const allVerified = domainStatus.every((status) => status === "verified");
+  if (keyCanReadDomains && !domains.length) {
+    say("");
+    say("The key works, but no domains are on the account yet.");
+    say("Add one at resend.com -> Domains -> Add Domain, and this script will");
+    say("print the exact DNS records to paste into your domain host.");
+    process.exitCode = 1;
+    return;
+  }
 
-heading("Where this stands");
-say(`  API key          ${apiKey ? "accepted" : "missing"}`);
-say(`  DNS records      ${allRecordsInPlace ? "all in place" : "missing or wrong"}`);
-say(`  Domain verified  ${allVerified ? "yes" : "not yet"}`);
+  if (keyCanReadDomains) {
+    heading("Domains");
+    for (const domain of domains) {
+      say(`${domain.name}  [${domain.status}]`);
+    }
 
-if (!allRecordsInPlace) {
-  say("");
-  say("Add the records above to your domain host (Spaceship -> Domain Manager ->");
-  say("DNS), then run this again. DNS changes take a few minutes to spread.");
-}
+    let allRecordsInPlace = true;
+    for (const domain of domains) {
+      const records = Array.isArray(domain.records) ? domain.records : [];
+      if (!records.length) continue;
 
-if (!allVerified) {
-  say("");
-  say("The provider has not confirmed the domain yet. Once the records are in");
-  say("place, press \"Verify\" on the domain in the Resend dashboard.");
-}
+      heading(`DNS records for ${domain.name}`);
+      for (const record of records) {
+        const name = normalizeName(record.name, domain.name);
+        const result = await checkRecord({ ...record, name });
+        if (result.ok) {
+          say(`  ok       ${record.type.padEnd(5)} ${name}`);
+        } else {
+          allRecordsInPlace = false;
+          say(`  MISSING  ${record.type.padEnd(5)} ${name}`);
+          say(`          value: ${record.value}`);
+          if (record.priority) say(`          priority: ${record.priority}`);
+          if (result.found?.length) say(`          there now: ${result.found.join(", ")}`);
+        }
+      }
+    }
 
-if (allRecordsInPlace && allVerified) {
-  say("");
-  say("The setup is complete. The next step is putting the key in Railway:");
-  say("  MAIL_TRANSPORT=api");
-  say("  MAIL_API_PROVIDER=resend");
-  say(`  MAIL_API_KEY=${apiKey}`);
-  say(`  MAIL_API_FROM=academy@${domains[0].name}`);
-  say("then redeploy the backend service.");
-}
+    const domainStatus = domains.map((domain) => domain.status);
+    const allVerified = domainStatus.every((status) => status === "verified");
 
-/* ------------------------------------------------------------ a test email */
+    heading("Where this stands");
+    say(`  API key          ${apiKey ? "accepted" : "missing"}`);
+    say(`  DNS records      ${allRecordsInPlace ? "all in place" : "missing or wrong"}`);
+    say(`  Domain verified  ${allVerified ? "yes" : "not yet"}`);
 
-if (toAddress) {
+    if (!allRecordsInPlace) {
+      say("");
+      say("Add the records above to your domain host (Spaceship -> Domain Manager ->");
+      say("DNS), then run this again. DNS changes take a few minutes to spread.");
+    }
+
+    if (!allVerified) {
+      say("");
+      say("The provider has not confirmed the domain yet. Once the records are in");
+      say("place, press \"Verify\" on the domain in the Resend dashboard.");
+    }
+
+    if (allRecordsInPlace && allVerified) {
+      say("");
+      say("The setup is complete. The next step is putting the key in Railway:");
+      say("  MAIL_TRANSPORT=api");
+      say("  MAIL_API_PROVIDER=resend");
+      // !! Not the key itself. A credential printed to a console is a
+      // !! credential in every screenshot of it, and the copy is in the
+      // !! dashboard and in backend/.env.
+      say(`  MAIL_API_KEY=${apiKey.slice(0, 6)}... (the key you just pasted in)`);
+      say(`  MAIL_API_FROM=academy@${domains[0].name}`);
+      say("then redeploy the backend service.");
+    }
+  }
+
+  /* --------------------------------------------------------- a test email */
+
+  if (!toAddress) return;
+
   heading(`Sending a test message to ${toAddress}`);
 
   // The app's own mailer, not a copy of it: a test that uses a different
@@ -264,7 +297,8 @@ if (toAddress) {
   const config = mailConfig();
   if (!config.configured) {
     say("The app does not think mail is configured yet. Set the key in backend/.env.");
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   say(`Transport: ${config.transport} (${config.apiProviderLabel})`);
   say(`From:      ${config.apiFrom || config.from}`);
@@ -290,6 +324,11 @@ if (toAddress) {
     say("");
     say("The provider refused it, or could not be reached. The reason is in");
     say("the line above, and it is the same reason the contact form would give.");
-    process.exit(1);
+    process.exitCode = 1;
   }
 }
+
+// !! Not process.exit(). A process that is killed while an HTTP connection
+// !! is still open takes Windows' socket cleanup down with it, and the
+// !! script ends in an assertion failure instead of its last line.
+await main();
