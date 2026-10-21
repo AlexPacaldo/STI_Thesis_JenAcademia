@@ -214,6 +214,24 @@
   border-radius: var(--control-radius);
 }
 
+.invalidSubmission {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+  background: var(--pill-danger);
+  border: 1px solid rgba(138, 62, 46, 0.2);
+  border-radius: var(--control-radius);
+  text-align: center;
+}
+
+.invalidMessage {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-danger);
+}
+
 .instructionsPanel {
   background: var(--surface);
   border: 2px solid var(--border-mid);

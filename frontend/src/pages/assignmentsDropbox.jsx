@@ -464,33 +464,43 @@ export default function AssignmentsDropbox() {
                     <div className={styles.submissionSheet}>
                       <span className={styles.instructionIcon} aria-hidden="true">📄</span>
                       <h2 className={styles.instructionHead}>Your Submitted Answer</h2>
-                      {submittedAnswer || submittedFileUrl ? (
+
+                      {submittedFileUrl && !isSubmissionError(submittedFileUrl) ? (
                         <>
-                          {submittedFileUrl && (
-                            <div className={styles.submissionFile}>
-                              <SubmissionPreview
-                                fileUrl={submittedFileUrl}
-                                storedPath={selectedAssignment?.fileUrl}
-                              />
-                            </div>
+                          <div className={styles.submissionFile}>
+                            <SubmissionPreview
+                              fileUrl={submittedFileUrl}
+                              storedPath={selectedAssignment?.fileUrl}
+                            />
+                          </div>
+                          {submittedAnswer && isSubmissionError(submittedAnswer) && (
+                            <p className={styles.errorNote}>
+                              ⚠️ The saved answer text looks like an error response.
+                            </p>
                           )}
-                          {submittedAnswer ? (
+                        </>
+                      ) : (
+                        <>
+                          {isSubmissionError(submittedAnswer) || isSubmissionError(submittedFileUrl) ? (
+                            <div className={styles.invalidSubmission}>
+                              <span className={styles.instructionIcon} aria-hidden="true">⚠️</span>
+                              <p className={styles.invalidMessage}>
+                                This submission appears to be invalid. Please resubmit your
+                                answer.
+                              </p>
+                            </div>
+                          ) : submittedAnswer ? (
                             <>
-                              {isSubmissionError(submittedAnswer) && (
-                                <p className={styles.errorNote}>
-                                  ⚠️ This looks like an error response, not your answer.
-                                </p>
-                              )}
                               <div className={styles.submissionText}>
                                 {submittedAnswer}
                               </div>
                             </>
-                          ) : null}
+                          ) : (
+                            <p className={styles.emptySubmission}>
+                              No submission content found.
+                            </p>
+                          )}
                         </>
-                      ) : (
-                        <p className={styles.emptySubmission}>
-                          No submission content found.
-                        </p>
                       )}
                     </div>
                   </div>
