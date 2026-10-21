@@ -315,6 +315,10 @@ export const HISTORY = {
   today: "Today",
   yesterday: "Yesterday",
 
+  /* The filter. One question, one row of big buttons. */
+  whichClass: "Which class?",
+  noneInThisClass: "You have not had a class in this one yet.",
+
   /* The one word that says how the class went. */
   done: "All done!",
   checking: "Your teacher is checking",

@@ -1522,6 +1522,76 @@
   gap: var(--space-4);
 }
 
+/* The filter. One question, one row of big buttons, and the chosen one is
+   solid green - the same language as the day cards in the booking wizard. */
+.historyFilter {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* A button a child can hit. The label is the class, and the number beside
+   it says how many there are - the number is the picture. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 60px;
+  padding: 12px 22px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border-mid);
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 1.1rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.chip:hover:not(:disabled) {
+  border-color: var(--brand-green);
+  background: var(--bg-alt);
+  transform: translateY(-1px);
+}
+
+.chip:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* The chosen one. Green says "this is the one you picked", and the label
+   says it too - the colour is never the only sign. */
+.chipActive,
+.chipActive:hover:not(:disabled) {
+  background: var(--brand-green);
+  border-color: var(--brand-green);
+  color: #fff;
+}
+
+.chipCount {
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-recessed);
+  color: var(--text-mid);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.chipActive .chipCount {
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
+}
+
 /* One class. A picture, the name of the class, one word for how it went,
    then the facts - each one a row with a picture of its own. */
 .pastCard {

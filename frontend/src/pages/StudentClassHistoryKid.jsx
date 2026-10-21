@@ -27,7 +27,7 @@ import { describeTimeOfDay, formatFriendlyDate } from "../utils/classTime.js";
 import { openClassRecording } from "../utils/classRecording.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { dateKeyToLocalDate, daysBetween } from "../utils/studentSchedule.js";
-import { HISTORY } from "../utils/studentCopy.js";
+import { HISTORY, HOME } from "../utils/studentCopy.js";
 
 /** How many classes are on the screen at once. */
 const PAGE_SIZE = 6;
@@ -77,6 +77,7 @@ export default function StudentClassHistoryKid() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [visible, setVisible] = useState(PAGE_SIZE);
+  const [classFilter, setClassFilter] = useState("");
 
   const user = readStoredUser();
   const currentUserId = user?.id || user?.user_id || user?.userId;
@@ -121,8 +122,45 @@ export default function StudentClassHistoryKid() {
     ).padStart(2, "0")}`;
   }, []);
 
-  const shown = history.slice(0, visible);
-  const hidden = Math.max(0, history.length - visible);
+  /* The filter.
+     *
+     * !! One question, one row of big buttons: which class do you want to
+     * !! look at? The teacher screen had eight status pills, a search box, a
+     * !! date range and two dropdowns, which is a wall of choices and a
+     * !! child picks nothing.
+     *
+     * !! The buttons are the class names the student actually has, so there
+     * !! is nothing on the screen they do not understand.
+     */
+  const classNames = useMemo(() => {
+    const counts = new Map();
+    for (const row of history) {
+      const name = String(row.class_name || "").trim();
+      if (!name) continue;
+      counts.set(name, (counts.get(name) || 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [history]);
+
+  // A class that is no longer on the list is not a filter any more - the
+  // list changed under the student, and a filter that shows nothing is a
+  // dead end.
+  const activeFilter = classNames.some(([name]) => name === classFilter) ? classFilter : "";
+
+  const filtered = useMemo(
+    () => (activeFilter ? history.filter((row) => row.class_name === activeFilter) : history),
+    [activeFilter, history]
+  );
+
+  const shown = filtered.slice(0, visible);
+  const hidden = Math.max(0, filtered.length - visible);
+
+  const pickClass = (name) => {
+    setClassFilter(name);
+    // Six at a time starts again, or the student presses "show more" and
+    // sees nothing new.
+    setVisible(PAGE_SIZE);
+  };
 
   return (
     <div className={kid.history}>
@@ -159,7 +197,42 @@ export default function StudentClassHistoryKid() {
         </div>
       ) : (
         <>
+          <div className={kid.historyFilter}>
+            <p className={kid.sectionTitle}>{HISTORY.whichClass}</p>
+            <div className={kid.chipRow}>
+              <button
+                type="button"
+                className={`${kid.chip} ${activeFilter ? "" : kid.chipActive}`}
+                onClick={() => pickClass("")}
+              >
+                {HOME.allClasses}
+                <span className={kid.chipCount}>{history.length}</span>
+              </button>
+
+              {classNames.map(([name, count]) => (
+                <button
+                  key={name}
+                  type="button"
+                  className={`${kid.chip} ${activeFilter === name ? kid.chipActive : ""}`}
+                  onClick={() => pickClass(name)}
+                >
+                  {name}
+                  <span className={kid.chipCount}>{count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className={kid.historyList}>
+            {filtered.length === 0 ? (
+              <div className={kid.historyEmpty}>
+                <span className={kid.historyEmptyIcon} aria-hidden="true">
+                  🗓️
+                </span>
+                <p className={kid.historyEmptyTitle}>{HISTORY.noneInThisClass}</p>
+              </div>
+            ) : null}
+
             {shown.map((row) => {
               const outcome = describeOutcome(row);
               const teacherName =

@@ -1137,7 +1137,7 @@ Every class you have had.
 - **One word says how the class went** — "All done!", "You joined!", "Your teacher is checking", "Still going on", "Waiting to start", "Almost done", "Not finished yet". The word comes first and the colour second, because a child who cannot read the badge yet still has to know what it means.
 - **The proof, the review and the missing items are not here.** They are the teacher's business. The recording is, because the child may want to watch their own class again, and it is the one thing on this screen they can press.
 - **Six classes at a time**, then "Show 6 more classes". A wall of two hundred cards is not a list.
-- **No filters.** A child who wants to find a class wants the one they are thinking of, and a strip of filters is a wall of choices.
+- **One filter, and it is the question the screen is asking**: *which class do you want to look at?* One row of big buttons — "All classes", then each class the student actually has, each with the number of classes in it. The teacher screen had eight status pills, a search box, a date range and two dropdowns, which is a wall of choices and a child picks nothing. Here every button says something the student recognises, because it is one of their own classes.
 
 The teacher's version of the same data is untouched, and stays a review screen.
 
