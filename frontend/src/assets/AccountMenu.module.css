@@ -56,8 +56,11 @@
 
 /* ---------------------------------------------------------------- the menu */
 
+/* !! Fixed, not absolute: the panel is rendered through ModalPortal, and it
+   !! is placed from the button's own rectangle - so it follows the button
+   !! when the page scrolls and it is never clipped by a column. */
 .menu {
-  position: absolute;
+  position: fixed;
   top: calc(100% + 10px);
   right: 0;
   z-index: 1100;
@@ -69,6 +72,15 @@
   border: 1px solid var(--border);
   box-shadow: var(--shadow-xl);
   animation: enterUp var(--duration-base) var(--ease-out);
+}
+
+/* The layer behind the sheet on a phone. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1099;
+  background: rgba(15, 25, 20, 0.45);
+  animation: fadeIn var(--duration-fast) var(--ease-out);
 }
 
 /* Who this is. */
@@ -204,8 +216,20 @@
 /* ------------------------------------------------------------ small screens */
 
 @media (max-width: 640px) {
-  .menu {
-    position: fixed;
+  /* !! The name is the first thing to go on a phone. The picture IS the
+     !! account, and the space the name was taking was squeezing the brand
+     !! out of the header - "JEN Academia" became "J...". */
+  .triggerName {
+    display: none;
+  }
+
+  .trigger {
+    padding: 2px;
+  }
+
+  /* A sheet at the bottom of the screen. There is no edge to hang a panel
+     from on a phone, and no room to hang anything. */
+  .menuSheet {
     top: auto;
     left: 12px;
     right: 12px;
@@ -213,9 +237,10 @@
     width: auto;
     max-width: none;
     border-radius: var(--radius-xl);
+    padding-bottom: var(--space-4);
   }
 
-  .triggerName {
-    max-width: 110px;
+  .menuSheet .item {
+    min-height: 64px;
   }
 }
