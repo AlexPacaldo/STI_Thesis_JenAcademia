@@ -325,12 +325,14 @@
   gap: 10px;
 }
 
-/* "My Assignments" tab: what this teacher has posted, and the one place an
-   assignment can be taken back. */
+/* Assignment management stays under the create form instead of a redundant tab. */
 .postedPanel {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid rgba(38, 66, 59, 0.12);
 }
 
 .postedPanel h2 {
@@ -350,11 +352,17 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  min-width: 0;
   gap: 16px;
   padding: 16px 18px;
   border: 1px solid rgba(38, 66, 59, 0.12);
   border-radius: 20px;
   background: #fff;
+}
+
+.postedRowArchived {
+  background: #f6f7f6;
+  border-style: dashed;
 }
 
 .postedRowText {
@@ -376,36 +384,76 @@
   font-size: 0.85rem;
 }
 
+.postedInstructions {
+  margin: 8px 0 0;
+  color: var(--text-mid);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.archivedBadge {
+  display: inline-flex;
+  margin-top: 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #eef0ee;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
 .postedRow .fileInfo {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-/* Destructive, so it is the one control on the row that is not the primary
-   colour - and it is never the default focus of the page. */
-.deleteBtn {
-  flex-shrink: 0;
-  min-height: 38px;
-  padding: 8px 16px;
-  border: 1px solid rgba(187, 87, 66, 0.32);
+.postedActions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.editBtn,
+.archiveBtn,
+.restoreBtn {
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid rgba(38, 66, 59, 0.16);
   border-radius: 14px;
   background: #fff;
-  color: #bb5742;
+  color: var(--primary);
   font-family: inherit;
   font-size: 0.86rem;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.18s ease, border-color 0.18s ease;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 
-.deleteBtn:hover {
-  background: rgba(187, 87, 66, 0.08);
-  border-color: #bb5742;
+.editBtn:hover,
+.restoreBtn:hover {
+  background: var(--surface-soft);
+  border-color: var(--primary);
 }
 
-.deleteBtn:focus-visible {
-  outline: 2px solid #bb5742;
+.archiveBtn {
+  color: #8a5a1f;
+  border-color: rgba(209, 138, 16, 0.32);
+}
+
+.archiveBtn:hover {
+  background: #fff4df;
+  border-color: #d18a10;
+}
+
+.editBtn:focus-visible,
+.archiveBtn:focus-visible,
+.restoreBtn:focus-visible {
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -705,16 +753,6 @@
   white-space: nowrap;
 }
 
-/* Delete on a submission row. Sized to match .submissionAction next to it, but
-   outlined in the destructive colour rather than filled with the primary one -
-   a permanent action should not read as the same kind of control as "View". */
-.submissionActions .deleteBtn {
-  min-height: 36px;
-  padding: 0.5rem 1.05rem;
-  border-radius: 999px;
-  font-size: 0.8rem;
-}
-
 .submissionStatus {
   display: inline-flex;
   align-items: center;
@@ -931,5 +969,18 @@
     justify-content: flex-start;
     justify-self: start;
     flex-wrap: wrap;
+  }
+
+  .postedRow {
+    flex-direction: column;
+  }
+
+  .postedActions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .postedActions button {
+    flex: 1 1 auto;
   }
 }

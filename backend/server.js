@@ -948,7 +948,7 @@ async function sessionMayReadAssignment(req, assignmentId) {
   if (session.role === "admin") return true;
 
   const [rows] = await pool.query(
-    "SELECT teacher_id, student_id FROM assignments WHERE assignment_id = ? LIMIT 1",
+    "SELECT teacher_id, student_id, is_archived FROM assignments WHERE assignment_id = ? LIMIT 1",
     [assignmentId]
   );
   const assignment = rows[0];
@@ -956,7 +956,7 @@ async function sessionMayReadAssignment(req, assignmentId) {
 
   return (
     String(assignment.teacher_id) === String(session.userId) ||
-    String(assignment.student_id) === String(session.userId)
+    (!assignment.is_archived && String(assignment.student_id) === String(session.userId))
   );
 }
 
@@ -2082,6 +2082,14 @@ async function ensureAssignmentAttachmentColumns() {
   }
 }
 
+async function ensureAssignmentArchiveColumn() {
+  if (!(await columnExists("assignments", "is_archived"))) {
+    await pool.query(
+      "ALTER TABLE assignments ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0 AFTER status"
+    );
+  }
+}
+
 async function ensureSubmissionHistoryTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS submission_history (
@@ -3081,6 +3089,7 @@ async function encryptExistingPlaintextMessages() {
 const SCHEMA_STEPS = [
   ["assignment attempt columns", ensureAssignmentAttemptColumns],
   ["assignment attachment columns", ensureAssignmentAttachmentColumns],
+  ["assignment archive column", ensureAssignmentArchiveColumn],
   ["submission history table", ensureSubmissionHistoryTable],
   ["books columns", ensureBooksColumns],
   ["remark columns", ensureRemarkColumns],
@@ -3906,6 +3915,7 @@ const assignmentSelect = `
          a.attempt_limit AS attemptLimit,
          a.attachment_url AS attachmentUrl,
          a.attachment_name AS attachmentName,
+         a.is_archived AS isArchived,
          CASE
            WHEN a.due_time IS NULL THEN DATE_FORMAT(a.due_date, '%Y-%m-%d')
            ELSE CONCAT(DATE_FORMAT(a.due_date, '%Y-%m-%d'), 'T', TIME_FORMAT(a.due_time, '%H:%i'))
@@ -4159,7 +4169,7 @@ app.get("/api/dashboard/:role/:user_id", requireSession, async (req, res) => {
       ),
       pool.query(
         `${assignmentSelect}
-         WHERE a.student_id = ?
+         WHERE a.student_id = ? AND a.is_archived = 0
          ORDER BY a.due_date ASC, a.due_time ASC, a.created_at DESC`,
         [user_id]
       ),
@@ -10926,6 +10936,71 @@ app.get("/api/assignments/:assignment_id", requireSession, async (req, res) => {
   }
 });
 
+app.patch("/api/assignments/:assignment_id", requireSession, async (req, res) => {
+  try {
+    const { assignment_id } = req.params;
+    const session = req.session || {};
+    const hasInstructions = Object.prototype.hasOwnProperty.call(req.body || {}, "instructions");
+    const hasArchiveState = Object.prototype.hasOwnProperty.call(req.body || {}, "isArchived");
+
+    if (!hasInstructions && !hasArchiveState) {
+      return res.status(400).json({ message: "Provide assignment instructions or archive state to update." });
+    }
+    if (hasInstructions && (typeof req.body.instructions !== "string" || !req.body.instructions.trim())) {
+      return res.status(400).json({ message: "Assignment instructions cannot be empty." });
+    }
+    if (hasArchiveState && typeof req.body.isArchived !== "boolean") {
+      return res.status(400).json({ message: "Archive state must be true or false." });
+    }
+
+    const [assignmentRows] = await pool.query(
+      "SELECT teacher_id FROM assignments WHERE assignment_id = ? LIMIT 1",
+      [assignment_id]
+    );
+    const assignment = assignmentRows[0];
+    if (!assignment) {
+      return res.status(404).json({ message: "Assignment not found." });
+    }
+
+    const mayManage =
+      session.role === "admin" ||
+      (session.role === "teacher" && String(assignment.teacher_id) === String(session.userId));
+    if (!mayManage) {
+      return res.status(403).json({ message: "You can only manage assignments you posted." });
+    }
+
+    const updates = [];
+    const values = [];
+    if (hasInstructions) {
+      updates.push("instructions = ?");
+      values.push(encryptNullableText(req.body.instructions.trim()));
+    }
+    if (hasArchiveState) {
+      updates.push("is_archived = ?");
+      values.push(req.body.isArchived ? 1 : 0);
+    }
+
+    await pool.query(
+      `UPDATE assignments SET ${updates.join(", ")} WHERE assignment_id = ?`,
+      [...values, assignment_id]
+    );
+
+    const [rows] = await pool.query(
+      `${assignmentSelect} WHERE a.assignment_id = ? LIMIT 1`,
+      [assignment_id]
+    );
+    res.json({
+      assignment: decryptFields(rows[0], ["instructions", "description", "comments", "feedback"]),
+      message: hasArchiveState
+        ? (req.body.isArchived ? "Assignment archived." : "Assignment restored.")
+        : "Assignment instructions updated.",
+    });
+  } catch (err) {
+    console.error("PATCH /api/assignments/:assignment_id error:", err);
+    res.status(500).json({ message: "Could not update the assignment." });
+  }
+});
+
 // Mint a short-lived link for opening an assignment attachment in a new tab.
 //
 // The caller names the file it wants; the database decides whether it gets it.
@@ -11362,7 +11437,7 @@ app.post("/api/assignments/:assignment_id/submissions", requireSession, optional
     transactionStarted = true;
 
     const [assignmentRows] = await conn.query(
-      `SELECT assignment_id, teacher_id, student_id, title, due_date, due_time, attempt_limit
+      `      SELECT assignment_id, teacher_id, student_id, title, due_date, due_time, attempt_limit, is_archived
        FROM assignments
        WHERE assignment_id = ?
        LIMIT 1`,
@@ -11378,6 +11453,11 @@ app.post("/api/assignments/:assignment_id/submissions", requireSession, optional
     if (String(assignment.student_id) !== String(resolvedStudentId)) {
       await conn.rollback();
       return res.status(403).json({ message: "This assignment is not assigned to the selected student" });
+    }
+
+    if (assignment.is_archived) {
+      await conn.rollback();
+      return res.status(400).json({ message: "This assignment has been archived and can no longer be submitted." });
     }
 
     if (isDueDatePast(assignment.due_date, assignment.due_time)) {

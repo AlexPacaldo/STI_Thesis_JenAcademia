@@ -72,6 +72,7 @@ CREATE TABLE `assignments` (
   `due_time` time DEFAULT NULL,
   `attempt_limit` int DEFAULT NULL,
   `status` enum('pending','submitted','graded','overdue') DEFAULT 'pending',
+  `is_archived` tinyint(1) NOT NULL DEFAULT '0',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`assignment_id`),

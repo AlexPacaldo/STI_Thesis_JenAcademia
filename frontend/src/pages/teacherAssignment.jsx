@@ -135,59 +135,6 @@ function SubmissionFile({ url }) {
   );
 }
 
-/**
- * Confirm before deleting an assignment, reached from a submission row.
- *
- * The wording differs from the My Assignments tab on purpose. That list shows
- * one row per assignment and can count its submissions, but this panel shows
- * only the selected student's work - so it under-reports. Saying "1 file would
- * be deleted" here would quietly understate the damage when three of the
- * teacher's students have answered the same task. So the count is phrased as
- * what this view can actually see, and the fact that other students may also
- * have work on it is stated outright rather than implied.
- *
- * Defined at module scope, so the two things it closes over are passed in
- * rather than captured.
- */
-function requestDeleteFromSubmission(assignment, knownSubmissions, selectedStudentId, setConfirmAction) {
-  if (!assignment) return;
-
-  const visible = knownSubmissions.filter(
-    (item) => String(item.assignmentId) === String(assignment.id)
-  );
-  const otherStudents = visible.filter(
-    (item) => String(item.studentId) !== String(selectedStudentId)
-  );
-
-  const lines = [
-    `"${assignment.name || "Assignment"}" will be deleted permanently.`,
-  ];
-
-  if (visible.length > 0) {
-    lines.push(
-      `This removes the submitted ${visible.length === 1 ? "file" : "files"} shown here${
-        visible[0].student ? ` from ${visible[0].student}` : ""
-      }.`
-    );
-  }
-
-  if (otherStudents.length > 0) {
-    lines.push(
-      `It also removes anything other students submitted for this same task.`
-    );
-  }
-
-  lines.push("This cannot be undone.");
-
-  setConfirmAction({
-    type: "delete-assignment",
-    assignment,
-    title: "Delete this assignment?",
-    message: lines.join(" "),
-    confirmLabel: "Delete",
-  });
-}
-
 function getAssignmentInstructions(submission, assignments) {
   if (submission.assignmentInstructions) return submission.assignmentInstructions;
   const assignment = assignments.find(
@@ -212,6 +159,9 @@ export default function AssignTask() {
   const [submissions, setSubmissions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
+  const [editingAssignment, setEditingAssignment] = useState(null);
+  const [editedInstructions, setEditedInstructions] = useState("");
+  const [isSavingInstructions, setIsSavingInstructions] = useState(false);
   const fileInputRef = useRef(null);
 
   const currentUser = useMemo(() => readStoredUser() || {}, []);
@@ -294,64 +244,71 @@ export default function AssignTask() {
     }
   };
 
-  const requestDeleteAssignment = (assignment) => {
-    const relatedSubmissions = submissions.filter(
-      (item) => String(item.assignmentId) === String(assignment.id)
-    );
-    const lostNote =
-      relatedSubmissions.length > 0
-        ? ` This also permanently deletes ${relatedSubmissions.length} submitted ${
-            relatedSubmissions.length === 1 ? "file" : "files"
-          } from ${relatedSubmissions[0].student || "the student"}.`
-        : "";
-
+  const requestArchiveAssignment = (assignment) => {
+    const isArchived = Number(assignment.isArchived) === 1;
     setConfirmAction({
-      type: "delete-assignment",
+      type: isArchived ? "unarchive-assignment" : "archive-assignment",
       assignment,
-      title: "Delete this assignment?",
-      message: `"${assignment.name || "Assignment"}" will be removed for ${
-        assignment.student || "the student"
-      }.${lostNote} This cannot be undone.`,
-      confirmLabel: "Delete",
+      title: isArchived ? "Restore this assignment?" : "Archive this assignment?",
+      message: isArchived
+        ? `"${assignment.name || "Assignment"}" will be visible to the student again. Existing submissions will be kept.`
+        : `"${assignment.name || "Assignment"}" will be hidden from the student. Existing submissions will be kept, and you can restore it later.`,
+      confirmLabel: isArchived ? "Restore" : "Archive",
     });
   };
 
-  const deleteAssignment = async () => {
-    const assignment = confirmAction?.assignment;
-    if (!assignment) return;
-
+  const updateAssignment = async (assignment, changes) => {
     try {
       const res = await apiFetch(`${API}/api/assignments/${assignment.id}`, {
-        method: "DELETE",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        // The backend requires the exact title back as the confirmation token.
-        body: JSON.stringify({ confirm: assignment.name || assignment.title || "" }),
+        body: JSON.stringify(changes),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "Could not delete the assignment");
+        throw new Error(data.message || "Could not update the assignment");
       }
 
-      setTeacherAssignments((prev) => prev.filter((item) => String(item.id) !== String(assignment.id)));
+      const updatedAssignment = data.assignment;
+      setTeacherAssignments((prev) =>
+        prev.map((item) =>
+          String(item.id ?? item.assignmentId) === String(assignment.id)
+            ? { ...item, ...updatedAssignment }
+            : item
+        )
+      );
       setSubmissions((prev) =>
-        prev.filter((item) => String(item.assignmentId) !== String(assignment.id))
+        prev.map((item) =>
+          String(item.assignmentId) === String(assignment.id) &&
+          changes.instructions !== undefined
+            ? { ...item, assignmentInstructions: changes.instructions }
+            : item
+        )
       );
-      setSelectedSubmission((current) =>
-        current && String(current.assignmentId) === String(assignment.id) ? null : current
-      );
-
-      notify?.(
-        data.deletedSubmissions > 0
-          ? `Assignment deleted, along with ${data.deletedSubmissions} submitted ${
-              data.deletedSubmissions === 1 ? "file" : "files"
-            }.`
-          : "Assignment deleted.",
-        "success"
-      );
+      notify?.(data.message || "Assignment updated.", "success");
+      return updatedAssignment;
     } catch (err) {
-      console.error("Delete assignment error:", err);
-      notify?.(err.message || "Could not delete the assignment.", "error");
+      console.error("Update assignment error:", err);
+      notify?.(err.message || "Could not update the assignment.", "error");
+      return null;
+    }
+  };
+
+  const saveAssignmentInstructions = async () => {
+    if (!editingAssignment || !editedInstructions.trim()) {
+      notify?.("Instructions cannot be empty.", "warning");
+      return;
+    }
+
+    setIsSavingInstructions(true);
+    const updated = await updateAssignment(editingAssignment, {
+      instructions: editedInstructions.trim(),
+    });
+    setIsSavingInstructions(false);
+    if (updated) {
+      setEditingAssignment(null);
+      setEditedInstructions("");
     }
   };
 
@@ -359,8 +316,13 @@ export default function AssignTask() {
     if (!confirmAction) return;
     if (confirmAction.type === "create-assignment") {
       await createAssignment();
-    } else if (confirmAction.type === "delete-assignment") {
-      await deleteAssignment();
+    } else if (
+      confirmAction.type === "archive-assignment" ||
+      confirmAction.type === "unarchive-assignment"
+    ) {
+      await updateAssignment(confirmAction.assignment, {
+        isArchived: confirmAction.type === "archive-assignment",
+      });
     }
     closeConfirmAction();
   };
@@ -441,14 +403,6 @@ export default function AssignTask() {
   const currentSubmissions = submissions.filter(
     (item) => String(item.studentId) === String(selectedStudentId)
   );
-
-  // A submission carries only the assignment's id and title, but the delete
-  // endpoint needs the full row - most importantly the exact title to send back
-  // as its confirmation token. Looked up from the already-loaded list.
-  const findAssignment = (assignmentId) =>
-    teacherAssignments.find(
-      (item) => String(item.id ?? item.assignmentId) === String(assignmentId)
-    );
 
   // Newest first, so a mistake made moments ago is the first thing seen.
   const postedAssignments = useMemo(
@@ -564,13 +518,6 @@ export default function AssignTask() {
               >
                 View Submissions
               </button>
-              <button
-                type="button"
-                className={`${styles.tabButton} ${activeTab === "posted" ? styles.activeTab : ""}`}
-                onClick={() => setActiveTab("posted")}
-              >
-                My Assignments
-              </button>
             </div>
 
             {activeTab === "assign" ? (
@@ -663,6 +610,66 @@ export default function AssignTask() {
                     </div>
                   </div>
                 </div>
+                <div className={styles.postedPanel}>
+                  <h2>Manage assignments</h2>
+                  <div className={styles.postedList}>
+                    {postedAssignments.length === 0 ? (
+                      <div className={styles.emptyState}>
+                        {isLoading ? "Loading assignments..." : "You have not posted any assignments yet."}
+                      </div>
+                    ) : (
+                      postedAssignments.map((assignment) => {
+                        const isArchived = Number(assignment.isArchived) === 1;
+                        return (
+                          <div
+                            key={assignment.id}
+                            className={`${styles.postedRow} ${isArchived ? styles.postedRowArchived : ""}`}
+                          >
+                            <div className={styles.postedRowText}>
+                              <strong>{assignment.name || "Assignment"}</strong>
+                              <p className={styles.postedMeta}>
+                                {assignment.student || "Student"}
+                                {assignment.subject ? ` · ${assignment.subject}` : ""}
+                                {assignment.postedAt ? ` · ${formatSubmittedAt(assignment.postedAt)}` : ""}
+                              </p>
+                              {isArchived ? (
+                                <span className={styles.archivedBadge}>Archived</span>
+                              ) : null}
+                              <p className={styles.postedInstructions}>
+                                {assignment.instructions || "No instructions provided."}
+                              </p>
+                              {assignment.attachmentName ? (
+                                <p className={styles.fileInfo}>
+                                  <i className="bi bi-paperclip" aria-hidden="true" />{" "}
+                                  {assignment.attachmentName}
+                                </p>
+                              ) : null}
+                            </div>
+                            <div className={styles.postedActions}>
+                              <button
+                                type="button"
+                                className={styles.editBtn}
+                                onClick={() => {
+                                  setEditingAssignment(assignment);
+                                  setEditedInstructions(assignment.instructions || "");
+                                }}
+                              >
+                                Edit instructions
+                              </button>
+                              <button
+                                type="button"
+                                className={isArchived ? styles.restoreBtn : styles.archiveBtn}
+                                onClick={() => requestArchiveAssignment(assignment)}
+                              >
+                                {isArchived ? "Unarchive" : "Archive"}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
               </>
             ) : activeTab === "submissions" ? (
               <div className={styles.submissionsPanel}>
@@ -709,21 +716,6 @@ export default function AssignTask() {
                               >
                                 {isExpanded ? "Hide" : "View"}
                               </button>
-                              <button
-                                type="button"
-                                className={styles.deleteBtn}
-                                onClick={() =>
-                                  requestDeleteFromSubmission(
-                                    findAssignment(item.assignmentId),
-                                    submissions,
-                                    selectedStudentId,
-                                    setConfirmAction
-                                  )
-                                }
-                                aria-label={`Delete ${item.assignmentName || "assignment"}`}
-                              >
-                                Delete
-                              </button>
                             </div>
                           </div>
 
@@ -757,46 +749,7 @@ export default function AssignTask() {
                   )}
                 </div>
               </div>
-            ) : (
-              /* My Assignments. The third arm of the tab ternary, so the two
-                 existing panels are untouched. */
-              <div className={styles.postedPanel}>
-                <h2>Assignments you posted</h2>
-                <div className={styles.postedList}>
-                  {postedAssignments.length === 0 ? (
-                    <div className={styles.emptyState}>
-                      {isLoading ? "Loading assignments..." : "You have not posted any assignments yet."}
-                    </div>
-                  ) : (
-                    postedAssignments.map((assignment) => (
-                      <div key={assignment.id} className={styles.postedRow}>
-                        <div className={styles.postedRowText}>
-                          <strong>{assignment.name || "Assignment"}</strong>
-                          <p className={styles.postedMeta}>
-                            {assignment.student || "Student"}
-                            {assignment.subject ? ` · ${assignment.subject}` : ""}
-                            {assignment.postedAt ? ` · ${formatSubmittedAt(assignment.postedAt)}` : ""}
-                          </p>
-                          {assignment.attachmentName ? (
-                            <p className={styles.fileInfo}>
-                              <i className="bi bi-paperclip" aria-hidden="true" />{" "}
-                              {assignment.attachmentName}
-                            </p>
-                          ) : null}
-                        </div>
-                        <button
-                          type="button"
-                          className={styles.deleteBtn}
-                          onClick={() => requestDeleteAssignment(assignment)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
@@ -812,6 +765,54 @@ export default function AssignTask() {
                 </button>
                 <button type="button" className={styles.primaryBtn} onClick={performConfirmAction}>
                   {confirmAction.confirmLabel}
+                </button>
+              </div>
+            </section>
+          </div>
+        </ModalPortal>
+      )}
+      {editingAssignment && (
+        <ModalPortal>
+          <div
+            className={styles.modalBackdrop}
+            onClick={() => {
+              if (!isSavingInstructions) {
+                setEditingAssignment(null);
+                setEditedInstructions("");
+              }
+            }}
+          >
+            <section className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
+              <h2>Edit assignment instructions</h2>
+              <label className={styles.label} htmlFor="editAssignmentInstructions">
+                Instructions for {editingAssignment.student || "student"}
+              </label>
+              <textarea
+                id="editAssignmentInstructions"
+                className={styles.commentBox}
+                value={editedInstructions}
+                onChange={(event) => setEditedInstructions(event.target.value)}
+                autoFocus
+              />
+              <div className={styles.confirmActions}>
+                <button
+                  type="button"
+                  className={styles.textBtn}
+                  onClick={() => {
+                    setEditingAssignment(null);
+                    setEditedInstructions("");
+                  }}
+                  disabled={isSavingInstructions}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryBtn}
+                  onClick={saveAssignmentInstructions}
+                  disabled={isSavingInstructions || !editedInstructions.trim()}
+                >
+                  {isSavingInstructions ? "Saving..." : "Save instructions"}
                 </button>
               </div>
             </section>

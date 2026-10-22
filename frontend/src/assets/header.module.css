@@ -342,4 +342,66 @@
     padding: 4px;
     border-radius: 12px;
   }
+
+  .headerContainer {
+    grid-template-columns: 36px max-content minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .menuButton,
+  .notificationBell {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+  }
+
+  .brandName {
+    justify-self: start;
+    max-width: none;
+    padding: 6px 8px;
+    font-size: 0.82rem;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .navbar {
+    gap: 3px;
+  }
+
+  .headerSeparator {
+    display: none;
+  }
+
+  .profilePic {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+@media (max-width: 320px) {
+  .header {
+    padding-inline: 8px;
+  }
+
+  .headerContainer {
+    grid-template-columns: 32px max-content minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .menuButton,
+  .notificationBell {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+
+  .brandName {
+    padding-inline: 6px;
+    font-size: 0.78rem;
+  }
+
+  .profilePic {
+    width: 28px;
+    height: 28px;
+  }
 }
