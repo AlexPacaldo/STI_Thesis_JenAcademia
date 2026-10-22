@@ -1028,7 +1028,10 @@
 
 .home {
   display: grid;
-  gap: var(--space-5);
+  gap: clamp(var(--space-4), 2vw, var(--space-6));
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
   min-width: 0;
 }
 
@@ -1069,9 +1072,10 @@
 
 .counter {
   display: grid;
-  gap: var(--space-3);
+  gap: clamp(var(--space-2), 1.4vw, var(--space-4));
+  width: 100%;
   min-width: 0;
-  padding: var(--space-5);
+  padding: clamp(var(--space-4), 2vw, var(--space-6));
   border-radius: var(--radius-lg);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1079,14 +1083,15 @@
 }
 
 .counterTop {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
   align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
 }
 
 .counterLabel {
+  min-width: 0;
   font-size: 0.8rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -1123,13 +1128,19 @@
 }
 
 .counterReady {
+  min-width: 0;
+  max-width: 100%;
   font-size: 1rem;
   font-weight: 700;
   color: var(--text-mid);
+  text-align: right;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .counterNote {
   margin: 0;
+  min-width: 0;
   font-size: 0.95rem;
   font-weight: 500;
   line-height: 1.5;
@@ -2397,11 +2408,26 @@
   }
 
   .counter {
-    padding: var(--space-4);
+    padding: clamp(14px, 4vw, var(--space-5));
+  }
+
+  .counterTop {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .counterReady {
+    text-align: left;
+    font-size: 0.95rem;
   }
 
   .counterNumber {
-    font-size: 2.8rem;
+    font-size: clamp(2.4rem, 12vw, 2.8rem);
+  }
+
+  .empty {
+    padding: clamp(20px, 6vw, var(--space-5)) var(--space-3);
+    overflow-wrap: anywhere;
   }
 
   /* The class card stacks: the day and the time on top, the button under
@@ -2511,5 +2537,16 @@
      align-self is the cross axis, which in a row is the vertical one. */
   .refreshBtn {
     margin-left: auto;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 900px) {
+  .counterTop {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .counterReady {
+    text-align: left;
   }
 }

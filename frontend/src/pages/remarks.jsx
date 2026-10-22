@@ -6,8 +6,17 @@ import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { apiFetch } from "../utils/apiAuth.js";
+import { formatServerTimestamp, getStoredUserTimezone } from "../utils/timezone.js";
 
 const API = API_BASE_URL;
+
+function formatRemarkDate(value) {
+  return formatServerTimestamp(value, getStoredUserTimezone(), {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 export default function Remarks() {
   const [remarks, setRemarks] = useState([]);
@@ -36,7 +45,7 @@ export default function Remarks() {
       })
       .catch((err) => {
         console.error("Load remarks error:", err);
-        setRows([]);
+        setRemarks([]);
         setError(err.message || "Could not load remarks.");
       })
       .finally(() => {
@@ -75,6 +84,11 @@ export default function Remarks() {
                 />
                 <div className={styles.cardText}>
                   <span className={styles.cardTeacher}>{remark.teacher_name || "Teacher"}</span>
+                  {formatRemarkDate(remark.created_at) ? (
+                    <time className={styles.cardDate} dateTime={remark.created_at}>
+                      {formatRemarkDate(remark.created_at)}
+                    </time>
+                  ) : null}
                   <span className={styles.cardTextBody}>
                     {remark.remarks || "Your teacher left you a note."}
                   </span>

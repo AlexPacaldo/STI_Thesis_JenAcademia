@@ -141,6 +141,15 @@
   overflow-wrap: break-word;
 }
 
+.cardDate {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 .cardTextBody {
   display: block;
   margin-top: 6px;

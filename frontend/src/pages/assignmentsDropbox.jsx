@@ -9,10 +9,9 @@ import { API_BASE_URL } from "../utils/api.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { apiFetch } from "../utils/apiAuth.js";
 import {
-  downloadAuthenticatedFile,
+  getSubmissionFilePreviewUrl,
   openAssignmentFile,
   openSubmissionFile,
-  useAuthenticatedFileUrl,
 } from "../utils/authenticatedFile.js";
 import { compressFileIfImage } from "../utils/imageCompression.js";
 import ModalPortal from "../utils/ModalPortal.jsx";
@@ -43,16 +42,40 @@ function getFileExtension(url) {
 }
 
 function SubmissionPreview({ fileUrl, storedPath }) {
-  const { url: blobUrl, error, loading } = useAuthenticatedFileUrl(storedPath ?? fileUrl);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewError, setPreviewError] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(true);
   const ext = getFileExtension(fileUrl);
   const fileName = getFileName(fileUrl);
 
-  if (loading) return <p className={styles.fileInfo}>Loading file…</p>;
-  if (error) return <p className={styles.fileInfo}>This file could not be loaded.</p>;
+  useEffect(() => {
+    let cancelled = false;
+    setPreviewUrl(null);
+    setPreviewError(null);
+    setPreviewLoading(true);
+
+    getSubmissionFilePreviewUrl(storedPath ?? fileUrl)
+      .then((url) => {
+        if (!cancelled) setPreviewUrl(url);
+      })
+      .catch((error) => {
+        if (!cancelled) setPreviewError(error);
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fileUrl, storedPath]);
+
+  if (previewLoading) return <p className={styles.fileInfo}>Loading file…</p>;
+  if (previewError) return <p className={styles.fileInfo}>This file could not be loaded.</p>;
 
   if (VIDEO_EXTENSIONS.includes(ext)) {
     return (
-      <video className={styles.previewMedia} controls preload="metadata" src={blobUrl}>
+      <video className={styles.previewMedia} controls preload="metadata" src={previewUrl}>
         Your browser cannot play this video.
         <button
           type="button"
@@ -67,17 +90,17 @@ function SubmissionPreview({ fileUrl, storedPath }) {
 
   if (IMAGE_EXTENSIONS.includes(ext)) {
     return (
-      <img className={styles.previewImage} src={blobUrl} alt={fileName} loading="lazy" />
+      <img className={styles.previewImage} src={previewUrl} alt={fileName} loading="lazy" />
     );
   }
 
   if (AUDIO_EXTENSIONS.includes(ext)) {
-    return <audio className={styles.previewMedia} controls preload="metadata" src={blobUrl} />;
+    return <audio className={styles.previewMedia} controls preload="metadata" src={previewUrl} />;
   }
 
   if (ext === "pdf") {
     return (
-      <iframe className={styles.previewFrame} src={blobUrl} title={`${fileName} preview`} />
+      <iframe className={styles.previewFrame} src={previewUrl} title={`${fileName} preview`} />
     );
   }
 
@@ -154,6 +177,8 @@ export default function AssignmentsDropbox() {
   const [comment, setComment] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [submitMessage, setSubmitMessage] = useState("");
+  const [showSubmitConfirmation, setShowSubmitConfirmation] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("instructions");
@@ -287,10 +312,8 @@ export default function AssignmentsDropbox() {
     return dueDateTime < now;
   };
 
-  const submissionStatus = selectedAssignment?.submissionId ? "Submitted" : "Not submitted";
   const submittedAnswer = selectedAssignment?.comments || "";
   const submittedFileUrl = normalizeFileUrl(selectedAssignment?.fileUrl);
-  const hasSubmissionContent = Boolean(selectedAssignment?.submissionId && (submittedAnswer || submittedFileUrl));
   const canSubmit = !isAttemptLimitReached && !isAssignmentPastDue();
   const submitButtonLabel = canResubmit ? "Submit Again" : "Submit";
 
@@ -321,6 +344,7 @@ export default function AssignmentsDropbox() {
     }
 
     try {
+      setIsSubmitting(true);
       const formData = new FormData();
       formData.append("studentId", currentStudentId);
       if (comment.trim()) {
@@ -354,13 +378,14 @@ export default function AssignmentsDropbox() {
       }));
       setHistoryRefreshKey((key) => key + 1);
       notify?.("Assignment submitted!", "success");
-      setSubmitMessage("Submitted!");
       setComment("");
       setSelectedFile(null);
     } catch (err) {
       console.error("Submit assignment error:", err);
       setSubmitMessage(err.message || "Could not submit assignment.");
       notify?.(err.message || "Could not submit assignment.", "error");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -390,6 +415,12 @@ export default function AssignmentsDropbox() {
       return;
     }
 
+    setSubmitMessage("");
+    setShowSubmitConfirmation(true);
+  };
+
+  const confirmSubmitAssignment = () => {
+    setShowSubmitConfirmation(false);
     onSubmitComment();
   };
 
@@ -441,6 +472,19 @@ export default function AssignmentsDropbox() {
                     <div className={styles.instructionText}>
                       {assignmentInstructions || "No instructions were provided for this assignment."}
                     </div>
+                    <div className={styles.attemptInfo}>
+                      <span className={styles.attemptInfoLabel}>Attempts allowed</span>
+                      <strong>
+                        {attemptLimit === null
+                          ? "Unlimited"
+                          : `${attemptLimit} ${attemptLimit === 1 ? "attempt" : "attempts"}`}
+                      </strong>
+                      {attemptLimit !== null ? (
+                        <span className={styles.attemptInfoUsed}>
+                          Used: {attemptsUsed} of {attemptLimit}
+                        </span>
+                      ) : null}
+                    </div>
                     <AssignmentAttachment
                       url={selectedAssignment?.attachmentUrl}
                       name={selectedAssignment?.attachmentName}
@@ -474,20 +518,14 @@ export default function AssignmentsDropbox() {
                           setSubmitMessage("");
                         }}
                       />
-                      {selectedFile ? (
-                        <p className={styles.fileInfo}>
-                          <span className={styles.fileIcon} aria-hidden="true">📎</span>
-                          Attached: {selectedFile.name}
-                        </p>
-                      ) : null}
                       <div className={styles.editorActions}>
                         <button
                           type="button"
                           className={styles.submitComment}
                           onClick={requestSubmitAssignment}
-                          disabled={!selectedAssignment || isAssignmentPastDue() || isAttemptLimitReached}
+                          disabled={!selectedAssignment || isAssignmentPastDue() || isAttemptLimitReached || isSubmitting}
                         >
-                          {submitButtonLabel}
+                          {isSubmitting ? "Submitting..." : submitButtonLabel}
                         </button>
                       </div>
                       {submitMessage ? (
@@ -515,7 +553,7 @@ export default function AssignmentsDropbox() {
                       <div className={styles.submittedFileInfo}>
                         <span className={styles.submittedFileLabel}>SUBMITTED FILE</span>
                         <p className={styles.submissionFileName}>
-                          {getFileName(submittedFileUrl)}
+                          {selectedAssignment.fileName || getFileName(submittedFileUrl)}
                         </p>
                       </div>
                       <div className={styles.submissionFileActions}>
@@ -529,13 +567,6 @@ export default function AssignmentsDropbox() {
                           }
                         >
                           Open file
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.submissionFileButton}
-                          onClick={() => downloadAuthenticatedFile(submittedFileUrl)}
-                        >
-                          Download
                         </button>
                       </div>
                       <SubmissionPreview fileUrl={submittedFileUrl} />
@@ -616,6 +647,47 @@ export default function AssignmentsDropbox() {
           )}
         </div>
       </div>
+      {showSubmitConfirmation ? (
+        <ModalPortal>
+          <div
+            className={styles.submitConfirmBackdrop}
+            onClick={() => setShowSubmitConfirmation(false)}
+          >
+            <section
+              className={styles.submitConfirmModal}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="submitConfirmTitle"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h2 id="submitConfirmTitle">
+                {canResubmit ? "Confirm resubmission" : "Confirm submission"}
+              </h2>
+              <p>
+                {canResubmit
+                  ? "Are you sure you want to submit this assignment again? This will use another attempt."
+                  : "Are you sure you want to submit this assignment?"}
+              </p>
+              <div className={styles.submitConfirmActions}>
+                <button
+                  type="button"
+                  className={styles.submitConfirmCancel}
+                  onClick={() => setShowSubmitConfirmation(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.submitConfirmButton}
+                  onClick={confirmSubmitAssignment}
+                >
+                  Confirm submission
+                </button>
+              </div>
+            </section>
+          </div>
+        </ModalPortal>
+      ) : null}
     </div>
   );
 }

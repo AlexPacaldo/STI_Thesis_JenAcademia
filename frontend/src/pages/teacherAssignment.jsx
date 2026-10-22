@@ -272,6 +272,16 @@ export default function AssignTask() {
         body,
       });
 
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        if (res.status === 404) {
+          throw new Error(
+            "The assignment update API is unavailable. Please redeploy or restart the backend, then try again."
+          );
+        }
+        throw new Error(`The server returned an unexpected response (HTTP ${res.status}).`);
+      }
+
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.message || "Could not update the assignment");
@@ -526,6 +536,13 @@ export default function AssignTask() {
               >
                 View Submissions
               </button>
+              <button
+                type="button"
+                className={`${styles.tabButton} ${activeTab === "manage" ? styles.activeTab : ""}`}
+                onClick={() => setActiveTab("manage")}
+              >
+                Manage Assignments
+              </button>
             </div>
 
             {activeTab === "assign" ? (
@@ -618,68 +635,69 @@ export default function AssignTask() {
                     </div>
                   </div>
                 </div>
-                <div className={styles.postedPanel}>
-                  <h2>Manage assignments</h2>
-                  <div className={styles.postedList}>
-                    {postedAssignments.length === 0 ? (
-                      <div className={styles.emptyState}>
-                        {isLoading ? "Loading assignments..." : "You have not posted any assignments yet."}
-                      </div>
-                    ) : (
-                      postedAssignments.map((assignment) => {
-                        const isArchived = Number(assignment.isArchived) === 1;
-                        return (
-                          <div
-                            key={assignment.id}
-                            className={`${styles.postedRow} ${isArchived ? styles.postedRowArchived : ""}`}
-                          >
-                            <div className={styles.postedRowText}>
-                              <strong>{assignment.name || "Assignment"}</strong>
-                              <p className={styles.postedMeta}>
-                                {assignment.student || "Student"}
-                                {assignment.subject ? ` · ${assignment.subject}` : ""}
-                                {assignment.postedAt ? ` · ${formatSubmittedAt(assignment.postedAt)}` : ""}
-                              </p>
-                              {isArchived ? (
-                                <span className={styles.archivedBadge}>Archived</span>
-                              ) : null}
-                              <p className={styles.postedInstructions}>
-                                {assignment.instructions || "No instructions provided."}
-                              </p>
-                              {assignment.attachmentName ? (
-                                <p className={styles.fileInfo}>
-                                  <i className="bi bi-paperclip" aria-hidden="true" />{" "}
-                                  {assignment.attachmentName}
-                                </p>
-                              ) : null}
-                            </div>
-                            <div className={styles.postedActions}>
-                              <button
-                                type="button"
-                                className={styles.editBtn}
-                                onClick={() => {
-                                  setEditingAssignment(assignment);
-                                  setEditedInstructions(assignment.instructions || "");
-                                  setEditedAttachmentFile(null);
-                                }}
-                              >
-                                Edit instructions
-                              </button>
-                              <button
-                                type="button"
-                                className={isArchived ? styles.restoreBtn : styles.archiveBtn}
-                                onClick={() => requestArchiveAssignment(assignment)}
-                              >
-                                {isArchived ? "Unarchive" : "Archive"}
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
               </>
+            ) : activeTab === "manage" ? (
+              <div className={styles.postedPanel}>
+                <h2>Manage assignments</h2>
+                <div className={styles.postedList}>
+                  {postedAssignments.length === 0 ? (
+                    <div className={styles.emptyState}>
+                      {isLoading ? "Loading assignments..." : "You have not posted any assignments yet."}
+                    </div>
+                  ) : (
+                    postedAssignments.map((assignment) => {
+                      const isArchived = Number(assignment.isArchived) === 1;
+                      return (
+                        <div
+                          key={assignment.id}
+                          className={`${styles.postedRow} ${isArchived ? styles.postedRowArchived : ""}`}
+                        >
+                          <div className={styles.postedRowText}>
+                            <strong>{assignment.name || "Assignment"}</strong>
+                            <p className={styles.postedMeta}>
+                              {assignment.student || "Student"}
+                              {assignment.subject ? ` · ${assignment.subject}` : ""}
+                              {assignment.postedAt ? ` · ${formatSubmittedAt(assignment.postedAt)}` : ""}
+                            </p>
+                            {isArchived ? (
+                              <span className={styles.archivedBadge}>Archived</span>
+                            ) : null}
+                            <p className={styles.postedInstructions}>
+                              {assignment.instructions || "No instructions provided."}
+                            </p>
+                            {assignment.attachmentName ? (
+                              <p className={styles.fileInfo}>
+                                <i className="bi bi-paperclip" aria-hidden="true" />{" "}
+                                {assignment.attachmentName}
+                              </p>
+                            ) : null}
+                          </div>
+                          <div className={styles.postedActions}>
+                            <button
+                              type="button"
+                              className={styles.editBtn}
+                              onClick={() => {
+                                setEditingAssignment(assignment);
+                                setEditedInstructions(assignment.instructions || "");
+                                setEditedAttachmentFile(null);
+                              }}
+                            >
+                              Edit instructions
+                            </button>
+                            <button
+                              type="button"
+                              className={isArchived ? styles.restoreBtn : styles.archiveBtn}
+                              onClick={() => requestArchiveAssignment(assignment)}
+                            >
+                              {isArchived ? "Unarchive" : "Archive"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
             ) : activeTab === "submissions" ? (
               <div className={styles.submissionsPanel}>
                 <h2>{selected || "Selected student"}'s Submissions</h2>
@@ -825,7 +843,7 @@ export default function AssignTask() {
                   disabled={isSavingInstructions}
                 />
               </div>
-              <div className={styles.confirmActions}>
+              <div className={`${styles.confirmActions} ${styles.editAssignmentActions}`}>
                 <button
                   type="button"
                   className={styles.textBtn}

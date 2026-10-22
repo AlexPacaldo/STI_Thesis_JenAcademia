@@ -154,6 +154,21 @@
   overflow-wrap: anywhere;
 }
 
+.cardDates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-top: 8px;
+  color: var(--text-mid);
+  font-size: clamp(0.82rem, 1.1vw, 0.95rem);
+  line-height: 1.45;
+}
+
+.cardDates strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
 .cardStatus {
   display: block;
   margin-top: 6px;

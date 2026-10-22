@@ -5,11 +5,42 @@ import styles from "../assets/assignments.module.css";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { apiFetch } from "../utils/apiAuth.js";
+import { formatServerTimestamp, getStoredUserTimezone } from "../utils/timezone.js";
 
 const API = API_BASE_URL;
 
 function getAssignmentDisplayText(row) {
   return row.instructions || row.description || row.name || "Assignment";
+}
+
+function formatDateGiven(value) {
+  if (!value) return "Not available";
+  return formatServerTimestamp(value, getStoredUserTimezone(), {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatDueDate(dateValue, timeValue) {
+  if (!dateValue) return "No due date";
+  const [year, month, day] = String(dateValue).slice(0, 10).split("-").map(Number);
+  if (!year || !month || !day) return "No due date";
+
+  const date = new Date(year, month - 1, day, 12);
+  const formattedDate = date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  if (!timeValue) return formattedDate;
+
+  const [hour = 0, minute = 0] = String(timeValue).split(":").map(Number);
+  const dueTime = new Date(year, month - 1, day, hour, minute);
+  return `${formattedDate} at ${dueTime.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  })}`;
 }
 
 export default function Assignments() {
@@ -82,6 +113,14 @@ export default function Assignments() {
                 {r.subject && (
                   <span className={styles.cardSubject}>{r.subject}</span>
                 )}
+                <div className={styles.cardDates}>
+                  <span>
+                    <strong>Date given:</strong> {formatDateGiven(r.postedAt)}
+                  </span>
+                  <span>
+                    <strong>Due date:</strong> {formatDueDate(r.dueDate, r.dueTime)}
+                  </span>
+                </div>
                 <span className={styles.cardStatus}>
                   {r.submissionId ? "Done" : "Not done yet"}
                 </span>

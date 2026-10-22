@@ -179,20 +179,24 @@ export async function openAuthenticatedFile(path) {
  * because Firefox and Safari only honour window.open in the same task as the
  * click that triggered it, and minting a link needs a round trip.
  */
+async function getSignedFileUrl(endpoint, path) {
+  const res = await apiFetch(`${API_BASE_URL}${endpoint}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: path }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || "Could not open that file");
+  return data.url;
+}
+
 async function openSignedFile(endpoint, path) {
   const tab = window.open("", "_blank");
   if (tab) tab.opener = null;
 
   let link;
   try {
-    const res = await apiFetch(`${API_BASE_URL}${endpoint}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: path }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || "Could not open that file");
-    link = data.url;
+    link = await getSignedFileUrl(endpoint, path);
   } catch (err) {
     // No point leaving an empty tab behind.
     tab?.close();
@@ -228,6 +232,11 @@ export function openAssignmentFile(path) {
 /** The same, for the work a student sent back. */
 export function openSubmissionFile(path) {
   return openSignedFile("/api/submission-files/link", path);
+}
+
+/** Return a filename-aware, short-lived URL for an embedded submission preview. */
+export function getSubmissionFilePreviewUrl(path) {
+  return getSignedFileUrl("/api/submission-files/link", path);
 }
 
 /** Save a stored file, through the session. */
