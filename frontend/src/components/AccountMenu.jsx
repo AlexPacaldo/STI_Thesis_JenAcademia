@@ -57,9 +57,11 @@ function AccountAvatar({ user, className = "" }) {
 export default function AccountMenu({ user, role, classHistoryPath = "/classHistory" }) {
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState(null);
+  const [logoutConfirmationOpen, setLogoutConfirmationOpen] = useState(false);
   const wrapperRef = useRef(null);
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
+  const cancelLogoutRef = useRef(null);
 
   const fullName = `${user?.firstName || ""} ${user?.lastName || ""}`.trim();
   const roleLabel = role === "admin" ? "Admin" : role === "teacher" ? "Teacher" : "Student";
@@ -124,8 +126,23 @@ export default function AccountMenu({ user, role, classHistoryPath = "/classHist
     };
   }, [open, placePanel]);
 
-  const logOut = () => {
+  useEffect(() => {
+    if (!logoutConfirmationOpen) return undefined;
+
+    cancelLogoutRef.current?.focus();
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setLogoutConfirmationOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [logoutConfirmationOpen]);
+
+  const requestLogout = () => {
     closeMenu();
+    setLogoutConfirmationOpen(true);
+  };
+
+  const confirmLogout = () => {
     clearStoredUser();
     window.location.href = "/";
   };
@@ -211,7 +228,7 @@ export default function AccountMenu({ user, role, classHistoryPath = "/classHist
             <div className={styles.divider} />
 
             <div className={styles.items}>
-              <button type="button" className={styles.item} role="menuitem" onClick={logOut}>
+              <button type="button" className={styles.item} role="menuitem" onClick={requestLogout}>
                 <span className={styles.itemIcon} aria-hidden="true">
                   <i className="bi bi-box-arrow-right" />
                 </span>
@@ -220,6 +237,42 @@ export default function AccountMenu({ user, role, classHistoryPath = "/classHist
             </div>
 
             <p className={styles.footer}>{ACCOUNT.menuFooter}</p>
+          </div>
+        </ModalPortal>
+      ) : null}
+
+      {logoutConfirmationOpen ? (
+        <ModalPortal>
+          <div
+            className={styles.confirmBackdrop}
+            onClick={() => setLogoutConfirmationOpen(false)}
+          >
+            <section
+              className={styles.confirmDialog}
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="logout-confirmation-title"
+              aria-describedby="logout-confirmation-message"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h2 id="logout-confirmation-title" className={styles.confirmTitle}>Log out?</h2>
+              <p id="logout-confirmation-message" className={styles.confirmMessage}>
+                Are you sure you want to log out?
+              </p>
+              <div className={styles.confirmActions}>
+                <button
+                  type="button"
+                  className={styles.cancelButton}
+                  ref={cancelLogoutRef}
+                  onClick={() => setLogoutConfirmationOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button type="button" className={styles.confirmButton} onClick={confirmLogout}>
+                  Log Out
+                </button>
+              </div>
+            </section>
           </div>
         </ModalPortal>
       ) : null}
