@@ -161,6 +161,7 @@ export default function AssignTask() {
   const [confirmAction, setConfirmAction] = useState(null);
   const [editingAssignment, setEditingAssignment] = useState(null);
   const [editedInstructions, setEditedInstructions] = useState("");
+  const [editedAttachmentFile, setEditedAttachmentFile] = useState(null);
   const [isSavingInstructions, setIsSavingInstructions] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -257,12 +258,18 @@ export default function AssignTask() {
     });
   };
 
-  const updateAssignment = async (assignment, changes) => {
+  const updateAssignment = async (assignment, changes, file = null) => {
     try {
+      const body = file ? new FormData() : JSON.stringify(changes);
+      if (file) {
+        Object.entries(changes).forEach(([key, value]) => body.append(key, String(value)));
+        body.append("file", file, file.name);
+      }
+
       const res = await apiFetch(`${API}/api/assignments/${assignment.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(changes),
+        ...(file ? {} : { headers: { "Content-Type": "application/json" } }),
+        body,
       });
 
       const data = await res.json();
@@ -304,11 +311,12 @@ export default function AssignTask() {
     setIsSavingInstructions(true);
     const updated = await updateAssignment(editingAssignment, {
       instructions: editedInstructions.trim(),
-    });
+    }, editedAttachmentFile);
     setIsSavingInstructions(false);
     if (updated) {
       setEditingAssignment(null);
       setEditedInstructions("");
+      setEditedAttachmentFile(null);
     }
   };
 
@@ -652,6 +660,7 @@ export default function AssignTask() {
                                 onClick={() => {
                                   setEditingAssignment(assignment);
                                   setEditedInstructions(assignment.instructions || "");
+                                  setEditedAttachmentFile(null);
                                 }}
                               >
                                 Edit instructions
@@ -779,6 +788,7 @@ export default function AssignTask() {
               if (!isSavingInstructions) {
                 setEditingAssignment(null);
                 setEditedInstructions("");
+                setEditedAttachmentFile(null);
               }
             }}
           >
@@ -794,6 +804,27 @@ export default function AssignTask() {
                 onChange={(event) => setEditedInstructions(event.target.value)}
                 autoFocus
               />
+              <div className={styles.Attachment}>
+                <label className={styles.label} htmlFor="editAssignmentAttachment">
+                  Add or replace attachment (optional)
+                </label>
+                {editedAttachmentFile ? (
+                  <p className={styles.fileInfo}>Selected: {editedAttachmentFile.name}</p>
+                ) : editingAssignment.attachmentName ? (
+                  <p className={styles.fileInfo}>
+                    Current attachment: {editingAssignment.attachmentName}
+                  </p>
+                ) : null}
+                <input
+                  id="editAssignmentAttachment"
+                  type="file"
+                  className={styles.fileInput}
+                  onChange={(event) =>
+                    setEditedAttachmentFile(event.target.files?.[0] ?? null)
+                  }
+                  disabled={isSavingInstructions}
+                />
+              </div>
               <div className={styles.confirmActions}>
                 <button
                   type="button"
@@ -801,6 +832,7 @@ export default function AssignTask() {
                   onClick={() => {
                     setEditingAssignment(null);
                     setEditedInstructions("");
+                    setEditedAttachmentFile(null);
                   }}
                   disabled={isSavingInstructions}
                 >

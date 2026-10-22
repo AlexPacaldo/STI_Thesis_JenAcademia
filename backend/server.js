@@ -10936,15 +10936,18 @@ app.get("/api/assignments/:assignment_id", requireSession, async (req, res) => {
   }
 });
 
-app.patch("/api/assignments/:assignment_id", requireSession, async (req, res) => {
+app.patch("/api/assignments/:assignment_id", requireSession, optionalFileUpload, async (req, res) => {
+  const uploadedAttachmentUrl = uploadedFileUrl(req, req.file);
+  let attachmentSaved = false;
   try {
     const { assignment_id } = req.params;
     const session = req.session || {};
     const hasInstructions = Object.prototype.hasOwnProperty.call(req.body || {}, "instructions");
     const hasArchiveState = Object.prototype.hasOwnProperty.call(req.body || {}, "isArchived");
+    const hasAttachment = Boolean(req.file);
 
-    if (!hasInstructions && !hasArchiveState) {
-      return res.status(400).json({ message: "Provide assignment instructions or archive state to update." });
+    if (!hasInstructions && !hasArchiveState && !hasAttachment) {
+      return res.status(400).json({ message: "Provide assignment instructions, an attachment, or archive state to update." });
     }
     if (hasInstructions && (typeof req.body.instructions !== "string" || !req.body.instructions.trim())) {
       return res.status(400).json({ message: "Assignment instructions cannot be empty." });
@@ -10954,7 +10957,7 @@ app.patch("/api/assignments/:assignment_id", requireSession, async (req, res) =>
     }
 
     const [assignmentRows] = await pool.query(
-      "SELECT teacher_id FROM assignments WHERE assignment_id = ? LIMIT 1",
+      "SELECT teacher_id, attachment_url FROM assignments WHERE assignment_id = ? LIMIT 1",
       [assignment_id]
     );
     const assignment = assignmentRows[0];
@@ -10979,11 +10982,19 @@ app.patch("/api/assignments/:assignment_id", requireSession, async (req, res) =>
       updates.push("is_archived = ?");
       values.push(req.body.isArchived ? 1 : 0);
     }
+    if (hasAttachment) {
+      updates.push("attachment_url = ?", "attachment_name = ?");
+      values.push(uploadedAttachmentUrl, req.file.originalname);
+    }
 
     await pool.query(
       `UPDATE assignments SET ${updates.join(", ")} WHERE assignment_id = ?`,
       [...values, assignment_id]
     );
+    attachmentSaved = hasAttachment;
+    if (hasAttachment && assignment.attachment_url) {
+      removeUploadedFile(assignment.attachment_url);
+    }
 
     const [rows] = await pool.query(
       `${assignmentSelect} WHERE a.assignment_id = ? LIMIT 1`,
@@ -10993,11 +11004,17 @@ app.patch("/api/assignments/:assignment_id", requireSession, async (req, res) =>
       assignment: decryptFields(rows[0], ["instructions", "description", "comments", "feedback"]),
       message: hasArchiveState
         ? (req.body.isArchived ? "Assignment archived." : "Assignment restored.")
-        : "Assignment instructions updated.",
+        : hasAttachment
+          ? "Assignment instructions and attachment updated."
+          : "Assignment instructions updated.",
     });
   } catch (err) {
     console.error("PATCH /api/assignments/:assignment_id error:", err);
     res.status(500).json({ message: "Could not update the assignment." });
+  } finally {
+    if (uploadedAttachmentUrl && !attachmentSaved) {
+      removeUploadedFile(uploadedAttachmentUrl);
+    }
   }
 });
 
