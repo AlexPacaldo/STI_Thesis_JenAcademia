@@ -1,89 +1,101 @@
 /*
- * Assignments — kid-friendly.
- *
- * Big cards, big buttons, simple words. One thing at a time.
+ * Assignments — responsive cards with comfortable reading and touch targets.
  */
 
 .page {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(14px, 2vw, 24px);
+  width: 100%;
+  max-width: 1500px;
+  min-height: max(0px, calc(100vh - 160px));
+  min-height: max(0px, calc(100dvh - 160px));
+  margin-inline: auto;
+  padding-bottom: clamp(24px, 4vh, 60px);
+  box-sizing: border-box;
   font-family: "Poppins", sans-serif;
   color: var(--text);
-  min-height: calc(100vh - 160px);
-  padding-bottom: 60px;
+}
+
+.loadingCard,
+.errorBanner,
+.emptyCard,
+.sectionTitle {
+  grid-column: 1 / -1;
 }
 
 .loadingCard {
   display: grid;
   place-items: center;
-  text-align: center;
-  min-height: 300px;
-  padding: 40px;
+  min-height: 240px;
+  padding: clamp(20px, 4vw, 40px);
+  border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   background: var(--surface);
-  border: 1px solid var(--border);
   box-shadow: var(--neu-shadow-lg);
+  text-align: center;
 }
 
 .loadingText {
-  font-size: 1.5rem;
-  font-weight: 800;
   color: var(--text-mid);
+  font-size: clamp(1.1rem, 2vw, 1.5rem);
+  font-weight: 800;
 }
 
 .errorBanner {
-  padding: 18px 20px;
-  border-radius: var(--radius-lg);
+  padding: 16px 20px;
   border: 1px solid rgba(168, 58, 52, 0.2);
+  border-radius: var(--radius-lg);
   background: var(--pill-danger);
   color: var(--text-danger);
   font-size: 1rem;
   font-weight: 700;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .emptyCard {
   display: grid;
   gap: 14px;
   place-items: center;
-  text-align: center;
-  min-height: 300px;
-  padding: 40px;
-  border-radius: var(--radius-xl);
+  min-height: 240px;
+  padding: clamp(20px, 4vw, 40px);
   border: 2px dashed var(--border-strong);
+  border-radius: var(--radius-xl);
   background: var(--surface-soft);
   color: var(--muted);
+  text-align: center;
 }
 
 .emptyIcon {
-  font-size: 4rem;
+  font-size: clamp(2.5rem, 5vw, 4rem);
   line-height: 1;
 }
 
 .emptyTitle {
   margin: 0;
-  font-size: 1.75rem;
+  color: var(--text);
+  font-size: clamp(1.35rem, 2.6vw, 1.75rem);
   font-weight: 800;
   line-height: 1.2;
-  color: var(--text);
 }
 
 .emptyText {
+  max-width: 42ch;
   margin: 0;
-  font-size: 1.25rem;
+  color: var(--text-mid);
+  font-size: clamp(1rem, 1.8vw, 1.25rem);
   font-weight: 600;
   line-height: 1.5;
-  color: var(--text-mid);
 }
 
 .sectionTitle {
-  margin: 0 0 16px 0;
-  font-size: 1.75rem;
+  margin: 0;
+  color: var(--primary);
+  font-size: clamp(1.4rem, 2.6vw, 1.9rem);
   font-weight: 800;
   line-height: 1.2;
   letter-spacing: -0.02em;
-  color: var(--primary);
 }
 
 /* ---------- Assignment cards ---------- */
@@ -92,12 +104,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  min-height: 100px;
-  padding: 24px 28px;
+  gap: clamp(12px, 2vw, 24px);
+  min-width: 0;
+  min-height: 112px;
+  padding: clamp(16px, 2.2vw, 28px);
+  border: 1px solid var(--border-mid);
   border-radius: var(--radius-xl);
-  border: 2px solid var(--border-mid);
   background: var(--surface);
+  box-sizing: border-box;
   transition:
     border-color var(--duration-fast) var(--ease-out),
     transform var(--duration-fast) var(--ease-out),
@@ -106,154 +120,129 @@
 
 .assignmentCard:hover {
   transform: translateY(-2px);
-  border-color: var(--border-mid);
+  border-color: var(--primary);
   box-shadow: var(--shadow-md);
 }
 
-.assignmentCard:active {
-  transform: scale(0.98);
-}
-
-.assignmentCard:focus-visible {
-  outline: none;
-  border-color: var(--border-mid);
-  box-shadow: none;
-}
-
 .cardInfo {
+  flex: 1 1 0;
   min-width: 0;
 }
 
 .actions {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 12px;
 }
 
 .cardTitle {
   display: block;
-  font-size: 1.5rem;
-  font-weight: 800;
-  line-height: 1.25;
   color: var(--text);
-  overflow-wrap: break-word;
+  font-size: clamp(1.15rem, 1.8vw, 1.5rem);
+  font-weight: 800;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .cardSubject {
   display: block;
   margin-top: 6px;
-  font-size: 1.1rem;
-  font-weight: 600;
   color: var(--muted);
+  font-size: clamp(0.95rem, 1.3vw, 1.1rem);
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .cardStatus {
+  display: block;
   margin-top: 6px;
-  font-size: 1.1rem;
-  font-weight: 800;
   color: var(--primary);
+  font-size: clamp(0.95rem, 1.3vw, 1.1rem);
+  font-weight: 800;
+  line-height: 1.4;
 }
 
-/* Big "Open" button on each card */
 .cardButton {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 14px;
-  min-height: 72px;
-  padding: 0 28px;
-  cursor: pointer;
-  border: none;
+  justify-content: center;
+  gap: 12px;
+  min-width: 118px;
+  min-height: 56px;
+  padding: 0 22px;
+  border: 0;
   border-radius: var(--radius-xl);
   background: var(--brand-green);
+  box-shadow: 0 8px 20px rgba(47, 122, 61, 0.25);
   color: #fff;
-  font-size: 1.5rem;
+  font-size: clamp(1rem, 1.6vw, 1.25rem);
   font-weight: 800;
   text-decoration: none;
-  box-shadow: 0 10px 24px rgba(47, 122, 61, 0.32);
+  white-space: nowrap;
   transition:
     background var(--duration-fast) var(--ease-out),
     transform var(--duration-fast) var(--ease-out);
 }
 
-.cardButton:hover:not(:disabled) {
-  background: var(--primary-mid);
+.cardButton:hover {
   transform: translateY(-2px);
+  background: var(--primary-mid);
 }
 
-.cardButton:active:not(:disabled) {
+.cardButton:active {
   transform: scale(0.98);
 }
 
+.cardButton:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .cardArrow {
-  font-size: 1.5rem;
+  flex: 0 0 auto;
+  font-size: 1rem;
   line-height: 1;
 }
 
-/* Attachment shortcut (worksheet from the teacher) */
-.cardAttachment {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 56px;
-  padding: 0 20px;
-  cursor: pointer;
-  border: 2px solid var(--border-mid);
-  border-radius: var(--control-radius);
-  background: var(--surface);
-  color: var(--primary);
-  font-size: 1.1rem;
-  font-weight: 800;
-  transition:
-    border-color var(--duration-fast) var(--ease-out),
-    background var(--duration-fast) var(--ease-out);
+@media (min-width: 1200px) {
+  .page {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
-
-.cardAttachment:hover:not(:disabled) {
-  transform: translateY(-2px);
-  border-color: var(--brand-lime);
-  background: var(--surface-soft);
-}
-
-.cardAttachmentIcon {
-  font-size: 1.5rem;
-  line-height: 1;
-}
-
-/* ---------- Small screens ---------- */
 
 @media (max-width: 640px) {
   .page {
-    gap: 16px;
-    padding-bottom: 48px;
-  }
-
-  .sectionTitle {
-    font-size: 1.4rem;
+    gap: 14px;
+    min-height: 0;
+    padding-bottom: 32px;
   }
 
   .assignmentCard {
-    min-height: 92px;
-    padding: 20px 24px;
-    gap: 16px;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 0;
+    padding: 18px;
   }
 
-  .cardTitle {
-    font-size: 1.25rem;
+  .cardInfo {
+    width: 100%;
   }
 
-  .cardSubject,
-  .cardStatus {
-    font-size: 1rem;
+  .actions,
+  .cardButton {
+    width: 100%;
   }
 
   .cardButton {
-    min-height: 64px;
-    font-size: 1.25rem;
-    padding: 0 24px;
-  }
-
-  .cardAttachment {
     min-height: 48px;
-    font-size: 1rem;
+    padding-inline: 16px;
+  }
+}
+
+@media (max-width: 360px) {
+  .assignmentCard {
+    padding: 14px;
   }
 }
