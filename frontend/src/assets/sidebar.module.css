@@ -5,6 +5,7 @@
 .sidebar {
   width: var(--sidebar-width, 232px);
   height: 100vh;
+  height: 100dvh;
   position: fixed;
   left: 0;
   top: 0;
@@ -226,7 +227,7 @@
 /* ============================================================
    MOBILE — Drawer pattern
    ============================================================ */
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
   .backdrop {
     position: fixed;
     inset: 0;

@@ -4,6 +4,7 @@
   right: 0;
   width: min(380px, 92vw);
   height: calc(100vh - 72px);
+  height: calc(100dvh - 72px);
   background: rgba(248, 250, 247, 0.98);
   border-left: 1px solid rgba(47, 77, 62, 0.12);
   box-shadow: -8px 0 32px rgba(18, 34, 30, 0.18), -3px 0 12px rgba(255, 255, 255, 0.6);
@@ -492,6 +493,9 @@
 @media (max-width: 640px) {
   .drawer {
     width: 100vw;
+    top: 66px;
+    height: calc(100vh - 66px);
+    height: calc(100dvh - 66px);
   }
 
   .dock {
@@ -507,5 +511,6 @@
 
   .window {
     width: calc(100vw - 16px);
+    max-height: calc(100dvh - 24px);
   }
 }

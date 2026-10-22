@@ -252,7 +252,7 @@
 /* ============================================================
    RESPONSIVE
    ============================================================ */
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
   .header { padding: 0 1rem; }
 
   .menuButton { display: inline-flex; }

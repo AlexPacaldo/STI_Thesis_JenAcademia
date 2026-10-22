@@ -25,6 +25,7 @@
   width: 100%;
   max-width: 500px;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   box-shadow: -12px 0 40px rgba(18, 34, 30, 0.16);
@@ -181,10 +182,12 @@
 
 .notificationItem {
   display: flex;
+  min-width: 0;
   gap: 12px;
   padding: 16px;
   border-bottom: 1px solid var(--border, rgba(38, 66, 59, 0.12));
   border-left: 4px solid transparent;
+  box-sizing: border-box;
   transition: all 0.2s;
   background: #fff;
 }
@@ -256,6 +259,29 @@
   line-height: 1.4;
   white-space: pre-line;
   word-break: break-word;
+}
+
+@media (max-width: 480px) {
+  .panel {
+    max-width: none;
+  }
+
+  .header {
+    padding: 14px;
+  }
+
+  .filterBar {
+    padding-inline: 12px;
+  }
+
+  .notificationItem {
+    gap: 8px;
+    padding: 14px 12px;
+  }
+
+  .notifHeader {
+    flex-wrap: wrap;
+  }
 }
 
 .notifMessage span {
