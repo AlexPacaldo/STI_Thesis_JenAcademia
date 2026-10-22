@@ -159,6 +159,9 @@ export default function AssignmentsDropbox() {
   const [activeTab, setActiveTab] = useState("instructions");
   const [submissionHistory, setSubmissionHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
@@ -226,32 +229,44 @@ export default function AssignmentsDropbox() {
     let ignore = false;
     setSubmissionHistory([]);
     setShowHistory(false);
+    setHistoryLoading(true);
+    setHistoryError("");
 
     apiFetch(`${API}/api/assignments/${assignmentId}/submission-history`)
       .then(async (res) => {
+        const contentType = res.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          if (res.status === 404) {
+            throw new Error(
+              "Submission history is not available on the server yet. Please redeploy the backend, then retry."
+            );
+          }
+          throw new Error(`History service returned an invalid response (HTTP ${res.status}).`);
+        }
+
         const data = await res.json();
         if (!res.ok) {
-          // History endpoint may not exist on older deployments; ignore silently.
-          if (res.status === 404) return;
           throw new Error(data.message || "Could not load submission history");
         }
-        return data.history || [];
+        return Array.isArray(data.history) ? data.history : [];
       })
       .then((history) => {
         if (ignore) return;
-        if (history.length > 0) {
-          setSubmissionHistory(history);
-          setShowHistory(true);
-        }
+        setSubmissionHistory(history);
+        setShowHistory(history.length > 0);
       })
       .catch((err) => {
         console.error("Load submission history error:", err);
+        if (!ignore) setHistoryError(err.message || "Could not load submission history.");
+      })
+      .finally(() => {
+        if (!ignore) setHistoryLoading(false);
       });
 
     return () => {
       ignore = true;
     };
-  }, [activeTab, assignmentId, hasExistingSubmission]);
+  }, [activeTab, assignmentId, hasExistingSubmission, historyRefreshKey]);
 
   const assignmentInstructions =
     selectedAssignment?.instructions ||
@@ -326,7 +341,18 @@ export default function AssignmentsDropbox() {
         throw new Error(data.message || "Could not submit assignment");
       }
 
-      setSelectedAssignment((prev) => ({ ...prev, submissionId: data.submission?.submissionId }));
+      const submission = data.submission || {};
+      setSelectedAssignment((prev) => ({
+        ...prev,
+        submissionId: submission.submissionId ?? submission.id ?? prev.submissionId,
+        comments: submission.comments ?? "",
+        fileUrl: submission.fileUrl ?? null,
+        fileName: submission.fileName ?? null,
+        submittedAt: submission.submittedAt ?? prev.submittedAt,
+        attemptsUsed: Number(submission.attemptsUsed ?? submission.attemptCount ?? prev.attemptsUsed ?? 1),
+        attemptCount: Number(submission.attemptCount ?? submission.attemptsUsed ?? prev.attemptCount ?? 1),
+      }));
+      setHistoryRefreshKey((key) => key + 1);
       notify?.("Assignment submitted!", "success");
       setSubmitMessage("Submitted!");
       setComment("");
@@ -516,16 +542,33 @@ export default function AssignmentsDropbox() {
                     </>
                   ) : null}
 
-                  {submissionHistory.length > 0 ? (
+                  {hasExistingSubmission &&
+                  (historyLoading || historyError || submissionHistory.length > 0) ? (
                     <div className={styles.submissionHistory}>
                       <button
                         type="button"
                         className={styles.historyButton}
-                        onClick={() => setShowHistory(!showHistory)}
+                        onClick={() => {
+                          if (historyError) {
+                            setHistoryRefreshKey((key) => key + 1);
+                          } else {
+                            setShowHistory((visible) => !visible);
+                          }
+                        }}
                         aria-expanded={showHistory}
+                        disabled={historyLoading}
                       >
-                        {showHistory ? "Hide history" : "View submission history"}
+                        {historyLoading
+                          ? "Loading history…"
+                          : historyError
+                            ? "Retry history"
+                            : showHistory
+                              ? `Hide history (${submissionHistory.length})`
+                              : `View submission history (${submissionHistory.length})`}
                       </button>
+                      {historyError ? (
+                        <p className={styles.historyError} role="alert">{historyError}</p>
+                      ) : null}
                       {showHistory && (
                         <div className={styles.historyList}>
                           {submissionHistory.map((item) => (
@@ -552,7 +595,7 @@ export default function AssignmentsDropbox() {
                                       )
                                     }
                                   >
-                                    {getFileName(item.file_url)}
+                                    {item.file_name || getFileName(item.file_url)}
                                   </button>
                                 </div>
                               ) : null}
