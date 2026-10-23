@@ -1,5 +1,5 @@
 import axios from "axios";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "../assets/notificationPanel.module.css";
 import kid from "../assets/studentKid.module.css";
@@ -11,7 +11,7 @@ import {
     mergeNotifications,
 } from "../utils/localNotificationStore.js";
 import { readStoredUser } from "../utils/sessionUser.js";
-import { getStoredUserTimezone } from "../utils/timezone.js";
+import { getStoredUserTimezone, parseServerTimestamp } from "../utils/timezone.js";
 import { useNotification } from "./NotificationContainer";
 import { API_BASE_URL } from "../utils/api.js";
 
@@ -19,6 +19,105 @@ const API = API_BASE_URL;
 
 const DECLINE_REASON_MIN_LENGTH = 5;
 const DECLINE_REASON_MAX_LENGTH = 500;
+
+const FILTER_OPTIONS = [
+  { value: "all", label: "All" },
+  { value: "reschedule", label: "Reschedules" },
+  { value: "assignment", label: "Assignments" },
+  { value: "remark", label: "Remarks" },
+  { value: "announcement", label: "Announcements" },
+  { value: "class_reminder", label: "Reminders" },
+];
+
+const TYPE_META = {
+  reschedule: { label: "Reschedule", accent: "#9a5a05", tint: "#fdf1df" },
+  assignment: { label: "Assignment", accent: "#245394", tint: "#eaf1ff" },
+  remark: { label: "Remark", accent: "#816200", tint: "#fff7dd" },
+  announcement: { label: "Announcement", accent: "#2f7a3d", tint: "#edf7e9" },
+  class_reminder: { label: "Class reminder", accent: "#1f6b66", tint: "#e7f5f3" },
+  general: { label: "Update", accent: "#5e7268", tint: "#f1f4f2" },
+};
+
+const getTypeMeta = (type) => TYPE_META[type] || TYPE_META.general;
+
+function TypeIcon({ type }) {
+  const props = {
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    "aria-hidden": "true",
+    className: styles.typeIconSvg,
+  };
+
+  switch (type) {
+    case "reschedule":
+      return (
+        <svg {...props}>
+          <rect x="3" y="5" width="18" height="16" rx="3" />
+          <path d="M16 3v4M8 3v4M3 11h18" />
+          <path d="M8 15h3M8 18h6" />
+        </svg>
+      );
+    case "assignment":
+      return (
+        <svg {...props}>
+          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+          <rect x="9" y="3" width="6" height="4" rx="1.5" />
+          <path d="M9 12h6M9 16h4" />
+        </svg>
+      );
+    case "remark":
+      return (
+        <svg {...props}>
+          <path d="m12 3 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.2l5.9-.9L12 3Z" />
+        </svg>
+      );
+    case "announcement":
+      return (
+        <svg {...props}>
+          <path d="m3 11 18-7v16L3 13v-2Z" />
+          <path d="M7 12.5V17a2.5 2.5 0 0 0 4.8 1" />
+        </svg>
+      );
+    case "class_reminder":
+      return (
+        <svg {...props}>
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+          <path d="M10 21h4" />
+        </svg>
+      );
+    default:
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v5M12 8h.01" />
+        </svg>
+      );
+  }
+}
+
+function formatNotificationTime(value) {
+  const date = parseServerTimestamp(value);
+  if (!date) return null;
+
+  const timeZone = getStoredUserTimezone();
+  const dateLabel = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone,
+  }).format(date);
+  const timeLabel = new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+  }).format(date);
+
+  return { dateLabel, timeLabel };
+}
 
 export default function NotificationPanel({ userId, isOpen, onClose }) {
   const { notify } = useNotification() || {};
@@ -33,8 +132,19 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
   const [declineReason, setDeclineReason] = useState("");
   const [declineReasonError, setDeclineReasonError] = useState("");
 
+  // Keep the page behind the drawer still while it is open.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
   // Fetch all notifications for this user
-  const loadNotifications = async (pageNum = 1, type = "all") => {
+  const loadNotifications = useCallback(async (pageNum = 1, type = "all") => {
     if (!userId) return;
     setLoading(true);
     const currentUser = readStoredUser() || {};
@@ -62,13 +172,13 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
 
   useEffect(() => {
     if (isOpen && userId) {
       loadNotifications(1, selectedType);
     }
-  }, [isOpen, userId, selectedType]);
+  }, [isOpen, userId, selectedType, loadNotifications]);
 
   // Mark notification as read
   const handleMarkAsRead = async (notificationId) => {
@@ -107,28 +217,30 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
     onClose?.();
   };
 
-  // Mark all as read
-  const handleMarkAllAsRead = async () => {
-    const currentUser = readStoredUser() || {};
-    const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
-    try {
-      await axios.put(`${API}/api/users/${userId}/notifications/read-all`);
-      markAllLocalNotificationsReadForUser({ userId, userName });
-      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-      notify("All notifications marked as read", "success");
-    } catch (err) {
-      console.error("Error marking all as read:", err);
-      markAllLocalNotificationsReadForUser({ userId, userName });
-      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-      notify("All notifications marked as read", "success");
-    }
-  };
-
   const closeConfirmAction = () => {
     setConfirmAction(null);
     setDeclineReason("");
     setDeclineReasonError("");
   };
+
+  // Escape closes the confirmation first, then the drawer.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      if (confirmAction) {
+        setConfirmAction(null);
+        setDeclineReason("");
+        setDeclineReasonError("");
+        return;
+      }
+      onClose?.();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose, confirmAction]);
 
   const requestDeleteNotification = (notificationId) => {
     setConfirmAction({
@@ -314,32 +426,6 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
     closeConfirmAction();
   };
 
-  // Get notification icon based on type
-  const getNotificationIcon = (type) => {
-    const icons = {
-      reschedule: "📅",
-      assignment: "📋",
-      remark: "⭐",
-      announcement: "📢",
-      class_reminder: "🔔",
-      general: "ℹ️"
-    };
-    return icons[type] || "📌";
-  };
-
-  // Get notification color based on type
-  const getNotificationColor = (type) => {
-    const colors = {
-      reschedule: "#fff3cd",
-      assignment: "#cfe2ff",
-      remark: "#fff3cd",
-      announcement: "#f8f9fa",
-      class_reminder: "#d1ecf1",
-      general: "#e2e3e5"
-    };
-    return colors[type] || "#f8f9fa";
-  };
-
   // Get notification title based on type if not provided
   const getNotificationTitle = (notification) => {
     if (notification.title) return notification.title;
@@ -378,265 +464,336 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
   if (!isOpen) return null;
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
-  const totalPages = Math.ceil(totalNotifications / 15);
+  const totalPages = Math.max(1, Math.ceil(totalNotifications / 15));
+  const selectedFilter = FILTER_OPTIONS.find(option => option.value === selectedType) || FILTER_OPTIONS[0];
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={kid.filterDialog} onClick={e => e.stopPropagation()}>
-        <div className={kid.filterHead}>
-          <div>
-            <h3 className={kid.filterTitle}>Notifications</h3>
-            {unreadCount > 0 && <span className={kid.filterNum}>{unreadCount}</span>}
+    <div className={styles.overlay} onClick={onClose} role="presentation">
+      <section
+        className={styles.panel}
+        onClick={e => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="notifications-title"
+        aria-describedby="notifications-subtitle"
+      >
+        <header className={styles.header}>
+          <div className={styles.headerText}>
+            <p className={styles.eyebrow}>Inbox</p>
+            <div className={styles.titleRow}>
+              <h2 id="notifications-title" className={styles.title}>Notifications</h2>
+              {unreadCount > 0 && <span className={styles.unreadBadge}>{unreadCount}</span>}
+            </div>
+            <p id="notifications-subtitle" className={styles.headerSub}>
+              {unreadCount > 0
+                ? `${unreadCount} unread update${unreadCount === 1 ? "" : "s"}`
+                : notifications.length > 0
+                  ? "You're all caught up"
+                  : "Updates from your classes will show up here"}
+            </p>
           </div>
-          <button type="button" className={kid.filterClose} onClick={onClose} aria-label="Close notifications">
-            ×
+          <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Close notifications">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6 6 18" />
+            </svg>
           </button>
-        </div>
-        <div className={kid.filterBody}>
-          {/* Type Filter */}
-          <div className={styles.filterBar}>
-            {["all", "reschedule", "assignment", "remark", "announcement", "class_reminder"].map(type => (
+        </header>
+
+        <div className={styles.toolbar}>
+          <div className={styles.filters} role="group" aria-label="Filter notifications">
+            {FILTER_OPTIONS.map(option => (
               <button
-                key={type}
-                className={`${kid.filterPill} ${selectedType === type ? kid.filterPillActive : ""}`}
+                key={option.value}
+                type="button"
+                className={`${styles.filterPill} ${selectedType === option.value ? styles.filterPillActive : ""}`}
+                aria-pressed={selectedType === option.value}
                 onClick={() => {
-                  setSelectedType(type);
+                  setSelectedType(option.value);
                   setPage(1);
                 }}
               >
-                {type === "all" ? "All" : type.charAt(0).toUpperCase() + type.slice(1).replace("_", " ")}
+                {option.label}
               </button>
             ))}
           </div>
+        </div>
 
-          <div className={styles.content}>
-            {loading ? (
-              <div className={styles.loading}>Loading...</div>
-            ) : notifications.length === 0 ? (
-              <div className={kid.empty}>
-                <span className={kid.emptyIcon} aria-hidden="true">📭</span>
-                <span className={kid.emptyTitle}>No notifications yet</span>
+        <div className={styles.content}>
+          {loading ? (
+            <div className={styles.skeletonList} role="status" aria-busy="true">
+              <span className={styles.srOnly}>Loading notifications…</span>
+              {[0, 1, 2].map(index => (
+                <div className={styles.skeletonCard} key={index} aria-hidden="true">
+                  <span className={styles.skeletonIcon} />
+                  <span className={styles.skeletonBody}>
+                    <span className={styles.skeletonLine} />
+                    <span className={`${styles.skeletonLine} ${styles.skeletonLineShort}`} />
+                    <span className={styles.skeletonLine} />
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : notifications.length === 0 ? (
+            <div className={styles.emptyState}>
+              <div className={styles.emptyIcon} aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 5h16v14H4z" />
+                  <path d="M4 13h4l2 3h4l2-3h4" />
+                </svg>
               </div>
-            ) : (
-              <>
-                <div className={styles.notificationsList}>
-                  {notifications.map(notif => (
-                    <div
-                      key={notif.notification_id}
-                      className={`${styles.notificationItem} ${!notif.is_read ? styles.unread : ""}`}
-                      style={{ borderLeftColor: getNotificationColor(notif.type) }}
-                      onClick={() => handleNotificationClick(notif)}
-                    >
-                      <div className={styles.notifIcon}>{getNotificationIcon(notif.type)}</div>
+              <h3 className={styles.emptyTitle}>
+                {selectedType === "all" ? "You're all caught up" : `No ${selectedFilter.label.toLowerCase()} right now`}
+              </h3>
+              <p className={styles.emptyText}>
+                {selectedType === "all"
+                  ? "New assignments, remarks, announcements, and reminders will appear here."
+                  : "Try another filter or check back later for updates."}
+              </p>
+              {selectedType !== "all" && (
+                <button type="button" className={styles.emptyReset} onClick={() => setSelectedType("all")}>
+                  Show all notifications
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className={styles.notificationsList}>
+              {notifications.map(notif => {
+                const meta = getTypeMeta(notif.type);
+                const timestamp = formatNotificationTime(notif.created_at);
+                const canRespond = notif.type === "reschedule" && notif.title === "Reschedule Request";
 
-                      <div className={styles.notifContent}>
-                        <div className={styles.notifHeader}>
-                          <h4 className={styles.notifTitle}>{getNotificationTitle(notif)}</h4>
-                          <span className={styles.notifType}>{notif.type}</span>
-                        </div>
-                        <p className={styles.notifMessage}>{renderNotificationMessage(notif.message)}</p>
-                        <span className={styles.notifTime}>
-                          {new Date(notif.created_at).toLocaleDateString([], { timeZone: getStoredUserTimezone() })} {new Date(notif.created_at).toLocaleTimeString([], { timeZone: getStoredUserTimezone(), hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-
-                      <div className={styles.notifActions}>
-                        {notif.type === "reschedule" && notif.title === "Reschedule Request" ? (
-                          <>
-                            <button
-                              className={`${kid.btn} ${kid.btnPrimary} ${styles.actionBtn}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                requestApproveReschedule(notif.notification_id, notif.related_id);
-                              }}
-                              title="Approve reschedule"
-                              disabled={actionInProgress === notif.notification_id}
-                            >
-                              {actionInProgress === notif.notification_id ? "Sending…" : "Approve"}
-                            </button>
-                            <button
-                              className={`${kid.btn} ${kid.btnGhost} ${styles.actionBtn}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                requestRejectReschedule(notif.notification_id, notif.related_id);
-                              }}
-                              title="Reject reschedule"
-                              disabled={actionInProgress === notif.notification_id}
-                            >
-                              {actionInProgress === notif.notification_id ? "Sending…" : "Reject"}
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            {!notif.is_read && (
-                              <button
-                                className={`${kid.btn} ${kid.btnGhost} ${styles.actionBtn}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleMarkAsRead(notif.notification_id);
-                                }}
-                                title="Mark as read"
-                              >
-                                Mark as read
-                              </button>
-                            )}
-                            <button
-                              className={`${styles.deleteBtn} ${styles.actionBtn}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                requestDeleteNotification(notif.notification_id);
-                              }}
-                              title="Delete"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
-                      </div>
+                return (
+                  <div
+                    key={notif.notification_id}
+                    className={`${styles.notificationItem} ${!notif.is_read ? styles.unread : ""}`}
+                    style={{ "--type-accent": meta.accent, "--type-tint": meta.tint }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${!notif.is_read ? "Unread " : ""}${getNotificationTitle(notif)}`}
+                    onClick={() => handleNotificationClick(notif)}
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleNotificationClick(notif);
+                      }
+                    }}
+                  >
+                    <div className={styles.notifIcon}>
+                      <TypeIcon type={notif.type} />
                     </div>
-                  ))}
-                </div>
 
-                {/* Pagination */}
-                {totalPages > 1 && (
-                  <div className={styles.pagination}>
-                    <button
-                      disabled={page === 1}
-                      onClick={() => loadNotifications(page - 1, selectedType)}
-                      className={`${styles.pageBtn} ${styles.pageBtnPrimary}`}
-                    >
-                      ← Prev
-                    </button>
-                    <span className={styles.pageInfo}>
-                      Page {page} of {totalPages}
-                    </span>
-                    <button
-                      disabled={page === totalPages}
-                      onClick={() => loadNotifications(page + 1, selectedType)}
-                      className={`${styles.pageBtn} ${styles.pageBtnPrimary}`}
-                    >
-                      Next →
-                    </button>
-                  </div>
-                )}
+                    <div className={styles.notifContent}>
+                      <div className={styles.notifMeta}>
+                        <span className={styles.notifType}>{meta.label}</span>
+                        {timestamp && (
+                          <span className={styles.notifTime}>
+                            <span className={styles.metaDot} aria-hidden="true">•</span>
+                            {timestamp.dateLabel} · {timestamp.timeLabel}
+                          </span>
+                        )}
+                        {!notif.is_read && <span className={styles.unreadDot} aria-hidden="true" />}
+                      </div>
 
-                {/* Footer Actions */}
-                <div className={styles.footerActions}>
-                  {unreadCount > 0 && (
-                    <button
-                      type="button"
-                      className={`${kid.btn} ${kid.btnPrimary} ${kid.btnWide}`}
-                      onClick={requestMarkAllAsRead}
-                    >
-                      Mark All as Read
-                    </button>
-                  )}
-                  {notifications.length > 0 && (
-                    <button
-                      type="button"
-                      className={`${kid.btn} ${kid.btnGhost} ${kid.btnWide}`}
-                      onClick={requestClearAllNotifications}
-                    >
-                      Clear All
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-          {confirmAction && (
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                background: "rgba(15, 25, 20, 0.45)",
-                display: "grid", placeItems: "center",
-                padding: 20,
-                zIndex: 1200,
-              }}
-              onClick={closeConfirmAction}
-            >
-              <div className={kid.filterDialog} style={{ maxWidth: 440 }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className={kid.filterHead}>
-                  <div>
-                    <h3 className={kid.filterTitle}>{confirmAction.title}</h3>
-                    <p className={kid.filterSub}>{confirmAction.message}</p>
-                  </div>
-                  <button type="button" className={kid.filterClose} onClick={closeConfirmAction} aria-label="Close">
-                    ×
-                  </button>
-                </div>
-                <div className={kid.filterBody}>
-                  {confirmAction.requiresReason && (
-                    <div className={kid.pastCard}>
-                      <label
-                        htmlFor="decline-reason-input"
-                        className={kid.detailLabel}
-                      >
-                        Reason for declining <span className={kid.summaryValue}>*</span>
-                      </label>
-                      <textarea
-                        id="decline-reason-input"
-                        rows={4}
-                        autoFocus
-                        maxLength={DECLINE_REASON_MAX_LENGTH}
-                        value={declineReason}
-                        onChange={(e) => {
-                          setDeclineReason(e.target.value);
-                          if (declineReasonError) setDeclineReasonError("");
-                        }}
-                        placeholder="Explain why this request is being declined. The requester will see this reason."
-                        style={{
-                          width: "100%",
-                          padding: 12,
-                          borderRadius: "var(--control-radius)",
-                          border: declineReasonError ? "1px solid var(--text-danger)" : "1px solid var(--border-mid)",
-                          fontSize: "0.9rem",
-                          fontFamily: "inherit",
-                          lineHeight: 1.5,
-                          resize: "vertical",
-                          boxSizing: "border-box",
-                          color: "var(--text)",
-                          marginTop: 8,
-                        }}
-                      />
-                      {declineReasonError ? (
-                        <div className={kid.error}>
-                          {declineReasonError}
+                      <h3 className={styles.notifTitle}>{getNotificationTitle(notif)}</h3>
+                      <p className={styles.notifMessage}>{renderNotificationMessage(notif.message)}</p>
+
+                      {canRespond && (
+                        <div className={styles.rescheduleActions}>
+                          <button
+                            type="button"
+                            className={`${styles.inlineBtn} ${styles.inlineBtnPrimary}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              requestApproveReschedule(notif.notification_id, notif.related_id);
+                            }}
+                            disabled={actionInProgress === notif.notification_id}
+                          >
+                            {actionInProgress === notif.notification_id ? "Sending…" : "Approve"}
+                          </button>
+                          <button
+                            type="button"
+                            className={`${styles.inlineBtn} ${styles.inlineBtnGhost}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              requestRejectReschedule(notif.notification_id, notif.related_id);
+                            }}
+                            disabled={actionInProgress === notif.notification_id}
+                          >
+                            {actionInProgress === notif.notification_id ? "Sending…" : "Decline"}
+                          </button>
                         </div>
-                      ) : (
-                        <p className={kid.summaryLabel}>
-                          This reason is shared with the requester. Minimum {DECLINE_REASON_MIN_LENGTH} characters.
-                        </p>
                       )}
                     </div>
-                  )}
 
-                  <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-                    <button
-                      type="button"
-                      onClick={closeConfirmAction}
-                      className={`${kid.btn} ${kid.btnGhost}`}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={performConfirmAction}
-                      disabled={confirmAction.requiresReason && declineReason.trim().length < DECLINE_REASON_MIN_LENGTH}
-                      className={`${kid.btn} ${kid.btnPrimary}`}
-                    >
-                      {confirmAction.confirmLabel}
-                    </button>
+                    <div className={styles.notifActions}>
+                      {!notif.is_read && (
+                        <button
+                          type="button"
+                          className={styles.iconBtn}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMarkAsRead(notif.notification_id);
+                          }}
+                          title="Mark as read"
+                          aria-label="Mark notification as read"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="m5 12 4 4L19 6" />
+                          </svg>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          requestDeleteNotification(notif.notification_id);
+                        }}
+                        title="Delete notification"
+                        aria-label="Delete notification"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" />
+                          <path d="M10 11v5M14 11v5" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </div>
+                );
+              })}
             </div>
           )}
         </div>
-      </div>
+
+        {!loading && notifications.length > 0 && (
+          <footer className={styles.footer}>
+            {totalPages > 1 && (
+              <div className={styles.pagination}>
+                <button
+                  type="button"
+                  disabled={page === 1}
+                  onClick={() => loadNotifications(page - 1, selectedType)}
+                  className={styles.pageBtn}
+                  aria-label="Previous page"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="m15 18-6-6 6-6" />
+                  </svg>
+                </button>
+                <span className={styles.pageInfo}>
+                  Page <strong>{page}</strong> of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={page >= totalPages}
+                  onClick={() => loadNotifications(page + 1, selectedType)}
+                  className={styles.pageBtn}
+                  aria-label="Next page"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="m9 18 6-6-6-6" />
+                  </svg>
+                </button>
+              </div>
+            )}
+
+            <div className={styles.footerActions}>
+              {unreadCount > 0 && (
+                <button
+                  type="button"
+                  className={styles.footerBtnPrimary}
+                  onClick={requestMarkAllAsRead}
+                >
+                  Mark all as read
+                </button>
+              )}
+              <button
+                type="button"
+                className={styles.footerBtnGhost}
+                onClick={requestClearAllNotifications}
+              >
+                Clear all
+              </button>
+            </div>
+          </footer>
+        )}
+
+        {confirmAction && (
+          <div className={styles.confirmBackdrop} onClick={closeConfirmAction}>
+            <div
+              className={`${kid.filterDialog} ${styles.confirmCard}`}
+              onClick={(e) => e.stopPropagation()}
+              style={{ maxWidth: 440 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="confirm-title"
+            >
+              <div className={kid.filterHead}>
+                <div>
+                  <h3 id="confirm-title" className={kid.filterTitle}>{confirmAction.title}</h3>
+                  <p className={kid.filterSub}>{confirmAction.message}</p>
+                </div>
+                <button type="button" className={kid.filterClose} onClick={closeConfirmAction} aria-label="Close">
+                  ×
+                </button>
+              </div>
+              <div className={kid.filterBody}>
+                {confirmAction.requiresReason && (
+                  <div className={kid.pastCard}>
+                    <label
+                      htmlFor="decline-reason-input"
+                      className={kid.detailLabel}
+                    >
+                      Reason for declining <span className={kid.summaryValue}>*</span>
+                    </label>
+                    <textarea
+                      id="decline-reason-input"
+                      rows={4}
+                      autoFocus
+                      maxLength={DECLINE_REASON_MAX_LENGTH}
+                      value={declineReason}
+                      onChange={(e) => {
+                        setDeclineReason(e.target.value);
+                        if (declineReasonError) setDeclineReasonError("");
+                      }}
+                      placeholder="Explain why this request is being declined. The requester will see this reason."
+                      className={`${styles.reasonInput} ${declineReasonError ? styles.reasonInputError : ""}`}
+                    />
+                    {declineReasonError ? (
+                      <div className={kid.error}>
+                        {declineReasonError}
+                      </div>
+                    ) : (
+                      <p className={kid.summaryLabel}>
+                        This reason is shared with the requester. Minimum {DECLINE_REASON_MIN_LENGTH} characters.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className={styles.confirmActions}>
+                  <button
+                    type="button"
+                    onClick={closeConfirmAction}
+                    className={`${kid.btn} ${kid.btnGhost}`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={performConfirmAction}
+                    disabled={confirmAction.requiresReason && declineReason.trim().length < DECLINE_REASON_MIN_LENGTH}
+                    className={`${kid.btn} ${kid.btnPrimary}`}
+                  >
+                    {confirmAction.confirmLabel}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
