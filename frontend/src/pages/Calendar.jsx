@@ -1536,7 +1536,9 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   );
   const selectedVerificationStatus = selectedClassVerification?.verification_status || "pending";
   const selectedClassStarted = Boolean(selectedClassVerification?.teacher_started_at);
-  const selectedClassStudentConfirmed = Boolean(selectedClassVerification?.student_joined_at);
+  const selectedClassStudentConfirmed = Boolean(
+    selectedClassVerification?.student_joined_at || selectedClass?.student_joined_at
+  );
   const selectedClassEnded = Boolean(selectedClassVerification?.teacher_ended_at);
   const selectedClassVerified = selectedVerificationStatus === "verified";
   const canShowClassEntryAction = !selectedClassEnded;
@@ -3627,7 +3629,10 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   const isTeacherOrAdmin = localRole === "teacher" || isAdmin;
   const isSelectedClassCompleted = selectedClass?.status === "completed";
   const isSelectedClassConfirmable = isClassJoinable(selectedClass, selectedDate, currentTimeTick);
-  const isSelectedClassNoShowable = selectedClass?.status === "scheduled" && isClassPast(selectedClass, selectedDate, currentTimeTick);
+  const isSelectedClassNoShowable =
+    selectedClass?.status === "scheduled" &&
+    isClassPast(selectedClass, selectedDate, currentTimeTick) &&
+    !selectedClassStudentConfirmed;
   const hasVerificationSummarySentence = hasCompleteSentence(verificationSummary);
   const hasVerificationScreenshot = Boolean(verificationProofFile || verificationProofUrl);
   const hasStartScreenshot = Boolean(selectedClassVerification?.start_proof_url);

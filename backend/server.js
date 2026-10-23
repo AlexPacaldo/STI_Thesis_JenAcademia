@@ -9418,8 +9418,10 @@ app.put("/api/calendar/classes/:class_id/no-show", requireSession, requireClassA
     await connection.beginTransaction();
 
     const [classRows] = await connection.query(
-      `SELECT c.class_id, c.teacher_id, c.student_id, c.class_name, c.status
+      `SELECT c.class_id, c.teacher_id, c.student_id, c.class_name, c.status,
+              cal.student_joined_at
        FROM classes c
+       LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
        JOIN users stu ON c.student_id = stu.user_id
         AND stu.status = 'active' AND stu.profile_completed = TRUE
        JOIN users tea ON c.teacher_id = tea.user_id
@@ -9453,6 +9455,13 @@ app.put("/api/calendar/classes/:class_id/no-show", requireSession, requireClassA
     if (classInfo.status === "no-show") {
       await connection.rollback();
       return res.status(409).json({ message: "This class has already been marked as no-show" });
+    }
+
+    if (classInfo.student_joined_at) {
+      await connection.rollback();
+      return res.status(409).json({
+        message: "The student joined this class, so it cannot be marked as no-show.",
+      });
     }
 
     await connection.query(
