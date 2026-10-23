@@ -31,6 +31,7 @@
  */
 
 import nodemailer from "nodemailer";
+import { escapeHtml } from "./emailTemplates.js";
 
 /**
  * How long to wait for the mail server before giving up.
@@ -76,7 +77,7 @@ const MAIL_API_PROVIDERS = {
   resend: {
     label: "Resend",
     defaultUrl: "https://api.resend.com/emails",
-    buildRequest({ key, from, to, subject, text, replyTo }) {
+    buildRequest({ key, from, to, subject, text, html, replyTo }) {
       return {
         headers: {
           Authorization: `Bearer ${key}`,
@@ -85,14 +86,23 @@ const MAIL_API_PROVIDERS = {
         // !! reply_to only when there is one. A contact form that sends as
         // !! academy@jenacademia.com and carries no reply address sends the
         // !! visitor's answer to a mailbox that may not exist.
-        body: { from, to: [to], subject, text, ...(replyTo ? { reply_to: replyTo } : {}) },
+        // !! html only when there is one: both parts go out as alternatives,
+        // !! so a client that cannot render HTML still gets the text.
+        body: {
+          from,
+          to: [to],
+          subject,
+          text,
+          ...(html ? { html } : {}),
+          ...(replyTo ? { reply_to: replyTo } : {}),
+        },
       };
     },
   },
   postmark: {
     label: "Postmark",
     defaultUrl: "https://api.postmarkapp.com/email",
-    buildRequest({ key, from, to, subject, text, replyTo }) {
+    buildRequest({ key, from, to, subject, text, html, replyTo }) {
       return {
         headers: {
           "X-Postmark-Server-Token": key,
@@ -104,6 +114,7 @@ const MAIL_API_PROVIDERS = {
           To: to,
           Subject: subject,
           TextBody: text,
+          ...(html ? { HtmlBody: html } : {}),
           ...(replyTo ? { ReplyTo: replyTo } : {}),
         },
       };
@@ -346,7 +357,7 @@ const UNREACHABLE_CODES = new Set([
  * !! Native fetch, no SDK. The request is a POST of a JSON object and a
  * !! response that says whether it was accepted.
  */
-async function sendViaApi(config, { to, subject, text, replyTo }) {
+async function sendViaApi(config, { to, subject, text, html, replyTo }) {
   const provider = MAIL_API_PROVIDERS[config.apiProvider];
   const from = config.apiFromName ? `"${config.apiFromName}" <${config.apiFrom}>` : config.apiFrom;
   const { headers, body } = provider.buildRequest({
@@ -355,6 +366,7 @@ async function sendViaApi(config, { to, subject, text, replyTo }) {
     to,
     subject,
     text,
+    html,
     replyTo,
   });
 
@@ -426,10 +438,10 @@ function readApiError(raw) {
  * !! callers need to know, because a student who never receives their
  * !! password reset has to be told something other than "we sent it".
  *
- * @param {{to: string, subject: string, text: string, replyTo?: string}} mail
+ * @param {{to: string, subject: string, text: string, html?: string, replyTo?: string}} mail
  * @returns {Promise<{sent: boolean, skipped?: boolean, redirectedTo?: string}>}
  */
-export async function sendMail({ to, subject, text, replyTo }) {
+export async function sendMail({ to, subject, text, html, replyTo }) {
   const config = mailConfig();
 
   if (!config.configured) {
@@ -461,11 +473,24 @@ export async function sendMail({ to, subject, text, replyTo }) {
     ? `[DEV] Originally addressed to: ${recipient}\n\n${text}`
     : text;
 
+  // !! The HTML part says the same thing as the text part, including the dev
+  // !! marker. A redirect that is only announced in the part the reader does
+  // !! not see is a redirect nobody knows about.
+  const actualHtml = html
+    ? redirectedTo
+      ? html.replace(
+          /<body([^>]*)>/i,
+          `<body$1><div style="background:#fdecea;color:#8a1c1c;font-family:Arial,sans-serif;font-size:13px;padding:10px 16px;">[DEV] Originally addressed to: ${escapeHtml(recipient)}</div>`
+        )
+      : html
+    : "";
+
   if (config.transport === "api") {
     await sendViaApi(config, {
       to: actualTo,
       subject: actualSubject,
       text: actualText,
+      html: actualHtml,
       replyTo: answerTo,
     });
   } else {
@@ -476,6 +501,7 @@ export async function sendMail({ to, subject, text, replyTo }) {
         to: actualTo,
         subject: actualSubject,
         text: actualText,
+        ...(actualHtml ? { html: actualHtml } : {}),
         ...(answerTo ? { replyTo: answerTo } : {}),
       });
     } catch (err) {

@@ -29,6 +29,7 @@ import {
   mailConfig,
   sendMail,
 } from "../backend/mailer.js";
+import { contactFormEmail } from "../backend/emailTemplates.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -279,6 +280,29 @@ check("the mail API needs a from address", mailConfig().missing.includes("MAIL_A
 setEnv({ SMTP_FROM: "noreply@jenacademia.com", MAIL_API_KEY: "re_test_key" });
 check("and it falls back to the SMTP from address", mailConfig().apiFrom, "noreply@jenacademia.com");
 
+/* ------------------------------------------------------- the contact form */
+
+// !! The message from the form contains a stranger's name and words, and an
+// !! email client renders HTML. Every one of those values has to be escaped,
+// !! or the school's inbox is where somebody else's markup runs.
+const formEmail = contactFormEmail({
+  name: 'Alex <script>alert(1)</script> Pacaldo',
+  email: "alex@example.com",
+  message: "Hello <b>there</b>\nSecond line & a stray < tag",
+  inbox: "jenacademia31@gmail.com",
+});
+
+check("the contact form has an HTML part", formEmail.html.includes("<!doctype html>"), true);
+check("and a text part", formEmail.text.includes("Email:   alex@example.com"), true);
+check("the text part keeps the message as it was typed", formEmail.text.includes("Hello <b>there</b>"), true);
+check("the HTML escapes the name", formEmail.html.includes("&lt;script&gt;"), true);
+check("and does not run it", formEmail.html.includes("<script>"), false);
+check("the HTML escapes the message", formEmail.html.includes("&lt;b&gt;there&lt;/b&gt;"), true);
+check("the HTML keeps the line break", formEmail.html.includes("&lt;/b&gt;<br>Second line &amp; a stray &lt; tag"), true);
+check("the HTML offers a reply to the visitor", formEmail.html.includes("mailto:alex@example.com"), true);
+check("the HTML names the inbox", formEmail.html.includes("jenacademia31@gmail.com"), true);
+check("the HTML does not load anything from the network", /<img|<link|<style/i.test(formEmail.html), false);
+
 /* --------------------------------------------- nothing configured is safe */
 
 // !! With no mail server, the app has to keep working: the admin can still
@@ -338,12 +362,18 @@ await sendMail({
   to: "academy@jenacademia.com",
   subject: "JEN Academia contact form — Alex",
   text: "Name: Alex\n\nMessage: hello",
+  html: "<p>Hello</p>",
   replyTo: "visitor@example.com",
 });
 check(
   "the reply address is carried over SMTP",
   smtp.messages[smtp.messages.length - 1].headers["reply-to"],
   "visitor@example.com"
+);
+check(
+  "an HTML part is carried over SMTP",
+  smtp.messages[smtp.messages.length - 1].raw.includes("text/html"),
+  true
 );
 
 /* ------------------------------------------------- the dev redirect */
@@ -471,11 +501,14 @@ await sendMail({
   to: "academy@jenacademia.com",
   subject: "JEN Academia contact form — Alex",
   text: "Name: Alex\n\nMessage: hello",
+  html: '<p style="color:#1e3828;">Hello</p>',
   replyTo: "visitor@example.com",
 });
 
 const replyToRequest = api.requests[api.requests.length - 1];
 check("the reply address is carried by resend", replyToRequest.json.reply_to, "visitor@example.com");
+check("the HTML part is carried by resend", replyToRequest.json.html.includes("color:#1e3828"), true);
+check("and the text part is still there", replyToRequest.json.text.includes("Message: hello"), true);
 
 setEnv({
   MAIL_API_PROVIDER: "postmark",
@@ -498,6 +531,7 @@ await sendMail({
   to: "academy@jenacademia.com",
   subject: "Contact form",
   text: "hello",
+  html: "<p>hello</p>",
   replyTo: "visitor@example.com",
 });
 
@@ -505,6 +539,11 @@ check(
   "postmark spells the reply address its own way",
   api.requests[api.requests.length - 1].json.ReplyTo,
   "visitor@example.com"
+);
+check(
+  "postmark calls the HTML the HTML body",
+  api.requests[api.requests.length - 1].json.HtmlBody,
+  "<p>hello</p>"
 );
 
 // !! A refusal has to say why. A mail API that answers "no" without a reason

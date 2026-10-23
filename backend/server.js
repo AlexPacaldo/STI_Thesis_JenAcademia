@@ -42,6 +42,7 @@ import {
   isMailConfigured,
   sendMail,
 } from "./mailer.js";
+import { contactFormEmail } from "./emailTemplates.js";
 import { readBearerToken, signSessionToken, verifySessionToken } from "./sessionToken.js";
 import {
   RESCHEDULE_CLOSED_AFTER_START_MESSAGE,
@@ -4483,20 +4484,18 @@ app.post("/api/contact", async (req, res) => {
     // !! because that provider's sandbox domain is only allowed to send to
     // !! its own account holder. That was not a default - it was a
     // !! workaround, and it outlived the reason for it.
+    const inbox = contactFormRecipient();
+    const { text, html } = contactFormEmail({ name, email, message, inbox });
+
     await sendMail({
-      to: contactFormRecipient(),
+      to: inbox,
       // !! The address in the form, not the academy's sending address. The
       // !! person who receives the notification is being asked to answer a
       // !! visitor, and "reply" has to reach that visitor.
       replyTo: email,
       subject: `JEN Academia contact form — ${escapeEmailHeader(name)}`,
-      text: [
-        `Name:    ${name}`,
-        `Email:   ${email}`,
-        ``,
-        `Message:`,
-        message,
-      ].join("\n"),
+      text,
+      html,
     });
 
     res.json({ message: "Message sent successfully." });
