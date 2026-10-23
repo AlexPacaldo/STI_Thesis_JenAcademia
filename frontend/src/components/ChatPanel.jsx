@@ -659,9 +659,6 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
                   </div>
 
                   <footer className={styles.windowFooter}>
-                    <button type="button" className={styles.iconButton} aria-label="Add attachment">
-                      <span aria-hidden="true">＋</span>
-                    </button>
                     <label className={styles.messageInputWrap}>
                       <input
                         type="text"
