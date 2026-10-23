@@ -165,6 +165,20 @@ function looksLikePhoneNumber(value) {
 }
 
 /**
+ * Compare two ways of writing the same number.
+ *
+ * !! The server normalises a Philippine mobile to +63XXXXXXXXXX. Typing the
+ * !! same digits as 09XXXXXXXXX is not a change, and should not trigger a text
+ * !! message that costs the school credits.
+ */
+function canonicalPhone(value) {
+  const compact = String(value || "").replace(/[\s().-]/g, "");
+  if (/^09\d{9}$/.test(compact)) return `+63${compact.slice(1)}`;
+  if (/^63\d{10}$/.test(compact)) return `+${compact}`;
+  return compact;
+}
+
+/**
  * "2003-10-11" -> "11 October 2003".
  *
  * !! A birthday is not a date range and not a database value. It is a day
@@ -218,6 +232,7 @@ export default function Account() {
   const [pictureUploading, setPictureUploading] = useState(false);
   const [pwd, setPwd] = useState({ current: "", next: "", confirm: "" });
   const [detailsPassword, setDetailsPassword] = useState("");
+  const [phoneChallenge, setPhoneChallenge] = useState(null);
   const [pwdSaving, setPwdSaving] = useState(false);
   const [cropModal, setCropModal] = useState(null);
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
@@ -476,12 +491,13 @@ export default function Account() {
     });
   }
 
-  async function saveProfileConfirmed() {
+  async function saveProfileConfirmed(overrides = {}) {
     setSaving(true);
     try {
       // !! Email is not sent. The server refuses to write it from this route,
       // !! and sending it anyway would suggest the form still owns it.
-      const { email: _lockedEmail, ...editable } = form;
+      const payload = { ...form, ...overrides };
+      const { email: _lockedEmail, ...editable } = payload;
       await axios.put(`${API}/api/users/${user.id}`, {
         ...editable,
         currentPassword: detailsPassword,
@@ -503,6 +519,124 @@ export default function Account() {
       notify(err?.response?.data?.message || "Could not update profile.", "error");
     } finally {
       setSaving(false);
+    }
+  }
+
+  function closePhoneChallenge() {
+    setPhoneChallenge((current) => (current?.verifying ? current : null));
+  }
+
+  async function startPhoneVerification() {
+    const phone = canonicalPhone(form.contact);
+    if (!/^\+63\d{10}$/.test(phone)) {
+      notify("We can only text Philippine mobile numbers right now. Please use a +63 number.", "error");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await axios.post(`${API}/api/users/${user.id}/phone/start`, {
+        phone,
+        currentPassword: detailsPassword,
+      });
+      setPhoneChallenge({
+        phone: res.data?.phone || phone,
+        code: "",
+        error: "",
+        verifying: false,
+        resending: false,
+      });
+    } catch (err) {
+      if (err?.response?.status === 401) setDetailsPassword("");
+      notify(
+        err?.response?.data?.message || "Could not send the code. Try again in a moment.",
+        "error"
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function resendPhoneCode() {
+    if (!phoneChallenge) return;
+    setPhoneChallenge((current) =>
+      current ? { ...current, resending: true, error: "" } : current
+    );
+    try {
+      const res = await axios.post(`${API}/api/users/${user.id}/phone/start`, {
+        phone: phoneChallenge.phone,
+        currentPassword: detailsPassword,
+      });
+      setPhoneChallenge((current) =>
+        current
+          ? {
+              ...current,
+              phone: res.data?.phone || current.phone,
+              code: "",
+              resending: false,
+              error: "",
+            }
+          : current
+      );
+      notify("A new code was sent.", "success");
+    } catch (err) {
+      if (err?.response?.status === 401) setDetailsPassword("");
+      setPhoneChallenge((current) =>
+        current
+          ? {
+              ...current,
+              resending: false,
+              error:
+                err?.response?.data?.message ||
+                "Could not send a new code. Try again in a moment.",
+            }
+          : current
+      );
+    }
+  }
+
+  async function confirmPhoneCode(e) {
+    e?.preventDefault();
+    if (!phoneChallenge) return;
+
+    const code = phoneChallenge.code.replace(/\D/g, "");
+    if (code.length !== 6) {
+      setPhoneChallenge((current) =>
+        current ? { ...current, error: "Enter the six-digit code from the text message." } : current
+      );
+      return;
+    }
+
+    setPhoneChallenge((current) =>
+      current ? { ...current, verifying: true, error: "" } : current
+    );
+    try {
+      const res = await axios.post(`${API}/api/users/${user.id}/phone/verify`, {
+        phone: phoneChallenge.phone,
+        code,
+      });
+      const verifiedPhone = res.data?.phone || phoneChallenge.phone;
+
+      // The number is saved by the verify route. The rest of the form still
+      // needs the ordinary save, and it is told the verified number so the
+      // server's "is this a change?" check sees the same value the database
+      // now holds.
+      setPhoneChallenge(null);
+      setForm((current) => ({ ...current, contact: verifiedPhone }));
+      await saveProfileConfirmed({ contact: verifiedPhone });
+    } catch (err) {
+      if (err?.response?.status === 401) setDetailsPassword("");
+      setPhoneChallenge((current) =>
+        current
+          ? {
+              ...current,
+              verifying: false,
+              error:
+                err?.response?.data?.message ||
+                "Could not verify that code. Try again in a moment.",
+            }
+          : current
+      );
     }
   }
 
@@ -591,6 +725,16 @@ export default function Account() {
     }
     if (!looksLikePhoneNumber(form.contact)) {
       notify("Enter a real phone number, for example 0917 123 4567.", "error");
+      return;
+    }
+
+    // A changed number cannot be saved by the ordinary form. It needs a code
+    // texted to the new number first; the confirmation dialog would be a
+    // promise the server is going to refuse.
+    const phoneChanged =
+      Boolean(user?.contact) && canonicalPhone(form.contact) !== canonicalPhone(user.contact);
+    if (phoneChanged) {
+      await startPhoneVerification();
       return;
     }
 
@@ -1000,6 +1144,7 @@ export default function Account() {
                   placeholder="0917 123 4567"
                   required
                 />
+                <span className={kid.kidFieldNote}>{ACCOUNT.phoneCodeNote}</span>
               </label>
 
               <label className={kid.kidField}>
@@ -1398,6 +1543,10 @@ export default function Account() {
                     placeholder="0917 123 4567"
                     required
                   />
+                  <span className={styles.proFieldNote}>
+                    Changing this sends a six-digit code to the new number. Philippine numbers
+                    only.
+                  </span>
                 </label>
                 <label className={styles.proField}>
                   <span className={styles.proLabel}>Time zone</span>
@@ -1657,6 +1806,69 @@ export default function Account() {
                   {confirmAction.confirmLabel}
                 </button>
               </div>
+            </section>
+          </div>
+        )}
+        {phoneChallenge && (
+          <div className={styles.modalBackdrop} onClick={closePhoneChallenge}>
+            <section className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
+              <h2>{ACCOUNT.phoneCodeTitle}</h2>
+              <p className={styles.confirmBody}>{ACCOUNT.phoneCodeBody(phoneChallenge.phone)}</p>
+              <form onSubmit={confirmPhoneCode}>
+                <input
+                  className={styles.codeInput}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={phoneChallenge.code}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
+                    setPhoneChallenge((current) =>
+                      current ? { ...current, code: digits, error: "" } : current
+                    );
+                  }}
+                  placeholder="000000"
+                  aria-label="Six-digit verification code"
+                  autoFocus
+                  disabled={phoneChallenge.verifying}
+                />
+                {phoneChallenge.error && (
+                  <p className={styles.codeError} role="alert">
+                    {phoneChallenge.error}
+                  </p>
+                )}
+                <p className={styles.codeMeta}>{ACCOUNT.phoneCodeExpires}</p>
+                <div className={styles.confirmActions}>
+                  <button
+                    type="button"
+                    className={styles.textBtn}
+                    onClick={closePhoneChallenge}
+                    disabled={phoneChallenge.verifying}
+                  >
+                    {ACCOUNT.phoneCodeCancel}
+                  </button>
+                  <button
+                    type="submit"
+                    className={styles.primaryBtn}
+                    disabled={phoneChallenge.verifying || phoneChallenge.code.length !== 6}
+                  >
+                    {phoneChallenge.verifying
+                      ? ACCOUNT.phoneCodeChecking
+                      : ACCOUNT.phoneCodeVerify}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className={styles.resendBtn}
+                  onClick={resendPhoneCode}
+                  disabled={phoneChallenge.verifying || phoneChallenge.resending}
+                >
+                  {phoneChallenge.resending
+                    ? ACCOUNT.phoneCodeSending
+                    : ACCOUNT.phoneCodeResend}
+                </button>
+              </form>
             </section>
           </div>
         )}

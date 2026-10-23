@@ -35,6 +35,14 @@ import {
 } from "./contractRequestFlow.js";
 import { createRateLimiter } from "./rateLimit.js";
 import { normalizePhoneNumber } from "./phoneNumber.js";
+import {
+  hashCode,
+  hashesMatch,
+  isCodeExpired,
+  PHONE_CODE_MAX_ATTEMPTS,
+  PHONE_CODE_TTL_MS,
+} from "./phoneVerification.js";
+import { isPhoneVerificationConfigured, sendPhoneVerificationCode, SmsError } from "./sms.js";
 import { describeCorsOrigins, resolveCorsOrigins } from "./corsOrigins.js";
 import {
   MailTransportError,
@@ -238,10 +246,22 @@ const SESSION_SECRET =
   DB_PASSWORD;
 const SESSION_TTL_MS = Math.max(60_000, Number(process.env.SESSION_TTL_MS) || 12 * 60 * 60 * 1000);
 
+// Keys the HMAC over a phone verification code. Separate from the session
+// secret when one is provided, so rotating the code key does not sign everyone
+// out and rotating the session key does not invalidate codes in flight.
+const PHONE_CODE_SECRET = process.env.PHONE_CODE_SECRET || SESSION_SECRET;
+
 if (!process.env.SESSION_SECRET) {
   console.warn(
     "SESSION_SECRET is not set; falling back to another secret for signing session tokens. " +
       "Set SESSION_SECRET to a long random value so tokens cannot be forged by anyone who can read the source."
+  );
+}
+
+if (!isPhoneVerificationConfigured()) {
+  console.warn(
+    "[phone] Semaphore is not configured, so changing a phone number will be refused. " +
+      "Set SEMAPHORE_API_KEY and SEMAPHORE_SENDER_NAME to enable text verification."
   );
 }
 
@@ -916,6 +936,33 @@ function sessionMayActFor(req, claimedId) {
 }
 
 /**
+ * Prove that the person at the keyboard knows the signed-in account's password.
+ *
+ * !! This checks the SESSION user's password, not the password of the account
+ * !! named in the path. On a self-service save the two are the same; where an
+ * !! admin may act for somebody else, the admin can only prove their own
+ * !! password. Asking for the other person's would make the route unusable.
+ *
+ * @returns {Promise<{ok: true} | {ok: false, status: number, message: string}>}
+ */
+async function verifySessionPassword(req, password) {
+  const text = String(password || "");
+  if (!text) {
+    return { ok: false, status: 400, message: "Enter your password to save your details." };
+  }
+
+  const [rows] = await pool.query(
+    "SELECT password_hash FROM users WHERE user_id = ? LIMIT 1",
+    [req.session.userId]
+  );
+  const matches = rows.length > 0 && (await bcrypt.compare(text, rows[0].password_hash));
+  if (!matches) {
+    return { ok: false, status: 401, message: "That password is not correct." };
+  }
+  return { ok: true };
+}
+
+/**
  * May this session read this student's data?
  *
  * The student themselves, an admin, or the teacher they are actually assigned
@@ -1325,6 +1372,29 @@ const limitDetailConfirmations = createRateLimiter({
   store: createDbStore({ pool }),
   keyFn: (req) => `details:${req.session?.userId || "anonymous"}`,
   message: "Too many password attempts. Wait a few minutes and try again.",
+});
+
+// Text messages cost money per send, so the send budget is tighter than the
+// check budget. Bucketed per account for the same campus-NAT reason as above.
+const PHONE_CODE_RATE_WINDOW_MS = Math.max(
+  1,
+  Number(process.env.PHONE_CODE_RATE_WINDOW_MS) || 15 * 60 * 1000
+);
+const PHONE_CODE_SEND_MAX = Math.max(1, Number(process.env.PHONE_CODE_SEND_MAX) || 5);
+const PHONE_CODE_CHECK_MAX = Math.max(1, Number(process.env.PHONE_CODE_CHECK_MAX) || 10);
+const limitPhoneCodeSends = createRateLimiter({
+  windowMs: PHONE_CODE_RATE_WINDOW_MS,
+  max: PHONE_CODE_SEND_MAX,
+  store: createDbStore({ pool }),
+  keyFn: (req) => `phone-send:${req.session?.userId || "anonymous"}`,
+  message: "Too many codes requested. Wait a few minutes before trying again.",
+});
+const limitPhoneCodeChecks = createRateLimiter({
+  windowMs: PHONE_CODE_RATE_WINDOW_MS,
+  max: PHONE_CODE_CHECK_MAX,
+  store: createDbStore({ pool }),
+  keyFn: (req) => `phone-check:${req.session?.userId || "anonymous"}`,
+  message: "Too many code attempts. Wait a few minutes before trying again.",
 });
 
 const chatStreamClients = new Map();
@@ -2456,6 +2526,25 @@ async function ensurePasswordResetTokensTable() {
   `);
 }
 
+async function ensurePhoneVerificationChallengesTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS phone_verification_challenges (
+      challenge_id INT NOT NULL AUTO_INCREMENT,
+      user_id INT NOT NULL,
+      phone_hash BINARY(32) NOT NULL,
+      code_hash CHAR(64) NOT NULL,
+      attempts INT UNSIGNED NOT NULL DEFAULT 0,
+      expires_at DATETIME NOT NULL,
+      consumed_at DATETIME DEFAULT NULL,
+      created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (challenge_id),
+      KEY idx_phone_challenge_lookup (user_id, phone_hash),
+      KEY idx_phone_challenge_expiry (expires_at),
+      CONSTRAINT phone_verification_user_fk FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
+    )
+  `);
+}
+
 async function ensureUserDemographicsColumns() {
   if (!(await columnExists("users", "country"))) {
     await pool.query("ALTER TABLE users ADD COLUMN country VARCHAR(100) DEFAULT NULL AFTER contact_number");
@@ -3122,6 +3211,7 @@ const SCHEMA_STEPS = [
   ["user password changed column", ensureUserPasswordChangedColumn],
   ["account setup invites table", ensureAccountSetupInvitesTable],
   ["password reset tokens table", ensurePasswordResetTokensTable],
+  ["phone verification challenges table", ensurePhoneVerificationChallengesTable],
   ["api rate limits table", ensureApiRateLimitsTable],
   ["user demographics columns", ensureUserDemographicsColumns],
   ["teacher profile columns", ensureTeacherProfileColumns],
@@ -5001,24 +5091,28 @@ app.put("/api/users/:id", requireSession, limitDetailConfirmations, async (req, 
 
     // The password is the proof that the person at the keyboard is the account
     // holder, not somebody who found an unlocked browser or a copied token.
-    //
-    // !! It is the SESSION user's password, not the target user's. The two are
-    // !! the same on a self-service save, and where an admin may act for
-    // !! somebody else, the admin can only prove their own password - asking
-    // !! for the other person's would make the route unusable for them.
-    const password = String(currentPassword || "");
-    if (!password) {
-      return res.status(400).json({ message: "Enter your password to save your details." });
+    const passwordCheck = await verifySessionPassword(req, currentPassword);
+    if (!passwordCheck.ok) {
+      return res.status(passwordCheck.status).json({ message: passwordCheck.message });
     }
 
-    const [actorRows] = await pool.query(
-      "SELECT password_hash FROM users WHERE user_id = ? LIMIT 1",
-      [req.session.userId]
+    // !! A phone number is not changed by this route. It is the one detail a
+    // !! password alone cannot prove the user owns, because the number is not
+    // !! tied to the account until a code sent to it is typed back. The
+    // !! verification routes below write the number; this route refuses a
+    // !! change so a caller cannot skip them by sending the same JSON.
+    const [currentRows] = await pool.query(
+      "SELECT contact_number FROM users WHERE user_id = ? LIMIT 1",
+      [req.params.id]
     );
-    const passwordMatches =
-      actorRows.length > 0 && (await bcrypt.compare(password, actorRows[0].password_hash));
-    if (!passwordMatches) {
-      return res.status(401).json({ message: "That password is not correct." });
+    const storedContact = decryptNullableText(currentRows[0]?.contact_number) || "";
+    const storedNormalized = normalizePhoneNumber(storedContact);
+    const storedPhone = storedNormalized.ok ? storedNormalized.value : String(storedContact).trim();
+    if (storedPhone && storedPhone !== phone.value) {
+      return res.status(409).json({
+        code: "PHONE_VERIFICATION_REQUIRED",
+        message: "Verify your new phone number before saving it.",
+      });
     }
 
     await pool.query(
@@ -5041,6 +5135,168 @@ app.put("/api/users/:id", requireSession, limitDetailConfirmations, async (req, 
   } catch (err) {
     console.error("PUT /api/users/:id error:", err);
     res.status(500).json({ message: "Could not update profile" });
+  }
+});
+
+// Phone changes, in two steps: ask for a code, then prove the code.
+//
+// !! This pair exists because a phone number is the one detail a password
+// !! cannot prove ownership of. The number is not the sign-in name, but a
+// !! wrong number means the school cannot reach the student in an emergency,
+// !! so "typed it correctly" is not good enough.
+app.post("/api/users/:id/phone/start", requireSession, limitPhoneCodeSends, async (req, res) => {
+  try {
+    if (!sessionMayActFor(req, req.params.id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
+
+    const phone = normalizePhoneNumber(req.body?.phone);
+    if (!phone.ok) {
+      return res.status(400).json({ message: phone.message });
+    }
+    if (!/^\+63\d{10}$/.test(phone.value)) {
+      return res.status(400).json({
+        message: "We can only text Philippine mobile numbers right now. Please use a +63 number.",
+      });
+    }
+
+    // A code must not be sent just because a browser asked for one. The
+    // password is checked before the school pays for a text message.
+    const passwordCheck = await verifySessionPassword(req, req.body?.currentPassword);
+    if (!passwordCheck.ok) {
+      return res.status(passwordCheck.status).json({ message: passwordCheck.message });
+    }
+
+    const [rows] = await pool.query(
+      "SELECT contact_number FROM users WHERE user_id = ? LIMIT 1",
+      [req.params.id]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const stored = normalizePhoneNumber(decryptNullableText(rows[0]?.contact_number) || "");
+    if (stored.ok && stored.value === phone.value) {
+      return res.status(400).json({ message: "That is already your phone number." });
+    }
+
+    if (!isPhoneVerificationConfigured()) {
+      return res.status(503).json({
+        message:
+          "Phone verification is not set up yet. Please contact JEN Academia to change your number.",
+      });
+    }
+
+    let sent;
+    try {
+      sent = await sendPhoneVerificationCode({ phone: phone.value });
+    } catch (err) {
+      const status = err instanceof SmsError ? err.status : 502;
+      const message =
+        err instanceof SmsError
+          ? err.message
+          : "We could not send the code. Try again in a moment.";
+      return res.status(status).json({ message });
+    }
+
+    // A newer code makes every older one invalid. Otherwise an old text
+    // message would keep working after the user asked for a replacement.
+    await pool.query(
+      "DELETE FROM phone_verification_challenges WHERE user_id = ? AND (consumed_at IS NOT NULL OR expires_at < NOW())",
+      [req.params.id]
+    );
+    await pool.query(
+      "UPDATE phone_verification_challenges SET consumed_at = NOW() WHERE user_id = ? AND consumed_at IS NULL",
+      [req.params.id]
+    );
+
+    await pool.query(
+      `INSERT INTO phone_verification_challenges (user_id, phone_hash, code_hash, expires_at)
+       VALUES (?, UNHEX(SHA2(?, 256)), ?, ?)`,
+      [
+        req.params.id,
+        phone.value,
+        hashCode(sent.code, PHONE_CODE_SECRET),
+        new Date(Date.now() + PHONE_CODE_TTL_MS),
+      ]
+    );
+
+    res.json({
+      message: "Code sent.",
+      phone: phone.value,
+      expiresInSeconds: Math.floor(PHONE_CODE_TTL_MS / 1000),
+    });
+  } catch (err) {
+    console.error("POST /api/users/:id/phone/start error:", err);
+    res.status(500).json({ message: "Could not send the code. Try again in a moment." });
+  }
+});
+
+app.post("/api/users/:id/phone/verify", requireSession, limitPhoneCodeChecks, async (req, res) => {
+  try {
+    if (!sessionMayActFor(req, req.params.id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
+
+    const phone = normalizePhoneNumber(req.body?.phone);
+    if (!phone.ok) {
+      return res.status(400).json({ message: phone.message });
+    }
+
+    const code = String(req.body?.code || "").replace(/\D/g, "");
+    if (code.length < 4 || code.length > 8) {
+      return res.status(400).json({ message: "Enter the code from the text message." });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT challenge_id, code_hash, attempts, expires_at
+       FROM phone_verification_challenges
+       WHERE user_id = ? AND phone_hash = UNHEX(SHA2(?, 256)) AND consumed_at IS NULL
+       ORDER BY challenge_id DESC
+       LIMIT 1`,
+      [req.params.id, phone.value]
+    );
+    const challenge = rows[0];
+    if (!challenge) {
+      return res.status(400).json({
+        message: "That code has expired or was already used. Send a new code.",
+      });
+    }
+
+    if (isCodeExpired(challenge.expires_at)) {
+      await pool.query(
+        "UPDATE phone_verification_challenges SET consumed_at = NOW() WHERE challenge_id = ?",
+        [challenge.challenge_id]
+      );
+      return res.status(400).json({ message: "That code has expired. Send a new code." });
+    }
+
+    if (Number(challenge.attempts) >= PHONE_CODE_MAX_ATTEMPTS) {
+      return res.status(429).json({
+        message: "Too many attempts for that code. Send a new code.",
+      });
+    }
+
+    if (!hashesMatch(challenge.code_hash, hashCode(code, PHONE_CODE_SECRET))) {
+      await pool.query(
+        "UPDATE phone_verification_challenges SET attempts = attempts + 1 WHERE challenge_id = ?",
+        [challenge.challenge_id]
+      );
+      return res.status(400).json({ message: "That code is not correct." });
+    }
+
+    await pool.query(
+      "UPDATE phone_verification_challenges SET consumed_at = NOW() WHERE user_id = ? AND consumed_at IS NULL",
+      [req.params.id]
+    );
+    await pool.query(
+      "UPDATE users SET contact_number = ? WHERE user_id = ?",
+      [encryptNullableText(phone.value), req.params.id]
+    );
+
+    res.json({ message: "Phone number verified.", phone: phone.value });
+  } catch (err) {
+    console.error("POST /api/users/:id/phone/verify error:", err);
+    res.status(500).json({ message: "Could not verify that code. Try again in a moment." });
   }
 });
 

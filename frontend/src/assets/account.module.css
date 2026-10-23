@@ -685,6 +685,68 @@
   background: var(--primary-mid);
 }
 
+.confirmActions button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* The six-digit code, large enough to read back from a phone screen. */
+.codeInput {
+  width: 100%;
+  padding: 14px 16px;
+  border: 2px solid var(--border-mid);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: 0.4em;
+  text-align: center;
+  outline: none;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.codeInput:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(121, 168, 71, 0.18);
+}
+
+.codeInput:disabled {
+  opacity: 0.7;
+}
+
+.codeError {
+  margin: 10px 0 0;
+  color: #b42318;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.codeMeta {
+  margin: 8px 0 18px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.resendBtn {
+  display: block;
+  margin: 14px auto 0;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.resendBtn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .modalActions button {
   min-height: 42px;
   padding: 10px 18px;
