@@ -11,7 +11,7 @@ import {
     mergeNotifications,
 } from "../utils/localNotificationStore.js";
 import { readStoredUser } from "../utils/sessionUser.js";
-import { getStoredUserTimezone, parseServerTimestamp } from "../utils/timezone.js";
+import { formatDateInTimezone, getStoredUserTimezone, parseServerTimestamp } from "../utils/timezone.js";
 import { useNotification } from "./NotificationContainer";
 import { API_BASE_URL } from "../utils/api.js";
 
@@ -22,101 +22,50 @@ const DECLINE_REASON_MAX_LENGTH = 500;
 
 const FILTER_OPTIONS = [
   { value: "all", label: "All" },
-  { value: "reschedule", label: "Reschedules" },
-  { value: "assignment", label: "Assignments" },
-  { value: "remark", label: "Remarks" },
-  { value: "announcement", label: "Announcements" },
+  { value: "reschedule", label: "New times" },
+  { value: "assignment", label: "Homework" },
+  { value: "remark", label: "Teacher notes" },
+  { value: "announcement", label: "News" },
   { value: "class_reminder", label: "Reminders" },
 ];
 
 const TYPE_META = {
-  reschedule: { label: "Reschedule", accent: "#9a5a05", tint: "#fdf1df" },
-  assignment: { label: "Assignment", accent: "#245394", tint: "#eaf1ff" },
-  remark: { label: "Remark", accent: "#816200", tint: "#fff7dd" },
-  announcement: { label: "Announcement", accent: "#2f7a3d", tint: "#edf7e9" },
-  class_reminder: { label: "Class reminder", accent: "#1f6b66", tint: "#e7f5f3" },
-  general: { label: "Update", accent: "#5e7268", tint: "#f1f4f2" },
+  reschedule: { label: "New time", emoji: "📅", accent: "#9a5a05", tint: "#fdf1df" },
+  assignment: { label: "Homework", emoji: "📋", accent: "#245394", tint: "#eaf1ff" },
+  remark: { label: "Teacher note", emoji: "⭐", accent: "#816200", tint: "#fff7dd" },
+  announcement: { label: "School news", emoji: "📢", accent: "#2f7a3d", tint: "#edf7e9" },
+  class_reminder: { label: "Reminder", emoji: "🔔", accent: "#1f6b66", tint: "#e7f5f3" },
+  general: { label: "Update", emoji: "📌", accent: "#5e7268", tint: "#f1f4f2" },
 };
 
 const getTypeMeta = (type) => TYPE_META[type] || TYPE_META.general;
 
-function TypeIcon({ type }) {
-  const props = {
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.8,
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-    "aria-hidden": "true",
-    className: styles.typeIconSvg,
-  };
-
-  switch (type) {
-    case "reschedule":
-      return (
-        <svg {...props}>
-          <rect x="3" y="5" width="18" height="16" rx="3" />
-          <path d="M16 3v4M8 3v4M3 11h18" />
-          <path d="M8 15h3M8 18h6" />
-        </svg>
-      );
-    case "assignment":
-      return (
-        <svg {...props}>
-          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
-          <rect x="9" y="3" width="6" height="4" rx="1.5" />
-          <path d="M9 12h6M9 16h4" />
-        </svg>
-      );
-    case "remark":
-      return (
-        <svg {...props}>
-          <path d="m12 3 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.2l5.9-.9L12 3Z" />
-        </svg>
-      );
-    case "announcement":
-      return (
-        <svg {...props}>
-          <path d="m3 11 18-7v16L3 13v-2Z" />
-          <path d="M7 12.5V17a2.5 2.5 0 0 0 4.8 1" />
-        </svg>
-      );
-    case "class_reminder":
-      return (
-        <svg {...props}>
-          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-          <path d="M10 21h4" />
-        </svg>
-      );
-    default:
-      return (
-        <svg {...props}>
-          <circle cx="12" cy="12" r="9" />
-          <path d="M12 11v5M12 8h.01" />
-        </svg>
-      );
-  }
-}
-
 function formatNotificationTime(value) {
   const date = parseServerTimestamp(value);
-  if (!date) return null;
+  if (!date) return "";
 
   const timeZone = getStoredUserTimezone();
-  const dateLabel = new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone,
-  }).format(date);
   const timeLabel = new Intl.DateTimeFormat(undefined, {
     hour: "numeric",
     minute: "2-digit",
     timeZone,
   }).format(date);
 
-  return { dateLabel, timeLabel };
+  const todayKey = formatDateInTimezone(new Date(), timeZone);
+  const yesterdayKey = formatDateInTimezone(new Date(Date.now() - 86400000), timeZone);
+  const dateKey = formatDateInTimezone(date, timeZone);
+
+  if (dateKey === todayKey) return `Today at ${timeLabel}`;
+  if (dateKey === yesterdayKey) return `Yesterday at ${timeLabel}`;
+
+  const dateLabel = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone,
+  }).format(date);
+
+  return `${dateLabel} at ${timeLabel}`;
 }
 
 export default function NotificationPanel({ userId, isOpen, onClose }) {
@@ -246,9 +195,9 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
     setConfirmAction({
       type: "delete-notification",
       notificationId,
-      title: "Delete notification?",
-      message: "Are you sure you want to delete this notification? This cannot be undone.",
-      confirmLabel: "Delete"
+      title: "Delete this note?",
+      message: "It will go away for good. You cannot get it back.",
+      confirmLabel: "Delete note"
     });
   };
 
@@ -282,18 +231,18 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
   const requestClearAllNotifications = () => {
     setConfirmAction({
       type: "clear-all-notifications",
-      title: "Clear all notifications?",
-      message: "Are you sure you want to clear all notifications? This will remove them permanently.",
-      confirmLabel: "Clear All"
+      title: "Clear all notes?",
+      message: "Every note will go away. You cannot get them back.",
+      confirmLabel: "Clear all"
     });
   };
 
   const requestMarkAllAsRead = () => {
     setConfirmAction({
       type: "mark-all-read",
-      title: "Mark all notifications as read?",
-      message: "Are you sure you want to mark all notifications as read? This will clear the unread badge.",
-      confirmLabel: "Mark All as Read"
+      title: "Mark everything as read?",
+      message: "All your notes will stop saying New.",
+      confirmLabel: "Mark all read"
     });
   };
 
@@ -302,9 +251,9 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
       type: "approve-reschedule",
       notificationId,
       relatedId,
-      title: "Approve reschedule?",
-      message: "Approve this reschedule request? This will update the calendar.",
-      confirmLabel: "Approve"
+      title: "Move the class?",
+      message: "The class will move to the new time.",
+      confirmLabel: "Yes, move it"
     });
   };
 
@@ -315,9 +264,9 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
       type: "reject-reschedule",
       notificationId,
       relatedId,
-      title: "Decline reschedule request?",
-      message: "Decline this reschedule request? The requester will be notified along with your reason.",
-      confirmLabel: "Decline",
+      title: "Keep the old time?",
+      message: "Tell them why the new time does not work.",
+      confirmLabel: "Keep old time",
       requiresReason: true
     });
   };
@@ -333,7 +282,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
     if (action.type === "reject-reschedule") {
       if (trimmedDeclineReason.length < DECLINE_REASON_MIN_LENGTH) {
         setDeclineReasonError(
-          `Please give a reason of at least ${DECLINE_REASON_MIN_LENGTH} characters so the requester understands the decision.`
+          `Please write a little more (at least ${DECLINE_REASON_MIN_LENGTH} characters) so they understand.`
         );
         return;
       }
@@ -478,28 +427,29 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
         aria-describedby="notifications-subtitle"
       >
         <header className={styles.header}>
-          <div className={styles.headerText}>
-            <p className={styles.eyebrow}>Inbox</p>
-            <div className={styles.titleRow}>
-              <h2 id="notifications-title" className={styles.title}>Notifications</h2>
-              {unreadCount > 0 && <span className={styles.unreadBadge}>{unreadCount}</span>}
+          <div className={styles.headerMain}>
+            <span className={styles.headerIcon} aria-hidden="true">🔔</span>
+            <div className={styles.headerText}>
+              <div className={styles.titleRow}>
+                <h2 id="notifications-title" className={styles.title}>Notifications</h2>
+                {unreadCount > 0 && <span className={styles.unreadBadge}>{unreadCount} new</span>}
+              </div>
+              <p id="notifications-subtitle" className={styles.headerSub}>
+                {unreadCount > 0
+                  ? "Here's what's new!"
+                  : notifications.length > 0
+                    ? "You're all caught up! 🎉"
+                    : "New notes will show up here"}
+              </p>
             </div>
-            <p id="notifications-subtitle" className={styles.headerSub}>
-              {unreadCount > 0
-                ? `${unreadCount} unread update${unreadCount === 1 ? "" : "s"}`
-                : notifications.length > 0
-                  ? "You're all caught up"
-                  : "Updates from your classes will show up here"}
-            </p>
           </div>
           <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Close notifications">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-              <path d="M6 6l12 12M18 6 6 18" />
-            </svg>
+            ×
           </button>
         </header>
 
         <div className={styles.toolbar}>
+          <p className={styles.filterPrompt}>Show me</p>
           <div className={styles.filters} role="group" aria-label="Filter notifications">
             {FILTER_OPTIONS.map(option => (
               <button
@@ -535,23 +485,18 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
             </div>
           ) : notifications.length === 0 ? (
             <div className={styles.emptyState}>
-              <div className={styles.emptyIcon} aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 5h16v14H4z" />
-                  <path d="M4 13h4l2 3h4l2-3h4" />
-                </svg>
-              </div>
+              <div className={styles.emptyIcon} aria-hidden="true">🎉</div>
               <h3 className={styles.emptyTitle}>
-                {selectedType === "all" ? "You're all caught up" : `No ${selectedFilter.label.toLowerCase()} right now`}
+                {selectedType === "all" ? "Nothing here yet" : `No ${selectedFilter.label.toLowerCase()} right now`}
               </h3>
               <p className={styles.emptyText}>
                 {selectedType === "all"
-                  ? "New assignments, remarks, announcements, and reminders will appear here."
-                  : "Try another filter or check back later for updates."}
+                  ? "New notes from your classes will show up here."
+                  : "Try another filter or check back later!"}
               </p>
               {selectedType !== "all" && (
                 <button type="button" className={styles.emptyReset} onClick={() => setSelectedType("all")}>
-                  Show all notifications
+                  Show everything
                 </button>
               )}
             </div>
@@ -569,7 +514,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                     style={{ "--type-accent": meta.accent, "--type-tint": meta.tint }}
                     role="button"
                     tabIndex={0}
-                    aria-label={`${!notif.is_read ? "Unread " : ""}${getNotificationTitle(notif)}`}
+                    aria-label={`${!notif.is_read ? "New " : ""}${getNotificationTitle(notif)}`}
                     onClick={() => handleNotificationClick(notif)}
                     onKeyDown={(e) => {
                       if (e.target !== e.currentTarget) return;
@@ -579,85 +524,84 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                       }
                     }}
                   >
-                    <div className={styles.notifIcon}>
-                      <TypeIcon type={notif.type} />
-                    </div>
+                    <div className={styles.notifIcon} aria-hidden="true">{meta.emoji}</div>
 
                     <div className={styles.notifContent}>
                       <div className={styles.notifMeta}>
+                        {!notif.is_read && <span className={styles.newBadge}>✨ New</span>}
                         <span className={styles.notifType}>{meta.label}</span>
-                        {timestamp && (
-                          <span className={styles.notifTime}>
-                            <span className={styles.metaDot} aria-hidden="true">•</span>
-                            {timestamp.dateLabel} · {timestamp.timeLabel}
-                          </span>
-                        )}
-                        {!notif.is_read && <span className={styles.unreadDot} aria-hidden="true" />}
+                        {timestamp && <span className={styles.notifTime}>{timestamp}</span>}
                       </div>
 
                       <h3 className={styles.notifTitle}>{getNotificationTitle(notif)}</h3>
                       <p className={styles.notifMessage}>{renderNotificationMessage(notif.message)}</p>
 
-                      {canRespond && (
-                        <div className={styles.rescheduleActions}>
-                          <button
-                            type="button"
-                            className={`${styles.inlineBtn} ${styles.inlineBtnPrimary}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              requestApproveReschedule(notif.notification_id, notif.related_id);
-                            }}
-                            disabled={actionInProgress === notif.notification_id}
-                          >
-                            {actionInProgress === notif.notification_id ? "Sending…" : "Approve"}
-                          </button>
-                          <button
-                            type="button"
-                            className={`${styles.inlineBtn} ${styles.inlineBtnGhost}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              requestRejectReschedule(notif.notification_id, notif.related_id);
-                            }}
-                            disabled={actionInProgress === notif.notification_id}
-                          >
-                            {actionInProgress === notif.notification_id ? "Sending…" : "Decline"}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className={styles.notifActions}>
-                      {!notif.is_read && (
-                        <button
-                          type="button"
-                          className={styles.iconBtn}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleMarkAsRead(notif.notification_id);
-                          }}
-                          title="Mark as read"
-                          aria-label="Mark notification as read"
-                        >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                            <path d="m5 12 4 4L19 6" />
-                          </svg>
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          requestDeleteNotification(notif.notification_id);
-                        }}
-                        title="Delete notification"
-                        aria-label="Delete notification"
-                      >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" />
-                          <path d="M10 11v5M14 11v5" />
-                        </svg>
-                      </button>
+                      <div className={styles.cardActions}>
+                        {canRespond ? (
+                          <>
+                            <button
+                              type="button"
+                              className={`${styles.cardBtn} ${styles.cardBtnPrimary}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                requestApproveReschedule(notif.notification_id, notif.related_id);
+                              }}
+                              disabled={actionInProgress === notif.notification_id}
+                            >
+                              <span aria-hidden="true">✅</span>
+                              {actionInProgress === notif.notification_id ? "Sending…" : "Approve"}
+                            </button>
+                            <button
+                              type="button"
+                              className={`${styles.cardBtn} ${styles.cardBtnGhost}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                requestRejectReschedule(notif.notification_id, notif.related_id);
+                              }}
+                              disabled={actionInProgress === notif.notification_id}
+                            >
+                              <span aria-hidden="true">✖️</span>
+                              {actionInProgress === notif.notification_id ? "Sending…" : "Decline"}
+                            </button>
+                            <button
+                              type="button"
+                              className={`${styles.cardBtn} ${styles.cardBtnGhost} ${styles.cardBtnWide}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                requestDeleteNotification(notif.notification_id);
+                              }}
+                            >
+                              <span aria-hidden="true">🗑️</span>
+                              Delete
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className={`${styles.cardBtn} ${styles.cardBtnPrimary}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleNotificationClick(notif);
+                              }}
+                            >
+                              <span aria-hidden="true">👀</span>
+                              Open
+                            </button>
+                            <button
+                              type="button"
+                              className={`${styles.cardBtn} ${styles.cardBtnGhost}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                requestDeleteNotification(notif.notification_id);
+                              }}
+                            >
+                              <span aria-hidden="true">🗑️</span>
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -677,9 +621,8 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                   className={styles.pageBtn}
                   aria-label="Previous page"
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="m15 18-6-6 6-6" />
-                  </svg>
+                  <span aria-hidden="true">←</span>
+                  Back
                 </button>
                 <span className={styles.pageInfo}>
                   Page <strong>{page}</strong> of {totalPages}
@@ -691,9 +634,8 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                   className={styles.pageBtn}
                   aria-label="Next page"
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="m9 18 6-6-6-6" />
-                  </svg>
+                  Next
+                  <span aria-hidden="true">→</span>
                 </button>
               </div>
             )}
@@ -705,6 +647,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                   className={styles.footerBtnPrimary}
                   onClick={requestMarkAllAsRead}
                 >
+                  <span aria-hidden="true">✅</span>
                   Mark all as read
                 </button>
               )}
@@ -713,6 +656,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                 className={styles.footerBtnGhost}
                 onClick={requestClearAllNotifications}
               >
+                <span aria-hidden="true">🧹</span>
                 Clear all
               </button>
             </div>
@@ -745,7 +689,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                       htmlFor="decline-reason-input"
                       className={kid.detailLabel}
                     >
-                      Reason for declining <span className={kid.summaryValue}>*</span>
+                      Why not? <span className={kid.summaryValue}>*</span>
                     </label>
                     <textarea
                       id="decline-reason-input"
@@ -757,7 +701,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                         setDeclineReason(e.target.value);
                         if (declineReasonError) setDeclineReasonError("");
                       }}
-                      placeholder="Explain why this request is being declined. The requester will see this reason."
+                      placeholder="Tell them why this new time does not work."
                       className={`${styles.reasonInput} ${declineReasonError ? styles.reasonInputError : ""}`}
                     />
                     {declineReasonError ? (
@@ -766,7 +710,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                       </div>
                     ) : (
                       <p className={kid.summaryLabel}>
-                        This reason is shared with the requester. Minimum {DECLINE_REASON_MIN_LENGTH} characters.
+                        This note goes to the other person. Please use at least {DECLINE_REASON_MIN_LENGTH} characters.
                       </p>
                     )}
                   </div>
