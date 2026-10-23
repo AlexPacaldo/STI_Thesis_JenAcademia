@@ -320,3 +320,88 @@ export function accountInviteEmail({
 
   return { text, html };
 }
+
+/* ------------------------------------------------------ the password reset */
+
+/**
+ * The message that lets somebody who forgot their password back in.
+ *
+ * !! The wording is careful: this email is also read by somebody who did not
+ * !! ask for it, and "your password has been reset" would make them think
+ * !! their account was taken. It says a request was received, and that
+ * !! ignoring it leaves the password as it was - which is true, and is the
+ * !! only thing that stops an unnecessary panic.
+ *
+ * @param {{firstName?: string, resetUrl: string, contactEmail?: string}} reset
+ * @returns {{text: string, html: string}}
+ */
+export function passwordResetEmail({ firstName: firstNameValue, resetUrl, contactEmail }) {
+  const safeName = escapeHtml(firstNameValue || "there");
+  const safeUrl = escapeHtml(resetUrl);
+  const safeContact = escapeHtml(contactEmail || "");
+  const preview = `Choose a new password for your JEN Academia account. The link expires in 1 hour.`;
+
+  const text = [
+    `Hi ${firstNameValue || "there"},`,
+    "",
+    "We received a request to reset your JEN Academia password.",
+    "Click the link below to set a new password:",
+    "",
+    resetUrl,
+    "",
+    "This link expires in 1 hour.",
+    "",
+    "If you did not request a password reset, you can safely ignore this email.",
+  ].join("\n");
+
+  const rows = `        <tr>
+          <td style="padding:32px 32px 0;">
+            ${eyebrow("Password reset")}
+            <div style="font-family:${FONT};font-size:24px;line-height:1.3;font-weight:700;color:${BRAND.forest};padding-top:8px;">
+              Choose a new password
+            </div>
+            <div style="font-family:${FONT};font-size:14px;line-height:1.7;color:${BRAND.muted};padding-top:8px;">
+              Hi ${safeName} &mdash; we received a request to reset the password for the JEN Academia account linked to this email address.
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:26px 32px 0;">
+            ${button(safeUrl, "Choose a new password")}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 32px 0;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND.soft};border:1px solid ${BRAND.border};border-radius:12px;">
+              <tr>
+                <td style="padding:14px 18px;">
+                  <div style="font-family:${FONT};font-size:10px;line-height:1.4;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${BRAND.muted};">This link expires</div>
+                  <div style="font-family:${FONT};font-size:15px;line-height:1.5;font-weight:600;color:${BRAND.ink};padding-top:3px;">1 hour after this email was sent</div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 32px 0;">
+            <div style="font-family:${FONT};font-size:12px;line-height:1.6;color:${BRAND.muted};">
+              Button not working? Copy this link into your browser:
+            </div>
+            <div style="font-family:${FONT};font-size:12px;line-height:1.6;padding-top:5px;word-break:break-all;">
+              <a href="${safeUrl}" style="color:${BRAND.green};text-decoration:none;">${safeUrl}</a>
+            </div>
+          </td>
+        </tr>
+        <tr><td style="padding:0 32px 34px;font-size:0;line-height:0;">&nbsp;</td></tr>`;
+
+  const html = renderEmail({
+    preview,
+    rows,
+    footerPrimary: `If you did not request a password reset, you can safely ignore this email &mdash; your password will not change.`,
+    footerSecondary: safeContact
+      ? `Need help? Contact us at ${safeContact}.`
+      : `Need help? Please contact JEN Academia.`,
+  });
+
+  return { text, html };
+}

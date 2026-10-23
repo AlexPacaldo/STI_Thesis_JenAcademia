@@ -42,7 +42,7 @@ import {
   isMailConfigured,
   sendMail,
 } from "./mailer.js";
-import { accountInviteEmail, contactFormEmail } from "./emailTemplates.js";
+import { accountInviteEmail, contactFormEmail, passwordResetEmail } from "./emailTemplates.js";
 import { readBearerToken, signSessionToken, verifySessionToken } from "./sessionToken.js";
 import {
   RESCHEDULE_CLOSED_AFTER_START_MESSAGE,
@@ -4558,21 +4558,17 @@ app.post("/api/forgot-password", async (req, res) => {
     // !! somebody finds out which email addresses are registered, and it was
     // !! one line of code away from being fixed.
     try {
+      const { text, html } = passwordResetEmail({
+        firstName: user.first_name,
+        resetUrl,
+        contactEmail: contactFormRecipient(),
+      });
+
       await sendMail({
         to: email,
         subject: "Reset your JEN Academia password",
-        text: [
-          `Hi ${user.first_name || "there"},`,
-          "",
-          "We received a request to reset your JEN Academia password.",
-          "Click the link below to set a new password:",
-          "",
-          resetUrl,
-          "",
-          "This link expires in 1 hour.",
-          "",
-          "If you did not request a password reset, you can safely ignore this email.",
-        ].join("\n"),
+        text,
+        html,
       });
     } catch (mailErr) {
       console.error("POST /api/forgot-password: the reset email could not be sent:", mailErr);

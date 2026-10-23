@@ -29,7 +29,7 @@ import {
   mailConfig,
   sendMail,
 } from "../backend/mailer.js";
-import { accountInviteEmail, contactFormEmail } from "../backend/emailTemplates.js";
+import { accountInviteEmail, contactFormEmail, passwordResetEmail } from "../backend/emailTemplates.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -326,6 +326,27 @@ check("the invite escapes the name", inviteEmail.html.includes("Alex &lt;b&gt;")
 check("the invite names the role", inviteEmail.html.includes("student account"), true);
 check("the invite names the contact address", inviteEmail.html.includes("jenacademia31@gmail.com"), true);
 check("the invite loads nothing from the network", /<img|<link|<style/i.test(inviteEmail.html), false);
+
+/* --------------------------------------------------------- the reset */
+
+// !! This email is also read by somebody who did not ask for it. It must not
+// !! claim the password has changed, or the reader thinks they were hacked.
+const resetEmail = passwordResetEmail({
+  firstName: "Alex",
+  resetUrl: "https://jenacademia.com/reset-password?token=abc123&course=english",
+  contactEmail: "jenacademia31@gmail.com",
+});
+
+check("the reset has an HTML part", resetEmail.html.includes("<!doctype html>"), true);
+check("the reset says a request was received", resetEmail.html.includes("we received a request to reset the password"), true);
+check("the reset does not claim the password changed", /password (has|was) been (reset|changed)/i.test(resetEmail.html), false);
+check("the reset button says what it does", resetEmail.html.includes("Choose a new password"), true);
+check("the reset button carries the link", resetEmail.html.includes('href="https://jenacademia.com/reset-password?token=abc123&amp;course=english"'), true);
+check("the reset link is readable without the button", resetEmail.html.includes("Copy this link into your browser"), true);
+check("the reset says when the link dies", resetEmail.html.includes("1 hour after this email was sent"), true);
+check("the reset tells the reader it is safe to ignore", resetEmail.html.includes("your password will not change"), true);
+check("the reset keeps its text part", resetEmail.text.includes("This link expires in 1 hour."), true);
+check("the reset loads nothing from the network", /<img|<link|<style/i.test(resetEmail.html), false);
 
 /* --------------------------------------------- nothing configured is safe */
 
