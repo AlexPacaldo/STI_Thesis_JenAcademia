@@ -34,6 +34,7 @@ import {
   normalizeRequestType,
 } from "./contractRequestFlow.js";
 import { createRateLimiter } from "./rateLimit.js";
+import { normalizePhoneNumber } from "./phoneNumber.js";
 import { describeCorsOrigins, resolveCorsOrigins } from "./corsOrigins.js";
 import {
   MailTransportError,
@@ -1304,6 +1305,26 @@ const limitLoginAttempts = createRateLimiter({
   max: LOGIN_MAX,
   store: createDbStore({ pool }),
   message: "Too many sign-in attempts from this network. Wait a few minutes and try again.",
+});
+
+// Guessing the password behind the "save my details" form.
+//
+// !! Changing a profile is a password check, which makes the form a place to
+// !! sit and guess a password with a stolen session token. Bucketed by the
+// !! signed-in account rather than the network address, because a campus
+// !! shares one address and a wrong guess by one student must not lock the
+// !! rest out.
+const DETAIL_CONFIRM_WINDOW_MS = Math.max(
+  1,
+  Number(process.env.DETAIL_CONFIRM_RATE_WINDOW_MS) || 15 * 60 * 1000
+);
+const DETAIL_CONFIRM_MAX = Math.max(1, Number(process.env.DETAIL_CONFIRM_RATE_MAX) || 10);
+const limitDetailConfirmations = createRateLimiter({
+  windowMs: DETAIL_CONFIRM_WINDOW_MS,
+  max: DETAIL_CONFIRM_MAX,
+  store: createDbStore({ pool }),
+  keyFn: (req) => `details:${req.session?.userId || "anonymous"}`,
+  message: "Too many password attempts. Wait a few minutes and try again.",
 });
 
 const chatStreamClients = new Map();
@@ -4946,12 +4967,18 @@ app.patch("/api/teacher/teaches-children", requireSession, async (req, res) => {
   }
 });
 
-app.put("/api/users/:id", requireSession, async (req, res) => {
+app.put("/api/users/:id", requireSession, limitDetailConfirmations, async (req, res) => {
   try {
     if (!sessionMayActFor(req, req.params.id)) {
       return res.status(403).json({ message: "You can only act on your own account." });
     }
-    const { firstName, lastName, email, contact, country, birthDate, timezone } = req.body;
+
+    // !! Email is deliberately NOT read out of the body. It is the sign-in
+    // !! name and the address every password reset goes to, so a logged-in
+    // !! session that can rewrite it can take the account over: change the
+    // !! email, then use "forgot password". It is changed by an admin, with
+    // !! the account holder identified out of band - not from a form.
+    const { firstName, lastName, contact, country, birthDate, timezone, currentPassword } = req.body;
     const normalizedBirthDate = birthDate ? String(birthDate).slice(0, 10) : null;
     const normalizedCountry = String(country || "").trim();
     const resolvedTimezone = normalizeTimezone(timezone, timezoneFromCountry(normalizedCountry));
@@ -4962,20 +4989,46 @@ app.put("/api/users/:id", requireSession, async (req, res) => {
 
     // Validate required fields for profile completion
     if (!firstName || !lastName || !contact || !resolvedTimezone) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: "First name, last name, contact, and timezone are required to complete your profile"
       });
     }
 
+    const phone = normalizePhoneNumber(contact);
+    if (!phone.ok) {
+      return res.status(400).json({ message: phone.message });
+    }
+
+    // The password is the proof that the person at the keyboard is the account
+    // holder, not somebody who found an unlocked browser or a copied token.
+    //
+    // !! It is the SESSION user's password, not the target user's. The two are
+    // !! the same on a self-service save, and where an admin may act for
+    // !! somebody else, the admin can only prove their own password - asking
+    // !! for the other person's would make the route unusable for them.
+    const password = String(currentPassword || "");
+    if (!password) {
+      return res.status(400).json({ message: "Enter your password to save your details." });
+    }
+
+    const [actorRows] = await pool.query(
+      "SELECT password_hash FROM users WHERE user_id = ? LIMIT 1",
+      [req.session.userId]
+    );
+    const passwordMatches =
+      actorRows.length > 0 && (await bcrypt.compare(password, actorRows[0].password_hash));
+    if (!passwordMatches) {
+      return res.status(401).json({ message: "That password is not correct." });
+    }
+
     await pool.query(
       `UPDATE users
-       SET first_name = ?, last_name = ?, email = ?, contact_number = ?, country = ?, birth_date = ?, timezone = ?
+       SET first_name = ?, last_name = ?, contact_number = ?, country = ?, birth_date = ?, timezone = ?
        WHERE user_id = ?`,
       [
         firstName,
         lastName,
-        email,
-        encryptNullableText(contact),
+        encryptNullableText(phone.value),
         normalizedCountry || null,
         encryptNullableText(normalizedBirthDate),
         resolvedTimezone,

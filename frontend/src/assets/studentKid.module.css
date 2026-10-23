@@ -2249,6 +2249,20 @@
   box-shadow: 0 0 0 4px rgba(121, 168, 71, 0.18);
 }
 
+.kidInput:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
+/* The sentence under an input that says why it is asked for, or why it
+   cannot be changed. Small, but it is the difference between "the form is
+   broken" and "the form is protecting me". */
+.kidFieldNote {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
 .kidRow {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

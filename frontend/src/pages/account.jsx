@@ -151,6 +151,20 @@ function calculateAge(birthDate) {
 }
 
 /**
+ * A quick "this could be a phone number" check, before asking the server.
+ *
+ * !! The server owns the real rule (backend/phoneNumber.js). This is the same
+ * !! shape of it so the form can say what is wrong without a round trip, and
+ * !! it is deliberately not stricter - a number the server would accept must
+ * !! never be blocked here.
+ */
+function looksLikePhoneNumber(value) {
+  const compact = String(value || "").replace(/[\s().-]/g, "");
+  if (!/^\+?\d{6,15}$/.test(compact)) return false;
+  return !/^\+?(\d)\1+$/.test(compact);
+}
+
+/**
  * "2003-10-11" -> "11 October 2003".
  *
  * !! A birthday is not a date range and not a database value. It is a day
@@ -203,6 +217,7 @@ export default function Account() {
   const [saving, setSaving] = useState(false);
   const [pictureUploading, setPictureUploading] = useState(false);
   const [pwd, setPwd] = useState({ current: "", next: "", confirm: "" });
+  const [detailsPassword, setDetailsPassword] = useState("");
   const [pwdSaving, setPwdSaving] = useState(false);
   const [cropModal, setCropModal] = useState(null);
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
@@ -464,7 +479,14 @@ export default function Account() {
   async function saveProfileConfirmed() {
     setSaving(true);
     try {
-      await axios.put(`${API}/api/users/${user.id}`, form);
+      // !! Email is not sent. The server refuses to write it from this route,
+      // !! and sending it anyway would suggest the form still owns it.
+      const { email: _lockedEmail, ...editable } = form;
+      await axios.put(`${API}/api/users/${user.id}`, {
+        ...editable,
+        currentPassword: detailsPassword,
+      });
+      setDetailsPassword("");
       const updated = await loadUser(user.id);
       setProfileEditing(!updated.profileCompleted);
       notify("Profile updated successfully.", "success");
@@ -477,6 +499,7 @@ export default function Account() {
         }, 400);
       }
     } catch (err) {
+      if (err?.response?.status === 401) setDetailsPassword("");
       notify(err?.response?.data?.message || "Could not update profile.", "error");
     } finally {
       setSaving(false);
@@ -534,6 +557,7 @@ export default function Account() {
 
   function cancelProfileEdit() {
     if (user) setForm(formFromUser(user));
+    setDetailsPassword("");
     setProfileEditing(isProfileIncomplete);
   }
 
@@ -555,6 +579,18 @@ export default function Account() {
 
     if (!profileEditing) {
       setProfileEditing(true);
+      return;
+    }
+
+    // !! The password is checked here so the confirm dialog is not opened for
+    // !! a save that cannot succeed. The server checks it again; this copy is
+    // !! for the person filling the form in, not for security.
+    if (!detailsPassword.trim()) {
+      notify("Enter your password to save your details.", "error");
+      return;
+    }
+    if (!looksLikePhoneNumber(form.contact)) {
+      notify("Enter a real phone number, for example 0917 123 4567.", "error");
       return;
     }
 
@@ -917,12 +953,11 @@ export default function Account() {
                 <span className={kid.kidFieldLabel}>{ACCOUNT.email}</span>
                 <input
                   className={kid.kidInput}
-                  type="email"
-                  name="email"
                   value={form.email}
-                  onChange={onChange}
-                  required
+                  readOnly
+                  disabled
                 />
+                <span className={kid.kidFieldNote}>{ACCOUNT.emailLocked}</span>
               </label>
 
               <div className={kid.kidRow}>
@@ -957,9 +992,12 @@ export default function Account() {
                 <input
                   className={kid.kidInput}
                   name="contact"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
                   value={form.contact}
                   onChange={onChange}
-                  placeholder="09xx xxx xxxx"
+                  placeholder="0917 123 4567"
                   required
                 />
               </label>
@@ -990,6 +1028,19 @@ export default function Account() {
                     Auto Detect
                   </button>
                 </div>
+              </label>
+
+              <label className={kid.kidField}>
+                <span className={kid.kidFieldLabel}>{ACCOUNT.passwordLabel}</span>
+                <input
+                  className={kid.kidInput}
+                  type="password"
+                  value={detailsPassword}
+                  onChange={(e) => setDetailsPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+                <span className={kid.kidFieldNote}>{ACCOUNT.passwordToSave}</span>
               </label>
 
               <div className={kid.kidActions}>
@@ -1283,17 +1334,28 @@ export default function Account() {
                 </label>
               </div>
 
-              <label className={styles.proField}>
-                <span className={styles.proLabel}>Email</span>
-                <input
-                  className={styles.proInput}
-                  type="email"
-                  name="email"
-                  value={form.email}
-                  onChange={onChange}
-                  required
-                />
-              </label>
+              <div className={styles.proRow}>
+                <label className={styles.proField}>
+                  <span className={styles.proLabel}>Email</span>
+                  <input className={styles.proInput} value={form.email} readOnly disabled />
+                  <span className={styles.proFieldNote}>
+                    Your email is how you sign in and receive password resets, so it can't be changed
+                    here. An administrator can update it.
+                  </span>
+                </label>
+                <label className={styles.proField}>
+                  <span className={styles.proLabel}>Current password</span>
+                  <input
+                    className={styles.proInput}
+                    type="password"
+                    value={detailsPassword}
+                    onChange={(e) => setDetailsPassword(e.target.value)}
+                    autoComplete="current-password"
+                    required
+                  />
+                  <span className={styles.proFieldNote}>Required to save changes.</span>
+                </label>
+              </div>
 
               <div className={styles.proRow}>
                 <label className={styles.proField}>
@@ -1328,9 +1390,12 @@ export default function Account() {
                   <input
                     className={styles.proInput}
                     name="contact"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
                     value={form.contact}
                     onChange={onChange}
-                    placeholder="09xx xxx xxxx"
+                    placeholder="0917 123 4567"
                     required
                   />
                 </label>

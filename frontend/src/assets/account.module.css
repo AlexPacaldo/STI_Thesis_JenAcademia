@@ -1025,6 +1025,17 @@ label.checkboxOption > input[type='checkbox']:disabled {
   box-shadow: 0 0 0 4px rgba(121, 168, 71, 0.18);
 }
 
+.proInput:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
+.proFieldNote {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
 .proActions {
   display: flex;
   gap: 10px;
