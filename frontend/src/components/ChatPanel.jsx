@@ -33,19 +33,43 @@ function profileInitialColor(role) {
   return palette[String(role || "").toLowerCase()] || "#6d8db2";
 }
 
+function friendlyStatus(value) {
+  const text = String(value || "").trim();
+  const lower = text.toLowerCase();
+
+  if (!lower) return "";
+  if (
+    lower.includes("not active") ||
+    lower.includes("inactive") ||
+    lower.includes("offline") ||
+    lower.includes("away")
+  ) {
+    return "Away";
+  }
+  if (lower.includes("active") || lower.includes("online")) {
+    return "Here now";
+  }
+  return text;
+}
+
 function normalizeConversation(row, currentUserId) {
   const name = `${row.first_name || ""} ${row.last_name || ""}`.trim() || row.email || "Unknown";
   const lastMessage = String(row.last_message || "").trim();
+  const online = Boolean(row.online);
+  const status =
+    friendlyStatus(row.status_label || row.status || "") ||
+    (online ? "Here now" : "Away");
+
   return {
     id: String(row.user_id),
     user_id: row.user_id,
     name,
     roleLabel: String(row.role || "").replace(/^\w/, (c) => c.toUpperCase()) || "Chat",
-    status: row.status_label || (String(row.status || "").toLowerCase() === "active" ? "Active now" : row.status || ""),
-    online: Boolean(row.online),
+    status,
+    online,
     accent: profileInitialColor(row.role),
     profileImageUrl: row.profile_image_url || row.profileImageUrl || null,
-    lastMessage: lastMessage || "Start a conversation",
+    lastMessage: lastMessage || "Say hello!",
     unread: Number(row.unread_count || 0),
     lastMessageAt: row.last_message_at || null,
     currentUserId,
@@ -66,7 +90,9 @@ function normalizeMessage(row, currentUserId) {
 
 export default function ChatPanel({ user, userId, isOpen, onClose }) {
   const currentUserId = userId || user?.id || user?.user_id || user?.userId || null;
+  const currentRole = String(user?.role || "").toLowerCase();
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
   const [conversations, setConversations] = useState([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
   const [activeChatId, setActiveChatId] = useState(null);
@@ -108,7 +134,7 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
     if (!chatId) return;
 
     const active = Boolean(presence.active);
-    const statusLabel = active ? "Active now" : "Not active";
+    const statusLabel = active ? "Here now" : "Away";
 
     const updateConversation = (chat) =>
       String(chat.user_id) === chatId
@@ -316,12 +342,43 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
 
   const filteredChats = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return conversations;
     return conversations.filter((chat) => {
+      if (filter === "unread" && !(chat.unread > 0)) return false;
+      if (filter === "teachers" && chat.roleLabel.toLowerCase() !== "teacher") return false;
+
+      if (!query) return true;
       const haystack = `${chat.name} ${chat.roleLabel} ${chat.lastMessage}`.toLowerCase();
       return haystack.includes(query);
     });
-  }, [conversations, search]);
+  }, [conversations, search, filter]);
+
+  const unreadCount = useMemo(
+    () => conversations.reduce((total, chat) => total + chat.unread, 0),
+    [conversations]
+  );
+
+  const drawerSubtitle =
+    currentRole === "teacher"
+      ? "Talk to your students and team."
+      : currentRole === "admin"
+        ? "Talk to your school community."
+        : "Talk to your teacher and friends.";
+
+  const hasSearch = Boolean(search.trim());
+  const emptyTitle = hasSearch
+    ? "No one found"
+    : filter === "unread"
+      ? "No new chats"
+      : filter === "teachers"
+        ? "No teachers yet"
+        : "No chats yet";
+  const emptyText = hasSearch
+    ? "Try another name."
+    : filter === "unread"
+      ? "You're all caught up! 🎉"
+      : filter === "teachers"
+        ? "Your teacher chats will show up here."
+        : "When someone says hello, they will show up here.";
 
   const openConversation = async (chat) => {
     const chatId = String(chat.user_id);
@@ -330,6 +387,9 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
       const next = current.filter((item) => String(item.user_id) !== chatId);
       return [{ ...chat, minimized: false }, ...next].slice(0, 3);
     });
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches) {
+      onClose();
+    }
     await loadMessages(chatId);
   };
 
@@ -383,42 +443,85 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
     <>
       <aside className={`${styles.drawer} ${isOpen ? styles.drawerOpen : ""}`} aria-hidden={!isOpen}>
         <div className={styles.drawerHeader}>
-          <div>
-            <h3>Chats</h3>
-            <p>Messages and class updates</p>
+          <div className={styles.drawerHeaderMain}>
+            <span className={styles.headerIcon} aria-hidden="true">💬</span>
+            <div className={styles.headerText}>
+              <div className={styles.headerTitleRow}>
+                <h3>Chats</h3>
+                {unreadCount > 0 && <span className={styles.unreadTotal}>{unreadCount} new</span>}
+              </div>
+              <p>{drawerSubtitle}</p>
+            </div>
           </div>
           <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close chats">
-            <i className="bi bi-x-lg" aria-hidden="true" />
+            ×
           </button>
         </div>
 
         <label className={styles.searchField}>
-          <i className="bi bi-search" aria-hidden="true" />
+          <span className={styles.searchIcon} aria-hidden="true">🔎</span>
           <input
             type="text"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search chats"
+            placeholder="Find someone"
+            aria-label="Search chats"
           />
         </label>
 
-        <div className={styles.filterRow} aria-label="Chat filters">
-          <button type="button" className={`${styles.filterChip} ${styles.filterChipActive}`}>All</button>
-          <button type="button" className={styles.filterChip}>Unread</button>
-          <button type="button" className={styles.filterChip}>Classes</button>
+        <div className={styles.filterRow} role="group" aria-label="Chat filters">
+          <button
+            type="button"
+            className={`${styles.filterChip} ${filter === "all" ? styles.filterChipActive : ""}`}
+            aria-pressed={filter === "all"}
+            onClick={() => setFilter("all")}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            className={`${styles.filterChip} ${filter === "unread" ? styles.filterChipActive : ""}`}
+            aria-pressed={filter === "unread"}
+            onClick={() => setFilter("unread")}
+          >
+            New
+          </button>
+          <button
+            type="button"
+            className={`${styles.filterChip} ${filter === "teachers" ? styles.filterChipActive : ""}`}
+            aria-pressed={filter === "teachers"}
+            onClick={() => setFilter("teachers")}
+          >
+            Teachers
+          </button>
         </div>
 
         <div className={styles.chatList}>
           {loadingConversations ? (
-            <div className={styles.emptyState}>Loading chats...</div>
+            <div className={styles.skeletonList} role="status" aria-busy="true">
+              <span className={styles.srOnly}>Loading chats…</span>
+              {[0, 1, 2].map((index) => (
+                <div className={styles.skeletonItem} key={index} aria-hidden="true">
+                  <span className={styles.skeletonAvatar} />
+                  <span className={styles.skeletonBody}>
+                    <span className={styles.skeletonLine} />
+                    <span className={`${styles.skeletonLine} ${styles.skeletonLineShort}`} />
+                  </span>
+                </div>
+              ))}
+            </div>
           ) : filteredChats.length === 0 ? (
-            <div className={styles.emptyState}>No chats yet.</div>
+            <div className={styles.emptyState}>
+              <span className={styles.emptyIcon} aria-hidden="true">{hasSearch ? "🔎" : "💬"}</span>
+              <strong className={styles.emptyTitle}>{emptyTitle}</strong>
+              <span className={styles.emptyText}>{emptyText}</span>
+            </div>
           ) : (
             filteredChats.map((chat) => (
               <button
                 key={chat.id}
                 type="button"
-                className={`${styles.chatItem} ${String(chat.id) === String(activeChatId) ? styles.chatItemActive : ""}`}
+                className={`${styles.chatItem} ${String(chat.id) === String(activeChatId) ? styles.chatItemActive : ""} ${chat.unread > 0 ? styles.chatItemUnread : ""}`}
                 onClick={() => openConversation(chat)}
               >
                 <div className={styles.avatarWrap}>
@@ -438,7 +541,9 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
                 <div className={styles.chatMeta}>
                   <div className={styles.chatTopRow}>
                     <span className={styles.chatName}>{chat.name}</span>
-                    <span className={styles.chatTime}>{chat.status}</span>
+                    <span className={`${styles.statusPill} ${chat.online ? styles.statusPillOnline : ""}`}>
+                      {chat.online ? "Here now" : chat.status || "Away"}
+                    </span>
                   </div>
                   <div className={styles.chatBottomRow}>
                     <span className={styles.chatRole}>{chat.roleLabel}</span>
@@ -479,16 +584,29 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
                   />
                   <div className={styles.windowTitleText}>
                     <strong>{chat.name}</strong>
-                    <span>{chat.online ? "Active now" : chat.status}</span>
+                    <span className={styles.windowStatus}>
+                      <span className={`${styles.statusDot} ${chat.online ? styles.statusDotOnline : ""}`} aria-hidden="true" />
+                      {chat.online ? "Here now" : chat.status || "Away"}
+                    </span>
                   </div>
                 </button>
 
                 <div className={styles.windowActions}>
-                  <button type="button" onClick={() => toggleMinimized(chatId)} aria-label="Minimize chat">
-                    <i className={`bi ${minimized ? "bi-chevron-up" : "bi-dash-lg"}`} aria-hidden="true" />
+                  <button
+                    type="button"
+                    className={styles.windowAction}
+                    onClick={() => toggleMinimized(chatId)}
+                    aria-label={minimized ? "Restore chat" : "Minimize chat"}
+                  >
+                    <span aria-hidden="true">{minimized ? "▲" : "–"}</span>
                   </button>
-                  <button type="button" onClick={() => closeConversation(chatId)} aria-label="Close chat">
-                    <i className="bi bi-x-lg" aria-hidden="true" />
+                  <button
+                    type="button"
+                    className={styles.windowAction}
+                    onClick={() => closeConversation(chatId)}
+                    aria-label="Close chat"
+                  >
+                    <span aria-hidden="true">×</span>
                   </button>
                 </div>
               </header>
@@ -497,9 +615,16 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
                 <>
                   <div className={styles.windowBody}>
                     {loadingMessagesByChat[chatId] ? (
-                      <div className={styles.emptyState}>Loading messages...</div>
+                      <div className={styles.windowEmpty}>
+                        <span className={styles.windowEmptyIcon} aria-hidden="true">⏳</span>
+                        <strong>Loading messages…</strong>
+                      </div>
                     ) : messages.length === 0 ? (
-                      <div className={styles.emptyState}>Say hello to start the thread.</div>
+                      <div className={styles.windowEmpty}>
+                        <span className={styles.windowEmptyIcon} aria-hidden="true">💬</span>
+                        <strong>Say hello!</strong>
+                        <span>Send the first message to start your chat.</span>
+                      </div>
                     ) : (
                       messages.map((message) => {
                         const showSeen =
@@ -525,7 +650,7 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
                             )}
                             <div className={styles.messageBubble}>
                               <span>{message.text}</span>
-                              <small>{showSeen ? "Seen" : message.time}</small>
+                              <small>{showSeen ? "Seen ✓" : message.time}</small>
                             </div>
                           </div>
                         );
@@ -535,7 +660,7 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
 
                   <footer className={styles.windowFooter}>
                     <button type="button" className={styles.iconButton} aria-label="Add attachment">
-                      <i className="bi bi-plus-lg" aria-hidden="true" />
+                      <span aria-hidden="true">＋</span>
                     </button>
                     <label className={styles.messageInputWrap}>
                       <input
@@ -550,14 +675,15 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
                             sendMessage(chatId);
                           }
                         }}
-                        placeholder={`Message ${chat.name.split(" ")[0]}`}
+                        placeholder={`Say hi to ${chat.name.split(" ")[0]}…`}
                       />
                     </label>
                     <button type="button" className={styles.sendButton} onClick={() => sendMessage(chatId)}>
-                      <i className="bi bi-send-fill" aria-hidden="true" />
+                      <span aria-hidden="true">➤</span>
+                      Send
                     </button>
                   </footer>
-                  <div className={styles.windowHint}>Messages are saved to the database.</div>
+                  <div className={styles.windowHint}>Your messages are saved safely.</div>
                 </>
               )}
             </section>
