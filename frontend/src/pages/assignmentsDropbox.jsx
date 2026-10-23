@@ -179,14 +179,10 @@ export default function AssignmentsDropbox() {
   const [submitMessage, setSubmitMessage] = useState("");
   const [showSubmitConfirmation, setShowSubmitConfirmation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditingSubmission, setIsEditingSubmission] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("instructions");
-  const [submissionHistory, setSubmissionHistory] = useState([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState("");
-  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
@@ -219,6 +215,9 @@ export default function AssignmentsDropbox() {
     let ignore = false;
     setIsLoading(true);
     setSubmitMessage("");
+    setIsEditingSubmission(false);
+    setComment("");
+    setSelectedFile(null);
 
     apiFetch(`${API}/api/assignments/${assignmentId}`)
       .then(async (res) => {
@@ -248,51 +247,6 @@ export default function AssignmentsDropbox() {
     };
   }, [assignmentId]);
 
-  useEffect(() => {
-    if (activeTab !== "submissions" || !assignmentId || !hasExistingSubmission) return;
-
-    let ignore = false;
-    setSubmissionHistory([]);
-    setShowHistory(false);
-    setHistoryLoading(true);
-    setHistoryError("");
-
-    apiFetch(`${API}/api/assignments/${assignmentId}/submission-history`)
-      .then(async (res) => {
-        const contentType = res.headers.get("content-type") || "";
-        if (!contentType.includes("application/json")) {
-          if (res.status === 404) {
-            throw new Error(
-              "Submission history is not available on the server yet. Please redeploy the backend, then retry."
-            );
-          }
-          throw new Error(`History service returned an invalid response (HTTP ${res.status}).`);
-        }
-
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.message || "Could not load submission history");
-        }
-        return Array.isArray(data.history) ? data.history : [];
-      })
-      .then((history) => {
-        if (ignore) return;
-        setSubmissionHistory(history);
-        setShowHistory(history.length > 0);
-      })
-      .catch((err) => {
-        console.error("Load submission history error:", err);
-        if (!ignore) setHistoryError(err.message || "Could not load submission history.");
-      })
-      .finally(() => {
-        if (!ignore) setHistoryLoading(false);
-      });
-
-    return () => {
-      ignore = true;
-    };
-  }, [activeTab, assignmentId, hasExistingSubmission, historyRefreshKey]);
-
   const assignmentInstructions =
     selectedAssignment?.instructions ||
     selectedAssignment?.description ||
@@ -316,6 +270,70 @@ export default function AssignmentsDropbox() {
   const submittedFileUrl = normalizeFileUrl(selectedAssignment?.fileUrl);
   const canSubmit = !isAttemptLimitReached && !isAssignmentPastDue();
   const submitButtonLabel = canResubmit ? "Submit Again" : "Submit";
+
+  const startEditingSubmission = () => {
+    setComment(submittedAnswer);
+    setSelectedFile(null);
+    setSubmitMessage("");
+    setIsEditingSubmission(true);
+  };
+
+  const cancelEditingSubmission = () => {
+    setComment("");
+    setSelectedFile(null);
+    setSubmitMessage("");
+    setIsEditingSubmission(false);
+  };
+
+  const saveSubmissionEdit = async () => {
+    if (!selectedAssignment || !comment.trim() && !selectedFile && !selectedAssignment.fileUrl) {
+      setSubmitMessage("Please write an answer or attach a file before saving.");
+      return;
+    }
+
+    if (isAssignmentPastDue()) {
+      setSubmitMessage("This assignment is past due and can no longer be edited.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const formData = new FormData();
+      formData.append("submissionText", comment.trim());
+      if (selectedFile) {
+        const uploadFile = await compressFileIfImage(selectedFile);
+        formData.append("file", uploadFile, uploadFile.name);
+      }
+
+      const res = await apiFetch(`${API}/api/assignments/${selectedAssignment.id}/submission`, {
+        method: "PATCH",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Could not update submission");
+      }
+
+      const submission = data.submission || {};
+      setSelectedAssignment((prev) => ({
+        ...prev,
+        comments: submission.comments ?? "",
+        fileUrl: submission.fileUrl ?? prev.fileUrl,
+        fileName: submission.fileName ?? prev.fileName,
+        submittedAt: submission.submittedAt ?? prev.submittedAt,
+      }));
+      setIsEditingSubmission(false);
+      setSelectedFile(null);
+      setSubmitMessage("");
+      notify?.("Submission updated!", "success");
+    } catch (err) {
+      console.error("Edit assignment submission error:", err);
+      setSubmitMessage(err.message || "Could not update submission.");
+      notify?.(err.message || "Could not update submission.", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const onSubmitComment = async () => {
     if (!selectedAssignment) {
@@ -376,7 +394,6 @@ export default function AssignmentsDropbox() {
         attemptsUsed: Number(submission.attemptsUsed ?? submission.attemptCount ?? prev.attemptsUsed ?? 1),
         attemptCount: Number(submission.attemptCount ?? submission.attemptsUsed ?? prev.attemptCount ?? 1),
       }));
-      setHistoryRefreshKey((key) => key + 1);
       notify?.("Assignment submitted!", "success");
       setComment("");
       setSelectedFile(null);
@@ -543,12 +560,86 @@ export default function AssignmentsDropbox() {
               {hasExistingSubmission ? (
                 <div className={styles.submissionCard}>
                   <h2 className={styles.submissionHead}>Your submission</h2>
-                  {submittedAnswer ? (
+                  {isEditingSubmission ? (
+                    <div className={styles.editSubmissionForm}>
+                      <label className={styles.editSubmissionLabel} htmlFor="edit-submission-text">
+                        Update your answer
+                      </label>
+                      <textarea
+                        id="edit-submission-text"
+                        className={styles.commentBox}
+                        placeholder="Write your answer"
+                        value={comment}
+                        onChange={(event) => {
+                          setComment(event.target.value);
+                          setSubmitMessage("");
+                        }}
+                      />
+                      {submittedFileUrl ? (
+                        <p className={styles.editSubmissionFileNote}>
+                          Current attachment: {selectedAssignment.fileName || getFileName(submittedFileUrl)}
+                          {selectedFile ? ` · Replacement selected: ${selectedFile.name}` : ""}
+                        </p>
+                      ) : null}
+                      <label className={styles.fileLabel}>
+                        <span className={styles.fileIcon} aria-hidden="true">📎</span>
+                        {submittedFileUrl
+                          ? "Replace attached file (optional; leave blank to keep current file)"
+                          : "Attach a file"}
+                      </label>
+                      <input
+                        type="file"
+                        className={styles.fileInput}
+                        onChange={(event) => {
+                          setSelectedFile(event.target.files?.[0] ?? null);
+                          setSubmitMessage("");
+                        }}
+                      />
+                      <div className={styles.editorActions}>
+                        <button
+                          type="button"
+                          className={styles.submitComment}
+                          onClick={saveSubmissionEdit}
+                          disabled={isSubmitting || isAssignmentPastDue()}
+                        >
+                          {isSubmitting ? "Saving..." : "Save changes"}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.cancelEditButton}
+                          onClick={cancelEditingSubmission}
+                          disabled={isSubmitting}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      {submitMessage ? (
+                        <p className={styles.submitMessage} role="alert">{submitMessage}</p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className={styles.editSubmissionButton}
+                        onClick={startEditingSubmission}
+                        disabled={isAssignmentPastDue()}
+                      >
+                        Edit submission
+                      </button>
+                      {isAssignmentPastDue() ? (
+                        <p className={styles.editSubmissionNote}>
+                          Submissions can no longer be edited after the due date.
+                        </p>
+                      ) : null}
+                    </>
+                  )}
+                  {!isEditingSubmission && submittedAnswer ? (
                     <div className={styles.submissionAnswerBlock}>
                       <p className={styles.submissionAnswerText}>{submittedAnswer}</p>
                     </div>
                   ) : null}
-                  {submittedFileUrl ? (
+                  {!isEditingSubmission && submittedFileUrl ? (
                     <>
                       <div className={styles.submittedFileInfo}>
                         <span className={styles.submittedFileLabel}>SUBMITTED FILE</span>
@@ -573,69 +664,6 @@ export default function AssignmentsDropbox() {
                     </>
                   ) : null}
 
-                  {hasExistingSubmission &&
-                  (historyLoading || historyError || submissionHistory.length > 0) ? (
-                    <div className={styles.submissionHistory}>
-                      <button
-                        type="button"
-                        className={styles.historyButton}
-                        onClick={() => {
-                          if (historyError) {
-                            setHistoryRefreshKey((key) => key + 1);
-                          } else {
-                            setShowHistory((visible) => !visible);
-                          }
-                        }}
-                        aria-expanded={showHistory}
-                        disabled={historyLoading}
-                      >
-                        {historyLoading
-                          ? "Loading history…"
-                          : historyError
-                            ? "Retry history"
-                            : showHistory
-                              ? `Hide history (${submissionHistory.length})`
-                              : `View submission history (${submissionHistory.length})`}
-                      </button>
-                      {historyError ? (
-                        <p className={styles.historyError} role="alert">{historyError}</p>
-                      ) : null}
-                      {showHistory && (
-                        <div className={styles.historyList}>
-                          {submissionHistory.map((item) => (
-                            <div key={item.history_id} className={styles.historyItem}>
-                              <div className={styles.historyMeta}>
-                                <span className={styles.historyAttempt}>
-                                  Attempt {item.attempt_count}
-                                </span>
-                                <span className={styles.historyDate}>
-                                  {new Date(item.submitted_at).toLocaleString()}
-                                </span>
-                              </div>
-                              {item.submission_text ? (
-                                <p className={styles.historyText}>{item.submission_text}</p>
-                              ) : null}
-                              {item.file_url ? (
-                                <div className={styles.historyFile}>
-                                  <button
-                                    type="button"
-                                    className={styles.historyFileButton}
-                                    onClick={() =>
-                                      openSubmissionFile(item.file_url).catch(() =>
-                                        notify?.("That file could not be opened.", "error")
-                                      )
-                                    }
-                                  >
-                                    {item.file_name || getFileName(item.file_url)}
-                                  </button>
-                                </div>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
                 </div>
               ) : (
                 <div className={styles.emptySubmission}>

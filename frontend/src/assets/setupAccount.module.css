@@ -1,0 +1,263 @@
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background:
+    radial-gradient(circle at 15% 12%, rgba(185, 221, 132, 0.36), transparent 30%),
+    radial-gradient(circle at 90% 85%, rgba(167, 218, 231, 0.38), transparent 32%),
+    #f5f9f1;
+}
+
+.card {
+  width: min(100%, 620px);
+  padding: clamp(20px, 5vw, 40px);
+  border: 2px solid rgba(30, 56, 40, 0.1);
+  border-radius: 30px;
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(30, 56, 40, 0.12);
+}
+
+.topRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.backLink {
+  color: #315e3b;
+  font-size: 1rem;
+  font-weight: 750;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.roleBadge {
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: #edf6e5;
+  color: #315e3b;
+  font-weight: 800;
+}
+
+.progress {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 30px 0;
+}
+
+.progressStep {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  color: #758277;
+  text-align: center;
+}
+
+.progressStep > span {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 2px solid #d9e3d7;
+  border-radius: 50%;
+  background: #fff;
+  font-size: 1.1rem;
+  font-weight: 850;
+}
+
+.progressStep small {
+  font-size: 0.88rem;
+  font-weight: 750;
+}
+
+.progressActive {
+  color: #1e3828;
+}
+
+.progressActive > span {
+  border-color: #2f7a3d;
+  background: #2f7a3d;
+  color: #fff;
+}
+
+.stepContent,
+.messageState {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.bigIcon {
+  font-size: 4rem;
+  line-height: 1;
+}
+
+.eyebrow {
+  margin: 0;
+  color: #52705a;
+  font-size: 0.95rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.stepContent h1,
+.messageState h1 {
+  margin: 0;
+  color: #1e3828;
+  font-size: clamp(2rem, 6vw, 2.8rem);
+  line-height: 1.12;
+}
+
+.description,
+.messageState p {
+  max-width: 480px;
+  margin: 0;
+  color: #4e5d50;
+  font-size: 1.2rem;
+  line-height: 1.55;
+}
+
+.nextNote {
+  width: 100%;
+  padding: 16px;
+  border-radius: 18px;
+  background: #f1f7e9;
+  color: #34523a;
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  color: #263d2c;
+  font-size: 1.05rem;
+  font-weight: 800;
+  text-align: left;
+}
+
+.field input {
+  width: 100%;
+  min-height: 56px;
+  padding: 12px 16px;
+  border: 2px solid #d6e2d4;
+  border-radius: 16px;
+  color: #1e3828;
+  font-size: 1.1rem;
+}
+
+.field input:focus-visible {
+  border-color: #2f7a3d;
+  outline: 4px solid rgba(47, 122, 61, 0.18);
+}
+
+.passwordWrap {
+  position: relative;
+  width: 100%;
+}
+
+.passwordWrap input {
+  padding-right: 76px;
+}
+
+.passwordWrap button {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  min-height: 40px;
+  padding: 6px 10px;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 12px;
+  background: #edf6e5;
+  color: #315e3b;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.primaryButton,
+.secondaryButton {
+  min-height: 56px;
+  padding: 12px 24px;
+  border: 0;
+  border-radius: 18px;
+  font-size: 1.05rem;
+  font-weight: 850;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.stepContent > .primaryButton,
+.messageState > .primaryButton {
+  min-width: min(100%, 260px);
+  margin-top: 6px;
+}
+
+.primaryButton {
+  background: #1e3828;
+  color: #fff;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: #2f7a3d;
+}
+
+.primaryButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.secondaryButton {
+  border: 2px solid #d6e2d4;
+  background: #fff;
+  color: #315e3b;
+}
+
+.errorMessage {
+  width: 100%;
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #fff2e2;
+  color: #874516;
+  font-weight: 750;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.errorMessage .secondaryButton {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+}
+
+@media (max-width: 480px) {
+  .card {
+    border-radius: 24px;
+  }
+
+  .actions {
+    flex-direction: column-reverse;
+  }
+
+  .actions button {
+    width: 100%;
+  }
+}

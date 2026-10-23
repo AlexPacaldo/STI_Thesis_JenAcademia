@@ -10,7 +10,6 @@ import { apiFetch } from "../utils/apiAuth.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import ModalPortal from "../utils/ModalPortal.jsx";
 import {
-  downloadAuthenticatedFile,
   openSubmissionFile,
   useAuthenticatedFileUrl,
 } from "../utils/authenticatedFile.js";
@@ -79,7 +78,7 @@ function SubmissionPreview({ url }) {
   if (error) {
     return (
       <p className={styles.unsupportedPreview}>
-        This file could not be loaded. Use Open file or Download.
+        This file could not be previewed. Use Open file to view it separately.
       </p>
     );
   }
@@ -105,7 +104,7 @@ function SubmissionPreview({ url }) {
   }
   return (
     <div className={styles.unsupportedPreview}>
-      This file type cannot be previewed here. Use Open file or Download.
+      This file type cannot be previewed here. Use Open file to view it separately.
     </div>
   );
 }
@@ -118,16 +117,19 @@ function SubmissionFile({ url }) {
 
   return (
     <div className={styles.submissionFilePreview}>
-      <span className={styles.submissionLabel}>Submitted file</span>
-      <p className={styles.fileName}>{getSubmissionFileName(url)}</p>
-      <div className={styles.fileActions}>
-        <button type="button" onClick={() =>
-          openSubmissionFile(url).catch((err) => notify?.(err.message, "error"))
-        }>
+      <div className={styles.submissionFileHeading}>
+        <div>
+          <span className={styles.submissionLabel}>Submitted file</span>
+          <p className={styles.fileName}>{getSubmissionFileName(url)}</p>
+        </div>
+        <button
+          type="button"
+          className={styles.openFileButton}
+          onClick={() =>
+            openSubmissionFile(url).catch((err) => notify?.(err.message, "error"))
+          }
+        >
           Open file
-        </button>
-        <button type="button" onClick={() => downloadAuthenticatedFile(url)}>
-          Download
         </button>
       </div>
       <SubmissionPreview url={url} />
@@ -417,6 +419,7 @@ export default function AssignTask() {
 
   const selectedStudent = students.find((student) => String(student.id) === String(selectedStudentId));
   const selected = selectedStudent?.name || "";
+  const hasSelectedContext = Boolean(currentTeacherId && selectedStudent);
 
   const currentSubmissions = submissions.filter(
     (item) => String(item.studentId) === String(selectedStudentId)
@@ -425,10 +428,14 @@ export default function AssignTask() {
   // Newest first, so a mistake made moments ago is the first thing seen.
   const postedAssignments = useMemo(
     () =>
-      [...teacherAssignments].sort(
-        (a, b) => new Date(String(b.postedAt || 0).replace(" ", "T")) - new Date(String(a.postedAt || 0).replace(" ", "T"))
-      ),
-    [teacherAssignments]
+      teacherAssignments
+        .filter((assignment) => String(assignment.studentId) === String(selectedStudentId))
+        .sort(
+          (a, b) =>
+            new Date(String(b.postedAt || 0).replace(" ", "T")) -
+            new Date(String(a.postedAt || 0).replace(" ", "T"))
+        ),
+    [selectedStudentId, teacherAssignments]
   );
 
   const filtered = students.filter((student) =>
@@ -545,7 +552,7 @@ export default function AssignTask() {
               </button>
             </div>
 
-            {activeTab === "assign" ? (
+            {activeTab === "assign" && hasSelectedContext ? (
               <>
                 <div className={styles.user}>
                   <AuthenticatedImage
@@ -636,7 +643,7 @@ export default function AssignTask() {
                   </div>
                 </div>
               </>
-            ) : activeTab === "manage" ? (
+            ) : activeTab === "manage" && hasSelectedContext ? (
               <div className={styles.postedPanel}>
                 <h2>Manage assignments</h2>
                 <div className={styles.postedList}>
@@ -698,7 +705,7 @@ export default function AssignTask() {
                   )}
                 </div>
               </div>
-            ) : activeTab === "submissions" ? (
+            ) : activeTab === "submissions" && hasSelectedContext ? (
               <div className={styles.submissionsPanel}>
                 <h2>{selected || "Selected student"}'s Submissions</h2>
                 <div className={styles.submissionList}>
@@ -776,7 +783,16 @@ export default function AssignTask() {
                   )}
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <div className={styles.emptyState}>
+                Select a student from the list to {activeTab === "assign"
+                  ? "create an assignment"
+                  : activeTab === "submissions"
+                    ? "view their submissions"
+                    : "manage their assignments"}.
+                {" "}This tab stays empty until a student is selected.
+              </div>
+            )}
           </div>
         </div>
       </div>

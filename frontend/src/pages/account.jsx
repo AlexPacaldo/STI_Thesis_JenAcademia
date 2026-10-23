@@ -217,6 +217,8 @@ export default function Account() {
   const cameraStreamRef = useRef(null);
   const [user, setUser] = useState(null);
   const [isProfileIncomplete, setIsProfileIncomplete] = useState(false);
+  const [firstSetupStep, setFirstSetupStep] = useState(0);
+  const [firstSetupFinished, setFirstSetupFinished] = useState(false);
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -368,6 +370,7 @@ export default function Account() {
     if (!refreshed.profileCompleted) {
       setProfileEditing(true);
       setPasswordEditing(false);
+      setFirstSetupStep(refreshed.profileImageUrl ? 1 : 0);
     }
     writeStoredUser(toStoredUser(refreshed));
     window.dispatchEvent(new CustomEvent("userProfileUpdated", { detail: refreshed }));
@@ -387,6 +390,7 @@ export default function Account() {
     if (!mapped.profileCompleted) {
       setProfileEditing(true);
       setPasswordEditing(false);
+      setFirstSetupStep(mapped.profileImageUrl ? 1 : 0);
     }
 
     loadUser(mapped.id).catch(() => {
@@ -467,9 +471,11 @@ export default function Account() {
   function requestSaveProfile() {
     setConfirmAction({
       type: "save-profile",
-      title: "Save profile changes?",
-      message: "Are you sure you want to save the profile changes?",
-      confirmLabel: "Save Changes",
+      title: isProfileIncomplete ? "Save your details?" : "Save profile changes?",
+      message: isProfileIncomplete
+        ? "Check your phone number and time zone, then save."
+        : "Are you sure you want to save the profile changes?",
+      confirmLabel: isProfileIncomplete ? "Save my details" : "Save Changes",
     });
   }
 
@@ -508,11 +514,7 @@ export default function Account() {
       notify("Profile updated successfully.", "success");
 
       if (updated.profileCompleted && isProfileIncomplete) {
-        setTimeout(() => {
-          if (updated.role === "teacher") navigate("/TeacherDashboard");
-          else if (updated.role === "admin") navigate("/AdminDashboard");
-          else navigate("/StudentDashboard");
-        }, 400);
+        setFirstSetupFinished(true);
       }
     } catch (err) {
       if (err?.response?.status === 401) setDetailsPassword("");
@@ -807,12 +809,9 @@ export default function Account() {
       const nextUser = await loadUser(user.id);
       notify("Profile picture updated.", "success");
       closeCropModal();
+      if (isProfileIncomplete) setFirstSetupStep(1);
       if (nextUser.profileCompleted && isProfileIncomplete) {
-        setTimeout(() => {
-          if (nextUser.role === "teacher") navigate("/TeacherDashboard");
-          else if (nextUser.role === "admin") navigate("/AdminDashboard");
-          else navigate("/StudentDashboard");
-        }, 400);
+        setFirstSetupFinished(true);
       }
     } catch (err) {
       notify(err?.response?.data?.message || "Could not upload profile picture.", "error");
@@ -851,6 +850,136 @@ export default function Account() {
       if (!blob) return;
       uploadProfilePicture(blob);
     }, "image/png", 0.95);
+  }
+
+  function renderFirstProfileSetup() {
+    const dashboardPath = user.role === "teacher" ? "/TeacherDashboard" : "/StudentDashboard";
+    const firstName = form.firstName || "friend";
+
+    if (firstSetupFinished) {
+      return (
+        <section className={styles.firstSetupCard} aria-labelledby="first-setup-ready">
+          <span className={styles.firstSetupIcon} aria-hidden="true">🎉</span>
+          <p className={styles.firstSetupStep}>All done!</p>
+          <h1 id="first-setup-ready">You’re ready, {firstName}!</h1>
+          <p>Your account is ready. Let’s go to Home and take a little tour.</p>
+          <button type="button" className={styles.firstSetupPrimary} onClick={() => navigate(dashboardPath)}>
+            Go to Home
+          </button>
+        </section>
+      );
+    }
+
+    return (
+      <section className={styles.firstSetupCard} aria-labelledby="first-setup-title">
+        <div className={styles.firstSetupProgress} aria-label={`Step ${firstSetupStep + 1} of 2`}>
+          <span className={firstSetupStep === 0 ? styles.firstSetupCurrent : styles.firstSetupDone}>
+            {firstSetupStep > 0 ? "✓" : "1"}
+          </span>
+          <i />
+          <span className={firstSetupStep === 1 ? styles.firstSetupCurrent : ""}>2</span>
+        </div>
+        <p className={styles.firstSetupStep}>Let’s get your account ready</p>
+        <h1 id="first-setup-title">Hi, {firstName}!</h1>
+
+        {firstSetupStep === 0 ? (
+          <div className={styles.firstSetupContent}>
+            <span className={styles.firstSetupIcon} aria-hidden="true">📸</span>
+            <h2>First, add your picture</h2>
+            <p>
+              {user.role === "teacher"
+                ? "Choose a picture so your students and team know it’s you."
+                : "Choose a picture so your teacher and classmates know it’s you."}
+            </p>
+            {user.profileImageUrl && (
+              <AuthenticatedImage
+                className={styles.firstSetupAvatar}
+                src={user.profileImageUrl}
+                alt="Your profile"
+              />
+            )}
+            <input
+              ref={fileInputRef}
+              className={styles.firstSetupFileInput}
+              type="file"
+              accept="image/*"
+              aria-label="Choose a profile picture"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) handleProfileFile(file);
+                event.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              className={styles.firstSetupPrimary}
+              onClick={chooseProfilePicture}
+              disabled={pictureUploading}
+            >
+              {user.profileImageUrl ? "Choose a different picture" : "Choose a picture"}
+            </button>
+            {pictureUploading && <p role="status">Saving your picture...</p>}
+          </div>
+        ) : (
+          <form className={styles.firstSetupForm} onSubmit={saveProfile}>
+            <span className={styles.firstSetupIcon} aria-hidden="true">🧑‍🎓</span>
+            <h2>Now, check your details</h2>
+            <label>
+              <span>Your first name</span>
+              <input name="firstName" value={form.firstName} onChange={onChange} required />
+            </label>
+            <label>
+              <span>Your last name</span>
+              <input name="lastName" value={form.lastName} onChange={onChange} required />
+            </label>
+            <label>
+              <span>Phone number</span>
+              <input
+                name="contact"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                value={form.contact}
+                onChange={onChange}
+                placeholder="0917 123 4567"
+                required
+              />
+              <small>Use the number your family or school can reach.</small>
+            </label>
+            <label>
+              <span>Time zone</span>
+              <select name="timezone" value={form.timezone} onChange={onChange} required>
+                {form.timezone && !TIMEZONE_OPTIONS.includes(form.timezone) && (
+                  <option value={form.timezone}>{formatTimezoneLabel(form.timezone)}</option>
+                )}
+                {TIMEZONE_OPTIONS.map((timezone) => (
+                  <option key={timezone} value={timezone}>{formatTimezoneLabel(timezone)}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Your password</span>
+              <input
+                type="password"
+                value={detailsPassword}
+                onChange={(event) => setDetailsPassword(event.target.value)}
+                autoComplete="current-password"
+                required
+              />
+              <small>We need it to save your details safely.</small>
+            </label>
+            <div className={styles.firstSetupActions}>
+              <button type="button" className={styles.firstSetupSecondary} onClick={() => setFirstSetupStep(0)}>
+                Back
+              </button>
+              <button type="submit" className={styles.firstSetupPrimary} disabled={saving}>
+                {saving ? "Saving..." : "Save my details"}
+              </button>
+            </div>
+          </form>
+        )}
+      </section>
+    );
   }
 
   function startCropDrag(e) {
@@ -1704,11 +1833,9 @@ export default function Account() {
   return (
     <main className={styles.pageShell}>
       <div className={styles.accountPage}>
-        {/* A student gets the Kid Mode account page. A teacher and an admin
-            keep the professional one: their pages carry a teaching profile
-            and an administration panel, and neither is a screen for a
-            five-year-old. */}
-        {user.role === "student" ? (
+        {(isProfileIncomplete || firstSetupFinished) && ["student", "teacher"].includes(user.role) ? (
+          renderFirstProfileSetup()
+        ) : user.role === "student" ? (
           renderStudentAccount()
         ) : (
           <>

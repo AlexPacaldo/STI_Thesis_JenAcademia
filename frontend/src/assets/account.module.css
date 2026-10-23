@@ -24,6 +24,210 @@
     -4px -4px 12px rgba(255, 255, 255, 0.72);
 }
 
+.firstSetupCard {
+  width: min(100%, 660px);
+  margin: clamp(16px, 5vh, 56px) auto;
+  padding: clamp(22px, 5vw, 42px);
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  border: 2px solid rgba(38, 66, 59, 0.1);
+  border-radius: 28px;
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(18, 34, 30, 0.1);
+  color: var(--text);
+  text-align: center;
+}
+
+.firstSetupProgress {
+  width: min(100%, 280px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.firstSetupProgress span {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #d8e3d5;
+  border-radius: 50%;
+  color: #56705a;
+  font-size: 1.1rem;
+  font-weight: 850;
+}
+
+.firstSetupProgress i {
+  height: 4px;
+  flex: 1;
+  border-radius: 99px;
+  background: #d8e3d5;
+}
+
+.firstSetupProgress .firstSetupCurrent,
+.firstSetupProgress .firstSetupDone {
+  border-color: #2f7a3d;
+  background: #2f7a3d;
+  color: #fff;
+}
+
+.firstSetupStep {
+  margin: 0;
+  color: #52705a;
+  font-size: 0.95rem;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.firstSetupCard h1 {
+  margin: 0;
+  color: #1e3828;
+  font-size: clamp(2rem, 6vw, 2.7rem);
+  line-height: 1.15;
+}
+
+.firstSetupCard > p:not(.firstSetupStep),
+.firstSetupContent > p,
+.firstSetupForm > p {
+  max-width: 480px;
+  margin: 0;
+  color: #526354;
+  font-size: 1.1rem;
+  line-height: 1.5;
+}
+
+.firstSetupContent,
+.firstSetupForm {
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+}
+
+.firstSetupContent h2,
+.firstSetupForm h2 {
+  margin: 0;
+  color: #1e3828;
+  font-size: 1.55rem;
+}
+
+.firstSetupIcon {
+  font-size: 3.7rem;
+  line-height: 1;
+}
+
+.firstSetupAvatar {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid #d8e8cb;
+}
+
+.firstSetupFileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.firstSetupForm {
+  justify-items: stretch;
+  text-align: left;
+}
+
+.firstSetupForm > .firstSetupIcon,
+.firstSetupForm > h2 {
+  justify-self: center;
+  text-align: center;
+}
+
+.firstSetupForm label {
+  display: grid;
+  gap: 7px;
+  color: #263d2c;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.firstSetupForm label input,
+.firstSetupForm label select {
+  width: 100%;
+  min-height: 54px;
+  padding: 12px 14px;
+  border: 2px solid #d6e2d4;
+  border-radius: 15px;
+  background: #fff;
+  color: #1e3828;
+  font-size: 1rem;
+}
+
+.firstSetupForm label input:focus-visible,
+.firstSetupForm label select:focus-visible {
+  border-color: #2f7a3d;
+  outline: 4px solid rgba(47, 122, 61, 0.16);
+}
+
+.firstSetupForm small {
+  color: #647366;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.firstSetupActions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.firstSetupPrimary,
+.firstSetupSecondary {
+  min-height: 54px;
+  padding: 12px 22px;
+  border: 0;
+  border-radius: 16px;
+  font-size: 1.02rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.firstSetupPrimary {
+  background: #1e3828;
+  color: #fff;
+}
+
+.firstSetupPrimary:hover:not(:disabled) {
+  background: #2f7a3d;
+}
+
+.firstSetupPrimary:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.firstSetupSecondary {
+  border: 2px solid #d6e2d4;
+  background: #fff;
+  color: #315e3b;
+}
+
+@media (max-width: 520px) {
+  .firstSetupActions {
+    flex-direction: column-reverse;
+  }
+
+  .firstSetupActions button {
+    width: 100%;
+  }
+}
+
 .notice {
   display: flex;
   flex-direction: column;

@@ -27,6 +27,32 @@ const isLessonCompleted = (item) => {
   return Boolean(item?.is_completed) || getProgressPercentage(item) >= 100;
 };
 
+const readerPositionStorageKey = (studentId, lessonId) =>
+  `jen-academia.reader-position:${studentId}:${lessonId}`;
+
+function readReaderPosition(studentId, lessonId) {
+  if (!studentId || !lessonId) return null;
+  try {
+    const value = localStorage.getItem(readerPositionStorageKey(studentId, lessonId));
+    if (value === null) return null;
+    const position = Number(value);
+    return Number.isFinite(position) ? Math.max(0, Math.min(1, position)) : null;
+  } catch (error) {
+    console.warn("Could not read the locally saved lesson position:", error);
+    return null;
+  }
+}
+
+function storeReaderPosition(studentId, lessonId, position) {
+  if (!studentId || !lessonId) return false;
+  try {
+    localStorage.setItem(readerPositionStorageKey(studentId, lessonId), String(position));
+    return true;
+  } catch (error) {
+    console.warn("Could not save the lesson position on this device:", error);
+    return false;
+  }
+}
 
 const getFileExtension = (fileName) => {
   const cleaned = String(fileName || "").split("?")[0].split("#")[0];
@@ -300,7 +326,12 @@ export default function BooksContent({ mode = "student" }) {
   });
   const fullscreenReaderRef = useRef(null);
   const bottomStabilityTimerRef = useRef(null);
+  const positionSaveTimerRef = useRef(null);
+  const pendingReaderPositionRef = useRef(null);
+  const progressRef = useRef(progress);
+  progressRef.current = progress;
   const STABILITY_DELAY = 250; // ms
+  const POSITION_SAVE_DELAY = 500;
 
   useEffect(() => {
     if (!showPdfFullscreen) return undefined;
@@ -474,6 +505,16 @@ export default function BooksContent({ mode = "student" }) {
         (progressData.progress || []).forEach((item) => {
           progressMap[item.lesson_id] = item;
         });
+        lessonsList.forEach((lesson) => {
+          const localPosition = readReaderPosition(studentId, lesson.lesson_id);
+          if (localPosition !== null) {
+            progressMap[lesson.lesson_id] = {
+              ...progressMap[lesson.lesson_id],
+              lesson_id: lesson.lesson_id,
+              reader_position: localPosition,
+            };
+          }
+        });
         setProgress(progressMap);
       } catch (err) {
         console.error("Error loading book content:", err);
@@ -548,20 +589,91 @@ export default function BooksContent({ mode = "student" }) {
     return distanceFromBottom <= 12;
   }, []);
 
+  const saveReaderPosition = useCallback(async (lessonId, position, localSaved = false) => {
+    if (!isStudentView || !studentId || !lessonId) return;
+    const hasLocalCopy = localSaved || storeReaderPosition(studentId, lessonId, position);
+    setProgress((current) => ({
+      ...current,
+      [lessonId]: {
+        ...current[lessonId],
+        lesson_id: lessonId,
+        reader_position: position,
+      },
+    }));
+
+    try {
+      const response = await apiFetch(`${API_BASE}/api/lesson-progress/position`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lesson_id: lessonId,
+          reader_position: position,
+        }),
+      });
+      if (!response.ok) {
+        const responseBody = await response.json().catch(() => ({}));
+        const message = responseBody.message || `HTTP ${response.status}`;
+        throw new Error(`Could not sync reading position (${message})`);
+      }
+
+      const savedPosition = await response.json();
+      setProgress((current) => ({
+        ...current,
+        [lessonId]: {
+          ...current[lessonId],
+          reader_position: savedPosition.reader_position,
+        },
+      }));
+    } catch (error) {
+      if (hasLocalCopy) {
+        console.warn("Lesson position is saved on this device but could not sync to the account:", error);
+      } else {
+        console.error("Error saving lesson reading position:", error);
+        notify?.("Your reading position could not be saved. Please try again.", "warning");
+      }
+    }
+  }, [isStudentView, notify, studentId]);
+
+  useEffect(() => () => {
+    if (positionSaveTimerRef.current) window.clearTimeout(positionSaveTimerRef.current);
+    const pending = pendingReaderPositionRef.current;
+    if (pending) void saveReaderPosition(pending.lessonId, pending.position, pending.localSaved);
+  }, [saveReaderPosition]);
+
+  const restoreReaderPosition = useCallback((viewport, lessonId) => {
+    if (!viewport || !lessonId) return;
+    const savedPosition = Number(progressRef.current[lessonId]?.reader_position || 0);
+    const scrollRange = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+    viewport.scrollTop = scrollRange * Math.max(0, Math.min(1, savedPosition));
+  }, []);
+
   // Called when the user actually scrolls the viewport.
-  const handleFullscreenScroll = useCallback(() => {
+  const handleFullscreenScroll = useCallback((event) => {
     setHasScrolled(true);
     // If this lesson was auto-opened, clear the auto-open block on actual user interaction.
     if (autoOpenedLessonId === selectedLessonId) {
       setAutoOpenedLessonId(null);
     }
 
-    const viewport = fullscreenReaderRef.current;
+    const viewport = event?.currentTarget || fullscreenReaderRef.current;
     if (!viewport || !selectedLessonId || !lessonRequiresScroll) return;
     if (!readerContentReady) return;
 
+    if (isStudentView) {
+      const scrollRange = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+      const position = scrollRange > 0 ? Math.min(1, Math.max(0, viewport.scrollTop / scrollRange)) : 0;
+      const localSaved = storeReaderPosition(studentId, selectedLessonId, position);
+      pendingReaderPositionRef.current = { lessonId: selectedLessonId, position, localSaved };
+      if (positionSaveTimerRef.current) window.clearTimeout(positionSaveTimerRef.current);
+      positionSaveTimerRef.current = window.setTimeout(() => {
+        const pending = pendingReaderPositionRef.current;
+        pendingReaderPositionRef.current = null;
+        positionSaveTimerRef.current = null;
+        if (pending) void saveReaderPosition(pending.lessonId, pending.position, pending.localSaved);
+      }, POSITION_SAVE_DELAY);
+    }
+
     const atBottom = isReaderAtBottom(viewport);
-    setSelectedLessonAtBottom(atBottom);
 
     // If at bottom, start a short stability timer before enabling the button.
     if (atBottom) {
@@ -571,28 +683,27 @@ export default function BooksContent({ mode = "student" }) {
       }
 
       bottomStabilityTimerRef.current = window.setTimeout(() => {
-        const vp = fullscreenReaderRef.current;
-        if (!vp) return;
-        setSelectedLessonAtBottom(isReaderAtBottom(vp));
+        if (isReaderAtBottom(viewport)) setSelectedLessonAtBottom(true);
 
         bottomStabilityTimerRef.current = null;
       }, STABILITY_DELAY);
     } else {
-      setSelectedLessonAtBottom(false);
       if (bottomStabilityTimerRef.current) {
         clearTimeout(bottomStabilityTimerRef.current);
         bottomStabilityTimerRef.current = null;
       }
     }
-  }, [autoOpenedLessonId, isReaderAtBottom, lessonRequiresScroll, readerContentReady, selectedLessonId]);
+  }, [autoOpenedLessonId, isReaderAtBottom, isStudentView, lessonRequiresScroll, readerContentReady, saveReaderPosition, selectedLessonId, studentId]);
 
   // Called when the content finishes rendering (not a user scroll).
   const handleRendered = useCallback(() => {
     setReaderContentReady(true);
     window.requestAnimationFrame(() => {
-      setSelectedLessonAtBottom(isReaderAtBottom(fullscreenReaderRef.current));
+      const viewport = fullscreenReaderRef.current;
+      restoreReaderPosition(viewport, selectedLessonId);
+      if (isReaderAtBottom(viewport)) setSelectedLessonAtBottom(true);
     });
-  }, [isReaderAtBottom]);
+  }, [isReaderAtBottom, restoreReaderPosition, selectedLessonId]);
 
   // If the PDF renderer places its own scrollable container inside the
   // fullscreen reader, attach a scroll listener directly to it so user
@@ -625,7 +736,7 @@ export default function BooksContent({ mode = "student" }) {
       const viewport = fullscreenReaderRef.current;
       if (!viewport) return;
 
-      viewport.scrollTop = 0;
+      restoreReaderPosition(viewport, selectedLessonId);
     }, 120);
 
     return () => {
@@ -635,7 +746,7 @@ export default function BooksContent({ mode = "student" }) {
         bottomStabilityTimerRef.current = null;
       }
     };
-  }, [selectedLessonId, selectedFileUrl, showPdfFullscreen]);
+  }, [restoreReaderPosition, selectedLessonId, selectedFileUrl, showPdfFullscreen]);
 
   const handleLessonClick = (lesson) => {
     if (isStudentView) {
@@ -659,11 +770,7 @@ export default function BooksContent({ mode = "student" }) {
 
   const markLessonComplete = async () => {
     if (!selectedLesson || !isStudentView || selectedLessonCompleted) return;
-    const readerAtBottomNow = !lessonRequiresScroll || (
-      readerContentReady && isReaderAtBottom(fullscreenReaderRef.current)
-    );
-    if (!selectedLessonReadReady || !readerAtBottomNow) {
-      setSelectedLessonAtBottom(false);
+    if (!selectedLessonReadReady) {
       notify?.("Please scroll to the bottom of the lesson file before marking it complete.", "warning");
       return;
     }
@@ -723,6 +830,17 @@ export default function BooksContent({ mode = "student" }) {
     } finally {
       setCompletingLessonId(null);
     }
+  };
+
+  const closeFullscreenReader = () => {
+    if (positionSaveTimerRef.current) {
+      window.clearTimeout(positionSaveTimerRef.current);
+      positionSaveTimerRef.current = null;
+    }
+    const pending = pendingReaderPositionRef.current;
+    pendingReaderPositionRef.current = null;
+    if (pending) void saveReaderPosition(pending.lessonId, pending.position, pending.localSaved);
+    setShowPdfFullscreen(false);
   };
 
   const getCompletionPercentage = () => {
@@ -1470,21 +1588,23 @@ export default function BooksContent({ mode = "student" }) {
                   <span className={`${styles.lessonStatus} ${selectedLessonCompleted ? styles.statusCompleted : ""}`}>
                     {selectedLessonCompleted ? "Completed" : selectedLessonReadReady ? "Ready to complete" : "Read to the end"}
                   </span>
-                  <button
-                    type="button"
-                    className={`${styles.completeBtn} ${selectedLessonCompleted ? styles.completedBtn : ""}`}
-                    onClick={markLessonComplete}
-                    disabled={selectedLessonCompleted || !selectedLessonReadReady || completingLessonId === selectedLesson?.lesson_id}
-                  >
-                    {selectedLessonCompleted
-                      ? "Completed"
-                      : completingLessonId === selectedLesson?.lesson_id
-                        ? "Saving..."
-                        : "Mark as Complete"}
-                  </button>
+                  {(selectedLessonCompleted || selectedLessonReadReady) && (
+                    <button
+                      type="button"
+                      className={`${styles.completeBtn} ${selectedLessonCompleted ? styles.completedBtn : ""}`}
+                      onClick={markLessonComplete}
+                      disabled={selectedLessonCompleted || completingLessonId === selectedLesson?.lesson_id}
+                    >
+                      {selectedLessonCompleted
+                        ? "Completed"
+                        : completingLessonId === selectedLesson?.lesson_id
+                          ? "Saving..."
+                          : "Mark as Complete"}
+                    </button>
+                  )}
                 </>
               )}
-              <button type="button" onClick={() => setShowPdfFullscreen(false)}>
+              <button type="button" onClick={closeFullscreenReader}>
                 Close
               </button>
             </div>

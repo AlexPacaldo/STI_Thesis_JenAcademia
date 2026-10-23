@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
+import './teacherTheme.css'
 import Header from './components/Header'
 import Footer from './components/Footer'
 import Sidebar from './components/Sidebar'
@@ -288,12 +289,13 @@ function App() {
   const isAccountPage = location.pathname === "/account";
   const isAccountPageNewUser = isAccountPage && !isProfileComplete(readStoredUser());
   const shouldShowSidebar = shouldShowHeader && !isAccountPageNewUser;
+  const isTeacherTheme = getRole(readStoredUser()) === "teacher";
   const showFooter = location.pathname === "/" && !isAuthenticated(readStoredUser());
   const isFullBleedPath = location.pathname === "/" || location.pathname === "/login" || location.pathname.toLowerCase().startsWith("/setup-account/") || location.pathname.toLowerCase().startsWith("/forgot-password") || location.pathname.toLowerCase().startsWith("/reset-password/");
 
   return (
     <>
-      <div className={`app-container ${isFullBleedPath ? 'full-bleed' : ''}`}>
+      <div className={`app-container ${isFullBleedPath ? 'full-bleed' : ''} ${isTeacherTheme ? 'teacher-theme' : ''}`}>
         {shouldShowSidebar && (
           <Sidebar
             isMobileOpen={isSidebarOpen}

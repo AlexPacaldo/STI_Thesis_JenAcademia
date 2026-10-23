@@ -2856,3 +2856,343 @@ label.checkboxOption > input[type='checkbox']:disabled {
     display: none;
   }
 }
+
+/* Friendly admin styling: clear surfaces, soft colour, and easy-to-press controls. */
+.Center {
+  --primary: #244a32;
+  --primary-dark: #193923;
+  --primary-mid: #3d824b;
+  --accent: #79a847;
+  --radius-xl: 24px;
+  --radius-lg: 20px;
+  --radius-md: 16px;
+  --radius-sm: 14px;
+  --radius-xs: 12px;
+  --control-radius: 14px;
+  --surface-raised: #ffffff;
+  --surface-soft: #f3f9f2;
+  --bg-alt: #edf5ed;
+  --border: #e1ebe2;
+  --border-mid: #cadbcd;
+  --muted: #617568;
+  padding-inline: clamp(16px, 3vw, 44px);
+  background: linear-gradient(180deg, #f2f8f1 0, #fbfcf9 280px);
+}
+
+.Center .header {
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.Center .header h1 {
+  color: var(--primary);
+  font-size: clamp(28px, 3vw, 38px);
+  letter-spacing: -0.025em;
+}
+
+.Center .card {
+  padding: clamp(18px, 2.4vw, 30px);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(36, 74, 50, 0.06);
+}
+
+.Center .cardHead {
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.Center .cardHead h2,
+.Center .card h3 {
+  color: var(--primary);
+}
+
+.Center .cardHead h2 {
+  font-size: clamp(22px, 2.2vw, 30px);
+}
+
+.Center .tabs {
+  gap: 10px;
+  padding: 10px;
+  border-color: var(--border);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(36, 74, 50, 0.06);
+}
+
+.Center .tab,
+.Center .subTab {
+  min-height: 46px;
+  padding: 10px 16px;
+  border-color: transparent;
+  border-radius: 14px;
+  background: var(--surface-soft);
+  color: var(--primary);
+}
+
+.Center .tab:hover,
+.Center .subTab:hover {
+  border-color: var(--border-mid);
+  background: #e9f4e6;
+}
+
+.Center .active,
+.Center .subTabActive {
+  border-color: var(--primary);
+  border-radius: 14px;
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 6px 14px rgba(36, 74, 50, 0.16);
+}
+
+.Center .bookCard,
+.Center .verificationItem,
+.Center .listRow,
+.Center .archivedBox,
+.Center .tableWrap,
+.Center .overviewPanel,
+.Center .overviewNameRow,
+.Center .scheduleRow,
+.Center .attentionItem,
+.Center .statTile {
+  border-color: var(--border);
+  border-radius: 18px;
+  box-shadow: 0 6px 18px rgba(36, 74, 50, 0.045);
+}
+
+.Center .overviewPanel {
+  padding: 22px;
+  background: #fff;
+}
+
+.Center .statTile {
+  min-height: 112px;
+  padding: 18px;
+  background: linear-gradient(145deg, #fff 50%, #f4f9ef);
+}
+
+.Center .statTileValue {
+  color: var(--primary);
+}
+
+.Center .attentionItem,
+.Center .scheduleRow,
+.Center .overviewNameRow {
+  background: #f7fbf4;
+}
+
+.Center .attentionItem {
+  min-height: 62px;
+  border-left-width: 5px;
+}
+
+.Center .verificationItem {
+  padding: 20px;
+  background: #fff;
+}
+
+.Center .verificationMetaGrid div,
+.Center .evidenceGrid div,
+.Center .teacherReviewBox,
+.Center .evidenceModeBox,
+.Center .verificationSummaryBlock {
+  border-radius: 14px;
+}
+
+.Center .courseTeacherRow,
+.Center .reviewReasonBox,
+.Center .teacherReviewBox {
+  border-radius: 16px;
+}
+
+.Center .bookCard {
+  padding: 16px;
+}
+
+.Center .bookCoverFallback {
+  background: linear-gradient(135deg, #edf6e8, #e8f2fb);
+}
+
+.Center .bookChip {
+  padding: 6px 11px;
+  background: #eef6e8;
+  color: var(--primary);
+}
+
+.Center .bookChipWarn {
+  background: #fff4d6;
+  color: #785600;
+}
+
+.Center .primary,
+.Center .approve,
+.Center .decline,
+.Center .warn,
+.Center .secondaryBtn,
+.Center .linkBtn,
+.Center .dangerBtn,
+.Center .cardBtn,
+.Center .pageBtn {
+  min-height: 44px;
+  border-radius: 14px;
+  font-family: inherit;
+}
+
+.Center .modalClose {
+  border-radius: 14px;
+}
+
+.Center .primary {
+  background: var(--primary-mid);
+}
+
+.Center .primary:hover:not(:disabled) {
+  background: var(--primary);
+}
+
+.Center .secondaryBtn,
+.Center .linkBtn {
+  border-color: var(--border-mid);
+  background: #fff;
+  color: var(--primary);
+}
+
+.Center .secondaryBtn:hover:not(:disabled),
+.Center .linkBtn:hover {
+  border-color: var(--primary-mid);
+  background: var(--surface-soft);
+}
+
+.Center .tableWrap {
+  overflow: auto;
+}
+
+.Center .table th {
+  background: #f0f7ed;
+  color: var(--primary);
+}
+
+.Center .table th,
+.Center .table td {
+  border-bottom-color: #e9f0e9;
+}
+
+.Center .table tbody tr:hover td {
+  background: #fbfdf9;
+}
+
+.Center .table input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.Center .table select,
+.Center .form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.Center .form select,
+.Center .form textarea,
+.Center .searchBar input,
+.Center .compactSearch input,
+.Center .searchRow input,
+.Center .searchRow select,
+.Center .historyFilters input,
+.Center .historyFilters select,
+.Center .modalCard input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.Center .modalCard textarea,
+.Center .modalCard select {
+  min-height: 46px;
+  border-color: var(--border-mid);
+  border-radius: 14px;
+}
+
+.Center .form textarea,
+.Center .modalCard textarea {
+  min-height: 110px;
+}
+
+.Center .table input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+.Center .table select:focus,
+.Center .form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+.Center .form select:focus,
+.Center .form textarea:focus,
+.Center .searchBar input:focus,
+.Center .compactSearch input:focus,
+.Center .searchRow input:focus,
+.Center .searchRow select:focus,
+.Center .historyFilters input:focus,
+.Center .historyFilters select:focus,
+.Center .modalCard input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+.Center .modalCard textarea:focus,
+.Center .modalCard select:focus {
+  border-color: var(--primary-mid);
+  box-shadow: 0 0 0 3px rgba(61, 130, 75, 0.14);
+}
+
+.Center .empty {
+  min-height: 92px;
+  border-color: var(--border-mid);
+  border-radius: 18px;
+  background: #f7fbf4;
+  color: var(--muted);
+}
+
+.Center .pagination {
+  gap: 12px;
+}
+
+.Center .filterTabs button,
+.Center .subTabs button,
+.Center .courseCheck {
+  min-height: 44px;
+  border-radius: 14px;
+}
+
+.Center .statusPill,
+.Center .archivedBadge,
+.Center .bookLessonBadge,
+.Center .bookArchivedBadge {
+  border-radius: 999px;
+}
+
+.Center .listRow,
+.Center .courseTeacherRow {
+  background: #f9fcf7;
+}
+
+.Center .pageBtn:hover:not(:disabled),
+.Center .cardBtn:hover:not(:disabled) {
+  border-color: var(--primary-mid);
+}
+
+.Center .modalCard {
+  border-color: var(--border);
+  border-radius: 24px;
+}
+
+.Center :is(button, a, input, select, textarea, summary):focus-visible {
+  outline: 3px solid rgba(121, 168, 71, 0.55);
+  outline-offset: 3px;
+}
+
+@media (max-width: 700px) {
+  .Center {
+    padding-inline: 12px;
+  }
+
+  .Center .card {
+    padding: 18px;
+    border-radius: 20px;
+  }
+}
+
+@media (max-width: 560px) {
+  .Center {
+    padding: 4px 10px 16px;
+  }
+
+  .Center .card {
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .Center .tabs,
+  .Center .subTabs {
+    border-radius: 16px;
+  }
+}

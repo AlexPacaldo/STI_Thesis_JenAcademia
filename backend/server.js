@@ -2366,6 +2366,7 @@ async function ensureLessonProgressTable() {
       student_id INT NOT NULL,
       lesson_id INT NOT NULL,
       progress_percentage INT NOT NULL DEFAULT 0,
+      reader_position DECIMAL(8,6) NOT NULL DEFAULT 0,
       is_completed TINYINT(1) NOT NULL DEFAULT 0,
       started_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
       completed_at TIMESTAMP NULL DEFAULT NULL,
@@ -2383,6 +2384,10 @@ async function ensureLessonProgressTable() {
 
   if (!(await columnExists("lesson_progress", "progress_percentage"))) {
     await pool.query("ALTER TABLE lesson_progress ADD COLUMN progress_percentage INT NOT NULL DEFAULT 0 AFTER lesson_id");
+  }
+
+  if (!(await columnExists("lesson_progress", "reader_position"))) {
+    await pool.query("ALTER TABLE lesson_progress ADD COLUMN reader_position DECIMAL(8,6) NOT NULL DEFAULT 0 AFTER progress_percentage");
   }
 
   if (!(await columnExists("lesson_progress", "started_at"))) {
@@ -4992,6 +4997,7 @@ app.get("/api/account-setup/:token", async (req, res) => {
         email: invite.email,
         firstName: invite.first_name,
         lastName: invite.last_name,
+        role: invite.role,
         expiresAt: invite.expires_at,
       },
     });
@@ -12515,6 +12521,112 @@ app.post("/api/assignments/:assignment_id/submissions", requireSession, optional
   }
 });
 
+app.patch("/api/assignments/:assignment_id/submission", requireSession, optionalFileUpload, async (req, res) => {
+  const conn = await pool.getConnection();
+  let transactionStarted = false;
+  try {
+    const { assignment_id } = req.params;
+    const studentId = sessionIdentity(req).studentId;
+    const text = String(req.body?.submissionText ?? "").trim();
+    const uploadedFile = uploadedFileUrl(req, req.file);
+
+    if (!studentId) {
+      return res.status(403).json({ message: "Only the assigned student can edit this submission." });
+    }
+
+    await conn.beginTransaction();
+    transactionStarted = true;
+
+    const [assignmentRows] = await conn.query(
+      `SELECT student_id, due_date, due_time, is_archived
+       FROM assignments
+       WHERE assignment_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [assignment_id]
+    );
+    const assignment = assignmentRows[0];
+    if (!assignment) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Assignment not found" });
+    }
+    if (String(assignment.student_id) !== String(studentId)) {
+      await conn.rollback();
+      return res.status(403).json({ message: "You can only edit your own submission." });
+    }
+    if (assignment.is_archived) {
+      await conn.rollback();
+      return res.status(400).json({ message: "This assignment has been archived and can no longer be edited." });
+    }
+    if (isDueDatePast(assignment.due_date, assignment.due_time)) {
+      await conn.rollback();
+      return res.status(400).json({ message: "This assignment is past due and can no longer be edited." });
+    }
+
+    const [submissionRows] = await conn.query(
+      `SELECT submission_id, file_url
+       FROM assignment_submissions
+       WHERE assignment_id = ? AND student_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [assignment_id, studentId]
+    );
+    const existingSubmission = submissionRows[0];
+    if (!existingSubmission) {
+      await conn.rollback();
+      return res.status(404).json({ message: "No submission found to edit." });
+    }
+    if (!text && !uploadedFile && !existingSubmission.file_url) {
+      await conn.rollback();
+      return res.status(400).json({ message: "Please provide an answer or attach a file." });
+    }
+
+    await conn.query(
+      `UPDATE assignment_submissions
+       SET submission_text = ?,
+           file_url = COALESCE(?, file_url),
+           file_name = CASE WHEN ? IS NULL THEN file_name ELSE ? END,
+           submitted_at = CURRENT_TIMESTAMP,
+           grade = NULL,
+           feedback = NULL,
+           graded_at = NULL
+       WHERE submission_id = ?`,
+      [
+        encryptNullableText(text || null),
+        uploadedFile,
+        uploadedFile,
+        uploadedFile ? req.file.originalname : null,
+        existingSubmission.submission_id,
+      ]
+    );
+
+    await conn.commit();
+    transactionStarted = false;
+
+    const [rows] = await conn.query(
+      `${submissionSelect}
+       WHERE s.assignment_id = ? AND s.student_id = ?
+       LIMIT 1`,
+      [assignment_id, studentId]
+    );
+    res.json({
+      submission: decryptFields(rows[0], ["comments", "feedback"]),
+      message: "Submission updated",
+    });
+  } catch (err) {
+    if (transactionStarted) {
+      await conn.rollback();
+    }
+    console.error("PATCH /api/assignments/:assignment_id/submission error:", err);
+    res.status(500).json({
+      message: "Error updating assignment submission",
+      ...(process.env.NODE_ENV !== "production" ? { error: err.message } : {}),
+    });
+  } finally {
+    conn.release();
+  }
+});
+
 // Get submission history for an assignment (past attempts when resubmitted).
 app.get("/api/assignments/:assignment_id/submission-history", requireSession, async (req, res) => {
   try {
@@ -14693,6 +14805,44 @@ app.get("/api/lesson-progress", requireSession, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching lesson progress" });
+  }
+});
+
+app.patch("/api/lesson-progress/position", requireSession, async (req, res) => {
+  try {
+    const studentId = sessionIdentity(req).studentId;
+    const lessonId = Number(req.body?.lesson_id);
+    const readerPosition = Number(req.body?.reader_position);
+
+    if (!studentId) {
+      return res.status(403).json({ message: "Only students can save lesson reading position" });
+    }
+    if (!Number.isInteger(lessonId) || lessonId <= 0) {
+      return res.status(400).json({ message: "A valid lesson_id is required" });
+    }
+    if (!Number.isFinite(readerPosition) || readerPosition < 0 || readerPosition > 1) {
+      return res.status(400).json({ message: "reader_position must be between 0 and 1" });
+    }
+
+    const [lessonRows] = await pool.query(
+      "SELECT lesson_id FROM lessons WHERE lesson_id = ? LIMIT 1",
+      [lessonId]
+    );
+    if (lessonRows.length === 0) {
+      return res.status(404).json({ message: "Lesson not found" });
+    }
+
+    await pool.query(
+      `INSERT INTO lesson_progress (student_id, lesson_id, reader_position)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE reader_position = VALUES(reader_position)`,
+      [studentId, lessonId, readerPosition]
+    );
+
+    res.json({ lesson_id: lessonId, reader_position: readerPosition });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error saving lesson reading position" });
   }
 });
 

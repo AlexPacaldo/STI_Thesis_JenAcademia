@@ -43,6 +43,7 @@ import {
   timeToMinutes,
 } from "../utils/classTime.js";
 import StudentBookingWizard from "../components/StudentBookingWizard.jsx";
+import CalendarModuleGuide from "../components/CalendarModuleGuide.jsx";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
@@ -1093,7 +1094,12 @@ function DayPicker({ days, selected, onPick, emptyMessage, statusFor }) {
 function ClassCard({ classInfo, onOpen, actionLabel, actionDisabled }) {
   return (
     <div className={kid.classItem}>
-      <button type="button" onClick={onOpen} className={kid.classItemMain}>
+      <button
+        type="button"
+        onClick={onOpen}
+        className={kid.classItemMain}
+        data-calendar-guide="class"
+      >
         <span className={kid.classDay}>{classInfo.dayLabel}</span>
         <span className={kid.classTime}>{classInfo.timeLabel}</span>
         <span className={kid.classCourse}>{classInfo.subtitle}</span>
@@ -5924,6 +5930,11 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         `}
       </style>
       <main className={styles.page}>
+      <CalendarModuleGuide
+        role={localRole}
+        userId={localUserId}
+        isReady={isUserReady && !isInitialCalendarLoading}
+      />
       <section
         className={
           isSimpleStudentView || (isTeacherOrAdmin && calendarView === "list")
@@ -5988,7 +5999,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
               !! looking at somebody else's calendar - they are reading a
               !! schedule, not using one. */}
           {!isSimpleStudentView && calendarView !== "list" && (
-          <div className={cal.calendarCard}>
+          <div className={cal.calendarCard} data-calendar-guide="calendar">
             <div className={cal.calHeader}>
               <button type="button" onClick={prevMonth} className={cal.navBtn} aria-label="Previous month">
                 ‹
@@ -6064,6 +6075,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     key={idx}
                     type="button"
                     className={cellClass}
+                    data-calendar-guide-day={d && !isPast ? "true" : undefined}
                     onClick={() => handleCellClick(d)}
                     disabled={!d || isPast}
                     title={tooltipText}
@@ -6091,7 +6103,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
               !! as a list, and a teacher who cannot move between months has
               !! lost something the grid gave them. */}
           {isTeacherOrAdmin && calendarView === "list" && !selectedClass && (
-            <div className={cal.calendarCard}>
+            <div className={cal.calendarCard} data-calendar-guide="calendar">
               <div className={cal.calHeader}>
                 <button type="button" onClick={prevMonth} className={cal.navBtn} aria-label="Previous month">
                   ‹
@@ -6533,6 +6545,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                           key={idx}
                           type="button"
                           className={cal.dayClass}
+                          data-calendar-guide="class"
                           onClick={() => setSelectedClassId(cls.id)}
                         >
                           <span className={cal.dayClassTitle}>{cls.className || cls.name || "Untitled"}</span>
@@ -6829,6 +6842,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                       <button
                         type="button"
                         className={`${cal.actionCard} ${setAvailabilityMode ? cal.actionCardActive : ""}`}
+                        data-calendar-guide="set-availability"
                         onClick={() => {
                           setSetAvailabilityMode(!setAvailabilityMode);
                           if (!setAvailabilityMode) {
@@ -7209,6 +7223,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                             key={idx}
                             type="button"
                             className={cal.dayClass}
+                            data-calendar-guide="class"
                             onClick={() => setSelectedClassId(cls.id)}
                           >
                             <span className={cal.dayClassTitle}>{cls.className || cls.name || "Untitled"}</span>
@@ -7334,7 +7349,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                          !! of classes. */
                       <div className={kid.home}>
                         <div className={kid.homeHeader}>
-                          <h1 className={kid.homeTitle}>{HOME.title}</h1>
+                          <h1 className={kid.homeTitle} data-calendar-guide="calendar">{HOME.title}</h1>
                           <p className={kid.homeSubtitle}>
                             {HOME.subtitle(assignedTeacherName)}
                           </p>
@@ -7362,6 +7377,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         <button
                           type="button"
                           className={kid.bookBig}
+                          data-calendar-guide="book-class"
                           onClick={openMonthlyBooking}
                           disabled={!assignedTeacherId || hasNoClassesLeft}
                         >
@@ -8118,6 +8134,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         <button
                           type="button"
                           className={kid.bookBig}
+                          data-calendar-guide="book-class"
                           onClick={openMonthlyBooking}
                           disabled={!assignedTeacherId || hasNoClassesLeft}
                         >

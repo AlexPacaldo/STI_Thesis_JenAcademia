@@ -1,0 +1,125 @@
+.teacher-theme {
+  --primary: #1e3828;
+  --primary-dark: #142a1c;
+  --primary-mid: #2f7a3d;
+  --accent: #79a847;
+  --surface-soft: #f3f9f2;
+  --surface-recessed: #f0f5ee;
+  --bg-alt: #edf5ed;
+  --border: rgba(38, 66, 59, 0.12);
+  --border-mid: rgba(38, 66, 59, 0.2);
+  --border-strong: rgba(38, 66, 59, 0.28);
+}
+
+.teacher-theme .content-inner {
+  background: linear-gradient(180deg, #f5f9f3 0%, #fff 240px);
+}
+
+.teacher-theme .content-inner h1,
+.teacher-theme .content-inner h2,
+.teacher-theme .content-inner h3 {
+  color: var(--primary);
+}
+
+.teacher-theme .content-inner [class*="pageHeader"],
+.teacher-theme .content-inner [class*="hero"] {
+  border-color: var(--border);
+  border-radius: 24px;
+  background: linear-gradient(135deg, #f0f7e9, #edf5f9);
+}
+
+.teacher-theme .content-inner [class*="Card"],
+.teacher-theme .content-inner [class*="card"],
+.teacher-theme .content-inner [class*="Panel"],
+.teacher-theme .content-inner [class*="panel"] {
+  border-radius: 22px;
+  border-color: var(--border);
+  box-shadow: 0 8px 20px rgba(30, 56, 40, 0.06);
+}
+
+.teacher-theme .content-inner [class*="boxCard"],
+.teacher-theme .content-inner [class*="studentRow"],
+.teacher-theme .content-inner [class*="classCard"],
+.teacher-theme .content-inner [class*="scheduleRow"],
+.teacher-theme .content-inner [class*="submissionRow"],
+.teacher-theme .content-inner [class*="bookCard"],
+.teacher-theme .content-inner [class*="LessonsCard"] {
+  border-color: var(--border);
+  box-shadow: 0 8px 20px rgba(30, 56, 40, 0.06);
+}
+
+.teacher-theme .content-inner [class*="activeTab"],
+.teacher-theme .content-inner [class*="tabActive"],
+.teacher-theme .content-inner [class*="filterActive"],
+.teacher-theme .content-inner [class*="selected"] {
+  border-color: var(--primary);
+  background-color: var(--primary);
+  color: #fff;
+}
+
+.teacher-theme .content-inner button:not([class*="cell"]):not([class*="day"]):not([class*="time"]):not([class*="close"]):not([class*="icon"]):not([class*="Icon"]):not([class*="navBtn"]):not([class*="avatar"]):not([class*="Avatar"]) {
+  min-height: 48px;
+  border-radius: 16px;
+  font-weight: 700;
+}
+
+.teacher-theme .content-inner button[class*="primary"],
+.teacher-theme .content-inner button[class*="submit"],
+.teacher-theme .content-inner button[class*="Action"],
+.teacher-theme .content-inner a[class*="Action"],
+.teacher-theme .content-inner button[class*="bookButton"] {
+  border-color: var(--primary);
+  background-color: var(--primary);
+  color: #fff;
+}
+
+.teacher-theme .content-inner input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.teacher-theme .content-inner select,
+.teacher-theme .content-inner textarea {
+  min-height: 48px;
+  border-color: var(--border-mid);
+  border-radius: 15px;
+  font-size: 1rem;
+}
+
+.teacher-theme .content-inner textarea {
+  min-height: 130px;
+}
+
+.teacher-theme .content-inner input:focus,
+.teacher-theme .content-inner select:focus,
+.teacher-theme .content-inner textarea:focus {
+  border-color: var(--primary-mid);
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(47, 122, 61, 0.14);
+}
+
+.teacher-theme .content-inner [class*="status"],
+.teacher-theme .content-inner [class*="Status"],
+.teacher-theme .content-inner [class*="badge"],
+.teacher-theme .content-inner [class*="Badge"] {
+  border-radius: 999px;
+}
+
+.teacher-theme .content-inner [class*="empty"],
+.teacher-theme .content-inner [class*="Empty"],
+.teacher-theme .content-inner [class*="emptyState"] {
+  border-radius: 20px;
+}
+
+.teacher-theme aside [class*="navItem"][class*="active"],
+.teacher-theme aside [class*="active"] [class*="navItemIcon"] {
+  background-color: #79a847;
+  color: #fff;
+}
+
+.teacher-theme :is(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid rgba(121, 168, 71, 0.65);
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .teacher-theme .content-inner button:not([class*="cell"]):not([class*="day"]):not([class*="time"]):not([class*="close"]):not([class*="icon"]):not([class*="Icon"]):not([class*="navBtn"]):not([class*="avatar"]):not([class*="Avatar"]) {
+    min-height: 52px;
+  }
+}

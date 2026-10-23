@@ -188,8 +188,8 @@
   padding: 0 22px;
   border: 0;
   border-radius: var(--radius-xl);
-  background: var(--brand-green);
-  box-shadow: 0 8px 20px rgba(47, 122, 61, 0.25);
+  background: var(--primary);
+  box-shadow: 0 8px 20px rgba(30, 56, 40, 0.2);
   color: #fff;
   font-size: clamp(1rem, 1.6vw, 1.25rem);
   font-weight: 800;
@@ -202,7 +202,7 @@
 
 .cardButton:hover {
   transform: translateY(-2px);
-  background: var(--primary-mid);
+  background: var(--primary-dark);
 }
 
 .cardButton:active {

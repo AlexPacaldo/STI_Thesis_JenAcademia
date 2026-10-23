@@ -21,11 +21,11 @@
   --muted: #6b8a84;
   --muted-light: #8fa8a3;
   --text-danger: #b94a3b;
-  --primary: #2e7d5b;
-  --primary-mid: #276a4c;
-  --brand-green: #2e7d5b;
-  --brand-lime: #8bc34a;
-  --accent: #4caf8a;
+  --primary: var(--brand-forest);
+  --primary-mid: var(--brand-green);
+  --brand-green: var(--brand-forest);
+  --brand-lime: var(--accent-lime);
+  --accent: var(--accent-lime);
   --border: #cdd6d3;
   --border-mid: #b9c9c4;
   --pill-danger: #fdecea;
@@ -124,7 +124,7 @@
   background: var(--brand-green);
   border-color: var(--brand-green);
   color: #fff;
-  box-shadow: 0 4px 12px rgba(47, 122, 61, 0.25);
+  box-shadow: 0 4px 12px rgba(30, 56, 40, 0.2);
 }
 
 /* ---------- Alert cards ---------- */
@@ -349,7 +349,7 @@
   color: #fff;
   font-size: 1.1rem;
   font-weight: 800;
-  box-shadow: 0 4px 12px rgba(47, 122, 61, 0.25);
+  box-shadow: 0 4px 12px rgba(30, 56, 40, 0.2);
   transition:
     background var(--duration-fast) var(--ease-out),
     transform var(--duration-fast) var(--ease-out);
@@ -609,117 +609,61 @@
   color: var(--muted);
 }
 
-/* ---------- Submission history ---------- */
+/* ---------- Edit submission ---------- */
 
-.submissionHistory {
-  margin-top: 0;
-  padding: 0;
-}
-
-.historyButton {
+.editSubmissionButton,
+.cancelEditButton {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 16px;
   cursor: pointer;
   border: 1px solid var(--border-mid);
   border-radius: var(--control-radius);
   background: var(--surface);
   color: var(--primary);
-  font-size: 0.95rem;
-  font-weight: 600;
+  font: inherit;
+  font-weight: 700;
   transition:
     border-color var(--duration-fast) var(--ease-out),
     background var(--duration-fast) var(--ease-out);
 }
 
-.historyButton:hover:not(:disabled) {
+.editSubmissionButton:hover:not(:disabled),
+.cancelEditButton:hover:not(:disabled) {
   border-color: var(--brand-lime);
   background: var(--surface-soft);
 }
 
-.historyButton:disabled {
+.editSubmissionButton:disabled,
+.cancelEditButton:disabled {
   cursor: wait;
   opacity: 0.7;
 }
 
-.historyError {
-  margin: 10px 0 0;
-  color: var(--text-danger);
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.historyList {
-  margin-top: 12px;
+.editSubmissionForm {
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.historyItem {
-  padding: 12px 16px;
-  background: var(--surface-raised);
+  padding: clamp(16px, 2vw, 24px);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  background: var(--surface-soft);
 }
 
-.historyMeta {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 8px;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-.historyAttempt {
-  font-weight: 700;
-  color: var(--primary);
-}
-
-.historyDate {
-  font-size: 0.85rem;
-}
-
-.historyText {
-  margin: 0 0 8px 0;
-  padding: 10px 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--control-radius);
-  font-size: 0.95rem;
-  line-height: 1.5;
+.editSubmissionLabel {
   color: var(--text);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  font-weight: 800;
 }
 
-.historyFile {
-  margin-top: 8px;
-}
-
-.historyFileButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 0 14px;
-  cursor: pointer;
-  border: 1px solid var(--border-mid);
-  border-radius: var(--control-radius);
-  background: var(--surface);
-  color: var(--primary);
+.editSubmissionFileNote {
+  margin: 0;
+  color: var(--text-mid);
   font-size: 0.9rem;
   font-weight: 600;
-  transition:
-    border-color var(--duration-fast) var(--ease-out),
-    background var(--duration-fast) var(--ease-out);
-}
-
-.historyFileButton:hover:not(:disabled) {
-  border-color: var(--brand-lime);
-  background: var(--surface-soft);
+  overflow-wrap: anywhere;
 }
 
 /* ---------- Tablets ---------- */
@@ -744,11 +688,6 @@
     padding: clamp(20px, 3vw, 30px);
   }
 
-  .historyButton {
-    min-height: 36px;
-    font-size: 0.9rem;
-    padding: 0 14px;
-  }
 }
 
 /* ---------- Mobile phones ---------- */
@@ -889,28 +828,8 @@
     font-size: 1rem;
   }
 
-  .submissionHistory {
-    padding: 0;
-  }
-
-  .historyButton {
-    min-height: 36px;
-    font-size: 0.9rem;
-    padding: 0 14px;
+  .editSubmissionButton,
+  .cancelEditButton {
     width: 100%;
-    justify-content: center;
-  }
-
-  .historyText {
-    font-size: 0.9rem;
-    padding: 8px 12px;
-  }
-
-  .historyFileButton {
-    min-height: 36px;
-    font-size: 0.9rem;
-    padding: 0 14px;
-    width: 100%;
-    justify-content: center;
   }
 }

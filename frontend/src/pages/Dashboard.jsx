@@ -4,6 +4,7 @@ import axios from "axios";
 import styles from "../assets/Dashboard.module.css";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
+import FirstStepsGuide from "../components/FirstStepsGuide.jsx";
 
 const API = API_BASE_URL;
 
@@ -201,6 +202,7 @@ export default function Dashboard({ mode }) {
             {isTeacher ? "Time to teach" : "Time for class"}
           </h1>
         </header>
+        {user.profileCompleted ? <FirstStepsGuide /> : null}
 
         {/* Error banner */}
         {error ? <div className={styles.errorBanner}>{error}</div> : null}

@@ -1,0 +1,215 @@
+.helpButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px 20px;
+  border: 2px solid #cbdcba;
+  border-radius: 20px;
+  background: #f4f9ed;
+  color: #1e3828;
+  font-size: 1.15rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.helpButton span {
+  font-size: 1.5rem;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  padding: 20px;
+  background: rgba(17, 34, 24, 0.58);
+}
+
+.dialog {
+  width: min(100%, 620px);
+  padding: clamp(20px, 5vw, 36px);
+  border: 2px solid rgba(30, 56, 40, 0.12);
+  border-radius: 28px;
+  background: #fff;
+  box-shadow: 0 24px 72px rgba(12, 26, 17, 0.28);
+}
+
+.dialogTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stepCount {
+  color: #395a40;
+  font-size: 1rem;
+  font-weight: 850;
+}
+
+.skipButton,
+.nextButton {
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: #395a40;
+  font-size: 0.98rem;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.progressTrack {
+  height: 12px;
+  margin: 16px 0 24px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #eaf0e8;
+}
+
+.progressTrack span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #4f9345, #9cbe58);
+  transition: width 180ms ease;
+}
+
+.stepContent {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.bigIcon {
+  font-size: 4rem;
+  line-height: 1;
+}
+
+.stepContent h2 {
+  margin: 0;
+  color: #1e3828;
+  font-size: clamp(1.8rem, 5vw, 2.45rem);
+  line-height: 1.15;
+}
+
+.moduleBadge {
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: #edf6e5;
+  color: #315e3b;
+  font-size: 0.9rem;
+  font-weight: 850;
+}
+
+.description {
+  margin: 0;
+  color: #526354;
+  font-size: 1.15rem;
+  line-height: 1.5;
+}
+
+.pointList {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: guide-step;
+  text-align: left;
+}
+
+.pointList li {
+  position: relative;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px 12px 54px;
+  border-radius: 16px;
+  background: #f3f8ef;
+  color: #2f4934;
+  font-size: 1.02rem;
+  font-weight: 700;
+  line-height: 1.4;
+  counter-increment: guide-step;
+}
+
+.pointList li::before {
+  position: absolute;
+  left: 13px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #dbecc8;
+  color: #315e3b;
+  font-weight: 900;
+  content: counter(guide-step);
+}
+
+.actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.primaryButton,
+.secondaryButton {
+  min-height: 54px;
+  padding: 12px 22px;
+  border: 0;
+  border-radius: 17px;
+  font-size: 1.05rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.primaryButton {
+  background: #1e3828;
+  color: #fff;
+}
+
+.primaryButton:hover {
+  background: #2f7a3d;
+}
+
+.secondaryButton {
+  border: 2px solid #d8e3d5;
+  background: #fff;
+  color: #315e3b;
+}
+
+.nextButton {
+  display: block;
+  margin: 10px auto 0;
+}
+
+@media (max-width: 520px) {
+  .backdrop {
+    align-items: start;
+    padding: 12px;
+  }
+
+  .dialog {
+    border-radius: 22px;
+  }
+
+  .actions button {
+    flex: 1;
+  }
+
+  .pointList li {
+    font-size: 0.96rem;
+  }
+}

@@ -465,6 +465,106 @@
   }
 }
 
+.wrapper {
+  gap: 24px;
+}
+
+.head h2 {
+  color: var(--primary);
+  font-size: clamp(1.55rem, 2.6vw, 2.1rem);
+}
+
+.refreshButton,
+.reportButton,
+.linkButton,
+.filterButton {
+  min-height: 46px;
+  padding: 10px 16px;
+  border-radius: var(--control-radius, 14px);
+}
+
+.statTile,
+.tableWrap,
+.reportColumn,
+.empty,
+.errorBox {
+  border-radius: var(--radius-lg, 20px);
+}
+
+.statTile {
+  min-height: 112px;
+  padding: 18px;
+  background: linear-gradient(145deg, #fff 50%, #f4f9ef);
+}
+
+.statValue {
+  color: var(--primary);
+}
+
+.searchBox input {
+  min-height: 46px;
+  border-radius: var(--control-radius, 14px);
+}
+
+.filterActive {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.table th {
+  background: #f0f7ed;
+  color: var(--primary);
+}
+
+.table th,
+.table td {
+  border-bottom-color: #e9f0e9;
+}
+
+.table tbody tr:hover td {
+  background: #fbfdf9;
+}
+
+.reportButton {
+  background: var(--primary-mid);
+  border-color: var(--primary-mid);
+}
+
+.reportButton:hover {
+  background: var(--primary);
+}
+
+.reportColumn {
+  padding: 20px;
+  background: #f7fbf4;
+}
+
+.criterionRow,
+.commentBox,
+.pendingBox,
+.levelBox {
+  border-radius: var(--control-radius, 14px);
+}
+
+.closeButton {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+}
+
+.modal {
+  border-radius: 24px;
+}
+
+.refreshButton:focus-visible,
+.reportButton:focus-visible,
+.linkButton:focus-visible,
+.filterButton:focus-visible,
+.closeButton:focus-visible {
+  outline: 3px solid rgba(121, 168, 71, 0.55);
+  outline-offset: 3px;
+}
+
 .reportColumn {
   display: flex;
   flex-direction: column;
