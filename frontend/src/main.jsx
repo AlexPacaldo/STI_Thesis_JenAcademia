@@ -23,6 +23,7 @@ const BooksLessons = lazy(() => import("./pages/booksLessons.jsx"));
 const BooksContent = lazy(() => import("./pages/booksContent.jsx"));
 const StudentClassHistory = lazy(() => import("./pages/StudentClassHistory.jsx"));
 const StudentClassHistoryKid = lazy(() => import("./pages/StudentClassHistoryKid.jsx"));
+const ContractReview = lazy(() => import("./pages/ContractReview.jsx"));
 const PassRemarks = lazy(() => import("./pages/PassRemarks.jsx"));
 const TeacherAssignment = lazy(() => import("./pages/teacherAssignment.jsx"));
 const TeacherStudents = lazy(() => import("./pages/TeacherStudents.jsx"));
@@ -59,6 +60,7 @@ const router = createBrowserRouter([
       { path: "assignments", element: <Page><Assignments /></Page> },
       { path: "remarks", element: <Page><Remarks /></Page> },
       { path: "classHistory", element: <Page><StudentClassHistoryKid /></Page> },
+      { path: "ContractReview", element: <Page><ContractReview /></Page> },
       { path: "booksLessons", element: <Page><BooksLessons /></Page> },
       { path: "booksContent", element: <Page><BooksContent /></Page> },
       { path: "booksContent/:bookId", element: <Page><BooksContent mode="student" /></Page> },

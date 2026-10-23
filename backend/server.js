@@ -34,6 +34,11 @@ import {
   normalizeRequestType,
 } from "./contractRequestFlow.js";
 import { createRateLimiter } from "./rateLimit.js";
+import {
+  STUDENT_REVIEW_CRITERIA,
+  averageReviewScores,
+  parseReviewScores,
+} from "./contractReview.js";
 import { normalizePhoneNumber } from "./phoneNumber.js";
 import {
   hashCode,
@@ -65,6 +70,7 @@ import { deleteRecordingFromDrive, extractDriveFileId, isGoogleDriveConfigured, 
 import {
   buildLevelEvaluationNotes,
   computeProficiencyLevel,
+  formatComputedLevel,
   parseLevelScores,
 } from "./proficiencyEvaluation.js";
 import {
@@ -2429,6 +2435,46 @@ async function ensureClassAttendanceLogsTable() {
   }
 }
 
+/**
+ * One row per completed contract, holding both sides of the final review.
+ *
+ * The review is deliberately separate from class_remarks: a class remark is a
+ * note about one lesson, while this is the closing evaluation of a whole
+ * contract and the only thing allowed to change the student's proficiency level
+ * after the contract ends.
+ */
+async function ensureContractReviewsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS contract_reviews (
+      review_id INT NOT NULL AUTO_INCREMENT,
+      package_id INT NOT NULL,
+      student_id INT NOT NULL,
+      teacher_id INT NOT NULL,
+      teacher_scores TEXT DEFAULT NULL,
+      teacher_comments TEXT DEFAULT NULL,
+      computed_level VARCHAR(50) DEFAULT NULL,
+      teacher_submitted_at TIMESTAMP NULL DEFAULT NULL,
+      student_scores TEXT DEFAULT NULL,
+      student_comments TEXT DEFAULT NULL,
+      student_overall_rating DECIMAL(3,2) DEFAULT NULL,
+      student_submitted_at TIMESTAMP NULL DEFAULT NULL,
+      completion_notified_at TIMESTAMP NULL DEFAULT NULL,
+      created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (review_id),
+      UNIQUE KEY unique_contract_review (package_id),
+      KEY idx_contract_reviews_teacher (teacher_id, teacher_submitted_at),
+      KEY idx_contract_reviews_student (student_id, student_submitted_at),
+      CONSTRAINT contract_reviews_package_fk FOREIGN KEY (package_id)
+        REFERENCES student_class_packages (package_id) ON DELETE CASCADE,
+      CONSTRAINT contract_reviews_student_fk FOREIGN KEY (student_id)
+        REFERENCES users (user_id) ON DELETE CASCADE,
+      CONSTRAINT contract_reviews_teacher_fk FOREIGN KEY (teacher_id)
+        REFERENCES users (user_id) ON DELETE CASCADE
+    )
+  `);
+}
+
 async function ensureStudentCourseProgressTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS student_course_progress (
@@ -3206,6 +3252,7 @@ const SCHEMA_STEPS = [
   ["book teachers table", ensureBookTeachersTable],
   ["lesson progress table", ensureLessonProgressTable],
   ["class attendance logs table", ensureClassAttendanceLogsTable],
+  ["contract reviews table", ensureContractReviewsTable],
   ["student course progress table", ensureStudentCourseProgressTable],
   ["user profile image column", ensureUserProfileImageColumn],
   ["user password changed column", ensureUserPasswordChangedColumn],
@@ -3393,20 +3440,6 @@ const PROFICIENCY_LEVELS = new Set([
   "intermediate-high",
   "advanced",
 ]);
-
-const PROFICIENCY_LEVEL_LABELS = {
-  "novice-low": "Novice Low",
-  "novice-mid": "Novice Mid",
-  "novice-high": "Novice High",
-  "intermediate-low": "Intermediate Low",
-  "intermediate-mid": "Intermediate Mid",
-  "intermediate-high": "Intermediate High",
-  advanced: "Advanced (Fluent)",
-};
-
-function formatProficiencyLevel(value) {
-  return PROFICIENCY_LEVEL_LABELS[value] || String(value || "").replace(/-/g, " ");
-}
 
 function normalizeProficiencyLevel(value) {
   const normalized = String(value || "").trim().toLowerCase().replace(/\s+/g, "-");
@@ -3810,6 +3843,133 @@ async function expireFinishedPackages(db = pool) {
       WHERE status = 'active'
         AND (classes_left <= 0 OR (expires_at IS NOT NULL AND expires_at <= NOW()))`
   );
+}
+
+const CONTRACT_REVIEW_ACTION_URL = "/ContractReview";
+
+/**
+ * Make sure a completed contract has its one review row.
+ *
+ * The row is created when the last class is completed, but historic contracts
+ * finished before this feature existed. This helper is safe to call from both
+ * places: the UNIQUE package_id key makes the insert idempotent, and the first
+ * teacher recorded wins so a later reassignment cannot move an old review to a
+ * different teacher.
+ */
+async function ensureContractReviewForCompletedPackage(db, packageId, preferredTeacherId = null) {
+  const [packageRows] = await db.query(
+    `SELECT p.package_id, p.student_id, p.total_classes, p.classes_used, p.classes_left, p.status,
+            sp.assigned_teacher_id,
+            (SELECT c.teacher_id
+               FROM classes c
+              WHERE c.student_id = p.student_id
+                AND c.status = 'completed'
+              ORDER BY c.scheduled_date DESC, c.start_time DESC, c.class_id DESC
+              LIMIT 1) AS latest_teacher_id
+       FROM student_class_packages p
+       JOIN student_profiles sp ON sp.user_id = p.student_id
+      WHERE p.package_id = ?
+      LIMIT 1`,
+    [packageId]
+  );
+
+  if (!packageRows.length) return null;
+
+  const packageInfo = packageRows[0];
+  const totalClasses = Number(packageInfo.total_classes || 0);
+  const usedClasses = Number(packageInfo.classes_used || 0);
+  const isComplete = totalClasses > 0 && usedClasses >= totalClasses;
+
+  // A contract that merely ran out of time is not finished. There are classes
+  // left that the student could still extend, so there is nothing to review yet.
+  if (!isComplete || packageInfo.status !== "expired") return null;
+
+  const teacherId =
+    preferredTeacherId || packageInfo.assigned_teacher_id || packageInfo.latest_teacher_id || null;
+
+  if (!teacherId) return null;
+
+  await db.query(
+    `INSERT IGNORE INTO contract_reviews (package_id, student_id, teacher_id)
+     VALUES (?, ?, ?)`,
+    [packageId, packageInfo.student_id, teacherId]
+  );
+
+  const [reviewRows] = await db.query(
+    "SELECT * FROM contract_reviews WHERE package_id = ? LIMIT 1",
+    [packageId]
+  );
+
+  return reviewRows[0] || null;
+}
+
+/**
+ * Send both sides the "contract is complete" prompt exactly once.
+ *
+ * completion_notified_at is the marker. It is set only after both notifications
+ * are written, so a transient failure is retried by the next visit instead of
+ * leaving one of the two people unwarned forever.
+ */
+async function notifyContractReviewReady(db, review) {
+  if (!review || review.completion_notified_at) return false;
+
+  const [rows] = await db.query(
+    `SELECT p.total_classes,
+            su.first_name AS student_first_name, su.last_name AS student_last_name,
+            tu.first_name AS teacher_first_name, tu.last_name AS teacher_last_name
+       FROM contract_reviews cr
+       JOIN student_class_packages p ON p.package_id = cr.package_id
+       JOIN users su ON su.user_id = cr.student_id
+       JOIN users tu ON tu.user_id = cr.teacher_id
+      WHERE cr.review_id = ?
+      LIMIT 1`,
+    [review.review_id]
+  );
+
+  if (!rows.length) return false;
+
+  const row = rows[0];
+  const studentName = `${row.student_first_name || ""} ${row.student_last_name || ""}`.trim() || "your student";
+  const teacherName = `${row.teacher_first_name || ""} ${row.teacher_last_name || ""}`.trim() || "your teacher";
+  const totalClasses = Number(row.total_classes || 0);
+  const classWord = totalClasses === 1 ? "class" : "classes";
+
+  await db.query(
+    `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+     VALUES (?, 'general', ?, ?, ?, 'contract_review', ?)`,
+    [
+      review.teacher_id,
+      encryptNullableText(`Contract complete: review ${studentName}`),
+      encryptNullableText(
+        `All ${totalClasses} ${classWord} on ${studentName}'s contract are complete. ` +
+          "Score the final level evaluation and leave your feedback."
+      ),
+      review.package_id,
+      CONTRACT_REVIEW_ACTION_URL,
+    ]
+  );
+
+  await db.query(
+    `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+     VALUES (?, 'general', ?, ?, ?, 'contract_review', ?)`,
+    [
+      review.student_id,
+      encryptNullableText("Contract complete: rate your teacher"),
+      encryptNullableText(
+        `You finished all ${totalClasses} ${classWord} with ${teacherName}. ` +
+          "Tell us how the classes went and rate your teacher."
+      ),
+      review.package_id,
+      CONTRACT_REVIEW_ACTION_URL,
+    ]
+  );
+
+  await db.query(
+    "UPDATE contract_reviews SET completion_notified_at = NOW() WHERE review_id = ?",
+    [review.review_id]
+  );
+
+  return true;
 }
 
 /**
@@ -6344,8 +6504,10 @@ app.put("/api/admin/student-contracts/:student_id", requireAdminSession, async (
       [courseIdValue, teacherIdValue, student_id]
     );
 
+    let reviewPackageId = package_id ? parseInt(package_id, 10) : null;
+
     if (package_id) {
-      await connection.query(
+      const [updateResult] = await connection.query(
         `UPDATE student_class_packages
          SET total_classes = ?, classes_used = ?, status = ?, class_duration = ?
          WHERE package_id = ? AND student_id = ?`,
@@ -6358,13 +6520,30 @@ app.put("/api/admin/student-contracts/:student_id", requireAdminSession, async (
           student_id,
         ]
       );
+      reviewPackageId = updateResult?.affectedRows ? parseInt(package_id, 10) : null;
     } else if (parsedTotal > 0) {
-      await connection.query(
+      const [insertResult] = await connection.query(
         `INSERT INTO student_class_packages
          (student_id, total_classes, classes_used, status, class_duration)
          VALUES (?, ?, ?, ?, ?)`,
         [student_id, parsedTotal, parsedUsed, packageStatus, parsedDuration]
       );
+      reviewPackageId = insertResult?.insertId || null;
+    }
+
+    if (reviewPackageId && parsedTotal > 0 && parsedUsed >= parsedTotal) {
+      const contractReview = await ensureContractReviewForCompletedPackage(
+        connection,
+        reviewPackageId,
+        teacherIdValue
+      );
+      if (contractReview) {
+        try {
+          await notifyContractReviewReady(connection, contractReview);
+        } catch (notificationError) {
+          console.error("Could not notify contract review readiness:", notificationError);
+        }
+      }
     }
 
     await connection.commit();
@@ -8718,6 +8897,21 @@ app.put("/api/admin/class-verifications/:class_id/approve", requireAdminSession,
         [packageRows[0].package_id]
       );
       updatedPackage = updatedPackageRows[0] || null;
+
+      if (updatedPackage) {
+        const contractReview = await ensureContractReviewForCompletedPackage(
+          connection,
+          updatedPackage.package_id,
+          classInfo.teacher_id
+        );
+        if (contractReview) {
+          try {
+            await notifyContractReviewReady(connection, contractReview);
+          } catch (notificationError) {
+            console.error("Could not notify contract review readiness:", notificationError);
+          }
+        }
+      }
     }
 
     const { package: refreshedPackage, bookedClasses: refreshedBookedClasses, bookableClasses: refreshedBookableClasses } =
@@ -9232,7 +9426,7 @@ app.put("/api/calendar/classes/:class_id/complete", requireSession, requireClass
 
   try {
     const { class_id } = req.params;
-    const { teacher_id, proficiency_level, assessment_notes } = req.body;
+    const { teacher_id } = req.body;
 
     if (!class_id || !teacher_id) {
       return res.status(400).json({ message: "Missing class_id or teacher_id" });
@@ -9312,11 +9506,6 @@ app.put("/api/calendar/classes/:class_id/complete", requireSession, requireClass
     }
 
     const isFinalClass = Number(currentPackage.classes_left) === 1;
-    const normalizedAssessmentLevel = normalizeProficiencyLevel(proficiency_level);
-    if (isFinalClass && !normalizedAssessmentLevel) {
-      await connection.rollback();
-      return res.status(400).json({ message: "A proficiency level is required for the student's final class assessment" });
-    }
 
     await connection.query(
       `UPDATE classes SET status = 'completed' WHERE class_id = ?`,
@@ -9341,40 +9530,27 @@ app.put("/api/calendar/classes/:class_id/complete", requireSession, requireClass
       [currentPackage.package_id]
     );
 
+    // The old flow forced a hand-picked proficiency level into this request and
+    // would not let the teacher complete the last class without it. That is gone:
+    // completion is about the class, and the closing evaluation now lives on the
+    // Contract Reviews page where it can be scored properly after the contract.
+    let contractReview = null;
     if (isFinalClass) {
-      await connection.query(
-        `UPDATE student_profiles
-         SET proficiency_level = ?
-         WHERE user_id = ?`,
-        [normalizedAssessmentLevel, classInfo.student_id]
+      contractReview = await ensureContractReviewForCompletedPackage(
+        connection,
+        currentPackage.package_id,
+        classInfo.teacher_id
       );
 
-      const trimmedAssessmentNotes = String(assessment_notes || "").trim();
-      if (trimmedAssessmentNotes) {
-        const [trialRows] = await connection.query(
-          `SELECT trial_notes
-           FROM student_profiles
-           WHERE user_id = ?
-           LIMIT 1
-           FOR UPDATE`,
-          [classInfo.student_id]
-        );
-
-        const currentTrialNotes = decryptNullableText(trialRows[0]?.trial_notes || null);
-        const finalAssessmentNotes = [
-          currentTrialNotes || "",
-          `Final assessment (${formatProficiencyLevel(normalizedAssessmentLevel)}):`,
-          trimmedAssessmentNotes,
-        ]
-          .filter((part) => String(part).trim())
-          .join("\n\n");
-
-        await connection.query(
-          `UPDATE student_profiles
-           SET trial_notes = ?
-           WHERE user_id = ?`,
-          [encryptNullableText(finalAssessmentNotes || null), classInfo.student_id]
-        );
+      if (contractReview) {
+        try {
+          await notifyContractReviewReady(connection, contractReview);
+        } catch (notificationError) {
+          // The class is already complete and the review row exists. A missing
+          // notification must not roll that back; the review is still waiting on
+          // the Contract Reviews page.
+          console.error("Could not notify contract review readiness:", notificationError);
+        }
       }
     }
 
@@ -9392,13 +9568,395 @@ app.put("/api/calendar/classes/:class_id/complete", requireSession, requireClass
         status: "completed",
       },
       package: updatedPackageRows[0],
-      assessment_updated: isFinalClass,
-      proficiency_level: isFinalClass ? normalizedAssessmentLevel : null,
+      contract_completed: isFinalClass,
+      contract_review_ready: Boolean(contractReview),
     });
   } catch (err) {
     await connection.rollback();
     console.error(err);
     res.status(500).json({ message: "Error marking class as done" });
+  } finally {
+    connection.release();
+  }
+});
+
+function parseContractReviewScores(value) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function averageScoreMap(scores) {
+  if (!scores || typeof scores !== "object") return null;
+  const values = Object.values(scores).filter((value) => Number.isFinite(Number(value)));
+  if (!values.length) return null;
+  return values.reduce((sum, value) => sum + Number(value), 0) / values.length;
+}
+
+function serializeContractReviewRow(row, role) {
+  const teacherScores = parseContractReviewScores(row.teacher_scores);
+  const studentScores = parseContractReviewScores(row.student_scores);
+  const teacherAverage = averageScoreMap(teacherScores);
+  const storedStudentRating =
+    row.student_overall_rating == null ? null : Number(row.student_overall_rating);
+  const studentAverage = Number.isFinite(storedStudentRating)
+    ? storedStudentRating
+    : averageReviewScores(studentScores, STUDENT_REVIEW_CRITERIA);
+  const teacherSubmitted = Boolean(row.teacher_submitted_at);
+  const studentSubmitted = Boolean(row.student_submitted_at);
+
+  return {
+    review_id: Number(row.review_id),
+    package_id: Number(row.package_id),
+    student_id: Number(row.student_id),
+    teacher_id: Number(row.teacher_id),
+    student_name:
+      `${row.student_first_name || ""} ${row.student_last_name || ""}`.trim() || "Student",
+    teacher_name:
+      `${row.teacher_first_name || ""} ${row.teacher_last_name || ""}`.trim() || "Teacher",
+    student_profile_image_url: row.student_profile_image_url || "",
+    teacher_profile_image_url: row.teacher_profile_image_url || "",
+    total_classes: Number(row.total_classes || 0),
+    classes_used: Number(row.classes_used || 0),
+    completed_at: row.completed_at,
+    student_proficiency_level: row.student_proficiency_level || "",
+    teacher_review: teacherSubmitted
+      ? {
+          scores: teacherScores,
+          average: teacherAverage,
+          comments: decryptNullableText(row.teacher_comments) || "",
+          computed_level: row.computed_level || "",
+          submitted_at: row.teacher_submitted_at,
+        }
+      : null,
+    student_review: studentSubmitted
+      ? {
+          scores: studentScores,
+          average: studentAverage,
+          comments: decryptNullableText(row.student_comments) || "",
+          submitted_at: row.student_submitted_at,
+        }
+      : null,
+    pending_for_you: role === "teacher" ? !teacherSubmitted : !studentSubmitted,
+    review_complete: teacherSubmitted && studentSubmitted,
+    reviewer_role: role,
+  };
+}
+
+const CONTRACT_REVIEW_SELECT = `
+  SELECT cr.review_id, cr.package_id, cr.student_id, cr.teacher_id,
+         cr.teacher_scores, cr.teacher_comments, cr.computed_level, cr.teacher_submitted_at,
+         cr.student_scores, cr.student_comments, cr.student_overall_rating, cr.student_submitted_at,
+         p.total_classes, p.classes_used, p.updated_at AS completed_at,
+         sp.proficiency_level AS student_proficiency_level,
+         su.first_name AS student_first_name, su.last_name AS student_last_name,
+         su.profile_image_url AS student_profile_image_url,
+         tu.first_name AS teacher_first_name, tu.last_name AS teacher_last_name,
+         tu.profile_image_url AS teacher_profile_image_url
+    FROM contract_reviews cr
+    JOIN student_class_packages p ON p.package_id = cr.package_id
+    JOIN student_profiles sp ON sp.user_id = cr.student_id
+    JOIN users su ON su.user_id = cr.student_id
+    JOIN users tu ON tu.user_id = cr.teacher_id
+`;
+
+app.get("/api/contract-reviews", requireSession, async (req, res) => {
+  const session = req.session || {};
+  const role = session.role;
+  const userId = session.userId;
+
+  if (!["teacher", "student"].includes(role)) {
+    return res.status(403).json({ message: "Only teachers and students have contract reviews." });
+  }
+
+  try {
+    await expireFinishedPackages();
+
+    const [candidates] =
+      role === "teacher"
+        ? await pool.query(
+            `SELECT p.package_id,
+                    COALESCE(cr.teacher_id, sp.assigned_teacher_id) AS resolved_teacher_id
+               FROM student_class_packages p
+               JOIN student_profiles sp ON sp.user_id = p.student_id
+               LEFT JOIN contract_reviews cr ON cr.package_id = p.package_id
+              WHERE p.status = 'expired'
+                AND p.total_classes > 0
+                AND p.classes_used >= p.total_classes
+                AND (
+                  cr.teacher_id = ?
+                  OR (cr.review_id IS NULL AND sp.assigned_teacher_id = ?)
+                )`,
+            [userId, userId]
+          )
+        : await pool.query(
+            `SELECT p.package_id, NULL AS resolved_teacher_id
+               FROM student_class_packages p
+              WHERE p.student_id = ?
+                AND p.status = 'expired'
+                AND p.total_classes > 0
+                AND p.classes_used >= p.total_classes`,
+            [userId]
+          );
+
+    // Historic contracts pre-date this table. Create their review row before the
+    // list is read, using the student's current assignment. Classes are not tied
+    // to a package, so an older contract cannot recover its original teacher
+    // once the student has been reassigned.
+    for (const candidate of candidates) {
+      try {
+        const review = await ensureContractReviewForCompletedPackage(
+          pool,
+          candidate.package_id,
+          candidate.resolved_teacher_id
+        );
+        if (review) await notifyContractReviewReady(pool, review);
+      } catch (err) {
+        console.warn("Could not backfill contract review:", candidate.package_id, err?.message || err);
+      }
+    }
+
+    const [rows] =
+      role === "teacher"
+        ? await pool.query(
+            `${CONTRACT_REVIEW_SELECT}
+              WHERE cr.teacher_id = ?
+              ORDER BY p.updated_at DESC, cr.review_id DESC`,
+            [userId]
+          )
+        : await pool.query(
+            `${CONTRACT_REVIEW_SELECT}
+              WHERE cr.student_id = ?
+              ORDER BY p.updated_at DESC, cr.review_id DESC`,
+            [userId]
+          );
+
+    res.json({
+      role,
+      reviews: rows.map((row) => serializeContractReviewRow(row, role)),
+    });
+  } catch (err) {
+    console.error("GET /api/contract-reviews error:", err);
+    res.status(500).json({ message: "Error fetching contract reviews" });
+  }
+});
+
+app.post("/api/contract-reviews/:package_id/teacher", requireSession, async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const packageId = parseInt(req.params.package_id, 10);
+    const role = req.session?.role;
+    const userId = req.session?.userId;
+
+    if (role !== "teacher") {
+      return res.status(403).json({ message: "Only the contract teacher can submit this evaluation." });
+    }
+    if (!packageId) {
+      return res.status(400).json({ message: "Missing contract" });
+    }
+
+    const scores = parseLevelScores(req.body?.scores);
+    const computed = computeProficiencyLevel(scores);
+
+    if (!scores || !computed) {
+      return res.status(400).json({
+        message: "Score all five level criteria from 1 to 5 before submitting.",
+      });
+    }
+
+    const comments = String(req.body?.comments || "").trim().slice(0, 4000);
+
+    await connection.beginTransaction();
+
+    const ensured = await ensureContractReviewForCompletedPackage(connection, packageId);
+    if (!ensured) {
+      await connection.rollback();
+      return res.status(404).json({
+        message: "This contract is not complete yet, so there is no final evaluation to submit.",
+      });
+    }
+
+    const [rows] = await connection.query(
+      `SELECT cr.*, p.total_classes, p.classes_used, p.status
+         FROM contract_reviews cr
+         JOIN student_class_packages p ON p.package_id = cr.package_id
+        WHERE cr.package_id = ?
+        FOR UPDATE`,
+      [packageId]
+    );
+
+    if (!rows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: "Contract review not found" });
+    }
+
+    const review = rows[0];
+    if (String(review.teacher_id) !== String(userId)) {
+      await connection.rollback();
+      return res.status(403).json({ message: "Only the contract teacher can submit this evaluation." });
+    }
+    if (review.status !== "expired" || Number(review.classes_used) < Number(review.total_classes)) {
+      await connection.rollback();
+      return res.status(400).json({ message: "This contract is not complete yet." });
+    }
+    if (review.teacher_submitted_at) {
+      await connection.rollback();
+      return res.status(409).json({ message: "You have already submitted the final evaluation." });
+    }
+
+    await connection.query(
+      `UPDATE contract_reviews
+          SET teacher_scores = ?, teacher_comments = ?, computed_level = ?, teacher_submitted_at = NOW()
+        WHERE review_id = ?`,
+      [JSON.stringify(scores), encryptNullableText(comments || null), computed.level, review.review_id]
+    );
+
+    await connection.query(
+      "UPDATE student_profiles SET proficiency_level = ? WHERE user_id = ?",
+      [computed.level, review.student_id]
+    );
+
+    await connection.query(
+      `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+       VALUES (?, 'general', ?, ?, ?, 'contract_review', ?)`,
+      [
+        review.student_id,
+        encryptNullableText("Your contract evaluation is ready"),
+        encryptNullableText(
+          `Your teacher submitted the final evaluation. Your proficiency level is now ${formatComputedLevel(
+            computed.level
+          )}.`
+        ),
+        packageId,
+        CONTRACT_REVIEW_ACTION_URL,
+      ]
+    );
+
+    await connection.commit();
+
+    res.json({
+      message: "Final evaluation submitted",
+      computed_level: computed.level,
+      computed_level_label: formatComputedLevel(computed.level),
+    });
+  } catch (err) {
+    await connection.rollback();
+    console.error("POST contract review (teacher) error:", err);
+    res.status(500).json({ message: "Error submitting contract review" });
+  } finally {
+    connection.release();
+  }
+});
+
+app.post("/api/contract-reviews/:package_id/student", requireSession, async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const packageId = parseInt(req.params.package_id, 10);
+    const role = req.session?.role;
+    const userId = req.session?.userId;
+
+    if (role !== "student") {
+      return res.status(403).json({ message: "Only the contract student can submit this rating." });
+    }
+    if (!packageId) {
+      return res.status(400).json({ message: "Missing contract" });
+    }
+
+    const scores = parseReviewScores(req.body?.scores);
+    const overallRating = averageReviewScores(scores);
+
+    if (!scores || overallRating == null) {
+      return res.status(400).json({
+        message: "Rate all five teaching criteria from 1 to 5 before submitting.",
+      });
+    }
+
+    const comments = String(req.body?.comments || "").trim().slice(0, 4000);
+
+    await connection.beginTransaction();
+
+    const ensured = await ensureContractReviewForCompletedPackage(connection, packageId);
+    if (!ensured) {
+      await connection.rollback();
+      return res.status(404).json({
+        message: "This contract is not complete yet, so there is no teacher rating to submit.",
+      });
+    }
+
+    const [rows] = await connection.query(
+      `SELECT cr.*, p.total_classes, p.classes_used, p.status
+         FROM contract_reviews cr
+         JOIN student_class_packages p ON p.package_id = cr.package_id
+        WHERE cr.package_id = ?
+        FOR UPDATE`,
+      [packageId]
+    );
+
+    if (!rows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: "Contract review not found" });
+    }
+
+    const review = rows[0];
+    if (String(review.student_id) !== String(userId)) {
+      await connection.rollback();
+      return res.status(403).json({ message: "Only the contract student can submit this rating." });
+    }
+    if (review.status !== "expired" || Number(review.classes_used) < Number(review.total_classes)) {
+      await connection.rollback();
+      return res.status(400).json({ message: "This contract is not complete yet." });
+    }
+    if (review.student_submitted_at) {
+      await connection.rollback();
+      return res.status(409).json({ message: "You have already rated this contract." });
+    }
+
+    await connection.query(
+      `UPDATE contract_reviews
+          SET student_scores = ?, student_comments = ?, student_overall_rating = ?, student_submitted_at = NOW()
+        WHERE review_id = ?`,
+      [JSON.stringify(scores), encryptNullableText(comments || null), overallRating, review.review_id]
+    );
+
+    const [studentRows] = await connection.query(
+      "SELECT first_name, last_name FROM users WHERE user_id = ? LIMIT 1",
+      [review.student_id]
+    );
+    const studentName =
+      `${studentRows[0]?.first_name || ""} ${studentRows[0]?.last_name || ""}`.trim() || "Your student";
+
+    const feedbackText = comments ? " and left a comment" : "";
+    await connection.query(
+      `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+       VALUES (?, 'general', ?, ?, ?, 'contract_review', ?)`,
+      [
+        review.teacher_id,
+        encryptNullableText("Your student rated the contract"),
+        encryptNullableText(
+          `${studentName} rated the classes ${overallRating.toFixed(1)} out of 5${feedbackText}.`
+        ),
+        packageId,
+        CONTRACT_REVIEW_ACTION_URL,
+      ]
+    );
+
+    await connection.commit();
+
+    res.json({
+      message: "Rating submitted",
+      overall_rating: Number(overallRating.toFixed(2)),
+    });
+  } catch (err) {
+    await connection.rollback();
+    console.error("POST contract review (student) error:", err);
+    res.status(500).json({ message: "Error submitting contract rating" });
   } finally {
     connection.release();
   }

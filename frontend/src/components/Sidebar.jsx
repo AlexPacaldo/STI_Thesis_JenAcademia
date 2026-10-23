@@ -132,6 +132,7 @@ function Sidebar({ isMobileOpen = false, onClose }) {
   const isAssignmentsPage = path === "/assignments";
   const isRemarksPage = path === "/remarks";
   const isClassHistoryPage = path === "/classHistory";
+  const isContractReviewPage = path === "/ContractReview";
   const isBooksLessonsPage = path === "/booksLessons";
   const isBooksContentPage = path === "/booksContent" || path.startsWith("/booksContent/");
 
@@ -159,6 +160,7 @@ function Sidebar({ isMobileOpen = false, onClose }) {
     isAssignmentsPage ||
     isRemarksPage ||
     isClassHistoryPage ||
+    isContractReviewPage ||
     isBooksLessonsPage ||
     isCalendarPage ||
     isBooksContentPage;
@@ -172,6 +174,7 @@ function Sidebar({ isMobileOpen = false, onClose }) {
     isAccountPage ||
     isCalendarPage ||
     isPassRemarksPage ||
+    isContractReviewPage ||
     isTeacherAssignmentPage ||
     isTeacherBooksLessonsPage ||
     isTeacherBooksContentPage ||
@@ -192,6 +195,7 @@ function Sidebar({ isMobileOpen = false, onClose }) {
       // has been a route and a screen for a while - it just was not
       // reachable from the menu.
       { to: "/classHistory", label: "Class history", icon: "bi-clock-history" },
+      { to: "/ContractReview", label: "Contract reviews", icon: "bi-star-fill" },
       { to: "/assignments", label: "Assignments", icon: "bi-journal-text" },
       { to: "/remarks", label: "Remarks", icon: "bi-chat-left-text" },
       { to: "/booksLessons", label: "Books/Lessons", icon: "bi-book" },
@@ -201,6 +205,7 @@ function Sidebar({ isMobileOpen = false, onClose }) {
       { to: "/Calendar", label: "Calendar", icon: "bi-calendar3" },
       { to: "/teacherStudents", label: "My students", icon: "bi-people" },
       { to: "/teacherClassHistory", label: "Class history", icon: "bi-clock-history" },
+      { to: "/ContractReview", label: "Contract reviews", icon: "bi-star-fill" },
       { to: "/PassRemarks", label: "Remarks", icon: "bi-chat-left-text" },
       { to: "/teacherAssignment", label: "Assignments", icon: "bi-journal-text" },
       { to: "/teacherBooksLessons", label: "My books", icon: "bi-book" },

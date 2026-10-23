@@ -214,6 +214,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
   const isAssignmentsPage = path === "/assignments";
   const isRemarksPage = path === "/remarks";
   const isClassHistoryPage = path === "/classHistory";
+  const isContractReviewPage = path === "/ContractReview";
   const isBooksLessonsPage = path === "/booksLessons";
   const isBooksContentPage = path === "/booksContent" || path.startsWith("/booksContent/");
 
@@ -249,6 +250,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
     isAssignmentsPage ||
     isRemarksPage ||
     isClassHistoryPage ||
+    isContractReviewPage ||
     isBooksLessonsPage ||
     isCalendarPage ||
     isBooksContentPage;
@@ -262,6 +264,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
     isAccountPage ||
     isCalendarPage ||
     isPassRemarksPage ||
+    isContractReviewPage ||
     isTeacherAssignmentPage ||
     isTeacherBooksLessonsPage ||
     isTeacherBooksContentPage ||

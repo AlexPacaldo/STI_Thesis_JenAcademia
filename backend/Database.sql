@@ -573,6 +573,39 @@ INSERT INTO `student_class_packages` (`package_id`, `student_id`, `total_classes
 UNLOCK TABLES;
 
 --
+-- Table structure for table `contract_reviews`
+--
+
+DROP TABLE IF EXISTS `contract_reviews`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `contract_reviews` (
+  `review_id` int NOT NULL AUTO_INCREMENT,
+  `package_id` int NOT NULL,
+  `student_id` int NOT NULL,
+  `teacher_id` int NOT NULL,
+  `teacher_scores` text,
+  `teacher_comments` text,
+  `computed_level` varchar(50) DEFAULT NULL,
+  `teacher_submitted_at` timestamp NULL DEFAULT NULL,
+  `student_scores` text,
+  `student_comments` text,
+  `student_overall_rating` decimal(3,2) DEFAULT NULL,
+  `student_submitted_at` timestamp NULL DEFAULT NULL,
+  `completion_notified_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`review_id`),
+  UNIQUE KEY `unique_contract_review` (`package_id`),
+  KEY `idx_contract_reviews_teacher` (`teacher_id`,`teacher_submitted_at`),
+  KEY `idx_contract_reviews_student` (`student_id`,`student_submitted_at`),
+  CONSTRAINT `contract_reviews_package_fk` FOREIGN KEY (`package_id`) REFERENCES `student_class_packages` (`package_id`) ON DELETE CASCADE,
+  CONSTRAINT `contract_reviews_student_fk` FOREIGN KEY (`student_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  CONSTRAINT `contract_reviews_teacher_fk` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `student_contract_requests`
 --
 

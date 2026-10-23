@@ -48,7 +48,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
-import { PROFICIENCY_LEVEL_OPTIONS, formatProficiencyLevel } from "../utils/proficiencyLevels.js";
+import { formatProficiencyLevel } from "../utils/proficiencyLevels.js";
 import {
   WEEKDAY_CHOICES,
   createEmptyCriteria,
@@ -1186,10 +1186,6 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [isMarkingClassDone, setIsMarkingClassDone] = useState(false);
   const [classEntryConfirmOpen, setClassEntryConfirmOpen] = useState(false);
   const [classDoneConfirmOpen, setClassDoneConfirmOpen] = useState(false);
-  const [classDoneAssessmentOpen, setClassDoneAssessmentOpen] = useState(false);
-  const [classDoneAssessmentLevel, setClassDoneAssessmentLevel] = useState("");
-  const [classDoneAssessmentNotes, setClassDoneAssessmentNotes] = useState("");
-  const [classDoneAssessmentError, setClassDoneAssessmentError] = useState("");
   const [requestError, setRequestError] = useState("");
   const [localRole, setLocalRole] = useState("");
   const [localUserId, setLocalUserId] = useState(null);
@@ -4099,30 +4095,10 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return;
     }
 
-    setIsMarkingClassDone(true);
-    try {
-      const profileResponse = await axios.get(`${API}/api/student/profile/${selectedClass.student_id}`);
-      const packageInfo = profileResponse.data?.package || null;
-      const isFinalClass = Number(packageInfo?.classes_left) === 1;
-
-      if (isFinalClass) {
-        setClassDoneAssessmentError("");
-        setClassDoneAssessmentLevel(profileResponse.data?.profile?.proficiency_level || "novice-low");
-        setClassDoneAssessmentNotes("");
-        setClassDoneConfirmOpen(false);
-        setClassDoneAssessmentOpen(true);
-        return;
-      }
-    } catch (error) {
-      console.warn("Could not load final-class assessment context:", error);
-    } finally {
-      setIsMarkingClassDone(false);
-    }
-
     await markSelectedClassDone({ verifiedOverride });
   };
 
-  const markSelectedClassDone = async ({ proficiencyLevel = "", assessmentNotes = "", verifiedOverride = false } = {}) => {
+  const markSelectedClassDone = async ({ verifiedOverride = false } = {}) => {
     if (!selectedClassVerified && !verifiedOverride) {
       notify?.("Verify the class first before marking it done.", "error");
       return;
@@ -4132,8 +4108,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     try {
       const response = await axios.put(`${API}/api/calendar/classes/${selectedClass.id}/complete`, {
         teacher_id: localUserId,
-        proficiency_level: proficiencyLevel,
-        assessment_notes: assessmentNotes,
       });
 
       setClassesCache(prev => ({
@@ -4157,11 +4131,9 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       }
 
       setClassDoneConfirmOpen(false);
-      setClassDoneAssessmentOpen(false);
-      setClassDoneAssessmentError("");
       notify?.(
-        response.data?.assessment_updated
-          ? "Class marked as done. Student proficiency updated."
+        response.data?.contract_completed
+          ? "Class marked as done. Contract complete — final reviews are now open for both of you."
           : "Class marked as done. Student class count updated.",
         "success"
       );
@@ -4171,19 +4143,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     } finally {
       setIsMarkingClassDone(false);
     }
-  };
-
-  const submitClassDoneAssessment = async () => {
-    if (!classDoneAssessmentLevel) {
-      setClassDoneAssessmentError("Please choose a proficiency level before completing the class.");
-      return;
-    }
-
-    setClassDoneAssessmentError("");
-    await markSelectedClassDone({
-      proficiencyLevel: classDoneAssessmentLevel,
-      assessmentNotes: classDoneAssessmentNotes,
-    });
   };
 
   const markSelectedClassNoShow = async () => {
@@ -9001,155 +8960,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
               }}
             >
               {isMarkingClassDone ? "Confirming..." : "Confirm Done"}
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
-    {classDoneAssessmentOpen && selectedClass && (
-      <div
-        role="presentation"
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(15, 23, 42, 0.5)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 20,
-          zIndex: 2100,
-        }}
-      >
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="assessment-title"
-          style={{
-            width: "min(520px, 100%)",
-            background: "#fff",
-            border: "1px solid rgba(38, 66, 59, 0.12)",
-            borderRadius: 24,
-            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
-            padding: 24,
-            animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
-          }}
-        >
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: "50%",
-              background: "#eef2ff",
-              color: "#4338ca",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 800,
-              fontSize: 18,
-              marginBottom: 14,
-            }}
-          >
-            QA
-          </div>
-          <h3 id="assessment-title" style={{ margin: "0 0 8px", fontSize: "1.15rem", color: "#111827" }}>
-            Final class assessment
-          </h3>
-          <p style={{ margin: "0 0 16px", color: "#4b5563", lineHeight: 1.5, fontSize: "0.92rem" }}>
-            This is the student's last class in the current contract. Please choose the updated proficiency level before finishing.
-          </p>
-          <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, background: "#f9fafb", padding: "12px 14px", marginBottom: 16 }}>
-            <div style={{ fontWeight: 700, color: "#111827", marginBottom: 4 }}>
-              {selectedClass.studentName || "Selected student"}
-            </div>
-            <div style={{ fontSize: "0.85rem", color: "#4b5563" }}>
-              {selectedClass.className || "Class"} - {selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration, selectedClass.end_time)}
-            </div>
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 700, marginBottom: 6, color: "#374151" }}>
-              Proficiency level
-            </label>
-            <select
-              value={classDoneAssessmentLevel}
-              onChange={(e) => setClassDoneAssessmentLevel(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                border: "1px solid #d1d5db",
-                borderRadius: 8,
-                fontFamily: "inherit",
-                background: "#fff",
-              }}
-            >
-              <option value="">Select level</option>
-              {PROFICIENCY_LEVEL_OPTIONS.map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </div>
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 700, marginBottom: 6, color: "#374151" }}>
-              Notes
-            </label>
-            <textarea
-              value={classDoneAssessmentNotes}
-              onChange={(e) => setClassDoneAssessmentNotes(e.target.value)}
-              rows={4}
-              placeholder="Optional quick notes about the student's performance..."
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                border: "1px solid #d1d5db",
-                borderRadius: 8,
-                fontFamily: "inherit",
-                resize: "vertical",
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
-          {classDoneAssessmentError && (
-            <div style={{ marginBottom: 14, padding: 10, borderRadius: 8, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: 12 }}>
-              {classDoneAssessmentError}
-            </div>
-          )}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-            <button
-              type="button"
-              onClick={() => {
-                setClassDoneAssessmentOpen(false);
-                setClassDoneConfirmOpen(true);
-                setClassDoneAssessmentError("");
-              }}
-              disabled={isMarkingClassDone}
-              style={{
-                border: "1px solid rgba(38, 66, 59, 0.14)",
-                background: "#fff",
-                color: "#26423b",
-                borderRadius: 14,
-                padding: "10px 18px",
-                minHeight: 42,
-                fontWeight: 700,
-                cursor: isMarkingClassDone ? "not-allowed" : "pointer",
-              }}
-            >
-              Back
-            </button>
-            <button
-              type="button"
-              onClick={submitClassDoneAssessment}
-              disabled={isMarkingClassDone}
-              style={{
-                border: "none",
-                background: "#4338ca",
-                color: "#fff",
-                borderRadius: 8,
-                padding: "10px 16px",
-                fontWeight: 700,
-                cursor: isMarkingClassDone ? "not-allowed" : "pointer",
-                boxShadow: "0 8px 18px rgba(67, 56, 202, 0.22)",
-              }}
-            >
-              {isMarkingClassDone ? "Saving..." : "Save Assessment & Complete"}
             </button>
           </div>
         </div>
