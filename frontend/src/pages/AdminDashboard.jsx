@@ -31,6 +31,7 @@ import {
   toggleValue,
 } from "../utils/matchingCriteria.js";
 import CriteriaChipField, { CUSTOM_OPTION_VALUE } from "../components/CriteriaChipField.jsx";
+import AdminContractReviews from "../components/AdminContractReviews.jsx";
 import AdminOverview from "../components/AdminOverview.jsx";
 import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
@@ -54,6 +55,7 @@ const ADMIN_TABS = [
   "verifications",
   "requests",
   "contracts",
+  "reviews",
   "teacherCourses",
   "createTeacher",
   "createStudent",
@@ -4013,6 +4015,12 @@ export default function AdminDashboard() {
             </div>
             </>
             )}
+          </section>
+        )}
+
+        {active === "reviews" && (
+          <section className={styles.card}>
+            <AdminContractReviews />
           </section>
         )}
 

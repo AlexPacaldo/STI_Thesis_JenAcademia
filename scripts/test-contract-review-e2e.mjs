@@ -34,6 +34,7 @@ const PASSWORD = "JEN2026!ReviewTest";
 const STUDENT_EMAIL = `contract-review-student-${STAMP}@student.jenacademia.local`;
 const TEACHER_EMAIL = `contract-review-teacher-${STAMP}@teacher.jenacademia.local`;
 const OTHER_TEACHER_EMAIL = `contract-review-other-${STAMP}@teacher.jenacademia.local`;
+const ADMIN_EMAIL = `contract-review-admin-${STAMP}@jenacademia.local`;
 
 let passed = 0;
 const failures = [];
@@ -93,6 +94,7 @@ const created = {
   studentId: null,
   teacherId: null,
   otherTeacherId: null,
+  adminId: null,
   packageIds: [],
 };
 
@@ -126,6 +128,13 @@ function authHeaders(token) {
 
 async function getReviews(token) {
   const response = await fetch(`${BASE}/api/contract-reviews`, {
+    headers: authHeaders(token),
+  });
+  return { status: response.status, body: await response.json() };
+}
+
+async function getAdminReports(token) {
+  const response = await fetch(`${BASE}/api/admin/contract-reviews`, {
     headers: authHeaders(token),
   });
   return { status: response.status, body: await response.json() };
@@ -174,8 +183,11 @@ try {
     process.exit(1);
   }
 
-  const [courses] = await db.query(`SELECT course_id FROM courses ORDER BY course_id LIMIT 1`);
+  const [courses] = await db.query(
+    `SELECT course_id, course_name FROM courses ORDER BY course_id LIMIT 1`
+  );
   const courseId = courses[0]?.course_id ?? null;
+  const courseName = courses[0]?.course_name ?? null;
   if (!courseId) {
     console.log("Skipped: the database has no course to attach a student profile to.");
     await db.end();
@@ -202,6 +214,12 @@ try {
     firstName: "OtherTeacher",
     role: "teacher",
     contact: "+639170000103",
+  });
+  created.adminId = await createUser({
+    email: ADMIN_EMAIL,
+    firstName: "ReportAdmin",
+    role: "admin",
+    contact: "+639170000104",
   });
 
   await db.query(
@@ -233,10 +251,12 @@ try {
   const studentLogin = await login(STUDENT_EMAIL);
   const teacherLogin = await login(TEACHER_EMAIL);
   const otherTeacherLogin = await login(OTHER_TEACHER_EMAIL);
+  const adminLogin = await login(ADMIN_EMAIL);
 
   report("the test student can sign in", studentLogin.ok && Boolean(studentLogin.token), `status ${studentLogin.status}`);
   report("the test teacher can sign in", teacherLogin.ok && Boolean(teacherLogin.token), `status ${teacherLogin.status}`);
   report("the other teacher can sign in", otherTeacherLogin.ok && Boolean(otherTeacherLogin.token), `status ${otherTeacherLogin.status}`);
+  report("the test admin can sign in", adminLogin.ok && Boolean(adminLogin.token), `status ${adminLogin.status}`);
 
   /* ------------------------------------------- listing opens the review */
 
@@ -346,6 +366,11 @@ try {
     true
   );
 
+  const adminPartial = await getAdminReports(adminLogin.token);
+  const partialReview = adminPartial.body?.reviews?.find((review) => review.package_id === packageId);
+  check("the admin sees a teacher evaluation before the student rates", Boolean(partialReview?.teacher_review), true);
+  check("the admin sees the student rating is still pending", partialReview?.student_review, null);
+
   /* ---------------------------------------------------- student rating */
 
   const studentSubmit = await submitStudentReview(
@@ -372,6 +397,28 @@ try {
   check("the student's comment is visible", completedReview?.student_review?.comments, "Very patient and the feedback was useful.");
   check("and the rating is 4.4", Number(completedReview?.student_review?.average), 4.4);
 
+  /* ----------------------------------------------------- admin reports */
+
+  const teacherReportDenied = await getAdminReports(teacherLogin.token);
+  check("a teacher cannot open the admin review report", teacherReportDenied.status, 403);
+
+  const adminReports = await getAdminReports(adminLogin.token);
+  check("the admin can open the contract review report", adminReports.status, 200);
+  const adminReview = adminReports.body?.reviews?.find((review) => review.package_id === packageId);
+  report("the completed contract is in the admin report", Boolean(adminReview));
+  check("the admin sees both assessments", Boolean(adminReview?.teacher_review) && Boolean(adminReview?.student_review), true);
+  check("the admin sees the contract course", adminReview?.course_name, courseName);
+  check("the admin sees the teacher's evaluation", adminReview?.teacher_review?.computed_level, "advanced");
+  check("the admin sees the teacher's comment", adminReview?.teacher_review?.comments, "Strong finish. Keep working on organising longer answers.");
+  check("the admin sees the student's rating", Number(adminReview?.student_review?.average), 4.4);
+  check("the admin sees the student's comment", adminReview?.student_review?.comments, "Very patient and the feedback was useful.");
+  check("the admin's report is not a personal pending item", adminReview?.pending_for_you, false);
+  check(
+    "a time-expired contract with classes left is not in the admin report",
+    adminReports.body?.reviews?.some((review) => review.package_id === incompletePackageId),
+    false
+  );
+
   const [reviewCount] = await db.query(
     `SELECT COUNT(*) AS total FROM contract_reviews WHERE package_id = ?`,
     [packageId]
@@ -396,7 +443,7 @@ try {
     await db.query(`DELETE FROM student_profiles WHERE user_id = ?`, [created.studentId]);
   }
 
-  const userIds = [created.studentId, created.teacherId, created.otherTeacherId].filter(Boolean);
+  const userIds = [created.studentId, created.teacherId, created.otherTeacherId, created.adminId].filter(Boolean);
   if (userIds.length) {
     const placeholders = userIds.map(() => "?").join(", ");
     await db.query(`DELETE FROM users WHERE user_id IN (${placeholders})`, userIds);

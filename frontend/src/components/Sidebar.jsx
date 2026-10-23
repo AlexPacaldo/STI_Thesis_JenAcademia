@@ -220,6 +220,7 @@ function Sidebar({ isMobileOpen = false, onClose }) {
       { to: "/AdminDashboard?tab=verifications", label: "Verifications", icon: "bi-shield-check" },
       { to: "/AdminDashboard?tab=requests", label: "Requests", icon: "bi-list-check" },
       { to: "/AdminDashboard?tab=contracts", label: "Contracts", icon: "bi-folder-check" },
+      { to: "/AdminDashboard?tab=reviews", label: "Contract reviews", icon: "bi-star-fill" },
       { to: "/AdminDashboard?tab=teacherCourses", label: "Teacher Courses", icon: "bi-people" },
       { to: "/AdminDashboard?tab=createTeacher", label: "Create Teacher", icon: "bi-person-plus" },
       { to: "/AdminDashboard?tab=createStudent", label: "Create Student", icon: "bi-person-plus" },

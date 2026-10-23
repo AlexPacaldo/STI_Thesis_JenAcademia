@@ -9621,6 +9621,8 @@ function serializeContractReviewRow(row, role) {
       `${row.teacher_first_name || ""} ${row.teacher_last_name || ""}`.trim() || "Teacher",
     student_profile_image_url: row.student_profile_image_url || "",
     teacher_profile_image_url: row.teacher_profile_image_url || "",
+    course_id: row.course_id ? Number(row.course_id) : null,
+    course_name: row.course_name || "",
     total_classes: Number(row.total_classes || 0),
     classes_used: Number(row.classes_used || 0),
     completed_at: row.completed_at,
@@ -9642,7 +9644,12 @@ function serializeContractReviewRow(row, role) {
           submitted_at: row.student_submitted_at,
         }
       : null,
-    pending_for_you: role === "teacher" ? !teacherSubmitted : !studentSubmitted,
+    pending_for_you:
+      role === "teacher"
+        ? !teacherSubmitted
+        : role === "student"
+          ? !studentSubmitted
+          : false,
     review_complete: teacherSubmitted && studentSubmitted,
     reviewer_role: role,
   };
@@ -9654,6 +9661,7 @@ const CONTRACT_REVIEW_SELECT = `
          cr.student_scores, cr.student_comments, cr.student_overall_rating, cr.student_submitted_at,
          p.total_classes, p.classes_used, p.updated_at AS completed_at,
          sp.proficiency_level AS student_proficiency_level,
+         sp.course_id, co.course_name,
          su.first_name AS student_first_name, su.last_name AS student_last_name,
          su.profile_image_url AS student_profile_image_url,
          tu.first_name AS teacher_first_name, tu.last_name AS teacher_last_name,
@@ -9661,6 +9669,7 @@ const CONTRACT_REVIEW_SELECT = `
     FROM contract_reviews cr
     JOIN student_class_packages p ON p.package_id = cr.package_id
     JOIN student_profiles sp ON sp.user_id = cr.student_id
+    LEFT JOIN courses co ON co.course_id = sp.course_id
     JOIN users su ON su.user_id = cr.student_id
     JOIN users tu ON tu.user_id = cr.teacher_id
 `;
@@ -9743,6 +9752,34 @@ app.get("/api/contract-reviews", requireSession, async (req, res) => {
   } catch (err) {
     console.error("GET /api/contract-reviews error:", err);
     res.status(500).json({ message: "Error fetching contract reviews" });
+  }
+});
+
+/**
+ * Every closing contract review, for the admin's reports tab.
+ *
+ * Read-only by design. Student and teacher pages already backfill a historic
+ * contract when one of them opens their review; an admin reading a report must
+ * not create review rows or notifications as a side effect.
+ */
+app.get("/api/admin/contract-reviews", requireAdminSession, async (req, res) => {
+  try {
+    await expireFinishedPackages();
+
+    const [rows] = await pool.query(
+      `${CONTRACT_REVIEW_SELECT}
+        WHERE p.status = 'expired'
+          AND p.total_classes > 0
+          AND p.classes_used >= p.total_classes
+        ORDER BY p.updated_at DESC, cr.review_id DESC`
+    );
+
+    res.json({
+      reviews: rows.map((row) => serializeContractReviewRow(row, "admin")),
+    });
+  } catch (err) {
+    console.error("GET /api/admin/contract-reviews error:", err);
+    res.status(500).json({ message: "Error fetching contract review reports" });
   }
 });
 
