@@ -114,9 +114,6 @@ export function contactFormEmail({ name, email, message, inbox }) {
             <div style="font-family:${FONT};font-size:21px;line-height:1.2;font-weight:800;letter-spacing:0.2px;color:#ffffff;">
               <span style="color:${BRAND.limeBright};">JEN</span> Academia
             </div>
-            <div style="font-family:${FONT};font-size:11px;line-height:1.5;font-weight:500;letter-spacing:0.16em;text-transform:uppercase;color:#a9c0a8;padding-top:7px;">
-              English tuition, planned around you
-            </div>
           </td>
         </tr>
         <tr><td style="height:4px;background:${BRAND.lime};font-size:0;line-height:0;">&nbsp;</td></tr>
