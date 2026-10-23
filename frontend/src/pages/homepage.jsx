@@ -91,8 +91,8 @@ const contactMethods = [
   {
     icon: "email",
     label: "Email us",
-    value: "jenacademia@gmail.com",
-    href: "mailto:jenacademia@gmail.com",
+    value: "jenacademia31@gmail.com",
+    href: "mailto:jenacademia31@gmail.com",
   },
   {
     icon: "facebook",

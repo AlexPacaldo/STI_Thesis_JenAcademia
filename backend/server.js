@@ -4485,6 +4485,10 @@ app.post("/api/contact", async (req, res) => {
     // !! workaround, and it outlived the reason for it.
     await sendMail({
       to: contactFormRecipient(),
+      // !! The address in the form, not the academy's sending address. The
+      // !! person who receives the notification is being asked to answer a
+      // !! visitor, and "reply" has to reach that visitor.
+      replyTo: email,
       subject: `JEN Academia contact form — ${escapeEmailHeader(name)}`,
       text: [
         `Name:    ${name}`,

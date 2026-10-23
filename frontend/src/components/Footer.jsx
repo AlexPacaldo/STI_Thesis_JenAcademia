@@ -44,7 +44,7 @@ export default function Footer() {
         {/* Contact + Socials */}
         <div className={styles.footerContact}>
           <h3 className={styles.footerTitle}>Contact</h3>
-          <p><a href="mailto:jenacademia@gmail.com">jenacademia@gmail.com</a></p>
+          <p><a href="mailto:jenacademia31@gmail.com">jenacademia31@gmail.com</a></p>
           <div className={styles.socials} aria-label="Social media">
             <a className={styles.iconBtn} href="#" aria-label="Facebook">
               {/* Facebook */}

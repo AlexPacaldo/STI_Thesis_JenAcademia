@@ -58,7 +58,7 @@ const API_TIMEOUT_MS = 15000;
  * !! form goes - and it is an environment variable so it can be pointed
  * !! somewhere else without a code change.
  */
-const DEFAULT_CONTACT_TO = "jenacademia@gmail.com";
+const DEFAULT_CONTACT_TO = "jenacademia31@gmail.com";
 
 /**
  * The HTTPS mail APIs this app knows how to speak.
@@ -76,27 +76,36 @@ const MAIL_API_PROVIDERS = {
   resend: {
     label: "Resend",
     defaultUrl: "https://api.resend.com/emails",
-    buildRequest({ key, from, to, subject, text }) {
+    buildRequest({ key, from, to, subject, text, replyTo }) {
       return {
         headers: {
           Authorization: `Bearer ${key}`,
           "Content-Type": "application/json",
         },
-        body: { from, to: [to], subject, text },
+        // !! reply_to only when there is one. A contact form that sends as
+        // !! academy@jenacademia.com and carries no reply address sends the
+        // !! visitor's answer to a mailbox that may not exist.
+        body: { from, to: [to], subject, text, ...(replyTo ? { reply_to: replyTo } : {}) },
       };
     },
   },
   postmark: {
     label: "Postmark",
     defaultUrl: "https://api.postmarkapp.com/email",
-    buildRequest({ key, from, to, subject, text }) {
+    buildRequest({ key, from, to, subject, text, replyTo }) {
       return {
         headers: {
           "X-Postmark-Server-Token": key,
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: { From: from, To: to, Subject: subject, TextBody: text },
+        body: {
+          From: from,
+          To: to,
+          Subject: subject,
+          TextBody: text,
+          ...(replyTo ? { ReplyTo: replyTo } : {}),
+        },
       };
     },
   },
@@ -337,7 +346,7 @@ const UNREACHABLE_CODES = new Set([
  * !! Native fetch, no SDK. The request is a POST of a JSON object and a
  * !! response that says whether it was accepted.
  */
-async function sendViaApi(config, { to, subject, text }) {
+async function sendViaApi(config, { to, subject, text, replyTo }) {
   const provider = MAIL_API_PROVIDERS[config.apiProvider];
   const from = config.apiFromName ? `"${config.apiFromName}" <${config.apiFrom}>` : config.apiFrom;
   const { headers, body } = provider.buildRequest({
@@ -346,6 +355,7 @@ async function sendViaApi(config, { to, subject, text }) {
     to,
     subject,
     text,
+    replyTo,
   });
 
   let response;
@@ -416,10 +426,10 @@ function readApiError(raw) {
  * !! callers need to know, because a student who never receives their
  * !! password reset has to be told something other than "we sent it".
  *
- * @param {{to: string, subject: string, text: string}} mail
+ * @param {{to: string, subject: string, text: string, replyTo?: string}} mail
  * @returns {Promise<{sent: boolean, skipped?: boolean, redirectedTo?: string}>}
  */
-export async function sendMail({ to, subject, text }) {
+export async function sendMail({ to, subject, text, replyTo }) {
   const config = mailConfig();
 
   if (!config.configured) {
@@ -431,6 +441,13 @@ export async function sendMail({ to, subject, text }) {
   if (!recipient) {
     throw new Error("An email needs a recipient.");
   }
+
+  // !! Where an answer goes. The contact form sends from an address at the
+  // !! academy's own domain, which is a sending identity and not necessarily
+  // !! a mailbox anybody reads - so the visitor's address is set as the reply
+  // !! address. Without it, replying to a contact-form notification goes to
+  // !! noreply-style limbo instead of to the person who wrote in.
+  const answerTo = String(replyTo || "").trim();
 
   // The redirect is a development convenience: point it at an inbox you can
   // read and every message the app sends lands there instead of at a
@@ -449,6 +466,7 @@ export async function sendMail({ to, subject, text }) {
       to: actualTo,
       subject: actualSubject,
       text: actualText,
+      replyTo: answerTo,
     });
   } else {
     const transport = getTransport(config);
@@ -458,6 +476,7 @@ export async function sendMail({ to, subject, text }) {
         to: actualTo,
         subject: actualSubject,
         text: actualText,
+        ...(answerTo ? { replyTo: answerTo } : {}),
       });
     } catch (err) {
       const code = String(err?.code || "");

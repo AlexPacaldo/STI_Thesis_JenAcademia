@@ -197,7 +197,7 @@ check("the port defaults to 587", mailConfig().port, 587);
 check("587 is not implicit TLS", mailConfig().secure, false);
 check("the from address defaults to the user", mailConfig().from, "a@b.com");
 check("the from name defaults to JEN Academia", mailConfig().fromName, "JEN Academia");
-check("the contact form goes to the published address", contactFormRecipient(), "jenacademia@gmail.com");
+check("the contact form goes to the published address", contactFormRecipient(), "jenacademia31@gmail.com");
 
 setEnv({ SMTP_HOST: "smtp.example.com", SMTP_USER: "a@b.com", SMTP_PASS: "x", SMTP_PORT: "465" });
 check("465 is implicit TLS", mailConfig().secure, true);
@@ -329,6 +329,22 @@ check("the subject is the subject", message.headers.subject, "Set up your JEN Ac
 check("the body is the body", message.body.includes("https://example.com/setup/abc123"), true);
 check("the body keeps its lines", message.body.includes("Hi Alex,"), true);
 check("the from name is in the headers", (message.headers.from || "").includes("JEN Academia"), true);
+check("a message with no reply address sets none", "reply-to" in message.headers, false);
+
+// !! A contact form sends from the academy's own address, which is a sending
+// !! identity and not necessarily an inbox. The visitor's address is the
+// !! reply address, so "reply" reaches the person who wrote in.
+await sendMail({
+  to: "academy@jenacademia.com",
+  subject: "JEN Academia contact form — Alex",
+  text: "Name: Alex\n\nMessage: hello",
+  replyTo: "visitor@example.com",
+});
+check(
+  "the reply address is carried over SMTP",
+  smtp.messages[smtp.messages.length - 1].headers["reply-to"],
+  "visitor@example.com"
+);
 
 /* ------------------------------------------------- the dev redirect */
 
@@ -449,6 +465,17 @@ check("it went to the student", apiRequest.json.to, ["student@example.com"]);
 check("the subject is the subject", apiRequest.json.subject, "Set up your JEN Academia student account");
 check("the body is the body", apiRequest.json.text.includes("https://example.com/setup/abc123"), true);
 check("the body keeps its lines", apiRequest.json.text.includes("Hi Alex,"), true);
+check("a message with no reply address sets none", "reply_to" in apiRequest.json, false);
+
+await sendMail({
+  to: "academy@jenacademia.com",
+  subject: "JEN Academia contact form — Alex",
+  text: "Name: Alex\n\nMessage: hello",
+  replyTo: "visitor@example.com",
+});
+
+const replyToRequest = api.requests[api.requests.length - 1];
+check("the reply address is carried by resend", replyToRequest.json.reply_to, "visitor@example.com");
 
 setEnv({
   MAIL_API_PROVIDER: "postmark",
@@ -465,6 +492,20 @@ check("postmark spells the body its own way", postmarkRequest.json.From, '"JEN A
 check("postmark sends one address, not a list", postmarkRequest.json.To, "student@example.com");
 check("postmark calls the subject the subject", postmarkRequest.json.Subject, "Reset your password");
 check("postmark calls the body the text body", postmarkRequest.json.TextBody.includes("https://example.com/reset/xyz789"), true);
+check("postmark sets no reply address when there is none", "ReplyTo" in postmarkRequest.json, false);
+
+await sendMail({
+  to: "academy@jenacademia.com",
+  subject: "Contact form",
+  text: "hello",
+  replyTo: "visitor@example.com",
+});
+
+check(
+  "postmark spells the reply address its own way",
+  api.requests[api.requests.length - 1].json.ReplyTo,
+  "visitor@example.com"
+);
 
 // !! A refusal has to say why. A mail API that answers "no" without a reason
 // !! leaves nobody able to fix anything, and the message is usually in the
