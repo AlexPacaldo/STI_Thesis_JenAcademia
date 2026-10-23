@@ -215,7 +215,29 @@ function App() {
         }
       }
 
+      // Closing evaluations are required. When a teacher or student still has
+      // one pending, every page sends them back to the review screen until
+      // their side is submitted. The review page itself is exempt, otherwise
+      // the guard would fight its own route.
+      async function checkRequiredContractReview() {
+        if (!["teacher", "student"].includes(role)) return;
+        if (path === "/contractreview") return;
+        try {
+          const response = await apiFetch(`${API_BASE_URL}/api/contract-reviews`);
+          if (!response.ok) return;
+          const data = await response.json();
+          const hasPending = Array.isArray(data?.reviews)
+            && data.reviews.some((review) => review.pending_for_you);
+          if (!hasPending) return;
+          notify?.("Please complete your required contract review before continuing.", "info");
+          navigate("/ContractReview", { replace: true });
+        } catch (error) {
+          console.warn("Could not check required contract reviews:", error);
+        }
+      }
+
       checkAccountStatus();
+      checkRequiredContractReview();
       const accountStatusTimer = window.setInterval(checkAccountStatus, ACCOUNT_STATUS_CHECK_MS);
       window.addEventListener("focus", checkAccountStatus);
 

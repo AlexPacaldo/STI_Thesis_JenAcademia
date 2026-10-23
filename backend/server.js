@@ -374,6 +374,33 @@ function decryptRows(rows, fields) {
   return Array.isArray(rows) ? rows.map((row) => decryptFields(row, fields)) : [];
 }
 
+/**
+ * Older contract-review notifications were written before the two reviews were
+ * made private. They can still contain the other person's score, comment or
+ * computed level, so redact them when they are read. New notifications never
+ * contain that private text in the first place.
+ */
+function redactPrivateContractReviewNotification(notification, role) {
+  if (!notification || notification.related_type !== "contract_review") {
+    return notification;
+  }
+
+  const message = String(notification.message || "");
+  if (role === "teacher" && /rated the classes .* out of 5/i.test(message)) {
+    return {
+      ...notification,
+      message: "Your student submitted their closing contract rating.",
+    };
+  }
+  if (role === "student" && /proficiency level is now/i.test(message)) {
+    return {
+      ...notification,
+      message: "Your teacher submitted the final evaluation. Your contract review has been updated.",
+    };
+  }
+  return notification;
+}
+
 function getFrontendBaseUrl() {
   const explicit = process.env.FRONTEND_BASE_URL || process.env.PUBLIC_APP_URL || "";
   if (explicit) return explicit.replace(/\/+$/, "");
@@ -9609,6 +9636,11 @@ function serializeContractReviewRow(row, role) {
     : averageReviewScores(studentScores, STUDENT_REVIEW_CRITERIA);
   const teacherSubmitted = Boolean(row.teacher_submitted_at);
   const studentSubmitted = Boolean(row.student_submitted_at);
+  // A contract review is private between the two people who wrote it. Teachers
+  // only receive their own evaluation, students only receive their own rating,
+  // and the admin report is the one place where both sides are visible.
+  const canSeeTeacherReview = role === "admin" || role === "teacher";
+  const canSeeStudentReview = role === "admin" || role === "student";
 
   return {
     review_id: Number(row.review_id),
@@ -9627,23 +9659,25 @@ function serializeContractReviewRow(row, role) {
     classes_used: Number(row.classes_used || 0),
     completed_at: row.completed_at,
     student_proficiency_level: row.student_proficiency_level || "",
-    teacher_review: teacherSubmitted
-      ? {
-          scores: teacherScores,
-          average: teacherAverage,
-          comments: decryptNullableText(row.teacher_comments) || "",
-          computed_level: row.computed_level || "",
-          submitted_at: row.teacher_submitted_at,
-        }
-      : null,
-    student_review: studentSubmitted
-      ? {
-          scores: studentScores,
-          average: studentAverage,
-          comments: decryptNullableText(row.student_comments) || "",
-          submitted_at: row.student_submitted_at,
-        }
-      : null,
+    teacher_review:
+      canSeeTeacherReview && teacherSubmitted
+        ? {
+            scores: teacherScores,
+            average: teacherAverage,
+            comments: decryptNullableText(row.teacher_comments) || "",
+            computed_level: row.computed_level || "",
+            submitted_at: row.teacher_submitted_at,
+          }
+        : null,
+    student_review:
+      canSeeStudentReview && studentSubmitted
+        ? {
+            scores: studentScores,
+            average: studentAverage,
+            comments: decryptNullableText(row.student_comments) || "",
+            submitted_at: row.student_submitted_at,
+          }
+        : null,
     pending_for_you:
       role === "teacher"
         ? !teacherSubmitted
@@ -9859,16 +9893,19 @@ app.post("/api/contract-reviews/:package_id/teacher", requireSession, async (req
       [computed.level, review.student_id]
     );
 
+    // Do not put the teacher's rubric, comment or computed level in the
+    // student's notification. The level is visible on the student's profile;
+    // the evaluation itself stays between the teacher and the admin.
     await connection.query(
       `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
        VALUES (?, 'general', ?, ?, ?, 'contract_review', ?)`,
       [
         review.student_id,
-        encryptNullableText("Your contract evaluation is ready"),
+        encryptNullableText("Your contract review was updated"),
         encryptNullableText(
-          `Your teacher submitted the final evaluation. Your proficiency level is now ${formatComputedLevel(
-            computed.level
-          )}.`
+          review.student_submitted_at
+            ? "Your teacher submitted the final evaluation. Your contract review is now complete."
+            : "Your teacher submitted the final evaluation. Complete your closing review to finish."
         ),
         packageId,
         CONTRACT_REVIEW_ACTION_URL,
@@ -9969,16 +10006,15 @@ app.post("/api/contract-reviews/:package_id/student", requireSession, async (req
     const studentName =
       `${studentRows[0]?.first_name || ""} ${studentRows[0]?.last_name || ""}`.trim() || "Your student";
 
-    const feedbackText = comments ? " and left a comment" : "";
+    // The rating belongs to the student and the admin report. The teacher is
+    // told that the review was submitted, but never the score or comment.
     await connection.query(
       `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
        VALUES (?, 'general', ?, ?, ?, 'contract_review', ?)`,
       [
         review.teacher_id,
-        encryptNullableText("Your student rated the contract"),
-        encryptNullableText(
-          `${studentName} rated the classes ${overallRating.toFixed(1)} out of 5${feedbackText}.`
-        ),
+        encryptNullableText("Your student submitted their contract rating"),
+        encryptNullableText(`${studentName} submitted their closing contract rating.`),
         packageId,
         CONTRACT_REVIEW_ACTION_URL,
       ]
@@ -11395,8 +11431,13 @@ app.get("/api/notifications/:user_id", requireSession, async (req, res) => {
       type ? [user_id, type] : [user_id]
     );
 
-    res.json({ 
-      notifications: decryptRows(rows, ["title", "message"]), 
+    const role = req.session?.role || "";
+    const notifications = decryptRows(rows, ["title", "message"]).map((notification) =>
+      redactPrivateContractReviewNotification(notification, role)
+    );
+
+    res.json({
+      notifications,
       total: countResult[0].total,
       page,
       limit

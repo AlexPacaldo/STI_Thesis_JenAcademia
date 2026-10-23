@@ -11,6 +11,11 @@
  * the teacher in the last class with a proficiency dropdown. A closing review is
  * not part of a lesson, and it should not depend on which class happens to be the
  * last one.
+ *
+ * The review is mandatory and private. The app guard redirects a teacher or
+ * student back here while their side is pending, and this page opens the form
+ * immediately. Each person sees only the review they submitted; the admin report
+ * is the only screen where both sides are together.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -222,13 +227,19 @@ export default function ContractReview() {
     setFormError("");
   };
 
-  const closeReview = () => {
-    if (submitting) return;
-    setActiveReview(null);
-    setScores({});
+  // The closing review is mandatory. Opening it as soon as the page has a
+  // pending item means a teacher or student cannot land here, read the card and
+  // walk away without submitting. The app-level guard keeps sending them back
+  // here if they try another page first.
+  useEffect(() => {
+    if (loading || submitting || activeReview) return;
+    const pending = reviews.find((review) => review.pending_for_you);
+    if (!pending) return;
+    setActiveReview(pending);
+    setScores(isTeacher ? createEmptyLevelScores() : createEmptyReviewScores());
     setComments("");
     setFormError("");
-  };
+  }, [activeReview, isTeacher, loading, reviews, submitting]);
 
   const updateScore = (key, value) => {
     setScores((current) => ({ ...current, [key]: value }));
@@ -259,10 +270,10 @@ export default function ContractReview() {
           (isTeacher ? "Final evaluation submitted." : "Thank you for rating your teacher."),
         "success"
       );
+      await loadReviews();
       setActiveReview(null);
       setScores({});
       setComments("");
-      await loadReviews();
     } catch (err) {
       setFormError(err?.response?.data?.message || "Could not submit your review. Please try again.");
     } finally {
@@ -278,14 +289,14 @@ export default function ContractReview() {
           <h1>{isTeacher ? "Contract reviews" : "How were your classes?"}</h1>
           <p className={styles.heroText}>
             {isTeacher
-              ? "When a student finishes every class in their contract, score their final level and leave feedback. The proficiency level is worked out from the five criteria, so it is a judgement you can explain rather than a level you pick by hand."
-              : "When your contract is complete, tell us how your teacher did. Your rating helps JEN Academia keep every class useful and kind."}
+              ? "When a student finishes every class in their contract, score their final level and leave feedback. This closing evaluation is required before you can continue using JEN Academia. The student will not see it; only an administrator can read both reviews."
+              : "When your contract is complete, tell us how your teacher did. This closing rating is required before you can continue using JEN Academia. Your teacher will not see your answers; only an administrator can read both reviews."}
           </p>
           {!loading && reviews.length > 0 ? (
             <div className={styles.heroStats}>
               <span className={styles.statPill}>
                 {pendingCount > 0
-                  ? `${pendingCount} waiting for you`
+                  ? `${pendingCount} required review${pendingCount === 1 ? "" : "s"}`
                   : "You are all caught up"}
               </span>
               <span className={styles.statMuted}>
@@ -304,8 +315,8 @@ export default function ContractReview() {
             <span className={styles.emptyIcon} aria-hidden="true">📝</span>
             <h2>No completed contracts yet</h2>
             <p>
-              This page opens when every class in a contract has been used. Then both
-              the teacher and the student can review each other.
+              This page opens when every class in a contract has been used. The
+              teacher and the student each submit their own private review.
             </p>
           </section>
         ) : (
@@ -363,34 +374,27 @@ export default function ContractReview() {
                       </button>
                     ) : (
                       <span className={styles.actionNote}>
-                        {review.review_complete
-                          ? "Both of you have submitted a review."
-                          : "Your review is in. The other review will appear here when it is submitted."}
+                        Your review is submitted. Thank you for completing it.
                       </span>
                     )}
                   </div>
 
                   <div className={styles.reviewGrid}>
-                    <ReviewBlock
-                      title={isTeacher ? "Your evaluation of the student" : "Teacher's evaluation"}
-                      review={review.teacher_review}
-                      kind="teacher"
-                      emptyText={
-                        isTeacher && !review.teacher_review
-                          ? "Score the five level criteria to update the student's proficiency level."
-                          : "The teacher has not submitted the final evaluation yet."
-                      }
-                    />
-                    <ReviewBlock
-                      title={isTeacher ? "Student's feedback" : "Your rating of the teacher"}
-                      review={review.student_review}
-                      kind="student"
-                      emptyText={
-                        !isTeacher && !review.student_review
-                          ? "Rate the five teaching criteria and leave a comment."
-                          : "The student has not submitted their rating yet."
-                      }
-                    />
+                    {isTeacher ? (
+                      <ReviewBlock
+                        title="Your evaluation of the student"
+                        review={review.teacher_review}
+                        kind="teacher"
+                        emptyText="Score the five level criteria to update the student's proficiency level."
+                      />
+                    ) : (
+                      <ReviewBlock
+                        title="Your rating of the teacher"
+                        review={review.student_review}
+                        kind="student"
+                        emptyText="Rate the five teaching criteria and leave a comment."
+                      />
+                    )}
                   </div>
                 </article>
               );
@@ -401,13 +405,12 @@ export default function ContractReview() {
 
       {activeReview ? (
         <ModalPortal>
-          <div className={styles.modalBackdrop} onClick={closeReview}>
+          <div className={styles.modalBackdrop}>
             <section
               role="dialog"
               aria-modal="true"
               aria-labelledby="contract-review-title"
               className={styles.modal}
-              onClick={(event) => event.stopPropagation()}
             >
               <div className={styles.modalHead}>
                 <div>
@@ -421,19 +424,10 @@ export default function ContractReview() {
                   </h2>
                   <p className={styles.modalSub}>
                     {isTeacher
-                      ? "Score each criterion from 1 to 5. The proficiency level is computed from the scores."
-                      : "Rate each part of the teaching from 1 to 5. Your teacher sees your feedback."}
+                      ? "Score each criterion from 1 to 5. This evaluation is required before you can continue, and the student will not see it."
+                      : "Rate each part of the teaching from 1 to 5. This rating is required before you can continue, and your teacher will not see it."}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className={styles.closeButton}
-                  onClick={closeReview}
-                  aria-label="Close review"
-                  disabled={submitting}
-                >
-                  ×
-                </button>
               </div>
 
               <div className={styles.modalBody}>
@@ -517,14 +511,6 @@ export default function ContractReview() {
                 {formError ? <div className={styles.formError}>{formError}</div> : null}
 
                 <div className={styles.modalActions}>
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    onClick={closeReview}
-                    disabled={submitting}
-                  >
-                    Cancel
-                  </button>
                   <button
                     type="button"
                     className={styles.primaryButton}

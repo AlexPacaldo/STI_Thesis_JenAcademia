@@ -10,10 +10,12 @@
  * The unit test (test-contract-review.mjs) checks the rubric and its two copies.
  * This checks the part units cannot: that a finished contract opens exactly one
  * review, that both sides can submit once, that the teacher's scores recompute
- * the student's level, and that an unfinished or time-expired contract does not
+ * the student's level, that neither side can read the other's review, that the
+ * admin can read both, and that an unfinished or time-expired contract does not
  * open a review.
  */
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,6 +54,52 @@ function report(label, condition, detail = "") {
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Notifications are encrypted at rest by server.js. Reading them back lets the
+// test prove that a private review was not copied into the other person's
+// notification.
+const ENCRYPTION_KEY = crypto.scryptSync(
+  String(
+    process.env.CHAT_ENCRYPTION_KEY
+      || process.env.ENCRYPTION_KEY
+      || process.env.JWT_SECRET
+      || DB_PASSWORD
+  ),
+  "jen-academia-chat-v1",
+  32
+);
+
+function decryptText(value) {
+  if (!value) return "";
+  const text = String(value);
+  if (!text.startsWith("enc:v1:")) return text;
+  try {
+    const [, , ivBase64, tagBase64, encryptedBase64] = text.split(":");
+    const decipher = crypto.createDecipheriv(
+      "aes-256-gcm",
+      ENCRYPTION_KEY,
+      Buffer.from(ivBase64, "base64")
+    );
+    decipher.setAuthTag(Buffer.from(tagBase64, "base64"));
+    return Buffer.concat([
+      decipher.update(Buffer.from(encryptedBase64, "base64")),
+      decipher.final(),
+    ]).toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
+function encryptText(value) {
+  if (!value) return null;
+  const text = String(value);
+  if (text.startsWith("enc:v1:")) return text;
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
+  const encrypted = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return ["enc:v1", iv.toString("base64"), tag.toString("base64"), encrypted.toString("base64")].join(":");
+}
 
 /* ------------------------------------------------------------- the server */
 
@@ -128,6 +176,13 @@ function authHeaders(token) {
 
 async function getReviews(token) {
   const response = await fetch(`${BASE}/api/contract-reviews`, {
+    headers: authHeaders(token),
+  });
+  return { status: response.status, body: await response.json() };
+}
+
+async function getNotifications(token, userId) {
+  const response = await fetch(`${BASE}/api/notifications/${userId}`, {
     headers: authHeaders(token),
   });
   return { status: response.status, body: await response.json() };
@@ -361,7 +416,7 @@ try {
     [created.studentId, packageId]
   );
   check(
-    "the student was told the level is ready",
+    "the student was told the review was updated",
     Number(teacherNotified[0]?.total) >= 2,
     true
   );
@@ -392,10 +447,103 @@ try {
   const completedReview = studentAfter.body?.reviews?.find((review) => review.package_id === packageId);
   check("both sides are now complete", completedReview?.review_complete, true);
   check("the student is no longer pending", completedReview?.pending_for_you, false);
-  check("the teacher's comment is visible", completedReview?.teacher_review?.comments, "Strong finish. Keep working on organising longer answers.");
-  check("the student's scores are stored", completedReview?.student_review?.scores, studentScores);
-  check("the student's comment is visible", completedReview?.student_review?.comments, "Very patient and the feedback was useful.");
+  check("the student cannot see the teacher's evaluation", completedReview?.teacher_review, null);
+  check("the student's own scores are stored", completedReview?.student_review?.scores, studentScores);
+  check("the student's own comment is visible", completedReview?.student_review?.comments, "Very patient and the feedback was useful.");
   check("and the rating is 4.4", Number(completedReview?.student_review?.average), 4.4);
+
+  const teacherAfterStudent = await getReviews(teacherLogin.token);
+  const teacherCompletedView = teacherAfterStudent.body?.reviews?.find((review) => review.package_id === packageId);
+  check("the teacher still sees their own evaluation", Boolean(teacherCompletedView?.teacher_review), true);
+  check("the teacher cannot see the student's feedback", teacherCompletedView?.student_review, null);
+
+  const [teacherNotificationRows] = await db.query(
+    `SELECT message FROM notifications
+      WHERE user_id = ? AND related_id = ? AND related_type = 'contract_review'`,
+    [created.teacherId, packageId]
+  );
+  const teacherMessages = teacherNotificationRows.map((row) => decryptText(row.message)).join(" | ");
+  report(
+    "the teacher is told the rating was submitted",
+    /submitted their closing contract rating/i.test(teacherMessages)
+  );
+  check(
+    "the teacher's notification does not reveal the student's score or comment",
+    /4\.4|out of 5|Very patient/i.test(teacherMessages),
+    false
+  );
+
+  const [studentNotificationRows] = await db.query(
+    `SELECT message FROM notifications
+      WHERE user_id = ? AND related_id = ? AND related_type = 'contract_review'`,
+    [created.studentId, packageId]
+  );
+  const studentMessages = studentNotificationRows.map((row) => decryptText(row.message)).join(" | ");
+  check(
+    "the student's notifications do not reveal the teacher's evaluation",
+    /advanced|speaking|reading|structure|grammar|vocabulary|Strong finish/i.test(studentMessages),
+    false
+  );
+
+  // Notifications created before the reviews became private are still in the
+  // database. They must be redacted when they are read, not just when new ones
+  // are written.
+  await db.query(
+    `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+     VALUES (?, 'general', ?, ?, ?, 'contract_review', ?)`,
+    [
+      created.teacherId,
+      encryptText("Your student rated the contract"),
+      encryptText("Review ReviewTest rated the classes 4.4 out of 5 and left a comment."),
+      packageId,
+      "/ContractReview",
+    ]
+  );
+  await db.query(
+    `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
+     VALUES (?, 'general', ?, ?, ?, 'contract_review', ?)`,
+    [
+      created.studentId,
+      encryptText("Your contract evaluation is ready"),
+      encryptText("Your teacher submitted the final evaluation. Your proficiency level is now Advanced."),
+      packageId,
+      "/ContractReview",
+    ]
+  );
+
+  const teacherNotificationList = await getNotifications(teacherLogin.token, created.teacherId);
+  check("the teacher can load notifications", teacherNotificationList.status, 200);
+  const legacyTeacherNotification = (teacherNotificationList.body?.notifications || []).find(
+    (notification) => notification.title === "Your student rated the contract"
+  );
+  check("the legacy teacher notification is present", Boolean(legacyTeacherNotification), true);
+  check(
+    "the legacy teacher notification does not reveal the student's rating",
+    /4\.4|out of 5|Very patient/i.test(legacyTeacherNotification?.message || ""),
+    false
+  );
+  check(
+    "the legacy teacher notification is replaced with a generic message",
+    legacyTeacherNotification?.message,
+    "Your student submitted their closing contract rating."
+  );
+
+  const studentNotificationList = await getNotifications(studentLogin.token, created.studentId);
+  check("the student can load notifications", studentNotificationList.status, 200);
+  const legacyStudentNotification = (studentNotificationList.body?.notifications || []).find(
+    (notification) => notification.title === "Your contract evaluation is ready"
+  );
+  check("the legacy student notification is present", Boolean(legacyStudentNotification), true);
+  check(
+    "the legacy student notification does not reveal the teacher's level",
+    /advanced|proficiency level is now/i.test(legacyStudentNotification?.message || ""),
+    false
+  );
+  check(
+    "the legacy student notification is replaced with a generic message",
+    legacyStudentNotification?.message,
+    "Your teacher submitted the final evaluation. Your contract review has been updated."
+  );
 
   /* ----------------------------------------------------- admin reports */
 
