@@ -29,7 +29,7 @@ import {
   mailConfig,
   sendMail,
 } from "../backend/mailer.js";
-import { contactFormEmail } from "../backend/emailTemplates.js";
+import { accountInviteEmail, contactFormEmail } from "../backend/emailTemplates.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -302,6 +302,30 @@ check("the HTML keeps the line break", formEmail.html.includes("&lt;/b&gt;<br>Se
 check("the HTML offers a reply to the visitor", formEmail.html.includes("mailto:alex@example.com"), true);
 check("the HTML names the inbox", formEmail.html.includes("jenacademia31@gmail.com"), true);
 check("the HTML does not load anything from the network", /<img|<link|<style/i.test(formEmail.html), false);
+
+/* --------------------------------------------------------- the invite */
+
+// !! The invite is the one email a new student has to act on, and its whole
+// !! content is a link. If the link is mangled, the account cannot be set up.
+const inviteEmail = accountInviteEmail({
+  firstName: "Alex <b>",
+  roleLabel: "student",
+  inviteUrl: "https://jenacademia.com/setup-account?token=abc123&course=english",
+  expiresText: "Oct 24, 2026, 7:11 AM",
+  contactEmail: "jenacademia31@gmail.com",
+});
+
+check("the invite has an HTML part", inviteEmail.html.includes("<!doctype html>"), true);
+check("the invite has a text part", inviteEmail.text.includes("Your JEN Academia student account has been created."), true);
+check("the text part carries the link unchanged", inviteEmail.text.includes("https://jenacademia.com/setup-account?token=abc123&course=english"), true);
+check("the button says what it does", inviteEmail.html.includes("Set up my account"), true);
+check("the button carries the link", inviteEmail.html.includes('href="https://jenacademia.com/setup-account?token=abc123&amp;course=english"'), true);
+check("the link is also readable without the button", inviteEmail.html.includes("Copy this link into your browser"), true);
+check("the expiry is shown", inviteEmail.html.includes("Oct 24, 2026, 7:11 AM"), true);
+check("the invite escapes the name", inviteEmail.html.includes("Alex &lt;b&gt;"), true);
+check("the invite names the role", inviteEmail.html.includes("student account"), true);
+check("the invite names the contact address", inviteEmail.html.includes("jenacademia31@gmail.com"), true);
+check("the invite loads nothing from the network", /<img|<link|<style/i.test(inviteEmail.html), false);
 
 /* --------------------------------------------- nothing configured is safe */
 

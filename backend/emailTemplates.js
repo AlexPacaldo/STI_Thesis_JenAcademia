@@ -65,8 +65,80 @@ function escapeMultiline(value) {
 
 function firstName(name) {
   const first = String(name || "").trim().split(/\s+/)[0];
-  return first || "them";
+  return first || "there";
 }
+
+/* ---------------------------------------------------------------- the shell */
+
+/**
+ * The frame every email shares: the header, the accent bar, the footer.
+ *
+ * !! Only the middle is passed in. The header and the footer are what make
+ * !! three different emails look like they came from the same school, and a
+ * !! copy of them per message is how one of them ends up with the old logo.
+ *
+ * @param {{preview: string, rows: string, footerPrimary: string, footerSecondary: string}} parts
+ */
+function renderEmail({ preview, rows, footerPrimary, footerSecondary }) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light only">
+<title>JEN Academia</title>
+</head>
+<body style="margin:0;padding:0;background:${BRAND.paper};">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${preview}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND.paper};">
+  <tr>
+    <td align="center" style="padding:28px 12px;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:${BRAND.surface};border:1px solid #dfe7dc;border-radius:16px;overflow:hidden;">
+        <tr>
+          <td style="background:${BRAND.forest};padding:26px 32px;">
+            <div style="font-family:${FONT};font-size:21px;line-height:1.2;font-weight:800;letter-spacing:0.2px;color:#ffffff;">
+              <span style="color:${BRAND.limeBright};">JEN</span> Academia
+            </div>
+          </td>
+        </tr>
+        <tr><td style="height:4px;background:${BRAND.lime};font-size:0;line-height:0;">&nbsp;</td></tr>
+${rows}
+        <tr>
+          <td style="background:#fafbf8;border-top:1px solid #e9eee5;padding:18px 32px;">
+            <div style="font-family:${FONT};font-size:12px;line-height:1.6;color:${BRAND.muted};">
+              ${footerPrimary}
+            </div>
+            <div style="font-family:${FONT};font-size:12px;line-height:1.6;color:#8a9b93;padding-top:4px;">
+              ${footerSecondary}
+            </div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`;
+}
+
+/** The small uppercase label that starts a section. */
+function eyebrow(text, color = BRAND.green) {
+  return `<div style="font-family:${FONT};font-size:11px;line-height:1.4;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:${color};">${text}</div>`;
+}
+
+/** A dark pill with a link in it. The table is what Outlook needs. */
+function button(href, label) {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="background:${BRAND.forest};border-radius:999px;">
+                  <a href="${href}" style="display:inline-block;padding:12px 24px;font-family:${FONT};font-size:14px;line-height:1.4;font-weight:600;color:#ffffff;text-decoration:none;">${label}</a>
+                </td>
+              </tr>
+            </table>`;
+}
+
+/* ------------------------------------------------------- the contact form */
 
 /**
  * The message the school receives when somebody uses the contact form.
@@ -94,34 +166,9 @@ export function contactFormEmail({ name, email, message, inbox }) {
     `Sent from the contact form at jenacademia.com.`,
   ].join("\n");
 
-  const html = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light only">
-<meta name="supported-color-schemes" content="light only">
-<title>New contact form message</title>
-</head>
-<body style="margin:0;padding:0;background:${BRAND.paper};">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${preview}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND.paper};">
-  <tr>
-    <td align="center" style="padding:28px 12px;">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:${BRAND.surface};border:1px solid #dfe7dc;border-radius:16px;overflow:hidden;">
-        <tr>
-          <td style="background:${BRAND.forest};padding:26px 32px;">
-            <div style="font-family:${FONT};font-size:21px;line-height:1.2;font-weight:800;letter-spacing:0.2px;color:#ffffff;">
-              <span style="color:${BRAND.limeBright};">JEN</span> Academia
-            </div>
-          </td>
-        </tr>
-        <tr><td style="height:4px;background:${BRAND.lime};font-size:0;line-height:0;">&nbsp;</td></tr>
-        <tr>
+  const rows = `        <tr>
           <td style="padding:32px 32px 0;">
-            <div style="font-family:${FONT};font-size:11px;line-height:1.4;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:${BRAND.green};">
-              New contact form message
-            </div>
+            ${eyebrow("New contact form message")}
             <div style="font-family:${FONT};font-size:24px;line-height:1.3;font-weight:700;color:${BRAND.forest};padding-top:8px;word-break:break-word;">
               ${safeName}
             </div>
@@ -161,31 +208,115 @@ export function contactFormEmail({ name, email, message, inbox }) {
         </tr>
         <tr>
           <td style="padding:26px 32px 34px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+            ${button(`mailto:${safeEmail}`, replyLabel)}
+          </td>
+        </tr>`;
+
+  const html = renderEmail({
+    preview,
+    rows,
+    footerPrimary: `Sent from the contact form at jenacademia.com. Replies go to ${safeEmail}.`,
+    footerSecondary: `JEN Academia${safeInbox ? ` &middot; ${safeInbox}` : ""}`,
+  });
+
+  return { text, html };
+}
+
+/* -------------------------------------------------- the account invite */
+
+/**
+ * The message that gives a new student or teacher their account.
+ *
+ * !! The link is the whole point of this email, so it appears twice: once as
+ * !! a button for people who read mail on a phone, and once as text for
+ * !! people whose client blocks buttons, who want to check where a link goes
+ * !! before following it, or who are pasting it into another browser. An
+ * !! invite with only a button is an invite that some people cannot accept.
+ *
+ * @param {{firstName?: string, roleLabel?: string, inviteUrl: string, expiresText?: string, contactEmail?: string}} invite
+ * @returns {{text: string, html: string}}
+ */
+export function accountInviteEmail({
+  firstName: firstNameValue,
+  roleLabel,
+  inviteUrl,
+  expiresText,
+  contactEmail,
+}) {
+  const safeName = escapeHtml(firstNameValue || "there");
+  const safeRole = escapeHtml(roleLabel || "student");
+  const safeUrl = escapeHtml(inviteUrl);
+  const safeExpiry = escapeHtml(expiresText || "");
+  const safeContact = escapeHtml(contactEmail || "");
+  const preview = `Your JEN Academia ${safeRole} account is ready — set your password to finish setting it up.`;
+
+  const text = [
+    `Hi ${firstNameValue || "there"},`,
+    "",
+    `Your JEN Academia ${roleLabel || "student"} account has been created.`,
+    "Please use this secure link to set your password and complete your account setup:",
+    "",
+    inviteUrl,
+    "",
+    expiresText ? `This invite expires on ${expiresText}.` : "",
+    "",
+    "If you did not expect this message, please contact JEN Academia.",
+  ]
+    .filter((line, index, all) => !(line === "" && all[index - 1] === ""))
+    .join("\n");
+
+  const rows = `        <tr>
+          <td style="padding:32px 32px 0;">
+            ${eyebrow(`${safeRole} account`)}
+            <div style="font-family:${FONT};font-size:24px;line-height:1.3;font-weight:700;color:${BRAND.forest};padding-top:8px;">
+              Welcome, ${safeName}
+            </div>
+            <div style="font-family:${FONT};font-size:14px;line-height:1.7;color:${BRAND.muted};padding-top:8px;">
+              Your JEN Academia ${safeRole} account has been created. Choose a password to finish setting it up &mdash; it takes about a minute.
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:26px 32px 0;">
+            ${button(safeUrl, "Set up my account")}
+          </td>
+        </tr>
+        ${
+          safeExpiry
+            ? `<tr>
+          <td style="padding:20px 32px 0;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND.soft};border:1px solid ${BRAND.border};border-radius:12px;">
               <tr>
-                <td style="background:${BRAND.forest};border-radius:999px;">
-                  <a href="mailto:${safeEmail}" style="display:inline-block;padding:12px 24px;font-family:${FONT};font-size:14px;line-height:1.4;font-weight:600;color:#ffffff;text-decoration:none;">${replyLabel}</a>
+                <td style="padding:14px 18px;">
+                  <div style="font-family:${FONT};font-size:10px;line-height:1.4;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${BRAND.muted};">This link expires</div>
+                  <div style="font-family:${FONT};font-size:15px;line-height:1.5;font-weight:600;color:${BRAND.ink};padding-top:3px;">${safeExpiry}</div>
                 </td>
               </tr>
             </table>
           </td>
-        </tr>
+        </tr>`
+            : ""
+        }
         <tr>
-          <td style="background:#fafbf8;border-top:1px solid #e9eee5;padding:18px 32px;">
+          <td style="padding:20px 32px 0;">
             <div style="font-family:${FONT};font-size:12px;line-height:1.6;color:${BRAND.muted};">
-              Sent from the contact form at jenacademia.com. Replies go to ${safeEmail}.
+              Button not working? Copy this link into your browser:
             </div>
-            <div style="font-family:${FONT};font-size:12px;line-height:1.6;color:#8a9b93;padding-top:4px;">
-              JEN Academia${safeInbox ? ` &middot; ${safeInbox}` : ""}
+            <div style="font-family:${FONT};font-size:12px;line-height:1.6;padding-top:5px;word-break:break-all;">
+              <a href="${safeUrl}" style="color:${BRAND.green};text-decoration:none;">${safeUrl}</a>
             </div>
           </td>
         </tr>
-      </table>
-    </td>
-  </tr>
-</table>
-</body>
-</html>`;
+        <tr><td style="padding:0 32px 34px;font-size:0;line-height:0;">&nbsp;</td></tr>`;
+
+  const html = renderEmail({
+    preview,
+    rows,
+    footerPrimary: `You are receiving this because a JEN Academia account was created for this email address.`,
+    footerSecondary: safeContact
+      ? `Did not expect this? Contact us at ${safeContact}.`
+      : `Did not expect this? Please contact JEN Academia.`,
+  });
 
   return { text, html };
 }

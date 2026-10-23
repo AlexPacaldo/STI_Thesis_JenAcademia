@@ -42,7 +42,7 @@ import {
   isMailConfigured,
   sendMail,
 } from "./mailer.js";
-import { contactFormEmail } from "./emailTemplates.js";
+import { accountInviteEmail, contactFormEmail } from "./emailTemplates.js";
 import { readBearerToken, signSessionToken, verifySessionToken } from "./sessionToken.js";
 import {
   RESCHEDULE_CLOSED_AFTER_START_MESSAGE,
@@ -380,22 +380,19 @@ async function sendAccountSetupInviteEmail({ email, firstName, role, inviteUrl, 
     timeStyle: "short",
   });
   const roleLabel = role === "teacher" ? "teacher" : "student";
+  const { text, html } = accountInviteEmail({
+    firstName,
+    roleLabel,
+    inviteUrl,
+    expiresText: expiryText,
+    contactEmail: contactFormRecipient(),
+  });
 
   return sendMail({
     to: email,
     subject: `Set up your JEN Academia ${roleLabel} account`,
-    text: [
-      `Hi ${firstName || "there"},`,
-      "",
-      `Your JEN Academia ${roleLabel} account has been created.`,
-      "Please use this secure link to set your password and complete your account setup:",
-      "",
-      inviteUrl,
-      "",
-      `This invite expires on ${expiryText}.`,
-      "",
-      "If you did not expect this message, please contact JEN Academia.",
-    ].join("\n"),
+    text,
+    html,
   });
 }
 
