@@ -2,6 +2,7 @@ import axios from "axios";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "../assets/notificationPanel.module.css";
+import kid from "../assets/studentKid.module.css";
 import {
     clearLocalNotificationsForUser,
     getLocalNotificationsForUser,
@@ -381,272 +382,260 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
 
   return (
     <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.panel} onClick={e => e.stopPropagation()}>
-        <div className={styles.header}>
-          <h2>Notifications {unreadCount > 0 && <span className={styles.badge}>{unreadCount}</span>}</h2>
-          <button className={styles.closeBtn} onClick={onClose}>✕</button>
+      <div className={kid.filterDialog} onClick={e => e.stopPropagation()}>
+        <div className={kid.filterHead}>
+          <div>
+            <h3 className={kid.filterTitle}>Notifications</h3>
+            {unreadCount > 0 && <span className={kid.filterNum}>{unreadCount}</span>}
+          </div>
+          <button type="button" className={kid.filterClose} onClick={onClose} aria-label="Close notifications">
+            ×
+          </button>
         </div>
+        <div className={kid.filterBody}>
+          {/* Type Filter */}
+          <div className={styles.filterBar}>
+            {["all", "reschedule", "assignment", "remark", "announcement", "class_reminder"].map(type => (
+              <button
+                key={type}
+                className={`${kid.filterPill} ${selectedType === type ? kid.filterPillActive : ""}`}
+                onClick={() => {
+                  setSelectedType(type);
+                  setPage(1);
+                }}
+              >
+                {type === "all" ? "All" : type.charAt(0).toUpperCase() + type.slice(1).replace("_", " ")}
+              </button>
+            ))}
+          </div>
 
-        {/* Type Filter */}
-        <div className={styles.filterBar}>
-          {["all", "reschedule", "assignment", "remark", "announcement", "class_reminder"].map(type => (
-            <button
-              key={type}
-              className={`${styles.filterBtn} ${selectedType === type ? styles.active : ""}`}
-              onClick={() => {
-                setSelectedType(type);
-                setPage(1);
-              }}
-            >
-              {type === "all" ? "All" : type.charAt(0).toUpperCase() + type.slice(1).replace("_", " ")}
-            </button>
-          ))}
-        </div>
+          <div className={styles.content}>
+            {loading ? (
+              <div className={styles.loading}>Loading...</div>
+            ) : notifications.length === 0 ? (
+              <div className={kid.empty}>
+                <span className={kid.emptyIcon} aria-hidden="true">📭</span>
+                <span className={kid.emptyTitle}>No notifications yet</span>
+              </div>
+            ) : (
+              <>
+                <div className={styles.notificationsList}>
+                  {notifications.map(notif => (
+                    <div
+                      key={notif.notification_id}
+                      className={`${styles.notificationItem} ${!notif.is_read ? styles.unread : ""}`}
+                      style={{ borderLeftColor: getNotificationColor(notif.type) }}
+                      onClick={() => handleNotificationClick(notif)}
+                    >
+                      <div className={styles.notifIcon}>{getNotificationIcon(notif.type)}</div>
 
-        <div className={styles.content}>
-          {loading ? (
-            <div className={styles.loading}>Loading...</div>
-          ) : notifications.length === 0 ? (
-            <div className={styles.empty}>
-              <p>No notifications yet</p>
-            </div>
-          ) : (
-            <>
-              <div className={styles.notificationsList}>
-                {notifications.map(notif => (
-                  <div
-                    key={notif.notification_id}
-                    className={`${styles.notificationItem} ${!notif.is_read ? styles.unread : ""}`}
-                    style={{ borderLeftColor: getNotificationColor(notif.type) }}
-                    onClick={() => handleNotificationClick(notif)}
-                  >
-                    <div className={styles.notifIcon}>{getNotificationIcon(notif.type)}</div>
-                    
-                    <div className={styles.notifContent}>
-                      <div className={styles.notifHeader}>
-                        <h4 className={styles.notifTitle}>{getNotificationTitle(notif)}</h4>
-                        <span className={styles.notifType}>{notif.type}</span>
+                      <div className={styles.notifContent}>
+                        <div className={styles.notifHeader}>
+                          <h4 className={styles.notifTitle}>{getNotificationTitle(notif)}</h4>
+                          <span className={styles.notifType}>{notif.type}</span>
+                        </div>
+                        <p className={styles.notifMessage}>{renderNotificationMessage(notif.message)}</p>
+                        <span className={styles.notifTime}>
+                          {new Date(notif.created_at).toLocaleDateString([], { timeZone: getStoredUserTimezone() })} {new Date(notif.created_at).toLocaleTimeString([], { timeZone: getStoredUserTimezone(), hour: '2-digit', minute: '2-digit' })}
+                        </span>
                       </div>
-                      <p className={styles.notifMessage}>{renderNotificationMessage(notif.message)}</p>
-                      <span className={styles.notifTime}>
-                        {new Date(notif.created_at).toLocaleDateString([], { timeZone: getStoredUserTimezone() })} {new Date(notif.created_at).toLocaleTimeString([], { timeZone: getStoredUserTimezone(), hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
 
-                    <div className={styles.notifActions}>
-                      {notif.type === "reschedule" && notif.title === "Reschedule Request" ? (
-                        <>
-                          <button
-                            className={styles.approveBtn}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              requestApproveReschedule(notif.notification_id, notif.related_id);
-                            }}
-                            title="Approve reschedule"
-                            disabled={actionInProgress === notif.notification_id}
-                          >
-                            {actionInProgress === notif.notification_id ? "..." : "✓"}
-                          </button>
-                          <button
-                            className={styles.rejectBtn}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              requestRejectReschedule(notif.notification_id, notif.related_id);
-                            }}
-                            title="Reject reschedule"
-                            disabled={actionInProgress === notif.notification_id}
-                          >
-                            {actionInProgress === notif.notification_id ? "..." : "✕"}
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          {!notif.is_read && (
+                      <div className={styles.notifActions}>
+                        {notif.type === "reschedule" && notif.title === "Reschedule Request" ? (
+                          <>
                             <button
-                              className={styles.markReadBtn}
+                              className={`${kid.btn} ${kid.btnPrimary} ${styles.actionBtn}`}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleMarkAsRead(notif.notification_id);
+                                requestApproveReschedule(notif.notification_id, notif.related_id);
                               }}
-                              title="Mark as read"
+                              title="Approve reschedule"
+                              disabled={actionInProgress === notif.notification_id}
                             >
-                              ✓
+                              {actionInProgress === notif.notification_id ? "Sending…" : "Approve"}
                             </button>
-                          )}
-                          <button
-                            className={styles.deleteBtn}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              requestDeleteNotification(notif.notification_id);
-                            }}
-                            title="Delete"
-                          >
-                            ✕
-                          </button>
-                        </>
-                      )}
+                            <button
+                              className={`${kid.btn} ${kid.btnGhost} ${styles.actionBtn}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                requestRejectReschedule(notif.notification_id, notif.related_id);
+                              }}
+                              title="Reject reschedule"
+                              disabled={actionInProgress === notif.notification_id}
+                            >
+                              {actionInProgress === notif.notification_id ? "Sending…" : "Reject"}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {!notif.is_read && (
+                              <button
+                                className={`${kid.btn} ${kid.btnGhost} ${styles.actionBtn}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkAsRead(notif.notification_id);
+                                }}
+                                title="Mark as read"
+                              >
+                                Mark as read
+                              </button>
+                            )}
+                            <button
+                              className={`${styles.deleteBtn} ${styles.actionBtn}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                requestDeleteNotification(notif.notification_id);
+                              }}
+                              title="Delete"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className={styles.pagination}>
-                  <button
-                    disabled={page === 1}
-                    onClick={() => loadNotifications(page - 1, selectedType)}
-                    className={styles.pageBtn}
-                  >
-                    ← Prev
-                  </button>
-                  <span className={styles.pageInfo}>
-                    Page {page} of {totalPages}
-                  </span>
-                  <button
-                    disabled={page === totalPages}
-                    onClick={() => loadNotifications(page + 1, selectedType)}
-                    className={styles.pageBtn}
-                  >
-                    Next →
-                  </button>
+                  ))}
                 </div>
-              )}
 
-              {/* Footer Actions */}
-              <div className={styles.footerActions}>
-                {unreadCount > 0 && (
-                  <button
-                    type="button"
-                    className={styles.markAllReadBtn}
-                    onClick={requestMarkAllAsRead}
-                  >
-                    Mark All as Read
-                  </button>
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className={styles.pagination}>
+                    <button
+                      disabled={page === 1}
+                      onClick={() => loadNotifications(page - 1, selectedType)}
+                      className={`${styles.pageBtn} ${styles.pageBtnPrimary}`}
+                    >
+                      ← Prev
+                    </button>
+                    <span className={styles.pageInfo}>
+                      Page {page} of {totalPages}
+                    </span>
+                    <button
+                      disabled={page === totalPages}
+                      onClick={() => loadNotifications(page + 1, selectedType)}
+                      className={`${styles.pageBtn} ${styles.pageBtnPrimary}`}
+                    >
+                      Next →
+                    </button>
+                  </div>
                 )}
-                {notifications.length > 0 && (
-                  <button
-                    type="button"
-                    className={styles.clearAllBtn}
-                    onClick={requestClearAllNotifications}
-                  >
-                    Clear All
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-        {confirmAction && (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              background: "rgba(0,0,0,0.35)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 1200,
-              padding: "20px",
-            }}
-            onClick={closeConfirmAction}
-          >
-            <div
-              style={{
-                background: "#fff",
-                borderRadius: "16px",
-                padding: "24px",
-                maxWidth: "420px",
-                width: "100%",
-                boxShadow: "0 24px 60px rgba(0,0,0,0.16)",
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 style={{ margin: "0 0 12px", fontSize: "1.1rem" }}>{confirmAction.title}</h3>
-              <p style={{ margin: "0 0 24px", color: "#55606c", lineHeight: 1.6 }}>{confirmAction.message}</p>
 
-              {confirmAction.requiresReason && (
-                <div style={{ margin: "0 0 20px" }}>
-                  <label
-                    htmlFor="decline-reason-input"
-                    style={{ display: "block", fontSize: "0.85rem", fontWeight: 700, color: "#13251f", marginBottom: "6px" }}
-                  >
-                    Reason for declining
-                    <span style={{ color: "#b4442f" }}> *</span>
-                  </label>
-                  <textarea
-                    id="decline-reason-input"
-                    rows={4}
-                    autoFocus
-                    maxLength={DECLINE_REASON_MAX_LENGTH}
-                    value={declineReason}
-                    onChange={(e) => {
-                      setDeclineReason(e.target.value);
-                      if (declineReasonError) setDeclineReasonError("");
-                    }}
-                    placeholder="Explain why this request is being declined. The requester will see this reason."
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      borderRadius: "12px",
-                      border: declineReasonError ? "1px solid #d66a55" : "1px solid #d0d5db",
-                      fontSize: "0.9rem",
-                      fontFamily: "inherit",
-                      lineHeight: 1.5,
-                      resize: "vertical",
-                      boxSizing: "border-box",
-                      color: "#13251f",
-                    }}
-                  />
-                  {declineReasonError ? (
-                    <p style={{ margin: "6px 0 0", fontSize: "0.8rem", color: "#b4442f", fontWeight: 600 }}>
-                      {declineReasonError}
-                    </p>
-                  ) : (
-                    <p style={{ margin: "6px 0 0", fontSize: "0.78rem", color: "#6b7280" }}>
-                      This reason is shared with the requester. Minimum {DECLINE_REASON_MIN_LENGTH} characters.
-                    </p>
+                {/* Footer Actions */}
+                <div className={styles.footerActions}>
+                  {unreadCount > 0 && (
+                    <button
+                      type="button"
+                      className={`${kid.btn} ${kid.btnPrimary} ${kid.btnWide}`}
+                      onClick={requestMarkAllAsRead}
+                    >
+                      Mark All as Read
+                    </button>
+                  )}
+                  {notifications.length > 0 && (
+                    <button
+                      type="button"
+                      className={`${kid.btn} ${kid.btnGhost} ${kid.btnWide}`}
+                      onClick={requestClearAllNotifications}
+                    >
+                      Clear All
+                    </button>
                   )}
                 </div>
-              )}
+              </>
+            )}
+          </div>
+          {confirmAction && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "rgba(15, 25, 20, 0.45)",
+                display: "grid", placeItems: "center",
+                padding: 20,
+                zIndex: 1200,
+              }}
+              onClick={closeConfirmAction}
+            >
+              <div className={kid.filterDialog} style={{ maxWidth: 440 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className={kid.filterHead}>
+                  <div>
+                    <h3 className={kid.filterTitle}>{confirmAction.title}</h3>
+                    <p className={kid.filterSub}>{confirmAction.message}</p>
+                  </div>
+                  <button type="button" className={kid.filterClose} onClick={closeConfirmAction} aria-label="Close">
+                    ×
+                  </button>
+                </div>
+                <div className={kid.filterBody}>
+                  {confirmAction.requiresReason && (
+                    <div className={kid.pastCard}>
+                      <label
+                        htmlFor="decline-reason-input"
+                        className={kid.detailLabel}
+                      >
+                        Reason for declining <span className={kid.summaryValue}>*</span>
+                      </label>
+                      <textarea
+                        id="decline-reason-input"
+                        rows={4}
+                        autoFocus
+                        maxLength={DECLINE_REASON_MAX_LENGTH}
+                        value={declineReason}
+                        onChange={(e) => {
+                          setDeclineReason(e.target.value);
+                          if (declineReasonError) setDeclineReasonError("");
+                        }}
+                        placeholder="Explain why this request is being declined. The requester will see this reason."
+                        style={{
+                          width: "100%",
+                          padding: 12,
+                          borderRadius: "var(--control-radius)",
+                          border: declineReasonError ? "1px solid var(--text-danger)" : "1px solid var(--border-mid)",
+                          fontSize: "0.9rem",
+                          fontFamily: "inherit",
+                          lineHeight: 1.5,
+                          resize: "vertical",
+                          boxSizing: "border-box",
+                          color: "var(--text)",
+                          marginTop: 8,
+                        }}
+                      />
+                      {declineReasonError ? (
+                        <div className={kid.error}>
+                          {declineReasonError}
+                        </div>
+                      ) : (
+                        <p className={kid.summaryLabel}>
+                          This reason is shared with the requester. Minimum {DECLINE_REASON_MIN_LENGTH} characters.
+                        </p>
+                      )}
+                    </div>
+                  )}
 
-              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-                <button
-                  onClick={closeConfirmAction}
-                  style={{
-                    padding: "10px 16px",
-                    borderRadius: "12px",
-                    border: "1px solid #d0d5db",
-                    background: "#fff",
-                    color: "#13251f",
-                    cursor: "pointer",
-                    fontWeight: 600,
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={performConfirmAction}
-                  disabled={confirmAction.requiresReason && declineReason.trim().length < DECLINE_REASON_MIN_LENGTH}
-                  style={{
-                    padding: "10px 16px",
-                    borderRadius: "12px",
-                    border: "none",
-                    background: confirmAction.type === "reject-reschedule" ? "#8a3e2e" : "#26423b",
-                    color: "#fff",
-                    cursor: confirmAction.requiresReason && declineReason.trim().length < DECLINE_REASON_MIN_LENGTH
-                      ? "not-allowed"
-                      : "pointer",
-                    fontWeight: 600,
-                    opacity: confirmAction.requiresReason && declineReason.trim().length < DECLINE_REASON_MIN_LENGTH ? 0.6 : 1,
-                  }}
-                >
-                  {confirmAction.confirmLabel}
-                </button>
+                  <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                    <button
+                      type="button"
+                      onClick={closeConfirmAction}
+                      className={`${kid.btn} ${kid.btnGhost}`}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={performConfirmAction}
+                      disabled={confirmAction.requiresReason && declineReason.trim().length < DECLINE_REASON_MIN_LENGTH}
+                      className={`${kid.btn} ${kid.btnPrimary}`}
+                    >
+                      {confirmAction.confirmLabel}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

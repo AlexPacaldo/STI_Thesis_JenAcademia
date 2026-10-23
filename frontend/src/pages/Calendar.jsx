@@ -531,9 +531,14 @@ function RequestDialog({ title, onClose, children, maxWidth = 620 }) {
           className={styles.dialog}
           style={{ maxWidth }}
         >
-          <h3 style={{ margin: "0 0 4px 0", fontSize: "1.15rem", fontWeight: 800, color: "#1d3a2c" }}>
-            {title}
-          </h3>
+          <div className={kid.filterHead}>
+            <div>
+              <h3 className={kid.filterTitle}>{title}</h3>
+            </div>
+            <button type="button" className={kid.filterClose} onClick={onClose} aria-label="Close">
+              ×
+            </button>
+          </div>
           {children}
         </div>
       </div>
@@ -601,19 +606,21 @@ function AvailabilityDialog({ open, onClose, screen = "form", children }) {
           aria-modal="true"
           aria-label={heading.label}
           onClick={(event) => event.stopPropagation()}
-          className={styles.dialog}
+          className={kid.filterDialog}
           style={{ maxWidth: 780 }}
         >
-          <div className={cal.dialogHead}>
+          <div className={kid.filterHead}>
             <div>
-              <h3 className={cal.dialogTitle}>{heading.title}</h3>
-              <p className={cal.dialogSub}>{heading.sub}</p>
+              <h3 className={kid.filterTitle}>{heading.title}</h3>
+              <p className={kid.filterSub}>{heading.sub}</p>
             </div>
-            <button type="button" className={cal.dialogClose} onClick={onClose} aria-label="Close">
+            <button type="button" className={kid.filterClose} onClick={onClose} aria-label="Close">
               ×
             </button>
           </div>
-          {children}
+          <div className={kid.filterBody}>
+            {children}
+          </div>
         </div>
       </div>
     </ModalPortal>
@@ -1194,6 +1201,8 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [assignedTeacherId, setAssignedTeacherId] = useState(null);
   const [assignedTeacherName, setAssignedTeacherName] = useState("");
   const [studentRemarks, setStudentRemarks] = useState([]);
+  const [remarkDraft, setRemarkDraft] = useState("");
+  const [remarkSubmitting, setRemarkSubmitting] = useState(false);
   const [teacherClassesCache, setTeacherClassesCache] = useState({});
   const [studentBookingMode, setStudentBookingMode] = useState(false);  const [studentBookingDate, setStudentBookingDate] = useState(fmtDate(today));
   const [studentBookingTime, setStudentBookingTime] = useState("");
@@ -1615,9 +1624,17 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     shouldRemindStartScreenshot,
   ]);
 
-  const latestRemark = selectedClass?.id
-    ? (studentRemarks.find((remark) => String(remark.class_id) === String(selectedClass.id)) || studentRemarks[0] || null)
-    : (studentRemarks[0] || null);
+  // Show the teacher's most recent note for this student, whatever class it
+  // was written for. When the student opens their next class they should see
+  // the last note their teacher left, not a blank "no remark yet".
+  const latestRemark = useMemo(() => {
+    const sorted = [...studentRemarks].sort((a, b) => {
+      const aTime = new Date(a.created_at || 0).getTime();
+      const bTime = new Date(b.created_at || 0).getTime();
+      return bTime - aTime;
+    });
+    return sorted[0] || null;
+  }, [studentRemarks]);
   const selectedTeacherFullName = selectedClass
     ? selectedClass.teacherFullName || selectedClass.teacherName || [selectedClass.teacher_first_name, selectedClass.teacher_last_name]
         .filter(Boolean)
@@ -3997,6 +4014,66 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     }
   };
 
+  // Give a remark about this class. The box stays open from 30 minutes before
+  // class starts until after the class ends, so the teacher never has to leave
+  // this page to write a note about a student.
+  const handleGiveRemark = async () => {
+    if (!selectedClass || !selectedClass.id || !selectedClass.student_id) {
+      notify?.("Please select a class first.", "error");
+      return;
+    }
+
+    const text = remarkDraft.trim();
+    if (!text) {
+      notify?.("Please write a note before sending.", "warning");
+      return;
+    }
+
+    setRemarkSubmitting(true);
+    try {
+      const response = await axios.post(`${API}/api/calendar/remarks`, {
+        class_id: selectedClass.id,
+        teacher_id: localUserId,
+        student_id: selectedClass.student_id,
+        remarks: text,
+        rating: null,
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        notify?.(data.message || "Could not send the note.", "error");
+        return;
+      }
+
+      const data = await response.json();
+      setRemarkDraft("");
+      setRemarkSubmitting(false);
+
+      // Add the new remark to the local list so the "Latest Remark" panel
+      // updates without a full refresh.
+      setStudentRemarks((prev) => [
+        {
+          remark_id: data.remark_id ?? data.id ?? null,
+          class_id: selectedClass.id,
+          class_name: selectedClass.className || selectedClass.class_name,
+          scheduled_date: selectedClass.scheduled_date || selectedDate,
+          start_time: selectedClass.start_time || selectedClass.time,
+          remarks: text,
+          student_name: selectedClass.studentFullName || selectedClass.studentName,
+          student_profile_image_url: selectedClass.student_profile_image_url,
+          created_at: new Date().toISOString(),
+          ...data,
+        },
+        ...prev,
+      ]);
+
+      notify?.("Note sent to the student.", "success");
+    } catch (error) {
+      setRemarkSubmitting(false);
+      notify?.(error?.response?.data?.message || "Unable to send the note. Please try again.", "error");
+    }
+  };
+
   const openClassDoneConfirmation = () => {
     if (!selectedClass?.id || !selectedClass?.student_id) {
       notify?.("Please select a class first.", "error");
@@ -6101,94 +6178,168 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
             {isTeacherOrAdmin ? (
               selectedClass ? (
                 <>
-                  <div className={cal.panelTitle}>
-                    {localRole === "teacher" ? "Student Information" : "Class Information"}
-                  </div>
+                  <div className={kid.pastCard}>
+                    <div className={kid.head}>
+                      <div className={kid.headRow}>
+                        <h2 className={kid.title}>
+                          {localRole === "teacher" ? CLASS_INFO.title : "Class Information"}
+                        </h2>
+                      </div>
+                    </div>
                   <div className={styles.slotList}>
                     {selectedClass.studentName && (
-                      <div className={cal.detailRow}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div className={kid.detailRow}>
+                        <div className={kid.detailAvatar}>
                           <AuthenticatedImage
                             src={selectedClass.student_profile_image_url || selectedClass.studentProfileImageUrl}
                             alt={selectedClass.studentFullName || selectedClass.studentName}
-                            className={cal.detailAvatar}
                             fallback={
                               <img
                                 src={userPic}
                                 alt={selectedClass.studentFullName || selectedClass.studentName}
-                                className={cal.detailAvatar}
                               />
                             }
                           />
-                          <div>
-                            <div className={cal.detailLabel}>Student</div>
-                            <div className={cal.detailValue}>
-                              {selectedClass.studentFullName || selectedClass.studentName}
-                            </div>
+                        </div>
+                        <div>
+                          <div className={kid.detailLabel}>Student</div>
+                          <div className={kid.detailValue}>
+                            {selectedClass.studentFullName || selectedClass.studentName}
                           </div>
                         </div>
                       </div>
                     )}
                     {(selectedClass.studentProficiencyLevel || selectedClass.student_proficiency_level) && (
-                      <div className={cal.detailRow}>
-                        <div className={cal.detailLabel}>Proficiency level</div>
-                        <div className={cal.detailValue}>
-                          {formatProficiencyLevel(selectedClass.studentProficiencyLevel || selectedClass.student_proficiency_level)}
+                      <div className={kid.detailRow}>
+                        <span className={kid.pastFactIcon} aria-hidden="true">📊</span>
+                        <div>
+                          <div className={kid.detailLabel}>Proficiency level</div>
+                          <div className={kid.detailValue}>
+                            {formatProficiencyLevel(selectedClass.studentProficiencyLevel || selectedClass.student_proficiency_level)}
+                          </div>
                         </div>
                       </div>
                     )}
                     {selectedClass.studentEmail && (
-                      <div className={cal.detailRow}>
-                        <div className={cal.detailLabel}>Student email</div>
-                        <div className={cal.detailValue}>{selectedClass.studentEmail}</div>
+                      <div className={kid.detailRow}>
+                        <span className={kid.pastFactIcon} aria-hidden="true">✉️</span>
+                        <div>
+                          <div className={kid.detailLabel}>Email</div>
+                          <div className={kid.detailValue}>{selectedClass.studentEmail}</div>
+                        </div>
                       </div>
                     )}
                     {isAdmin && selectedClass.teacherName && (
-                      <div className={cal.detailRow}>
-                        <div className={cal.detailLabel}>Teacher</div>
-                        <div className={cal.detailValue}>{selectedClass.teacherName}</div>
+                      <div className={kid.detailRow}>
+                        <span className={kid.pastFactIcon} aria-hidden="true">👩‍🏫</span>
+                        <div>
+                          <div className={kid.detailLabel}>Teacher</div>
+                          <div className={kid.detailValue}>{selectedClass.teacherName}</div>
+                        </div>
                       </div>
                     )}
                     {isAdmin && selectedClass.teacherEmail && (
-                      <div className={cal.detailRow}>
-                        <div className={cal.detailLabel}>Teacher email</div>
-                        <div className={cal.detailValue}>{selectedClass.teacherEmail}</div>
+                      <div className={kid.detailRow}>
+                        <span className={kid.pastFactIcon} aria-hidden="true">✉️</span>
+                        <div>
+                          <div className={kid.detailLabel}>Teacher email</div>
+                          <div className={kid.detailValue}>{selectedClass.teacherEmail}</div>
+                        </div>
                       </div>
                     )}
-                    <div className={cal.detailRow}>
-                      <div className={cal.detailLabel}>Class</div>
-                      <div className={cal.detailValue}>{selectedClass.className}</div>
+                    <div className={kid.detailRow}>
+                      <span className={kid.pastFactIcon} aria-hidden="true">📚</span>
+                      <div>
+                        <div className={kid.detailLabel}>Class</div>
+                        <div className={kid.detailValue}>{selectedClass.className}</div>
+                      </div>
                     </div>
-                    <div className={cal.detailRow}>
-                      <div className={cal.detailLabel}>Time</div>
-                      <div className={`${cal.detailValue} ${cal.detailValueLoud}`}>
-                        {selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration, selectedClass.end_time)}
+                    <div className={kid.detailRow}>
+                      <span className={kid.pastFactIcon} aria-hidden="true">🕐</span>
+                      <div>
+                        <div className={kid.detailLabel}>Time</div>
+                        <div className={kid.detailValue}>
+                          {selectedClass.time} - {getEndTime(selectedClass.time, selectedClass.duration, selectedClass.end_time)}
+                        </div>
                       </div>
                     </div>
                   </div>
+                  </div>
                   {renderVerificationPanel()}
-                  {isTeacherOrAdmin && (
-                    <div style={remarkSectionStyle}>
-                      <div style={remarkHeadingStyle}>Latest Remark</div>
-                      {latestRemark ? (
-                        <div style={remarkCardStyle}>
-                          <div style={remarkTitleStyle}>
-                            {latestRemark.class_name || "Class"}
-                          </div>
-                          <div style={remarkMetaStyle}>
-                            {latestRemark.class_name || "Class"}{" "}
-                            {formatRemarkDate(latestRemark.scheduled_date) || "Date unavailable"}
-                            {latestRemark.start_time ? ` - ${humanTime(latestRemark.start_time)}` : ""}
-                          </div>
-                          <div style={remarkBodyStyle}>
-                            {latestRemark.remarks || "No remark text"}
+
+                  {/* Latest Remark - kid designed */}
+                  <div className={kid.pastCard}>
+                    <div className={kid.head}>
+                      <div className={kid.headRow}>
+                        <h3 className={kid.title}>Latest Remark</h3>
+                      </div>
+                    </div>
+                    {latestRemark ? (
+                      <>
+                        <div className={kid.pastFact}>
+                          <span className={kid.pastFactIcon} aria-hidden="true">📝</span>
+                          <div>
+                            <div className={kid.detailLabel}>{latestRemark.class_name || "Class"}</div>
+                            <div className={kid.detailValue}>
+                              {latestRemark.class_name || "Class"}{" "}
+                              {formatRemarkDate(latestRemark.scheduled_date) || CLASS_INFO.dateMissing}
+                              {latestRemark.start_time ? ` - ${humanTime(latestRemark.start_time)}` : ""}
+                            </div>
                           </div>
                         </div>
-                      ) : (
-                        <div style={{ padding: 10, fontSize: "0.82rem", color: "#587068", background: "#f6fbf8", border: "1px solid #d7e5d9", borderRadius: 18 }}>
-                          No remarks yet.
+                        <div className={kid.pastFact}>
+                          <span className={kid.pastFactIcon} aria-hidden="true">💬</span>
+                          <div>
+                            <div className={kid.detailLabel}>Note</div>
+                            <div className={kid.detailValue}>
+                              {latestRemark.remarks || CLASS_INFO.noNoteYet}
+                            </div>
+                          </div>
                         </div>
-                      )}
+                      </>
+                    ) : (
+                      <div className={kid.empty}>
+                        <span className={kid.emptyIcon} aria-hidden="true">💬</span>
+                        <span>{CLASS_INFO.noNoteYet}</span>
+                      </div>
+                    )}
+                  </div>
+                  {isTeacherOrAdmin && selectedClass && (isClassJoinable(selectedClass, selectedDate, currentTimeTick) || isClassPast(selectedClass, selectedDate, currentTimeTick)) && (
+                    <div className={kid.summary}>
+                      <div className={kid.summaryRow}>
+                        <div className={kid.summaryIcon} aria-hidden="true">📝</div>
+                        <div>
+                          <div className={kid.summaryLabel}>Say something about this class</div>
+                          <div className={kid.summaryValue}>{selectedClass.studentFullName || selectedClass.studentName}</div>
+                        </div>
+                      </div>
+                      <textarea
+                        style={{
+                          marginTop: 8,
+                          width: "100%",
+                          minHeight: 120,
+                          border: "1px solid var(--border-mid)",
+                          borderRadius: "var(--control-radius)",
+                          padding: 12,
+                          background: "var(--surface)",
+                          color: "var(--text)",
+                          fontFamily: "inherit",
+                          fontSize: "1rem",
+                          resize: "vertical",
+                        }}
+                        placeholder="Write a note about this class..."
+                        value={remarkDraft}
+                        onChange={(event) => setRemarkDraft(event.target.value)}
+                        disabled={remarkSubmitting}
+                      />
+                      <button
+                        type="button"
+                        disabled={remarkSubmitting || !remarkDraft.trim()}
+                        onClick={handleGiveRemark}
+                        className={`${kid.btn} ${kid.btnPrimary} ${kid.btnWide}`}
+                      >
+                        {remarkSubmitting ? "Sending…" : "Send the note"}
+                      </button>
                     </div>
                   )}
                   {canShowClassEntryAction && (
@@ -8631,11 +8782,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(15, 23, 42, 0.48)",
-          backdropFilter: "blur(8px)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
+          background: "rgba(15, 25, 20, 0.45)",
+          display: "grid", placeItems: "center",
           padding: 20,
           zIndex: 2000,
           animation: "fadeIn 0.2s ease-out",
@@ -8646,98 +8794,96 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
           aria-modal="true"
           aria-labelledby="reschedule-confirm-title"
           onClick={(event) => event.stopPropagation()}
-          className={styles.confirmCard}
+          className={kid.filterDialog}
+          style={{ maxWidth: 620 }}
         >
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: "50%",
-              background: "#eef2ff",
-              color: "#4338ca",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 800,
-              fontSize: 18,
-              marginBottom: 14,
-            }}
-          >
-            RS
-          </div>
-          <h3 id="reschedule-confirm-title" style={{ margin: "0 0 8px", fontSize: "1.15rem", color: "#111827" }}>
-            {localRole === "teacher" ? "Send reschedule request?" : CONFIRM.rescheduleTitle}
-          </h3>
-          <p style={{ margin: "0 0 16px", color: "#4b5563", lineHeight: 1.5, fontSize: "0.92rem" }}>
-            {localRole === "teacher"
-              ? "This will send the request to the student for review."
-              : CONFIRM.rescheduleHelp}
-          </p>
-          <div
-            style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: 10,
-              background: "#f9fafb",
-              padding: "12px 14px",
-              marginBottom: 20,
-              display: "grid",
-              gap: 8,
-            }}
-          >
-            <div style={{ fontWeight: 700, color: "#111827" }}>
-              {selectedClass.className || "Selected class"}
+          <div className={kid.filterHead}>
+            <div>
+              <h3 className={kid.filterTitle} id="reschedule-confirm-title">
+                {localRole === "teacher" ? "Send reschedule request?" : CONFIRM.rescheduleTitle}
+              </h3>
+              <p className={kid.filterSub}>
+                {localRole === "teacher"
+                  ? "This will send the request to the student for review."
+                  : CONFIRM.rescheduleHelp}
+              </p>
             </div>
-            <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-              {localRole === "teacher" ? "Current" : CONFIRM.now}: {selectedClass.scheduled_date ? new Date(selectedClass.scheduled_date + "T00:00:00").toLocaleDateString() : "Current date"} at {humanTime(selectedClass.start_time || selectedClass.time)}
-            </div>
-            <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-              {localRole === "teacher" ? "Requested" : CONFIRM.new}: {requestDate ? new Date(requestDate + "T00:00:00").toLocaleDateString() : "Not selected"} at {humanTime(requestTime)}{requestEndTime ? ` - ${humanTime(requestEndTime)}` : ""}
-            </div>
-            <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-              {CONFIRM.minutesEach(selectedClassDuration)}
-            </div>
-            <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-              {localRole === "teacher" ? "Student" : CLASS_INFO.teacher}: {localRole === "teacher" ? selectedClass.studentName || selectedClass.studentFullName || "Student" : selectedTeacherFullName || "Teacher"}
-            </div>
-            <div style={{ fontSize: "0.88rem", color: "#4b5563", borderTop: "1px solid #e5e7eb", paddingTop: 8 }}>
-              {localRole === "teacher" ? "Reason" : CONFIRM.why}: {requestReason.trim()}
-            </div>
-          </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => setRequestConfirmOpen(false)}
-              disabled={isSubmittingRequest}
-              style={{
-                border: "1px solid rgba(38, 66, 59, 0.14)",
-                background: "#fff",
-                color: "#26423b",
-                borderRadius: 14,
-                padding: "10px 18px",
-                minHeight: 42,
-                fontWeight: 700,
-                cursor: isSubmittingRequest ? "not-allowed" : "pointer",
-              }}
-            >
-              Cancel
+            <button type="button" className={kid.filterClose} onClick={() => setRequestConfirmOpen(false)} aria-label="Close">
+              ×
             </button>
-            <button
-              type="button"
-              onClick={confirmRequestReschedule}
-              disabled={isSubmittingRequest}
-              style={{
-                border: "none",
-                background: "#4338ca",
-                color: "#fff",
-                borderRadius: 8,
-                padding: "10px 16px",
-                fontWeight: 700,
-                cursor: isSubmittingRequest ? "not-allowed" : "pointer",
-                boxShadow: "0 8px 18px rgba(67, 56, 202, 0.22)",
-              }}
-            >
-              {isSubmittingRequest ? "Sending..." : "Send Request"}
-            </button>
+          </div>
+          <div className={kid.filterBody}>
+            <div className={kid.pastCard}>
+              <div className={kid.pastFact}>
+                <span className={kid.pastFactIcon} aria-hidden="true">📚</span>
+                <div>
+                  <div className={kid.detailLabel}>{selectedClass.className || "Selected class"}</div>
+                  <div className={kid.detailValue}>
+                    {localRole === "teacher"
+                      ? `${localRole === "teacher" ? "Current" : CONFIRM.now}: ${new Date(selectedClass.scheduled_date + "T00:00:00").toLocaleDateString()} at ${humanTime(selectedClass.start_time || selectedClass.time)}`
+                      : `${localRole === "teacher" ? "Current" : CONFIRM.now}: ${new Date(selectedClass.scheduled_date + "T00:00:00").toLocaleDateString()} at ${humanTime(selectedClass.start_time || selectedClass.time)}`}
+                  </div>
+                </div>
+              </div>
+              <div className={kid.pastFact}>
+                <span className={kid.pastFactIcon} aria-hidden="true">🕐</span>
+                <div>
+                  <div className={kid.detailLabel}>
+                    {localRole === "teacher" ? "Requested" : CONFIRM.new}
+                  </div>
+                  <div className={kid.detailValue}>
+                    {requestDate ? new Date(requestDate + "T00:00:00").toLocaleDateString() : "Not selected"} at {humanTime(requestTime)}{requestEndTime ? ` - ${humanTime(requestEndTime)}` : ""}
+                  </div>
+                </div>
+              </div>
+              <div className={kid.pastFact}>
+                <span className={kid.pastFactIcon} aria-hidden="true">⏱️</span>
+                <div>
+                  <div className={kid.detailLabel}>Duration</div>
+                  <div className={kid.detailValue}>{CONFIRM.minutesEach(selectedClassDuration)}</div>
+                </div>
+              </div>
+              <div className={kid.pastFact}>
+                <span className={kid.pastFactIcon} aria-hidden="true">👩‍🏫</span>
+                <div>
+                  <div className={kid.detailLabel}>
+                    {localRole === "teacher" ? "Student" : CLASS_INFO.teacher}
+                  </div>
+                  <div className={kid.detailValue}>
+                    {localRole === "teacher"
+                      ? selectedClass.studentName || selectedClass.studentFullName || "Student"
+                      : selectedTeacherFullName || "Teacher"}
+                  </div>
+                </div>
+              </div>
+              <div className={kid.pastFact}>
+                <span className={kid.pastFactIcon} aria-hidden="true">💬</span>
+                <div>
+                  <div className={kid.detailLabel}>
+                    {localRole === "teacher" ? "Reason" : CONFIRM.why}
+                  </div>
+                  <div className={kid.detailValue}>{requestReason.trim()}</div>
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => setRequestConfirmOpen(false)}
+                disabled={isSubmittingRequest}
+                className={`${kid.btn} ${kid.btnGhost}`}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmRequestReschedule}
+                disabled={isSubmittingRequest}
+                className={`${kid.btn} ${kid.btnPrimary} ${kid.btnWide}`}
+              >
+                {isSubmittingRequest ? "Sending..." : "Send Request"}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -9009,51 +9155,42 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         onClick={closeConfirmAction}
         style={{
           position: "fixed", inset: 0, zIndex: 9999,
-          background: "rgba(15, 23, 42, 0.48)",
-          backdropFilter: "blur(8px)",
-          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "rgba(15, 25, 20, 0.45)",
+          display: "grid", placeItems: "center",
           padding: 20,
         }}
       >
         <div
           onClick={(e) => e.stopPropagation()}
-          style={{
-            background: "#fff",
-            border: "1px solid rgba(38, 66, 59, 0.12)",
-            borderRadius: 24, padding: 24,
-            minWidth: 320, maxWidth: 440, width: "100%",
-            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
-            animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
-          }}
+          className={kid.filterDialog}
+          style={{ maxWidth: 440 }}
         >
-          <h2 style={{ margin: "0 0 10px", fontSize: "1.2rem", fontWeight: 800, color: "#13251f" }}>
-            {confirmAction.title}
-          </h2>
-          <p style={{ margin: "0 0 20px", color: "#5e7268", fontSize: "0.95rem", lineHeight: 1.6 }}>
-            {confirmAction.message}
-          </p>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-            <button
-              type="button"
-              onClick={closeConfirmAction}
-              style={{
-                minHeight: "42px", padding: "10px 18px", borderRadius: 14, border: "1px solid rgba(38, 66, 59, 0.14)",
-                background: "#fff", color: "#26423b", fontWeight: 700, cursor: "pointer", fontSize: "0.95rem",
-              }}
-            >
-              Cancel
+          <div className={kid.filterHead}>
+            <div>
+              <h3 className={kid.filterTitle}>{confirmAction.title}</h3>
+              <p className={kid.filterSub}>{confirmAction.message}</p>
+            </div>
+            <button type="button" className={kid.filterClose} onClick={closeConfirmAction} aria-label="Close">
+              ×
             </button>
-            <button
-              type="button"
-              onClick={performConfirmAction}
-              style={{
-                minHeight: "42px", padding: "10px 18px", borderRadius: 14, border: "none",
-                background: confirmAction.type === "delete-availability" ? "#8a3e2e" : "#26423b",
-                color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: "0.95rem",
-              }}
-            >
-              {confirmAction.confirmLabel}
-            </button>
+          </div>
+          <div className={kid.filterBody}>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button
+                type="button"
+                onClick={closeConfirmAction}
+                className={`${kid.btn} ${kid.btnGhost}`}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={performConfirmAction}
+                className={`${kid.btn} ${kid.btnPrimary}`}
+              >
+                {confirmAction.confirmLabel}
+              </button>
+            </div>
           </div>
         </div>
       </div>
