@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
 import './teacherTheme.css'
 import Header from './components/Header'
@@ -129,7 +129,7 @@ function App() {
     });
   }
 
-  function clearSession() {
+  const clearSession = useCallback(() => {
     clearStoredUser();
     // The bearer token is the credential; leaving it behind after sign-out would
     // keep admin access alive until it expired on its own.
@@ -137,15 +137,15 @@ function App() {
     localStorage.removeItem(STORAGE_KEYS.lastActivityAt);
     localStorage.removeItem(LEGACY_STORAGE_KEYS.lastActivityAt);
     window.dispatchEvent(new Event("userLoggedOut"));
-  }
+  }, []);
 
-  function logoutDueToInactivity() {
+  const logoutDueToInactivity = useCallback(() => {
     clearSession();
     notify?.("You have been logged out due to inactivity.", "info");
     navigate("/login", { replace: true });
-  }
+  }, [clearSession, navigate, notify]);
 
-  function resetIdleTimer() {
+  const resetIdleTimer = useCallback(() => {
     const user = readStoredUser();
     if (!isAuthenticated(user)) return;
 
@@ -154,7 +154,7 @@ function App() {
       window.clearTimeout(idleTimerRef.current);
     }
     idleTimerRef.current = window.setTimeout(logoutDueToInactivity, IDLE_TIMEOUT_MS);
-  }
+  }, [logoutDueToInactivity]);
 
   useEffect(() => {
     const path = location.pathname.toLowerCase();
@@ -275,7 +275,7 @@ function App() {
     }
 
     return undefined;
-  }, [location.pathname, navigate, notify]);
+  }, [clearSession, location.pathname, logoutDueToInactivity, navigate, notify, resetIdleTimer]);
 
   useEffect(() => {
     setIsSidebarOpen(false);
@@ -290,6 +290,7 @@ function App() {
   const isAccountPageNewUser = isAccountPage && !isProfileComplete(readStoredUser());
   const shouldShowSidebar = shouldShowHeader && !isAccountPageNewUser;
   const isTeacherTheme = getRole(readStoredUser()) === "teacher";
+  const isAdminPage = getRole(readStoredUser()) === "admin" && !isAccountPage;
   const showFooter = location.pathname === "/" && !isAuthenticated(readStoredUser());
   const isFullBleedPath = location.pathname === "/" || location.pathname === "/login" || location.pathname.toLowerCase().startsWith("/setup-account/") || location.pathname.toLowerCase().startsWith("/forgot-password") || location.pathname.toLowerCase().startsWith("/reset-password/");
 
@@ -310,8 +311,8 @@ function App() {
               onMenuClick={() => setIsSidebarOpen((open) => !open)}
             />
           )}
-          <main className={`content-area ${isFullBleedPath ? 'full-bleed' : ''}`}>
-            <div className={`content-inner ${isFullBleedPath ? 'full-bleed' : ''}`}>
+          <main className={`content-area ${isFullBleedPath ? 'full-bleed' : ''} ${isAdminPage ? 'admin-content' : ''}`}>
+            <div className={`content-inner ${isFullBleedPath ? 'full-bleed' : ''} ${isAdminPage ? 'admin-content' : ''}`}>
               <div key={location.pathname} style={{ animation: 'fadeIn 0.32s cubic-bezier(0.22,1,0.36,1) both' }}>
                 {/* Wraps the routed page, not the whole app, so a crash on one
                     screen leaves the header, sidebar and every other route

@@ -226,8 +226,8 @@ function PdfLessonViewer({ fileUrl, title, onRendered, pageLimit = 0 }) {
           // height leaves ~570px of empty margin either side and renders the
           // text small; filling the width instead keeps it readable and the
           // reader scrolls down through the document, one tall page at a time.
-          const availableWidth = Math.max(container.clientWidth - 8, 320);
-          const scale = Math.min(1.6, Math.max(0.8, availableWidth / baseViewport.width));
+          const availableWidth = Math.max(container.clientWidth - 8, 1);
+          const scale = Math.min(1.6, availableWidth / baseViewport.width);
           const viewport = page.getViewport({ scale });
           const canvas = document.createElement("canvas");
           const context = canvas.getContext("2d");
@@ -236,7 +236,6 @@ function PdfLessonViewer({ fileUrl, title, onRendered, pageLimit = 0 }) {
           canvas.width = Math.floor(viewport.width * outputScale);
           canvas.height = Math.floor(viewport.height * outputScale);
           canvas.style.width = `${Math.floor(viewport.width)}px`;
-          canvas.style.height = `${Math.floor(viewport.height)}px`;
           canvas.className = styles.pdfPage;
 
           const wrapper = document.createElement("div");
@@ -1090,68 +1089,125 @@ export default function BooksContent({ mode = "student" }) {
             ) : studentProgress.length === 0 ? (
               <p className={styles.emptyText}>No active students are enrolled in this book's course yet.</p>
             ) : (
-              <div className={styles.progressTableWrap}>
-                <table className={styles.progressTable}>
-                  <thead>
-                    <tr>
-                      <th>Student</th>
-                      <th>Completed Lessons</th>
-                      <th>Status</th>
-                      <th>Lesson Breakdown</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {studentProgress.map((student) => (
-                      <tr
-                        key={student.studentId}
-                        className={student.courseCompleted ? styles.courseCompletedRow : ""}
-                      >
-                        <td>
-                          <div className={styles.studentCell}>
-                            {student.profileImageUrl ? (
-                              <AuthenticatedImage src={student.profileImageUrl} alt={student.name} />
-                            ) : (
-                              <div className={styles.studentInitial}>
-                                {(student.name || "S").slice(0, 1).toUpperCase()}
-                              </div>
-                            )}
-                            <div>
-                              <strong>{student.name}</strong>
-                              <span>{student.email}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          <div className={styles.progressCount}>
-                            <strong>{student.completedLessons} / {student.totalLessons} Lessons</strong>
-                            <span>{student.progressPercentage}% Complete</span>
-                            <div className={styles.tableProgressBar}>
-                              <div style={{ width: `${student.progressPercentage}%` }} />
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          <span className={`${styles.statusBadge} ${student.courseCompleted ? styles.statusDone : ""}`}>
-                            {student.status}
-                          </span>
-                        </td>
-                        <td>
-                          <div className={styles.lessonBreakdown}>
-                            {student.lessons.map((lesson) => (
-                              <span
-                                key={lesson.lessonId}
-                                className={lesson.isCompleted ? styles.lessonDone : styles.lessonPending}
-                              >
-                                L{lesson.lessonNumber}: {lesson.isCompleted ? "Done" : "Pending"}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
+              <>
+                <div className={styles.progressTableWrap}>
+                  <table className={styles.progressTable}>
+                    <thead>
+                      <tr>
+                        <th>Student</th>
+                        <th>Completed Lessons</th>
+                        <th>Status</th>
+                        <th>Lesson Breakdown</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {studentProgress.map((student) => (
+                        <tr
+                          key={student.studentId}
+                          className={student.courseCompleted ? styles.courseCompletedRow : ""}
+                        >
+                          <td>
+                            <div className={styles.studentCell}>
+                              {student.profileImageUrl ? (
+                                <AuthenticatedImage src={student.profileImageUrl} alt={student.name} />
+                              ) : (
+                                <div className={styles.studentInitial}>
+                                  {(student.name || "S").slice(0, 1).toUpperCase()}
+                                </div>
+                              )}
+                              <div>
+                                <strong>{student.name}</strong>
+                                <span>{student.email}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <div className={styles.progressCount}>
+                              <strong>{student.completedLessons} / {student.totalLessons} Lessons</strong>
+                              <span>{student.progressPercentage}% Complete</span>
+                              <div className={styles.tableProgressBar}>
+                                <div style={{ width: `${student.progressPercentage}%` }} />
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <span className={`${styles.statusBadge} ${student.courseCompleted ? styles.statusDone : ""}`}>
+                              {student.status}
+                            </span>
+                          </td>
+                          <td>
+                            <div className={styles.lessonBreakdown}>
+                              {student.lessons.map((lesson) => (
+                                <span
+                                  key={lesson.lessonId}
+                                  className={lesson.isCompleted ? styles.lessonDone : styles.lessonPending}
+                                >
+                                  L{lesson.lessonNumber}: {lesson.isCompleted ? "Done" : "Pending"}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className={styles.progressCards}>
+                  {studentProgress.map((student) => (
+                    <article
+                      key={student.studentId}
+                      className={`${styles.progressCard} ${student.courseCompleted ? styles.progressCardCompleted : ""}`}
+                    >
+                      <div className={styles.progressStudent}>
+                        {student.profileImageUrl ? (
+                          <AuthenticatedImage src={student.profileImageUrl} alt={student.name} />
+                        ) : (
+                          <div className={styles.studentInitial}>
+                            {(student.name || "S").slice(0, 1).toUpperCase()}
+                          </div>
+                        )}
+                        <div className={styles.progressStudentInfo}>
+                          <strong>{student.name}</strong>
+                          <span>{student.email}</span>
+                        </div>
+                      </div>
+
+                      <div className={styles.progressCardSection}>
+                        <span className={styles.progressCardLabel}>Completed lessons</span>
+                        <div className={styles.progressCount}>
+                          <strong>{student.completedLessons} / {student.totalLessons} Lessons</strong>
+                          <span>{student.progressPercentage}% Complete</span>
+                          <div className={styles.tableProgressBar}>
+                            <div style={{ width: `${student.progressPercentage}%` }} />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className={styles.progressCardSection}>
+                        <span className={styles.progressCardLabel}>Status</span>
+                        <span className={`${styles.statusBadge} ${student.courseCompleted ? styles.statusDone : ""}`}>
+                          {student.status}
+                        </span>
+                      </div>
+
+                      <div className={styles.progressCardSection}>
+                        <span className={styles.progressCardLabel}>Lesson breakdown</span>
+                        <div className={styles.lessonBreakdown}>
+                          {student.lessons.map((lesson) => (
+                            <span
+                              key={lesson.lessonId}
+                              className={lesson.isCompleted ? styles.lessonDone : styles.lessonPending}
+                            >
+                              L{lesson.lessonNumber}: {lesson.isCompleted ? "Done" : "Pending"}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </>
             )}
           </section>
         ) : (

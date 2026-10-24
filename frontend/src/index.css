@@ -157,6 +157,7 @@ img, video, canvas, svg, iframe {
 }
 
 body {
+  font-size: 16px;
   background: linear-gradient(180deg, #fbfdfc 0%, var(--bg) 100%);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -166,6 +167,7 @@ body {
 img {
   display: block;
   max-width: 100%;
+  height: auto;
 }
 
 button, input, select, textarea {
@@ -322,6 +324,19 @@ a      { color: inherit; }
   box-shadow: var(--neu-shadow-lg);
   border: 1px solid var(--border);
   box-sizing: border-box;
+}
+
+.content-area.admin-content {
+  max-width: 2048px;
+  padding-inline: clamp(8px, 1.5vw, 28px);
+}
+
+.content-inner.admin-content {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .content-inner.full-bleed {
@@ -534,5 +549,25 @@ a      { color: inherit; }
   .content-inner {
     padding: 12px;
     border-radius: var(--radius-md);
+  }
+}
+
+@media (max-width: 640px) {
+  :where(
+    button,
+    [role="button"],
+    input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+    select,
+    textarea
+  ) {
+    min-height: 44px;
+  }
+
+  :where(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+    select,
+    textarea
+  ) {
+    font-size: 16px;
   }
 }

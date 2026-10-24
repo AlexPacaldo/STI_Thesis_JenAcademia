@@ -364,69 +364,152 @@ export default function AdminContractReviews() {
       ) : filteredReviews.length === 0 ? (
         <div className={styles.empty}>No reports match this search or filter.</div>
       ) : (
-        <div className={styles.tableWrap}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Student</th>
-                <th>Teacher</th>
-                <th>Contract</th>
-                <th>Teacher evaluation</th>
-                <th>Student rating</th>
-                <th>Status</th>
-                <th>Report</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredReviews.map((review) => {
-                const status = statusFor(review);
-                return (
-                  <tr key={review.review_id}>
-                    <td>
-                      <div className={styles.person}>
-                        <span className={styles.avatar} aria-hidden="true">
-                          {initials(review.student_name)}
-                        </span>
-                        <div>
-                          <strong>{review.student_name}</strong>
-                          <span className={styles.muted}>
-                            {review.course_name || "Course not set"}
+        <>
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Teacher</th>
+                  <th>Contract</th>
+                  <th>Teacher evaluation</th>
+                  <th>Student rating</th>
+                  <th>Status</th>
+                  <th>Report</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredReviews.map((review) => {
+                  const status = statusFor(review);
+                  return (
+                    <tr key={review.review_id}>
+                      <td>
+                        <div className={styles.person}>
+                          <span className={styles.avatar} aria-hidden="true">
+                            {initials(review.student_name)}
                           </span>
+                          <div>
+                            <strong>{review.student_name}</strong>
+                            <span className={styles.muted}>
+                              {review.course_name || "Course not set"}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td>
-                      <div className={styles.person}>
-                        <span className={styles.avatar} aria-hidden="true">
-                          {initials(review.teacher_name)}
+                      </td>
+                      <td>
+                        <div className={styles.person}>
+                          <span className={styles.avatar} aria-hidden="true">
+                            {initials(review.teacher_name)}
+                          </span>
+                          <strong>{review.teacher_name}</strong>
+                        </div>
+                      </td>
+                      <td>
+                        <strong>
+                          {review.classes_used}/{review.total_classes} classes
+                        </strong>
+                        <span className={styles.muted}>
+                          Completed {formatDate(review.completed_at)}
                         </span>
+                      </td>
+                      <td>
+                        {review.teacher_review ? (
+                          <div className={styles.resultCell}>
+                            <span className={styles.levelBadge}>
+                              {formatComputedLevel(review.teacher_review.computed_level) ||
+                                "Level recorded"}
+                            </span>
+                            <span className={styles.muted}>
+                              {formatAverage(review.teacher_review.average)}/5 average
+                            </span>
+                          </div>
+                        ) : (
+                          <span className={styles.pendingText}>Pending</span>
+                        )}
+                      </td>
+                      <td>
+                        {review.student_review ? (
+                          <div className={styles.resultCell}>
+                            <strong className={styles.ratingValue}>
+                              {formatAverage(review.student_review.average)}/5
+                            </strong>
+                            <span className={styles.muted}>Overall rating</span>
+                          </div>
+                        ) : (
+                          <span className={styles.pendingText}>Pending</span>
+                        )}
+                      </td>
+                      <td>
+                        <span className={`${styles.statusPill} ${status.className}`}>
+                          {status.label}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className={styles.reportButton}
+                          onClick={() => setSelected(review)}
+                        >
+                          View report
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className={styles.reviewCards}>
+            {filteredReviews.map((review) => {
+              const status = statusFor(review);
+              return (
+                <article className={styles.reviewCard} key={review.review_id}>
+                  <div className={styles.reviewPeople}>
+                    <div className={styles.reviewPerson}>
+                      <span className={styles.avatar} aria-hidden="true">
+                        {initials(review.student_name)}
+                      </span>
+                      <div>
+                        <span className={styles.reviewLabel}>Student</span>
+                        <strong>{review.student_name}</strong>
+                        <span className={styles.muted}>
+                          {review.course_name || "Course not set"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className={styles.reviewPerson}>
+                      <span className={styles.avatar} aria-hidden="true">
+                        {initials(review.teacher_name)}
+                      </span>
+                      <div>
+                        <span className={styles.reviewLabel}>Teacher</span>
                         <strong>{review.teacher_name}</strong>
                       </div>
-                    </td>
-                    <td>
-                      <strong>
-                        {review.classes_used}/{review.total_classes} classes
-                      </strong>
-                      <span className={styles.muted}>
-                        Completed {formatDate(review.completed_at)}
-                      </span>
-                    </td>
-                    <td>
+                    </div>
+                  </div>
+
+                  <div className={styles.reviewDetails}>
+                    <div className={styles.reviewDetail}>
+                      <span className={styles.reviewLabel}>Contract</span>
+                      <strong>{review.classes_used}/{review.total_classes} classes</strong>
+                      <span className={styles.muted}>Completed {formatDate(review.completed_at)}</span>
+                    </div>
+                    <div className={styles.reviewDetail}>
+                      <span className={styles.reviewLabel}>Teacher evaluation</span>
                       {review.teacher_review ? (
                         <div className={styles.resultCell}>
                           <span className={styles.levelBadge}>
-                            {formatComputedLevel(review.teacher_review.computed_level) ||
-                              "Level recorded"}
+                            {formatComputedLevel(review.teacher_review.computed_level) || "Level recorded"}
                           </span>
                           <span className={styles.muted}>
                             {formatAverage(review.teacher_review.average)}/5 average
                           </span>
                         </div>
-                      ) : (
-                        <span className={styles.pendingText}>Pending</span>
-                      )}
-                    </td>
-                    <td>
+                      ) : <span className={styles.pendingText}>Pending</span>}
+                    </div>
+                    <div className={styles.reviewDetail}>
+                      <span className={styles.reviewLabel}>Student rating</span>
                       {review.student_review ? (
                         <div className={styles.resultCell}>
                           <strong className={styles.ratingValue}>
@@ -434,30 +517,28 @@ export default function AdminContractReviews() {
                           </strong>
                           <span className={styles.muted}>Overall rating</span>
                         </div>
-                      ) : (
-                        <span className={styles.pendingText}>Pending</span>
-                      )}
-                    </td>
-                    <td>
+                      ) : <span className={styles.pendingText}>Pending</span>}
+                    </div>
+                    <div className={styles.reviewDetail}>
+                      <span className={styles.reviewLabel}>Status</span>
                       <span className={`${styles.statusPill} ${status.className}`}>
                         {status.label}
                       </span>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className={styles.reportButton}
-                        onClick={() => setSelected(review)}
-                      >
-                        View report
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className={`${styles.reportButton} ${styles.reviewCardButton}`}
+                    onClick={() => setSelected(review)}
+                  >
+                    View report
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {selected && (

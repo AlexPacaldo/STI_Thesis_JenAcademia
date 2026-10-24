@@ -1839,16 +1839,20 @@
 
 .filterTabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 16px;
   border-bottom: 1px solid var(--border);
   padding-bottom: 12px;
-  overflow-x: auto;
-  scrollbar-width: thin;
+  min-width: 0;
 }
 
 .filterTabs button {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  max-width: 100%;
+  min-height: 44px;
+  line-height: 1.25;
+  text-align: center;
 }
 
 .pagination {
@@ -1888,6 +1892,7 @@
 .overview {
   display: grid;
   gap: 20px;
+  container-type: inline-size;
 }
 
 /* Six tiles, so the column count is set per breakpoint rather than left to
@@ -1905,15 +1910,22 @@
   gap: 14px;
 }
 
-@media (min-width: 620px) {
+@container (min-width: 620px) {
   .statGrid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (min-width: 1280px) {
+@container (min-width: 1500px) {
   .statGrid {
     grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 420px) {
+  .statGrid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
   }
 }
 
@@ -2421,7 +2433,7 @@
   color: color-mix(in srgb, var(--text-danger) 78%, var(--surface));
 }
 
-@media (max-width: 900px) {
+@container (max-width: 900px) {
   .overviewSplit {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -3183,11 +3195,11 @@ label.checkboxOption > input[type='checkbox']:disabled {
 
 @media (max-width: 560px) {
   .Center {
-    padding: 4px 10px 16px;
+    padding: 4px 6px 12px;
   }
 
   .Center .card {
-    padding: 16px;
+    padding: 14px;
     border-radius: 18px;
   }
 

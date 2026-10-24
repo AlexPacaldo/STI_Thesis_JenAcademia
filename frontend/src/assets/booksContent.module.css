@@ -482,6 +482,10 @@
     -4px -4px 12px rgba(255, 255, 255, 0.72);
 }
 
+.progressCards {
+  display: none;
+}
+
 .progressTable {
   width: 100%;
   border-collapse: collapse;
@@ -1280,15 +1284,20 @@
 
 .pdfPageWrap {
   width: 100%;
+  min-width: 0;
   display: grid;
   place-items: center;
 }
 
 .pdfPageWrap canvas {
+  display: block;
   max-width: 100%;
+  height: auto;
 }
 
 .pdfPage {
+  display: block;
+  width: auto;
   max-width: 100%;
   height: auto;
   border-radius: 18px;
@@ -1307,8 +1316,11 @@
 }
 
 .previewImage {
-  width: 100%;
-  max-height: calc(100vh - 240px);
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: calc(100dvh - 240px);
   object-fit: contain;
   border-radius: 14px;
 }
@@ -1370,7 +1382,7 @@
 
 @media (max-width: 640px) {
   .Center {
-    padding: 14px 12px 28px;
+    padding: 14px 8px 24px;
     border-radius: 0;
   }
 
@@ -1410,6 +1422,129 @@
     width: 100%;
     text-align: center;
   }
+
+  .progressPanel {
+    gap: 12px;
+  }
+
+  .progressPanelHeader h2 {
+    font-size: 1.25rem;
+  }
+
+  .progressTableWrap {
+    display: none;
+  }
+
+  .progressCards {
+    display: grid;
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .progressCard {
+    display: grid;
+    gap: 14px;
+    width: 100%;
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid rgba(38, 66, 59, 0.1);
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 6px 18px rgba(18, 34, 30, 0.08);
+  }
+
+  .progressCardCompleted {
+    border-color: rgba(38, 66, 59, 0.2);
+  }
+
+  .progressStudent {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(38, 66, 59, 0.08);
+  }
+
+  .progressStudent img,
+  .progressStudent .studentInitial {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    border-radius: 50%;
+  }
+
+  .progressStudentInfo {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .progressStudentInfo strong {
+    color: var(--text);
+    font-size: 1rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .progressStudentInfo span {
+    color: var(--muted);
+    font-size: 0.84rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .progressCardSection {
+    display: grid;
+    justify-items: start;
+    gap: 7px;
+    min-width: 0;
+  }
+
+  .progressCardLabel {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    line-height: 1.35;
+    text-transform: uppercase;
+  }
+
+  .progressCard .progressCount {
+    width: 100%;
+    max-width: none;
+    gap: 5px;
+  }
+
+  .progressCard .progressCount strong {
+    font-size: 0.95rem;
+  }
+
+  .progressCard .progressCount span {
+    font-size: 0.82rem;
+  }
+
+  .progressCard .statusBadge {
+    max-width: 100%;
+    min-height: 32px;
+    white-space: normal;
+    text-align: left;
+  }
+
+  .progressCard .lessonBreakdown {
+    width: 100%;
+    gap: 7px;
+  }
+
+  .progressCard .lessonBreakdown span,
+  .progressCard .lessonDone,
+  .progressCard .lessonPending {
+    padding: 0.4rem 0.65rem;
+    font-size: 0.8rem;
+  }
+
 }
 
 @media (max-width: 900px) {

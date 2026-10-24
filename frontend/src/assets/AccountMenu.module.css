@@ -86,6 +86,9 @@
 
   .trigger {
     padding: 2px;
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
   }
 
   /* !! The panel still hangs under the picture. A phone has room for it:
