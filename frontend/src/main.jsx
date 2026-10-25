@@ -8,7 +8,6 @@ import { clearStoredUser } from "./utils/sessionUser.js";
 import "./index.css";
 
 const Homepage = lazy(() => import("./pages/homepage.jsx"));
-const Register = lazy(() => import("./pages/register.jsx"));
 const Login = lazy(() => import("./pages/login.jsx"));
 const SetupAccount = lazy(() => import("./pages/SetupAccount.jsx"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword.jsx"));
@@ -40,7 +39,6 @@ const router = createBrowserRouter([
     element: <App />,                 // layout (Header/Footer)
     children: [
       { index: true, element: <Page><Homepage /></Page> },  // renders at "/"
-      { path: "register", element: <Page><Register /></Page> },
       { path: "login", element: <Page><Login /></Page> },
       { path: "setup-account/:token", element: <Page><SetupAccount /></Page> },
       { path: "forgot-password", element: <Page><ForgotPassword /></Page> },
@@ -78,9 +76,6 @@ const router = createBrowserRouter([
       // Admin owns the book library: creates books, distributes them to teachers
       // and maintains their lessons.
       { path: "adminBooksContent/:bookId", element: <Page><BooksContent mode="admin" /></Page> },
-
-
-       // "/register"
       // add more pages here...
     ],
   },

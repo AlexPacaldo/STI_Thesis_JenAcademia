@@ -16,7 +16,7 @@ import { API_BASE_URL } from "./utils/api.js";
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 60 * 1000; // 5 hours
 const ACCOUNT_STATUS_CHECK_MS = 60 * 1000;
-const PUBLIC_PATHS = ["/", "/login", "/register", "/setup-account", "/forgot-password", "/reset-password"];
+const PUBLIC_PATHS = ["/", "/login", "/setup-account", "/forgot-password", "/reset-password"];
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
 
 function isProfileComplete(user) {
@@ -64,7 +64,6 @@ function App() {
       student: [
         "/",
         "/login",
-        "/register",
         "/studentdashboard",
         "/assignments",
         "/assignmentsdropbox",
@@ -83,7 +82,6 @@ function App() {
       teacher: [
         "/",
         "/login",
-        "/register",
         "/teacherdashboard",
         "/teacherclasshistory",
         "/teacherstudents",
@@ -101,7 +99,6 @@ function App() {
       admin: [
         "/",
         "/login",
-        "/register",
         "/admindashboard",
         "/adminbookscontent",
         "/adminbookscontent/",
@@ -109,7 +106,7 @@ function App() {
       ],
     };
 
-    const allowed = rolePaths[role] || ["/", "/login", "/register"];
+    const allowed = rolePaths[role] || ["/", "/login"];
     return allowed.some((allowedPath) => {
       if (allowedPath === "/") {
         return normalizedPath === "/";
@@ -281,7 +278,7 @@ function App() {
     setIsSidebarOpen(false);
   }, [location.pathname, location.search]);
 
-  const hideHeaderPaths = ["/", "/login", "/register", "/setup-account", "/forgot-password", "/reset-password"];
+  const hideHeaderPaths = ["/", "/login", "/setup-account", "/forgot-password", "/reset-password"];
   const shouldShowHeader = !hideHeaderPaths.some((publicPath) => {
     const normalizedPath = location.pathname.toLowerCase();
     return publicPath === "/" ? normalizedPath === "/" : normalizedPath === publicPath || normalizedPath.startsWith(`${publicPath}/`);

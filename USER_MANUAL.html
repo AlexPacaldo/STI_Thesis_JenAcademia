@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JEN Academia | User Manual</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --green: #214936;
+      --green-dark: #173627;
+      --green-soft: #eaf2ed;
+      --gold: #d49b35;
+      --ink: #202923;
+      --muted: #5c6c62;
+      --line: #d8e1db;
+      --paper: #fff;
+      --wash: #f5f8f5;
+      --blue: #eaf2fa;
+      --blue-ink: #28567e;
+      --amber: #fff5df;
+      --amber-ink: #725116;
+      font-family: "Aptos", "Segoe UI", Arial, sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+      font-size: 10.5pt;
+      line-height: 1.48;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    .page {
+      position: relative;
+      min-height: 9.4in;
+      padding: 0;
+    }
+    h1, h2, h3, p, ul, ol { margin-top: 0; }
+    h1, h2, h3 { color: var(--green-dark); line-height: 1.18; }
+    h1 { font-size: 30pt; letter-spacing: -.7pt; margin-bottom: 12pt; }
+    h2 { font-size: 20pt; margin: 0 0 9pt; }
+    h3 { font-size: 12pt; margin: 14pt 0 5pt; }
+    p { margin-bottom: 8pt; }
+    ul, ol { padding-left: 20pt; margin-bottom: 9pt; }
+    li { margin-bottom: 3pt; padding-left: 1pt; }
+    a { color: var(--green); text-decoration: none; }
+    .eyebrow {
+      color: var(--green);
+      font-size: 8pt;
+      font-weight: 800;
+      letter-spacing: 1.8pt;
+      text-transform: uppercase;
+      margin-bottom: 8pt;
+    }
+    .subtitle { color: var(--muted); font-size: 13pt; max-width: 5.8in; }
+    .chapter { break-before: page; page-break-before: always; }
+    .chapter-intro { color: var(--muted); margin-bottom: 15pt; max-width: 6.5in; }
+    .cover {
+      min-height: 9.25in;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: .55in .52in .45in;
+      color: white;
+      background:
+        radial-gradient(ellipse at 94% 10%, rgba(212,155,53,.34), transparent 31%),
+        linear-gradient(145deg, #173627 0%, #214936 64%, #315b42 100%);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .cover .eyebrow { color: #e8c573; }
+    .cover h1 { color: white; font-size: 42pt; line-height: 1.04; max-width: 5.8in; margin: 0 0 17pt; }
+    .cover .subtitle { color: #e2ebe4; font-size: 15pt; max-width: 5.1in; }
+    .brand-mark {
+      display: inline-flex;
+      align-items: center;
+      gap: 10pt;
+      color: #fff;
+      font-weight: 800;
+      letter-spacing: .5pt;
+      font-size: 13pt;
+    }
+    .brand-icon {
+      width: 38pt;
+      height: 38pt;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.45);
+      border-radius: 12pt 12pt 12pt 3pt;
+      color: #f0cf7a;
+      font-size: 18pt;
+    }
+    .cover-rule { width: 62pt; height: 3pt; background: var(--gold); margin: 22pt 0; }
+    .cover-meta { color: #d5e0d8; font-size: 9pt; letter-spacing: .4pt; }
+    .cover-bottom { display: flex; justify-content: space-between; align-items: end; }
+    .cover-stamp {
+      border: 1px solid rgba(255,255,255,.33);
+      border-radius: 20pt;
+      padding: 5pt 11pt;
+      color: #e9efe9;
+      font-size: 8pt;
+      letter-spacing: .7pt;
+      text-transform: uppercase;
+    }
+    .contents {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7pt 22pt;
+      margin: 12pt 0 17pt;
+    }
+    .contents a {
+      display: flex;
+      gap: 9pt;
+      border-bottom: 1px solid var(--line);
+      padding: 6pt 0;
+      font-weight: 650;
+    }
+    .contents .num { min-width: 19pt; color: var(--gold); font-weight: 800; }
+    .section-label {
+      display: inline-block;
+      margin: 0 0 8pt;
+      color: var(--green);
+      font-size: 8pt;
+      font-weight: 800;
+      letter-spacing: 1.2pt;
+      text-transform: uppercase;
+    }
+    .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9pt; margin: 10pt 0; }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 9pt;
+      background: var(--paper);
+      padding: 11pt 12pt;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .card h3 { margin: 0 0 5pt; }
+    .card p:last-child, .card ul:last-child, .card ol:last-child { margin-bottom: 0; }
+    .soft-card { background: var(--wash); }
+    .callout {
+      border-left: 3pt solid var(--gold);
+      background: var(--amber);
+      color: var(--amber-ink);
+      padding: 9pt 12pt;
+      border-radius: 0 7pt 7pt 0;
+      margin: 10pt 0;
+      break-inside: avoid;
+    }
+    .tip {
+      border-left: 3pt solid var(--green);
+      background: var(--green-soft);
+      color: #254334;
+      padding: 9pt 12pt;
+      border-radius: 0 7pt 7pt 0;
+      margin: 10pt 0;
+      break-inside: avoid;
+    }
+    .info {
+      border-left: 3pt solid #7092b2;
+      background: var(--blue);
+      color: var(--blue-ink);
+      padding: 9pt 12pt;
+      border-radius: 0 7pt 7pt 0;
+      margin: 10pt 0;
+      break-inside: avoid;
+    }
+    .steps { counter-reset: step; list-style: none; padding: 0; margin: 10pt 0; }
+    .steps li {
+      position: relative;
+      counter-increment: step;
+      padding: 0 0 9pt 34pt;
+      margin: 0 0 7pt;
+      border-bottom: 1px solid #e9eeea;
+      min-height: 27pt;
+    }
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: -1pt;
+      width: 22pt;
+      height: 22pt;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--green);
+      color: white;
+      font-size: 9pt;
+      font-weight: 800;
+    }
+    .steps li:last-child { border-bottom: 0; }
+    .role-tag {
+      display: inline-block;
+      border-radius: 20pt;
+      padding: 3pt 8pt;
+      background: var(--green-soft);
+      color: var(--green);
+      font-size: 8pt;
+      font-weight: 800;
+      letter-spacing: .5pt;
+      text-transform: uppercase;
+      margin-bottom: 8pt;
+    }
+    .split { display: grid; grid-template-columns: 1.05fr .95fr; gap: 16pt; align-items: start; }
+    .compact li { margin-bottom: 2pt; }
+    .small { color: var(--muted); font-size: 9pt; }
+    .footerline {
+      border-top: 1px solid var(--line);
+      margin-top: 17pt;
+      padding-top: 7pt;
+      color: var(--muted);
+      font-size: 8pt;
+      display: flex;
+      justify-content: space-between;
+    }
+    .checklist { list-style: none; padding: 0; }
+    .checklist li { position: relative; padding-left: 19pt; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; top: 0; color: var(--green); font-weight: 900; }
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8pt 0 12pt;
+      font-size: 9pt;
+    }
+    .table th {
+      background: var(--green);
+      color: white;
+      text-align: left;
+      padding: 7pt 8pt;
+      font-weight: 700;
+    }
+    .table td { padding: 7pt 8pt; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .table tr:nth-child(even) td { background: var(--wash); }
+    .pill {
+      display: inline-block;
+      color: var(--green);
+      background: var(--green-soft);
+      border-radius: 5pt;
+      padding: 2pt 6pt;
+      font-size: 8pt;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .endnote {
+      margin-top: 22pt;
+      padding: 13pt 15pt;
+      border-radius: 10pt;
+      background: var(--green-dark);
+      color: white;
+    }
+    .endnote h3 { color: white; margin-top: 0; }
+    @media print {
+      @page { size: letter; margin: .54in .62in .58in; }
+      @page {
+        @bottom-left { content: "JEN ACADEMIA  •  USER MANUAL"; color: #65736a; font: 8pt "Segoe UI", Arial, sans-serif; }
+        @bottom-right { content: "OCTOBER 2026  •  " counter(page); color: #65736a; font: 8pt "Segoe UI", Arial, sans-serif; }
+      }
+      html, body { background: white; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      :root { font-size: 9.6pt; line-height: 1.36; }
+      .page { min-height: 0; }
+      .cover { min-height: 9.25in; break-after: page; page-break-after: always; }
+      a { color: inherit; }
+      h2 { font-size: 18pt; margin-bottom: 6pt; }
+      h3 { font-size: 11pt; margin: 10pt 0 4pt; }
+      p { margin-bottom: 6pt; }
+      .chapter-intro { margin-bottom: 10pt; }
+      .steps li { padding-bottom: 5pt; margin-bottom: 4pt; }
+      .card-grid { gap: 6pt; margin: 7pt 0; }
+      .card { padding: 8pt 9pt; }
+      .callout, .tip, .info { padding: 7pt 9pt; margin: 7pt 0; }
+      .table { font-size: 8.4pt; margin: 6pt 0 9pt; }
+      .table th, .table td { padding: 5pt 6pt; }
+      .footerline { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="page cover" aria-label="Cover">
+      <div class="brand-mark"><span class="brand-icon">J</span> JEN ACADEMIA</div>
+      <div>
+        <p class="eyebrow">A practical guide to your learning platform</p>
+        <h1>User<br>Manual</h1>
+        <div class="cover-rule"></div>
+        <p class="subtitle">Clear, step-by-step instructions for learners, teachers, and administrators.</p>
+      </div>
+      <div class="cover-bottom">
+        <div class="cover-meta">Booking · Classes · Learning · Progress<br>Prepared October 2026</div>
+        <div class="cover-stamp">Student • Teacher • Admin</div>
+      </div>
+    </section>
+
+    <section class="page chapter" id="contents">
+      <p class="eyebrow">Start here</p>
+      <h2>Find your way around</h2>
+      <p class="chapter-intro">This guide uses plain language and short steps. Follow the section for your role. The screens and options you see depend on your account.</p>
+      <nav class="contents" aria-label="Table of contents">
+        <a href="#quick-start"><span class="num">01</span><span>Quick start &amp; sign-in</span></a>
+        <a href="#account"><span class="num">02</span><span>Profile &amp; account</span></a>
+        <a href="#student-calendar"><span class="num">03</span><span>Learners: calendar &amp; classes</span></a>
+        <a href="#student-learning"><span class="num">04</span><span>Learners: assignments &amp; lessons</span></a>
+        <a href="#teacher-calendar"><span class="num">05</span><span>Teachers: schedule &amp; students</span></a>
+        <a href="#teacher-class"><span class="num">06</span><span>Teachers: conduct &amp; record a class</span></a>
+        <a href="#admin"><span class="num">07</span><span>Administrators: people &amp; requests</span></a>
+        <a href="#admin-library"><span class="num">08</span><span>Administrators: books &amp; reviews</span></a>
+        <a href="#notifications"><span class="num">09</span><span>Notifications &amp; LINE reminders</span></a>
+        <a href="#help"><span class="num">10</span><span>Safety, common issues &amp; glossary</span></a>
+      </nav>
+      <div class="card-grid">
+        <div class="card soft-card"><h3>For learners and families</h3><p>Start with Quick start, then follow the Learner sections to book a class, join a lesson, and keep track of learning.</p></div>
+        <div class="card soft-card"><h3>For teachers</h3><p>Set availability, check your students, and follow the class-completion steps so attendance and progress are recorded.</p></div>
+        <div class="card soft-card"><h3>For administrators</h3><p>Use the admin dashboard to manage accounts, scheduling requests, classes, course materials, and reviews.</p></div>
+        <div class="card soft-card"><h3>How to use this guide</h3><p>Button labels are written in <span class="pill">bold</span>. Some labels can vary slightly by screen size or account permissions.</p></div>
+      </div>
+      <p class="small">Manual scope: the JEN Academia web application and the user-facing workflows available to its three account roles.</p>
+      <div class="footerline"><span>JEN Academia · User Manual</span><span>October 2026</span></div>
+    </section>
+
+    <section class="page chapter" id="quick-start">
+      <p class="eyebrow">01 · Getting started</p>
+      <h2>Quick start &amp; sign-in</h2>
+      <p class="chapter-intro">Use a current browser and the account details supplied for your role. Student accounts are created by a JEN Academia administrator after a learner completes a trial outside the platform and signs a contract.</p>
+      <div class="split">
+        <div>
+          <span class="role-tag">New learner</span>
+          <h3>Contact JEN Academia to get started</h3>
+          <ol class="steps">
+            <li>Email <a href="mailto:jenacademia31@gmail.com"><b>jenacademia31@gmail.com</b></a> or send a message using the contact form on the public JEN Academia website.</li>
+            <li>Tell the team about your learning goals and ask about arranging a trial class. The trial is conducted outside the platform.</li>
+            <li>After the trial, review the available class contract with the team.</li>
+            <li>If you decide to continue, sign the contract. An administrator will then create your student account.</li>
+            <li>Use the secure account setup link the administrator sends you to finish your profile and set your password.</li>
+          </ol>
+          <div class="callout"><b>No public registration or trial booking:</b> new learners cannot create an account or book a trial from the platform.</div>
+        </div>
+        <div>
+          <span class="role-tag">Existing user</span>
+          <h3>Sign in</h3>
+          <ol class="steps">
+            <li>Choose <b>Log in</b>. At the role-choice screen, select <b>Student / Teacher</b> or <b>Admin</b>.</li>
+            <li>Enter the email and password associated with your account.</li>
+            <li>If you forgot your password, choose <b>Forgot password</b>, enter your email, and follow the link sent to your inbox.</li>
+            <li>At your first sign-in, complete any requested profile setup. Then your role-specific Home page opens.</li>
+          </ol>
+          <div class="callout"><b>Teacher and admin accounts:</b> these accounts are created by an administrator. Ask your school administrator for your account details if you have not received them.</div>
+        </div>
+      </div>
+      <h3>Know your workspace</h3>
+      <table class="table">
+        <thead><tr><th>Part of the screen</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><b>Home</b></td><td>Shows a useful starting view, such as the classes scheduled for today.</td></tr>
+          <tr><td><b>Menu / sidebar</b></td><td>Opens the pages available to your role. On a phone, open the menu button first.</td></tr>
+          <tr><td><b>Notifications</b></td><td>Shows updates that may need your attention, including class and schedule information.</td></tr>
+          <tr><td><b>Account</b></td><td>Manage your profile, password, contact details, and available reminder settings.</td></tr>
+        </tbody>
+      </table>
+      <div class="tip"><b>Getting started tip:</b> use the menu to return Home at any time. If a page is missing, check that you are signed in with the correct account role.</div>
+      <div class="footerline"><span>01 · Getting started</span><span>JEN Academia</span></div>
+    </section>
+
+    <section class="page chapter" id="account">
+      <p class="eyebrow">02 · Your account</p>
+      <h2>Profile &amp; account settings</h2>
+      <p class="chapter-intro">Keep your contact details current so scheduling and account messages reach you. The Account page may show different profile fields for learners and teachers.</p>
+      <ol class="steps">
+        <li>Open <b>Account</b> from the navigation menu or profile menu.</li>
+        <li>To change your profile picture, choose the picture controls and select an image or use the camera if your device offers it.</li>
+        <li>Choose the edit option in your profile information, update the fields you need, and save.</li>
+        <li>When asked to verify a phone number, request the code and enter it in the verification dialog.</li>
+        <li>To change your password, open the Security section, enter your current password and a new password, then save.</li>
+        <li>Use <b>Log out</b> when you finish on a shared or public device.</li>
+      </ol>
+      <div class="card-grid">
+        <div class="card"><h3>Time zone</h3><p>Check your account time zone and keep it correct. Dates and class times are displayed using account and schedule settings.</p></div>
+        <div class="card"><h3>Teacher profile</h3><p>Teachers can review their teaching profile and other role-specific details on the Account page. Ask an administrator if a managed field needs correction.</p></div>
+      </div>
+      <div class="callout"><b>Automatic sign-out:</b> the application signs out an inactive session after five hours. Sign in again to continue.</div>
+      <div class="info"><b>Privacy:</b> use your own account. Do not share your password or leave your account open on a device other people use.</div>
+      <div class="footerline"><span>02 · Your account</span><span>JEN Academia</span></div>
+    </section>
+
+    <section class="page chapter" id="student-calendar">
+      <p class="eyebrow">03 · Learner guide</p>
+      <span class="role-tag">Student / learner</span>
+      <h2>Calendar, booking &amp; class day</h2>
+      <p class="chapter-intro">Use Calendar to see your schedule, book an available class, or ask your teacher to change a scheduled class.</p>
+      <h3>Book a class</h3>
+      <ol class="steps">
+        <li>Open <b>Calendar</b>, then choose <b>Book a class</b>.</li>
+        <li>Select a date marked as available. Availability depends on your teacher's schedule and existing bookings.</li>
+        <li>Choose an open time and check the teacher, course, date, and time shown.</li>
+        <li>Select <b>Book it</b> to submit the booking.</li>
+        <li>Return to Calendar and confirm the class appears in your schedule.</li>
+      </ol>
+      <h3>Ask to reschedule</h3>
+      <ol class="steps">
+        <li>In Calendar, open the class you need to change and choose the reschedule option.</li>
+        <li>Select a date and time that are available. The calendar checks for time conflicts.</li>
+        <li>Enter a short reason (at least five characters), review the request, and send it.</li>
+        <li>Watch your notifications for your teacher's decision. The original class time stays in place until the request is approved.</li>
+      </ol>
+      <div class="callout"><b>Important:</b> sending a request does not move the class. Do not assume the new time is confirmed until the other participant approves it.</div>
+      <h3>Join your scheduled class</h3>
+      <ol class="steps">
+        <li>Open the class from your Calendar at the scheduled time.</li>
+        <li>If prompted, read the recording notice. The recording is used for attendance verification, is visible to the admin and assigned class participants, and is automatically deleted after seven days.</li>
+        <li>Choose <b>I Consent and Join</b> to continue, then choose <b>Open Meeting</b>.</li>
+      </ol>
+      <div class="tip"><b>Before class:</b> check the class date and time on the calendar and allow your browser to open the meeting in a new tab.</div>
+      <div class="footerline"><span>03 · Learner guide</span><span>JEN Academia</span></div>
+    </section>
+
+    <section class="page chapter" id="student-learning">
+      <p class="eyebrow">04 · Learner guide</p>
+      <span class="role-tag">Student / learner</span>
+      <h2>Assignments, feedback &amp; lessons</h2>
+      <div class="card-grid">
+        <div class="card">
+          <h3>Complete an assignment</h3>
+          <ol class="compact">
+            <li>Open <b>Assignments</b> and choose a task.</li>
+            <li>Read the instructions and due date.</li>
+            <li>Type your answer or attach the requested file.</li>
+            <li>Review your work and choose <b>Submit</b>.</li>
+            <li>Reopen the task to check its status. If editing is available, use the edit option.</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>Read teacher remarks</h3>
+          <ol class="compact">
+            <li>Open <b>Remarks</b> from the menu.</li>
+            <li>Read your teacher's notes, starting with the most recent.</li>
+            <li>Use the feedback to prepare for your next class.</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>Open a book or lesson</h3>
+          <ol class="compact">
+            <li>Open <b>Books/Lessons</b> and select a book.</li>
+            <li>Choose a lesson to open its reading material.</li>
+            <li>Read through the lesson. Your reading place is saved when you leave.</li>
+            <li>When you finish, choose <b>Mark as Complete</b>. The next lesson may then unlock.</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>Review your class history</h3>
+          <ol class="compact">
+            <li>Open <b>Class history</b> to see past classes.</li>
+            <li>Choose a class to review its details and available class recording.</li>
+            <li>Recordings are temporary and are deleted automatically after seven days.</li>
+          </ol>
+        </div>
+      </div>
+      <h3>Share a contract review</h3>
+      <ol class="steps">
+        <li>Open <b>Contract reviews</b> when a review is waiting for you.</li>
+        <li>Select the relevant review and rate each question using the scale shown.</li>
+        <li>Add a comment if you wish, then read your answers again.</li>
+        <li>Submit the review. Submitted reviews cannot be changed.</li>
+      </ol>
+      <div class="info"><b>Missing a book or assignment?</b> Only materials made available to your account appear in these pages. Ask your teacher or the school administrator to check that the item was shared with you.</div>
+      <div class="footerline"><span>04 · Learner guide</span><span>JEN Academia</span></div>
+    </section>
+
+    <section class="page chapter" id="teacher-calendar">
+      <p class="eyebrow">05 · Teacher guide</p>
+      <span class="role-tag">Teacher</span>
+      <h2>Schedule &amp; student management</h2>
+      <p class="chapter-intro">Your teacher menu includes Home, Calendar, My students, Class history, Contract reviews, Remarks, Assignments, and My books.</p>
+      <h3>Set your teaching availability</h3>
+      <ol class="steps">
+        <li>Open <b>Calendar</b> and choose <b>Set Availability</b>.</li>
+        <li>Select a day and enter the hours you can teach.</li>
+        <li>Add a break if you are unavailable during part of that time.</li>
+        <li>Choose <b>Save Availability</b>. Saved times appear as available for student booking.</li>
+        <li>Review your calendar regularly so your published availability matches your schedule.</li>
+      </ol>
+      <h3>Find and support students</h3>
+      <ol class="steps">
+        <li>Open <b>My students</b> to see the learners assigned to you.</li>
+        <li>Use the search field to find a student by name.</li>
+        <li>Review the course, package, and classes remaining shown for that student.</li>
+        <li>Use the student selection in Assignments or Remarks to choose the correct learner.</li>
+      </ol>
+      <h3>Handle a reschedule request</h3>
+      <ol class="steps">
+        <li>Open the notification panel from the notification bell.</li>
+        <li>Review the student, current class time, requested time, and reason.</li>
+        <li>Choose <b>Approve</b> or <b>Reject</b>. If you reject, provide a reason when asked.</li>
+        <li>Check Calendar to confirm the request status and class schedule.</li>
+      </ol>
+      <div class="callout"><b>Teacher and student approvals:</b> reschedule requests are decided by the class participants. Administrators can view requests but cannot approve or reject them.</div>
+      <div class="footerline"><span>05 · Teacher guide</span><span>JEN Academia</span></div>
+    </section>
+
+    <section class="page chapter" id="teacher-class">
+      <p class="eyebrow">06 · Teacher guide</p>
+      <span class="role-tag">Teacher</span>
+      <h2>Teach, verify &amp; record a class</h2>
+      <p class="chapter-intro">Complete the class workflow from its Calendar entry. Class verification may require the attendance recording and a written summary.</p>
+      <h3>During and after class</h3>
+      <ol class="steps">
+        <li>Open the scheduled class from <b>Calendar</b>.</li>
+        <li>Review the class time and join the meeting using <b>Open Meeting</b>.</li>
+        <li>When ready to capture attendance evidence, return to the class page and choose <b>Start Recording</b>. Stop and upload the recording when finished.</li>
+        <li>Write a class summary with at least one complete sentence.</li>
+        <li>Return to the class details and add a short, helpful class remark for the learner.</li>
+        <li>Choose <b>End, Verify &amp; Complete</b> when the class is over, the recording has finished uploading, and the required information is ready.</li>
+        <li>Check <b>Class history</b> to confirm the completed class is listed.</li>
+      </ol>
+      <div class="callout"><b>Recording consent:</b> both class participants are asked to consent before joining. Explain the notice and do not continue unless the required consent is given. Recordings support attendance verification and are automatically deleted after seven days.</div>
+      <div class="card-grid">
+        <div class="card"><h3>Write a useful class summary</h3><p>Describe what happened in the session, such as the topic covered and the learner's participation. Use a complete sentence and avoid unnecessary sensitive personal details.</p></div>
+        <div class="card"><h3>Leave a learner remark</h3><p>Share one concrete strength and, when useful, one next step. Remarks are visible to the student and help them prepare for their next lesson.</p></div>
+      </div>
+      <h3>Assignments, reviews &amp; books</h3>
+      <ul class="checklist">
+        <li>In <b>Assignments</b>, choose a student, create a task, add instructions and an optional due date or file, then post it. Use submissions to review the student's work.</li>
+        <li>In <b>Contract reviews</b>, score each required skill, add a helpful note, and review the computed level before submitting.</li>
+        <li>In <b>My books</b>, open a book shared by the administrator, read its lessons, and use the progress view to check student progress.</li>
+      </ul>
+      <div class="info"><b>Books are read-only for teachers.</b> Administrators manage the shared library and its lessons. Contact an administrator if a book needs to be added or assigned to your class.</div>
+      <div class="footerline"><span>06 · Teacher guide</span><span>JEN Academia</span></div>
+    </section>
+
+    <section class="page chapter" id="admin">
+      <p class="eyebrow">07 · Administrator guide</p>
+      <span class="role-tag">Administrator</span>
+      <h2>Dashboard, accounts &amp; requests</h2>
+      <p class="chapter-intro">The admin sidebar opens the Admin Dashboard. Use its tabs to reach the management area you need. Some account-creation actions are reserved for super administrators.</p>
+      <table class="table">
+        <thead><tr><th>Dashboard area</th><th>Typical task</th></tr></thead>
+        <tbody>
+          <tr><td><b>Overview</b></td><td>See a summary and follow links to items needing attention.</td></tr>
+          <tr><td><b>Calendar</b></td><td>Review scheduled classes and calendar activity.</td></tr>
+          <tr><td><b>Verifications</b></td><td>Review class verification details and attendance evidence.</td></tr>
+          <tr><td><b>Requests</b></td><td>View schedule or reschedule requests and their status. Admins do not approve/reject participant reschedule requests.</td></tr>
+          <tr><td><b>Contracts</b></td><td>Review student contract requests and manage class contracts.</td></tr>
+          <tr><td><b>Contract reviews</b></td><td>Review submitted class/contract feedback.</td></tr>
+          <tr><td><b>Teacher Courses</b></td><td>Review teacher course assignments.</td></tr>
+          <tr><td><b>Create Teacher / Create Student</b></td><td>Create accounts and enter the account information requested by the form.</td></tr>
+          <tr><td><b>Create Admin</b></td><td>Create an administrator account when the signed-in account has super-admin permission.</td></tr>
+          <tr><td><b>Account Management</b></td><td>Find active student and teacher accounts and manage account status.</td></tr>
+        </tbody>
+      </table>
+      <h3>Create an account</h3>
+      <ol class="steps">
+        <li>Choose <b>Create Student</b> or <b>Create Teacher</b> in the admin menu.</li>
+        <li>Complete the required identity, contact, course, schedule, and account fields presented by the form.</li>
+        <li>For a student, select the assigned teacher and course/package information as appropriate.</li>
+        <li>Review the details carefully and submit the form.</li>
+        <li>Provide the new user with their sign-in instructions privately.</li>
+      </ol>
+      <div class="callout"><b>Privacy and permissions:</b> use the correct role and assigned teacher. Teachers should only access their assigned students and class data. Avoid sharing accounts or passwords.</div>
+      <div class="footerline"><span>07 · Administrator guide</span><span>JEN Academia</span></div>
+    </section>
+
+    <section class="page chapter" id="admin-library">
+      <p class="eyebrow">08 · Administrator guide</p>
+      <span class="role-tag">Administrator</span>
+      <h2>Manage books, lessons &amp; reviews</h2>
+      <h3>Build and share the book library</h3>
+      <ol class="steps">
+        <li>Open <b>Books / Lessons</b> in the Admin Dashboard.</li>
+        <li>Choose the option to add a book. Enter its title, description, course, and any optional author or cover information requested.</li>
+        <li>Select the teacher or teachers who should receive the book, then save it.</li>
+        <li>Open the book's content area to add lessons and upload each lesson's learning material.</li>
+        <li>Check the book and lesson list, then confirm that assigned teachers can see the book.</li>
+        <li>Use the book's teacher distribution controls to change which teachers have access.</li>
+      </ol>
+      <h3>Update, archive, or restore a book</h3>
+      <ul class="checklist">
+        <li>Edit the book details or cover from the library controls.</li>
+        <li>Archive a book to remove it from the active library while preserving the option to restore it later.</li>
+        <li>Use the archived view and restore action when a book should become active again.</li>
+        <li>Hard deletion is not available. Archive is the safe, reversible way to retire a book.</li>
+      </ul>
+      <div class="info"><b>Access model:</b> admins own and maintain the shared library. Teachers can read books assigned to them and review their students' progress. Students can read the books available through their assigned teacher and course.</div>
+      <h3>Review progress and completed evaluations</h3>
+      <ul class="checklist">
+        <li>Open the book's progress view to check lesson completion for students.</li>
+        <li>Use <b>Contract reviews</b> to inspect submitted evaluations and feedback.</li>
+        <li>Use <b>Verifications</b> to review attendance evidence and class verification status.</li>
+      </ul>
+      <div class="callout"><b>Before changing access:</b> confirm the intended teacher and course. Removing a teacher's distribution removes their access to that book and its lessons.</div>
+      <div class="footerline"><span>08 · Administrator guide</span><span>JEN Academia</span></div>
+    </section>
+
+    <section class="page chapter" id="notifications">
+      <p class="eyebrow">09 · Alerts &amp; communication</p>
+      <h2>Notifications &amp; LINE reminders</h2>
+      <h3>Use in-app notifications</h3>
+      <ol class="steps">
+        <li>Choose the notification bell to open your notification panel.</li>
+        <li>Read each alert and open the related class or request.</li>
+        <li>If you are asked to decide on a reschedule, review the date, time, and reason before approving or rejecting it.</li>
+        <li>Return to Calendar to check the current schedule after a decision.</li>
+      </ol>
+      <h3>Connect LINE reminders (optional)</h3>
+      <p>When LINE reminders are configured for the school, a learner can connect a LINE account from the Account page.</p>
+      <ol class="steps">
+        <li>Open <b>Account</b>, find the <b>LINE reminders</b> card, and choose <b>Connect LINE</b>.</li>
+        <li>Use the add-friend link or search for the school's LINE account shown on screen.</li>
+        <li>Send the displayed six-digit linking code to the official LINE chat within ten minutes.</li>
+        <li>Wait for the Account page to show that the connection is complete.</li>
+      </ol>
+      <table class="table">
+        <thead><tr><th>Reminder</th><th>When it may arrive</th></tr></thead>
+        <tbody>
+          <tr><td>Upcoming class</td><td>30 and 10 minutes before the start time (school settings may differ).</td></tr>
+          <tr><td>Reschedule activity</td><td>When a request is sent, approved, or declined.</td></tr>
+          <tr><td>Pending request</td><td>A follow-up may arrive while a request is still awaiting a decision.</td></tr>
+          <tr><td>Contract expiry</td><td>When an active class package is close to expiry.</td></tr>
+        </tbody>
+      </table>
+      <div class="tip"><b>Pause or disconnect:</b> use the LINE reminders card in Account to pause messages while keeping the link, or disconnect LINE. Reconnect if you have changed LINE accounts.</div>
+      <div class="callout"><b>No LINE card or no message?</b> LINE messages are optional and depend on school setup. Check your connection and reminder settings. Contact the school administrator if the feature is not available.</div>
+      <div class="footerline"><span>09 · Alerts &amp; communication</span><span>JEN Academia</span></div>
+    </section>
+
+    <section class="page chapter" id="help">
+      <p class="eyebrow">10 · Help &amp; good practice</p>
+      <h2>Common issues &amp; glossary</h2>
+      <table class="table">
+        <thead><tr><th>If this happens…</th><th>Try this</th></tr></thead>
+        <tbody>
+          <tr><td>You cannot sign in</td><td>Check the email and password, confirm the correct role entry, and use <b>Forgot password</b> if needed.</td></tr>
+          <tr><td>The page sends you back to sign-in</td><td>Your session may have expired or your account may need attention. Sign in again; contact the administrator if the issue continues.</td></tr>
+          <tr><td>No booking time is available</td><td>Try another available date. Teachers publish their own availability and already-booked times cannot be selected.</td></tr>
+          <tr><td>Your reschedule is still pending</td><td>The other class participant must approve it. Keep the original time in your calendar until a decision is made.</td></tr>
+          <tr><td>A lesson or book is missing</td><td>Ask the teacher or administrator to check that the right course and teacher have access to it.</td></tr>
+          <tr><td>A file will not upload or open</td><td>Check your internet connection, confirm the file is the one requested, and retry. If it still fails, ask your teacher or administrator for help.</td></tr>
+          <tr><td>The meeting link is unavailable</td><td>Return to Calendar and reopen the scheduled class. If the link is still missing, contact the school administrator.</td></tr>
+          <tr><td>You cannot see an admin or teacher menu item</td><td>Menus depend on your account role and permissions. Sign in using the correct account or ask the administrator.</td></tr>
+        </tbody>
+      </table>
+      <h3>Words you may see</h3>
+      <table class="table">
+        <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><b>Availability</b></td><td>Times a teacher has opened for student bookings.</td></tr>
+          <tr><td><b>Reschedule request</b></td><td>A request to move a class. It is not confirmed until the other participant approves.</td></tr>
+          <tr><td><b>Class verification</b></td><td>Attendance evidence and class details used to confirm a class took place.</td></tr>
+          <tr><td><b>Contract review</b></td><td>An evaluation or feedback form associated with a class package or contract.</td></tr>
+          <tr><td><b>Archive</b></td><td>Hide an item while preserving the ability to restore it later.</td></tr>
+        </tbody>
+      </table>
+      <div class="endnote">
+        <h3>When you need help</h3>
+        <p>Write down the page you were using, what you expected to happen, and the message displayed. Share those details with your teacher or school administrator. Never send your password or a private sign-in code.</p>
+      </div>
+      <div class="footerline"><span>10 · Help &amp; good practice</span><span>JEN Academia</span></div>
+    </section>
+  </main>
+</body>
+</html>

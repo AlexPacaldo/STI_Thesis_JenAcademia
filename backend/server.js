@@ -4682,50 +4682,6 @@ app.put("/api/admin/teachers/:teacherId/courses", requireAdminSession, async (re
   }
 });
 
-// ---------- month availability ----------
-/**
- * GET /api/trial/availability?year=2025&month=11
- * Returns: { days: { 'YYYY-MM-DD': { disabled: bool, booked: ['09:00', ...] } } }
- */
-app.get("/api/trial/availability", async (req, res) => {
-  const year = parseInt(req.query.year, 10);
-  const month = parseInt(req.query.month, 10); // 1..12
-
-  if (!year || !month) return res.json({ days: {} });
-
-  const start = `${year}-${pad(month)}-01 00:00:00`;
-  const end = `${year}-${pad(month)}-31 23:59:59`; // safe enough
-
-  // Pull existing trial bookings for that month
-  const [rows] = await pool.query(
-    `SELECT DATE(trial_datetime) as d, TIME_FORMAT(trial_datetime, '%H:%i') as t
-     FROM trial_bookings
-     WHERE trial_datetime BETWEEN ? AND ?
-       AND status IN ('pending','approved')`,
-    [start, end]
-  );
-
-  // Build per-day map of booked slots
-  const map = {};
-  for (const r of rows) {
-    if (!map[r.d]) map[r.d] = new Set();
-    map[r.d].add(r.t);
-  }
-
-  // Make response: all days enabled unless all slots are taken
-  const days = {};
-  const lastDay = new Date(year, month, 0).getDate();
-  for (let day = 1; day <= lastDay; day++) {
-    const iso = `${year}-${pad(month)}-${pad(day)}`;
-    const booked = Array.from(map[iso] || []);
-    // consider a day "disabled" if every slot is already booked
-    const disabled = booked.length >= 3; // because SLOTS has 3 default times
-    days[iso] = { disabled, booked };
-  }
-
-  res.json({ days });
-});
-
 // ---------- (existing) login kept the same ----------
 app.post("/api/login", limitLoginAttempts, async (req, res) => {
   try {

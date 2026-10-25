@@ -19,16 +19,16 @@ export default function Footer() {
           <div>
             <h3 className={styles.footerTitle}>Product</h3>
             <ul>
-              <li><a href="/register">Get Started</a></li>
+              <li><a href="/#contact">Get Started</a></li>
               <li><a href="/#services">Services</a></li>
-              <li><a href="/register">Find a Teacher</a></li>
+              <li><a href="/#contact">Find a Teacher</a></li>
             </ul>
           </div>
           <div>
             <h3 className={styles.footerTitle}>Company</h3>
             <ul>
               <li><a href="/#how-it-works">How it works</a></li>
-              <li><a href="/register">Join us</a></li>
+              <li><a href="/#contact">Join us</a></li>
               <li><a href="/#contact">Contact</a></li>
             </ul>
           </div>

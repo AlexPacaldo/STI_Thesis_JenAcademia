@@ -12,21 +12,21 @@ import { API_BASE_URL } from "../utils/api.js";
 const processSteps = [
   {
     icon: "trial",
-    title: "Start with a 10-minute trial",
+    title: "Contact JEN Academia",
     description:
-      "Contact the admin or owner outside the system to schedule a short trial class and discuss your English goals.",
+      "Email us or send the contact form to discuss your learning goals and arrange a trial class outside the platform.",
   },
   {
     icon: "contract",
-    title: "Agree on your class contract",
+    title: "Complete a trial and sign a contract",
     description:
-      "After the trial, the admin or owner explains the available contract options and confirms the plan once you agree.",
+      "After your trial, the JEN Academia team will explain the available class contracts. If you decide to continue, sign your contract.",
   },
   {
     icon: "link",
-    title: "Open your account link",
+    title: "Receive your student account",
     description:
-      "The admin or owner creates your student account, sends your account link, and you finish setting up your profile.",
+      "After your contract is signed, an administrator creates your student account and sends you a secure link to set up your profile.",
   },
   {
     icon: "calendar",
@@ -58,7 +58,7 @@ const features = [
   {
     icon: "trial",
     title: "Trial Classes",
-    description: "A 10-minute trial to assess level and preferences before you commit.",
+    description: "Contact our team to arrange an introductory trial outside the platform.",
     className: styles.serviceCompact,
   },
   {
@@ -128,8 +128,8 @@ const infoCards = [
         <path d="M13 7.25h-2v5.2l4.35 3.05 1.15-1.65-3.5-2.45V7.25Z" />
       </svg>
     ),
-    title: "10-Min Trial Class",
-    description: "Experience our classes with a free trial.",
+    title: "Introductory Trial",
+    description: "Contact our team to arrange a trial outside the platform.",
   },
   {
     icon: (
@@ -404,7 +404,7 @@ export default function Homepage() {
             </h1>
             <p className={styles.heroDescription}>
               JEN Academia connects students with the right tutor, makes class booking easier, and keeps
-              learning progress clear from the first lesson onward.
+              learning progress clear once your student account is set up.
             </p>
 
             <div className={styles.heroActions}>
@@ -488,7 +488,7 @@ export default function Homepage() {
             <span>Our services</span>
             <h2><strong>English learning services built around your goals.</strong></h2>
             <p>
-              Choose flexible lesson packages, try a short trial class, get matched with the right tutor, and manage every class with ease.
+              Explore flexible lesson packages and tutor matching. Contact our team to arrange a trial outside the platform; after you sign a contract, an administrator will set up your student account.
             </p>
           </div>
         </section>
@@ -561,10 +561,9 @@ export default function Homepage() {
         <div className={styles.contactShell}>
           <div className={styles.contactIntro}>
             <span>Contact</span>
-            <h2>Let us help you plan your first class.</h2>
+            <h2>Interested in learning with JEN Academia?</h2>
             <p>
-              Tell us what you want to improve and we will guide you through trial classes,
-              lesson packages, tutor matching, and account setup.
+              Email us or send the form to discuss your learning goals and arrange a trial outside the platform. If you decide to continue and sign a contract, an administrator will create your student account.
             </p>
           </div>
 
