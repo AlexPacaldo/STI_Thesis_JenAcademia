@@ -1026,92 +1026,100 @@ function ReviewsScene({ role, focus }) {
 /* -------------------------------------------------------------- Remarks -- */
 
 function RemarksScene({ role, focus }) {
-  if (role === "student") {
-    return (
-      <AppFrame role={role} activeNav="remarks" screenName="Remarks">
-        <div className={styles.page}>
-          <h2 className={styles.pageTitle}>Teacher&apos;s remarks</h2>
-          <Spotlight active={focus === "note"}>
-            <div className={styles.remarkList}>
-              <div className={styles.remarkCard}>
-                <div className={styles.remarkWho}>
-                  <img src={avatar} alt="" className={styles.remarkAvatar} />
-                  <strong>{STUDENT.teacher}</strong>
-                  <span>Oct 21, 2026</span>
-                </div>
-                <p>“You used the past tense all by yourself today. Brilliant!” 🌟</p>
-              </div>
-              <div className={styles.remarkCard}>
-                <div className={styles.remarkWho}>
-                  <img src={avatar} alt="" className={styles.remarkAvatar} />
-                  <strong>{STUDENT.teacher}</strong>
-                  <span>Oct 14, 2026</span>
-                </div>
-                <p>“Your reading is getting faster. Try the new animal words at home.”</p>
-              </div>
-            </div>
-          </Spotlight>
-        </div>
-      </AppFrame>
-    );
-  }
-
   return (
     <AppFrame role={role} activeNav="remarks" screenName="Remarks">
-      <div className={styles.remarksGrid}>
-        <div className={styles.remarksCol}>
-          <div className={styles.leftHead}>
-            <h2 className={styles.panelHeading}>Enrolled Students</h2>
+      <div className={styles.page}>
+        <h2 className={styles.pageTitle}>Teacher&apos;s remarks</h2>
+        <Spotlight active={focus === "note"}>
+          <div className={styles.remarkList}>
+            <div className={styles.remarkCard}>
+              <div className={styles.remarkWho}>
+                <img src={avatar} alt="" className={styles.remarkAvatar} />
+                <strong>{STUDENT.teacher}</strong>
+                <span>Oct 21, 2026</span>
+              </div>
+              <p>“You used the past tense all by yourself today. Brilliant!” 🌟</p>
+            </div>
+            <div className={styles.remarkCard}>
+              <div className={styles.remarkWho}>
+                <img src={avatar} alt="" className={styles.remarkAvatar} />
+                <strong>{STUDENT.teacher}</strong>
+                <span>Oct 14, 2026</span>
+              </div>
+              <p>“Your reading is getting faster. Try the new animal words at home.”</p>
+            </div>
           </div>
-          <div className={`${styles.rosterPick} ${styles.rosterPickOn}`}>
-            <img src={avatar} alt="" className={styles.pickAvatar} />
-            <span>
-              <strong>Emma Santos</strong>
-              <em>emma.santos@example.com</em>
-            </span>
-            <em className={styles.pickTag}>Enrolled with you</em>
-          </div>
-          <div className={styles.rosterPick}>
-            <img src={avatar} alt="" className={styles.pickAvatar} />
-            <span>
-              <strong>Liam Cruz</strong>
-              <em>liam.cruz@example.com</em>
-            </span>
-            <em className={styles.pickTag}>Enrolled with you</em>
-          </div>
+        </Spotlight>
+      </div>
+    </AppFrame>
+  );
+}
+
+/* ------------------------------------------------------ Class note ---- */
+
+/**
+ * The teacher's class panel in Calendar. The note composer sits directly under
+ * the class information and above the long verification section, which is the
+ * only place a teacher can write a class remark. Sending the note is what
+ * unlocks "End, Verify & Complete".
+ */
+function ClassNoteScene({ focus }) {
+  return (
+    <AppFrame role="teacher" activeNav="calendar" screenName="Calendar">
+      <div className={styles.calWrap}>
+        <div className={styles.calCol}>
+          <ViewSwitch />
+          <MonthCard selected={27} classes={[27]} free={[28, 29, 30]} role="teacher" />
         </div>
 
-        <div className={styles.remarksCol}>
-          <div className={styles.pickedPerson}>
-            <img src={avatar} alt="" className={styles.remarkAvatar} />
-            <strong>Emma Santos</strong>
+        <aside className={styles.panel}>
+          <div className={styles.classPanelCard}>
+            <div className={styles.classPanelHead}>
+              <span className={styles.classPanelIcon} aria-hidden="true">👩‍🏫</span>
+              <strong>Class info</strong>
+            </div>
+            <div className={styles.classPanelRow}>
+              <img src={avatar} alt="" className={styles.classPanelAvatar} />
+              <span>
+                <em className={styles.classPanelLabel}>Student</em>
+                <strong className={styles.classPanelValue}>Emma Santos</strong>
+              </span>
+            </div>
+            <div className={styles.classPanelRow}>
+              <span className={styles.classPanelIcon} aria-hidden="true">📚</span>
+              <span>
+                <em className={styles.classPanelLabel}>Class</em>
+                <strong className={styles.classPanelValue}>English · Intermediate</strong>
+              </span>
+            </div>
+            <div className={styles.classPanelRow}>
+              <span className={styles.classPanelIcon} aria-hidden="true">🕐</span>
+              <span>
+                <em className={styles.classPanelLabel}>Time</em>
+                <strong className={styles.classPanelValue}>4:00 PM - 4:50 PM</strong>
+              </span>
+            </div>
           </div>
+
           <Spotlight active={focus === "note"}>
-            <div className={styles.composer}>
-              <h3 className={styles.composerTitle}>Remarks:</h3>
-              <div className={styles.textarea}>
-                Write your remarks here...
+            <div className={styles.classNoteCard}>
+              <div className={styles.classNoteHead}>
+                <span className={styles.classPanelIcon} aria-hidden="true">📝</span>
+                <span>
+                  <strong className={styles.classNoteTitle}>Say something about this class</strong>
+                  <em className={styles.classNoteName}>Emma Santos</em>
+                </span>
               </div>
-              <div className={styles.btnSubmitWide}>Submit Remarks</div>
+              <p className={styles.classNoteRequired}>
+                Required: send a note about this class before you can complete it.
+              </p>
+              <div className={styles.classNoteBox}>
+                You used the past tense all by yourself today. Great work!
+              </div>
+              <span className={styles.classNoteBtn}>Send the note</span>
             </div>
           </Spotlight>
-          <div className={styles.remarkHistoryHead}>
-            <strong>Remarks you&apos;ve placed</strong>
-            <div className={styles.remarkTabs}>
-              <span className={`${styles.remarkTab} ${styles.remarkTabOn}`}>Active</span>
-              <span className={styles.remarkTab}>Archived</span>
-              <span className={styles.remarkTab}>All</span>
-            </div>
-          </div>
-          <div className={styles.remarkHistory}>
-            <div className={styles.remarkHistoryHead}>
-              <strong>Emma Santos</strong>
-              <span>English · 4:00 PM</span>
-            </div>
-            <p>“Great work on the past tense today.”</p>
-            <span className={styles.historyFoot}>Submitted Oct 21, 2026, 4:00 PM</span>
-          </div>
-        </div>
+        </aside>
       </div>
     </AppFrame>
   );
@@ -1360,6 +1368,7 @@ const SCENES = {
   history: HistoryScene,
   reviews: ReviewsScene,
   remarks: RemarksScene,
+  classNote: ClassNoteScene,
   assignments: AssignmentsScene,
   books: BooksScene,
 };

@@ -2010,6 +2010,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     };
   }, [selectedClass?.id, classVerificationRefreshToken, applyVerificationToSelectedClass]);
 
+  // A draft belongs to one class. Switching classes must not carry the old
+  // class's words into the new class's note.
+  useEffect(() => {
+    setRemarkDraft("");
+  }, [selectedClass?.id]);
+
   useEffect(() => {
     return () => {
       if (verificationProofPreview) {
@@ -3644,11 +3650,20 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   const requiredRecordingMinutes = Math.max(1, Math.min(30, Math.ceil(Number(selectedClass?.duration || 50) * 0.6)));
   const hasVerificationProof = evidenceMode === "recording" ? hasVerificationRecording && Number(selectedClassVerification?.recording_duration_seconds || 0) >= requiredRecordingMinutes * 60
     : Boolean(hasStartScreenshot && hasEndScreenshot);
+  // A class remark is mandatory: the class cannot be completed until the
+  // teacher has sent a note about this exact class from the class panel. The
+  // match is on class_id because "latestRemark" can belong to an older class.
+  const hasSelectedClassRemark = studentRemarks.some(
+    (remark) =>
+      String(remark.class_id) === String(selectedClass?.id) &&
+      String(remark.remarks || "").trim().length > 0
+  );
   const canEndVerifyAndComplete =
     selectedClassStarted &&
     selectedClassStudentConfirmed &&
     hasVerificationSummarySentence &&
     hasVerificationProof &&
+    hasSelectedClassRemark &&
     !recording.session &&
     !isUpdatingVerification;
   const canSubmitClassForReview =
@@ -3667,11 +3682,13 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     evidenceMode === "screenshots" && !hasEndScreenshot ? "end screenshot" : "",
     evidenceMode === "recording" && !hasVerificationRecording ? "recording" : "",
     !hasVerificationSummarySentence ? "class summary" : "",
+    !hasSelectedClassRemark ? "class remark" : "",
   ].filter(Boolean);
   const endVerifyDisabledReason = (() => {
     if (recording.session) return "Stop recording and finish uploading before completing the class.";
     if (!selectedClassStudentConfirmed) return "Student must join and confirm attendance first.";
     if (!hasVerificationSummarySentence) return "Enter at least one complete sentence in the class summary.";
+    if (!hasSelectedClassRemark) return "Write a note about this class and press Send the note before completing it.";
     if (!hasVerificationProof) return evidenceMode === "recording" ? `Upload a recording covering at least ${requiredRecordingMinutes} minutes, or submit for review.` : "Upload both the start and end screenshots.";
     return "";
   })();
@@ -3980,6 +3997,10 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       notify?.("Please enter at least one complete sentence in the class summary.", "error");
       return;
     }
+    if (completeAfterVerify && !hasSelectedClassRemark) {
+      notify?.("Write a note about this class and press Send the note before completing it.", "error");
+      return;
+    }
     if (!hasVerificationProof && !reviewReason) {
       notify?.("Please record the class or upload screenshot proof.", "error");
       return;
@@ -4046,20 +4067,15 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         rating: null,
       });
 
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        notify?.(data.message || "Could not send the note.", "error");
-        return;
-      }
-
-      const data = await response.json();
+      const data = response.data || {};
       setRemarkDraft("");
       setRemarkSubmitting(false);
 
-      // Add the new remark to the local list so the "Latest Remark" panel
-      // updates without a full refresh.
-      setStudentRemarks((prev) => [
-        {
+      // Add the new remark to the local list so the "Latest Remark" panel and
+      // the completion gate update without a full refresh. Re-sending a note
+      // for the same class replaces the old entry instead of duplicating it.
+      setStudentRemarks((prev) => {
+        const entry = {
           remark_id: data.remark_id ?? data.id ?? null,
           class_id: selectedClass.id,
           class_name: selectedClass.className || selectedClass.class_name,
@@ -4070,9 +4086,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
           student_profile_image_url: selectedClass.student_profile_image_url,
           created_at: new Date().toISOString(),
           ...data,
-        },
-        ...prev,
-      ]);
+        };
+        return [
+          entry,
+          ...prev.filter((remark) => String(remark.class_id) !== String(selectedClass.id)),
+        ];
+      });
 
       notify?.("Note sent to the student.", "success");
     } catch (error) {
@@ -4105,6 +4124,11 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   };
 
   const markSelectedClassDone = async ({ verifiedOverride = false } = {}) => {
+    if (!hasSelectedClassRemark) {
+      notify?.("Write a note about this class and press Send the note before completing it.", "error");
+      return;
+    }
+
     if (!selectedClassVerified && !verifiedOverride) {
       notify?.("Verify the class first before marking it done.", "error");
       return;
@@ -5871,9 +5895,14 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
               <button
                 type="button"
                 className={`${cal.actionCard} ${cal.actionInfo}`}
-                disabled={isMarkingClassDone}
+                disabled={isMarkingClassDone || !hasSelectedClassRemark}
                 onClick={() => handleConfirmClassDone()}
-                style={{ opacity: isMarkingClassDone ? 0.6 : 1 }}
+                title={
+                  hasSelectedClassRemark
+                    ? ""
+                    : "Write a note about this class and press Send the note before completing it."
+                }
+                style={{ opacity: isMarkingClassDone || !hasSelectedClassRemark ? 0.6 : 1 }}
               >
                 {isMarkingClassDone ? "Saving..." : "Complete Verified Class"}
               </button>
@@ -6241,8 +6270,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     </div>
                   </div>
                   </div>
-                  {renderVerificationPanel()}
-
                   {/* Latest Remark - kid designed */}
                   <div className={kid.pastCard}>
                     <div className={kid.head}>
@@ -6280,7 +6307,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                       </div>
                     )}
                   </div>
-                  {isTeacherOrAdmin && selectedClass && (isClassJoinable(selectedClass, selectedDate, currentTimeTick) || isClassPast(selectedClass, selectedDate, currentTimeTick)) && (
+                  {localRole === "teacher" && selectedClass && !isSelectedClassCompleted && (isClassJoinable(selectedClass, selectedDate, currentTimeTick) || isClassPast(selectedClass, selectedDate, currentTimeTick)) && (
                     <div className={kid.summary}>
                       <div className={kid.summaryRow}>
                         <div className={kid.summaryIcon} aria-hidden="true">📝</div>
@@ -6289,9 +6316,13 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                           <div className={kid.summaryValue}>{selectedClass.studentFullName || selectedClass.studentName}</div>
                         </div>
                       </div>
+                      <p className={kid.kidFieldNote}>
+                        {hasSelectedClassRemark
+                          ? "A note is saved for this class. You can send an updated note before completing it."
+                          : "Required: send a note about this class before you can complete it."}
+                      </p>
                       <textarea
                         style={{
-                          marginTop: 8,
                           width: "100%",
                           minHeight: 120,
                           border: "1px solid var(--border-mid)",
@@ -6318,6 +6349,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                       </button>
                     </div>
                   )}
+                  {renderVerificationPanel()}
+
                   {canShowClassEntryAction && (
                     <button
                       type="button"

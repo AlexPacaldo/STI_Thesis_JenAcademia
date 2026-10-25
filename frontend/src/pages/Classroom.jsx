@@ -215,10 +215,10 @@ export default function Classroom() {
       const endResponse = await axios.post(`${API}/api/calendar/classes/${classInfo.class_id}/end`, formData);
       setVerification(endResponse.data?.verification || null);
       if (endResponse.data?.verification?.verification_status === "verified") {
-        await axios.put(`${API}/api/calendar/classes/${classInfo.class_id}/complete`, {
-          teacher_id: userId,
-        });
-        notify?.("Class recording verified and class completed.", "success");
+        // A class note is mandatory. The class panel in Calendar is the only
+        // place to write it, so finish the class there instead of completing
+        // it from this page with no note attached.
+        notify?.("Class verified. Add your class note in Calendar, then complete the class.", "success");
         navigate("/Calendar");
       } else {
         notify?.("Class ended and sent for review.", "warning");

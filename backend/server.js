@@ -9580,6 +9580,24 @@ app.put("/api/calendar/classes/:class_id/complete", requireSession, requireClass
       });
     }
 
+    // A class remark is mandatory. The teacher writes it in the class panel in
+    // Calendar; completing the class before the note exists would leave the
+    // student without feedback and the teacher without a record of the class.
+    const [remarkRows] = await connection.query(
+      `SELECT remark_id FROM class_remarks
+       WHERE class_id = ? AND teacher_id = ? AND student_id = ? AND status = 'active'
+       LIMIT 1`,
+      [class_id, classInfo.teacher_id, classInfo.student_id]
+    );
+
+    if (!remarkRows.length) {
+      await connection.rollback();
+      return res.status(400).json({
+        message:
+          "Add a class remark before completing this class. Open the class panel in Calendar, write a note, and press Send the note.",
+      });
+    }
+
     const [packageRows] = await connection.query(
       `SELECT package_id, student_id, total_classes, classes_used, classes_left, status
        FROM student_class_packages

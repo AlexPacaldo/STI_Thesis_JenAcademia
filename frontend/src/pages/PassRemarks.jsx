@@ -43,7 +43,6 @@ export default function PassRemarks() {
   const { notify } = useNotification() || {};
   const [students, setStudents] = useState([]);
   const [selectedStudentId, setSelectedStudentId] = useState(null);
-  const [remarks, setRemarks] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [teacherId, setTeacherId] = useState(null);
@@ -189,71 +188,6 @@ export default function PassRemarks() {
     }
   };
 
-  const handleRemarkChange = (text) => {
-    if (!selectedStudentId) return;
-    setRemarks((prev) => ({ ...prev, [selectedStudentId]: text }));
-  };
-
-  const handleSubmit = async () => {
-    if (!selectedStudentId) {
-      notify("Select a student first.", "warning");
-      return;
-    }
-
-    const text = (remarks[selectedStudentId] || "").trim();
-    if (text === "") {
-      notify("Please write a remark before submitting.", "warning");
-      return;
-    }
-
-    if (!teacherId) {
-      notify("Teacher information is missing.", "error");
-      return;
-    }
-
-    try {
-      const classRes = await apiFetch(
-        `${API}/api/teacher/${teacherId}/student/${selectedStudentId}/latest-class`
-      );
-      if (!classRes.ok) {
-        const errData = await classRes.json().catch(() => ({}));
-        notify(errData.message || "No class available for this student.", "warning");
-        return;
-      }
-
-      const { class: latestClass } = await classRes.json();
-      if (!latestClass || !latestClass.class_id) {
-        notify("No class found for this student.", "warning");
-        return;
-      }
-
-      const submitRes = await apiFetch(`${API}/api/calendar/remarks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          class_id: latestClass.class_id,
-          teacher_id: teacherId,
-          student_id: selectedStudentId,
-          remarks: text,
-          rating: null,
-        }),
-      });
-
-      const submitData = await submitRes.json();
-      if (!submitRes.ok) {
-        notify(submitData.message || "Could not submit remark.", "error");
-        return;
-      }
-
-      notify("Remark submitted successfully!", "success");
-      setRemarks((prev) => ({ ...prev, [selectedStudentId]: "" }));
-      await loadHistory(selectedStudentId, historyFilter);
-    } catch (err) {
-      console.error(err);
-      notify("Server error while submitting remark.", "error");
-    }
-  };
-
   return (
     <div className={styles.cont}>
       <div className={styles.center}>
@@ -320,21 +254,11 @@ export default function PassRemarks() {
                   <h1>{`${selectedStudent.first_name} ${selectedStudent.last_name}`}</h1>
                 </div>
 
-                <div className={styles.bottomInfo}>
-                  <div className={styles.remarksBox}>
-                    <h1>Remarks:</h1>
-                    <textarea
-                      id="comment"
-                      className={styles.commentBox}
-                      placeholder="Write your remarks here..."
-                      value={remarks[selectedStudentId] || ""}
-                      onChange={(e) => handleRemarkChange(e.target.value)}
-                    />
-                    <button className={styles.submitComment} onClick={handleSubmit}>
-                      Submit Remarks
-                    </button>
-                  </div>
+                <p className={styles.historyHint} style={{ margin: "0 0 12px" }}>
+                  New notes are written in the class panel in Calendar. Use this page to review, edit, or archive them.
+                </p>
 
+                <div className={styles.bottomInfo}>
                   <div className={styles.historyPanel}>
                     <div className={styles.historyHeader}>
                       <h1>Remarks you&apos;ve placed</h1>
@@ -495,7 +419,7 @@ export default function PassRemarks() {
               </>
             ) : (
               <div style={{ padding: 20 }}>
-                <h2>Select a student to view details and add remarks</h2>
+                <h2>Select a student to view their remarks</h2>
               </div>
             )}
           </div>
