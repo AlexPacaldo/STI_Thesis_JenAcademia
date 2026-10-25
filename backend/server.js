@@ -5890,6 +5890,7 @@ app.post("/api/admin/users", requireAdminSession, async (req, res) => {
       teachingStyle,
       idealStudentPace,
       bio,
+      teachesChildren,
       courseIds = [],
       preferredSchedule,
     } = req.body;
