@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import FoldText from "../components/FoldText";
@@ -264,6 +264,10 @@ export default function Homepage() {
   const [contactForm, setContactForm] = useState({ name: "", email: "", message: "" });
   const [contactStatus, setContactStatus] = useState(null);
   const [contactSubmitting, setContactSubmitting] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileError, setTurnstileError] = useState("");
+  const turnstileContainerRef = useRef(null);
+  const turnstileWidgetIdRef = useRef(null);
   const processRef = useRef(null);
   const { scrollYProgress } = useScroll({
     target: processRef,
@@ -275,24 +279,100 @@ export default function Homepage() {
   const scrollToSection = (sectionId) => {
     document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth" });
   };
+  const turnstileSiteKey = String(import.meta.env.VITE_TURNSTILE_SITE_KEY || "").trim();
+
+  useEffect(() => {
+    if (!turnstileSiteKey) {
+      setTurnstileError("Contact form verification is not configured yet. Please email us instead.");
+      return undefined;
+    }
+
+    let cancelled = false;
+    let widgetId = null;
+    const renderWidget = () => {
+      if (cancelled || !turnstileContainerRef.current || !window.turnstile) return;
+      try {
+        setTurnstileError("");
+        widgetId = window.turnstile.render(turnstileContainerRef.current, {
+          sitekey: turnstileSiteKey,
+          action: "contact",
+          callback: (token) => {
+            setTurnstileToken(token);
+            setTurnstileError("");
+          },
+          "expired-callback": () => {
+            setTurnstileToken("");
+            setTurnstileError("The security check expired. Please complete it again.");
+          },
+          "error-callback": () => {
+            setTurnstileToken("");
+            setTurnstileError("The security check could not load. Please try again or email us instead.");
+          },
+        });
+        turnstileWidgetIdRef.current = widgetId;
+      } catch (error) {
+        console.error("Could not render the Cloudflare Turnstile widget:", error);
+        setTurnstileError("The security check could not load. Please try again or email us instead.");
+      }
+    };
+
+    let script = document.getElementById("cloudflare-turnstile-script");
+    const handleScriptLoad = () => renderWidget();
+    const handleScriptError = () => {
+      if (!cancelled) {
+        setTurnstileError("The security check could not load. Please try again or email us instead.");
+      }
+    };
+
+    if (window.turnstile) {
+      renderWidget();
+    } else if (!script) {
+      script = document.createElement("script");
+      script.id = "cloudflare-turnstile-script";
+      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      script.async = true;
+      script.defer = true;
+      script.addEventListener("load", handleScriptLoad, { once: true });
+      script.addEventListener("error", handleScriptError, { once: true });
+      document.head.appendChild(script);
+    } else {
+      script.addEventListener("load", handleScriptLoad, { once: true });
+      script.addEventListener("error", handleScriptError, { once: true });
+    }
+
+    return () => {
+      cancelled = true;
+      script?.removeEventListener("load", handleScriptLoad);
+      script?.removeEventListener("error", handleScriptError);
+      if (widgetId !== null && window.turnstile) {
+        window.turnstile.remove(widgetId);
+      }
+      if (turnstileWidgetIdRef.current === widgetId) {
+        turnstileWidgetIdRef.current = null;
+      }
+    };
+  }, [turnstileSiteKey]);
 
   async function handleContactSubmit(e) {
     e.preventDefault();
+    if (!turnstileToken) {
+      setContactStatus({ type: "error", message: "Please complete the security check before sending your message." });
+      return;
+    }
+
     setContactSubmitting(true);
     setContactStatus(null);
     try {
       const res = await fetch(`${API_BASE_URL}/api/contact`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(contactForm),
+        body: JSON.stringify({ ...contactForm, turnstileToken }),
       });
       const data = await res.json().catch(() => ({}));
-      // !! "Contact form is not configured" is what the server says when the
-      // !! mail server has not been set up. It is true and it means nothing
-      // !! to a visitor, who cannot set up a mail server. The address beside
-      // !! the form is the way out, so the message points at it.
+      // A visitor cannot fix mail or verification setup. The server returns a
+      // helpful email fallback message when either service is unavailable.
       if (res.status === 503) {
-        throw new Error("Sending messages is not set up yet. Please email us instead.");
+        throw new Error(data.message || "Sending messages is not set up yet. Please email us instead.");
       }
       if (!res.ok) throw new Error(data.message || "Something went wrong");
       setContactStatus({ type: "success", message: "Message sent! We'll get back to you soon." });
@@ -300,6 +380,10 @@ export default function Homepage() {
     } catch (err) {
       setContactStatus({ type: "error", message: err.message });
     } finally {
+      setTurnstileToken("");
+      if (turnstileWidgetIdRef.current !== null) {
+        window.turnstile?.reset(turnstileWidgetIdRef.current);
+      }
       setContactSubmitting(false);
     }
   }
@@ -607,6 +691,19 @@ export default function Homepage() {
                   required
                 />
               </label>
+              {turnstileSiteKey && (
+                <div
+                  className={styles.turnstileWidget}
+                  ref={turnstileContainerRef}
+                  role="group"
+                  aria-label="Security check"
+                />
+              )}
+              {turnstileError && (
+                <p className={styles.turnstileNotice} role="status">
+                  {turnstileError}
+                </p>
+              )}
               {contactStatus && (
                 <p style={{
                   color: contactStatus.type === "success" ? "#006a43" : "#7a1f1f",
@@ -621,7 +718,7 @@ export default function Homepage() {
                   {contactStatus.message}
                 </p>
               )}
-              <button type="submit" disabled={contactSubmitting}>
+              <button type="submit" disabled={contactSubmitting || !turnstileToken}>
                 {contactSubmitting ? "Sending..." : "Send message"}
               </button>
             </form>

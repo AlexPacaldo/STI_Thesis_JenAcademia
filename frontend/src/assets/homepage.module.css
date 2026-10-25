@@ -911,6 +911,17 @@
   box-shadow: 0 0 0 4px rgba(121, 168, 71, 0.14);
 }
 
+.turnstileWidget {
+  min-height: 65px;
+}
+
+.turnstileNotice {
+  margin: 0;
+  color: #7a1f1f;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 .contactForm button {
   justify-self: start;
   min-height: 48px;

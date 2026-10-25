@@ -34,6 +34,7 @@ import {
   normalizeRequestType,
 } from "./contractRequestFlow.js";
 import { createRateLimiter } from "./rateLimit.js";
+import { verifyTurnstileToken } from "./turnstile.js";
 import {
   STUDENT_REVIEW_CRITERIA,
   averageReviewScores,
@@ -1429,6 +1430,14 @@ const limitResumeParsingTotal = createRateLimiter({
 // this must not lock out a morning of students signing in together.
 const LOGIN_WINDOW_MS = Math.max(1, Number(process.env.LOGIN_RATE_WINDOW_MS) || 15 * 60 * 1000);
 const LOGIN_MAX = Math.max(1, Number(process.env.LOGIN_RATE_MAX) || 100);
+const CONTACT_RATE_WINDOW_MS = Math.max(1, Number(process.env.CONTACT_RATE_WINDOW_MS) || 15 * 60 * 1000);
+const CONTACT_RATE_MAX = Math.max(1, Number(process.env.CONTACT_RATE_MAX) || 10);
+const limitContactSubmissions = createRateLimiter({
+  windowMs: CONTACT_RATE_WINDOW_MS,
+  max: CONTACT_RATE_MAX,
+  store: createDbStore({ pool }),
+  message: "Too many contact form submissions. Please wait a few minutes and try again.",
+});
 // The trial-notes insights call. Rate limited for the same reason the resume one
 // is: every accepted request costs a Gemini call, and the ceiling is the only
 // thing that actually bounds the spend.
@@ -4775,7 +4784,7 @@ app.post("/api/login", limitLoginAttempts, async (req, res) => {
   }
 });
 
-app.post("/api/contact", async (req, res) => {
+app.post("/api/contact", limitContactSubmissions, async (req, res) => {
   try {
     const name = String(req.body?.name || "").trim();
     const email = String(req.body?.email || "").trim();
@@ -4789,6 +4798,28 @@ app.post("/api/contact", async (req, res) => {
     }
     if (message.length > 2000) {
       return res.status(400).json({ message: "Message is too long" });
+    }
+
+    const turnstileResult = await verifyTurnstileToken({
+      token: req.body?.turnstileToken,
+      secret: process.env.TURNSTILE_SECRET_KEY,
+    });
+    if (turnstileResult.status === "misconfigured") {
+      console.error("Contact form rejected: TURNSTILE_SECRET_KEY is not configured.");
+      return res.status(503).json({
+        message: "Contact form verification is not configured yet. Please email us instead.",
+      });
+    }
+    if (turnstileResult.status === "unavailable") {
+      console.error("Contact form rejected: Cloudflare Turnstile verification is unavailable.");
+      return res.status(503).json({
+        message: "We could not verify your submission right now. Please try again or email us instead.",
+      });
+    }
+    if (turnstileResult.status !== "verified") {
+      return res.status(400).json({
+        message: "Please complete the security check and try again.",
+      });
     }
 
     if (!isMailConfigured()) {
