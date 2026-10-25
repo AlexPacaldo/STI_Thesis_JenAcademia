@@ -1,169 +1,194 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import styles from "../assets/login.module.css";
-import { useNotification } from "../components/NotificationContainer.jsx";
+import styles from "../assets/passwordReset.module.css";
+import PasswordResetProgress from "../components/PasswordResetProgress.jsx";
 import { API_BASE_URL } from "../utils/api.js";
+
+const STEPS = ["New password", "All done"];
 
 export default function ResetPassword() {
   const { token } = useParams();
   const navigate = useNavigate();
-  const { notify } = useNotification() || {};
   const [validating, setValidating] = useState(true);
   const [tokenError, setTokenError] = useState("");
+  const [formError, setFormError] = useState("");
   const [form, setForm] = useState({ password: "", confirmPassword: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [complete, setComplete] = useState(false);
 
   useEffect(() => {
     let ignore = false;
+
     async function validateToken() {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/reset-password/${encodeURIComponent(token || "")}`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.message || "Invalid reset link");
+        const response = await fetch(`${API_BASE_URL}/api/reset-password/${encodeURIComponent(token || "")}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.message || "This reset link is no longer available.");
       } catch (err) {
-        if (!ignore) setTokenError(err.message);
+        if (!ignore) {
+          setTokenError(err.message || "We couldn't check this link. Please request a new one.");
+        }
       } finally {
         if (!ignore) setValidating(false);
       }
     }
+
     validateToken();
-    return () => { ignore = true; };
+    return () => {
+      ignore = true;
+    };
   }, [token]);
 
-  function handleChange(e) {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+  function handleChange(event) {
+    const { name, value } = event.target;
+    setForm((previous) => ({ ...previous, [name]: value }));
+    setFormError("");
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setFormError("");
+
     if (form.password.length < 8) {
-      notify("Password must be at least 8 characters.", "warning");
+      setFormError("Your password needs at least 8 characters.");
       return;
     }
     if (form.password !== form.confirmPassword) {
-      notify("Passwords do not match.", "warning");
+      setFormError("Those passwords don’t match yet. Try again.");
       return;
     }
+
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/reset-password/${encodeURIComponent(token || "")}`, {
+      const response = await fetch(`${API_BASE_URL}/api/reset-password/${encodeURIComponent(token || "")}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || "Could not reset password");
-      notify("Password updated. You can now sign in.", "success");
-      navigate("/login", { replace: true });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.message || "We couldn't save your password. Please try again.");
+      setComplete(true);
     } catch (err) {
-      notify(err.message, "error");
+      setFormError(err.message || "We couldn't reach the server. Check your connection and try again.");
     } finally {
       setSubmitting(false);
     }
   }
 
-  const EyeIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-      <circle cx="12" cy="12" r="3"/>
-    </svg>
-  );
-
-  const EyeOffIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
-      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
-      <line x1="1" y1="1" x2="23" y2="23"/>
-    </svg>
-  );
-
   return (
     <div className={styles.page}>
-      <div className={styles.backRow}>
-        <Link to="/login" className={styles.backButton}>
-          ← Back to login
-        </Link>
-      </div>
+      <section className={styles.card} aria-labelledby="reset-title">
+        <div className={styles.topRow}>
+          <Link to="/login" className={styles.backLink}>← Back to sign in</Link>
+          <span className={styles.badge}>Account help</span>
+        </div>
 
-      <section className={styles.loginSection}>
-        <div className={styles.loginCard}>
-          <div className={styles.cardHeader}>
-            <span className={styles.cardLabel}>Password Reset</span>
-            <h1>Set a new password</h1>
-            <p>
-              {validating
-                ? "Validating your reset link..."
-                : tokenError
-                ? tokenError
-                : "Choose a strong password for your account."}
-            </p>
+        {!validating && !tokenError && (
+          <PasswordResetProgress steps={STEPS} currentStep={complete ? 1 : 0} />
+        )}
+
+        {validating ? (
+          <div className={styles.content} role="status" aria-live="polite">
+            <span className={styles.bigIcon} aria-hidden="true">🔎</span>
+            <p className={styles.eyebrow}>One moment</p>
+            <h1 id="reset-title">Checking your link…</h1>
+            <p className={styles.description}>We’re making sure it’s safe to set a new password.</p>
           </div>
+        ) : tokenError ? (
+          <div className={styles.content} role="alert">
+            <span className={styles.bigIcon} aria-hidden="true">📭</span>
+            <p className={styles.eyebrow}>Let’s try again</p>
+            <h1 id="reset-title">This link needs a fresh start</h1>
+            <p className={styles.description}>{tokenError}</p>
+            <Link to="/forgot-password" className={styles.primaryButton}>Ask for a new link</Link>
+          </div>
+        ) : complete ? (
+          <div className={styles.content} role="status" aria-live="polite">
+            <span className={styles.bigIcon} aria-hidden="true">🎉</span>
+            <p className={styles.eyebrow}>Step 2 · All done</p>
+            <h1 id="reset-title">You did it!</h1>
+            <p className={styles.description}>
+              Your new password is ready. You can use it the next time you sign in.
+            </p>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => navigate("/login", { replace: true })}
+            >
+              Sign in with my new password
+            </button>
+          </div>
+        ) : (
+          <div className={styles.content}>
+            <span className={styles.bigIcon} aria-hidden="true">🔐</span>
+            <p className={styles.eyebrow}>Step 1 · Make a new password</p>
+            <h1 id="reset-title">Choose your new password</h1>
+            <p className={styles.description}>
+              Make it at least 8 characters long, then type it again so we know it’s right.
+            </p>
 
-          {!validating && !tokenError && (
-            <form onSubmit={handleSubmit} className={styles.formSection}>
-              <label htmlFor="password">New Password</label>
-              <div className={styles.passwordWrapper}>
-                <input
-                  type={showPassword ? "text" : "password"}
-                  id="password"
-                  name="password"
-                  className={styles.inputField}
-                  placeholder="At least 8 characters"
-                  value={form.password}
-                  onChange={handleChange}
-                  required
-                  minLength={8}
-                />
-                <button
-                  type="button"
-                  className={styles.peekButton}
-                  onClick={() => setShowPassword((p) => !p)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                >
-                  {showPassword ? <EyeOffIcon /> : <EyeIcon />}
-                </button>
+            <form className={styles.form} onSubmit={handleSubmit}>
+              <div className={styles.field}>
+                <label htmlFor="password">New password</label>
+                <div className={styles.passwordWrap}>
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    aria-describedby="password-hint"
+                    value={form.password}
+                    onChange={handleChange}
+                    placeholder="At least 8 characters"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className={styles.showButton}
+                    onClick={() => setShowPassword((shown) => !shown)}
+                    aria-label={showPassword ? "Hide new password" : "Show new password"}
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+              <div className={styles.field}>
+                <label htmlFor="confirmPassword">Type it one more time</label>
+                <div className={styles.passwordWrap}>
+                  <input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type={showConfirm ? "text" : "password"}
+                    autoComplete="new-password"
+                    value={form.confirmPassword}
+                    onChange={handleChange}
+                    placeholder="Type the same password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className={styles.showButton}
+                    onClick={() => setShowConfirm((shown) => !shown)}
+                    aria-label={showConfirm ? "Hide password confirmation" : "Show password confirmation"}
+                  >
+                    {showConfirm ? "Hide" : "Show"}
+                  </button>
+                </div>
               </div>
 
-              <label htmlFor="confirmPassword">Confirm Password</label>
-              <div className={styles.passwordWrapper}>
-                <input
-                  type={showConfirm ? "text" : "password"}
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  className={styles.inputField}
-                  placeholder="Re-enter your password"
-                  value={form.confirmPassword}
-                  onChange={handleChange}
-                  required
-                  minLength={8}
-                />
-                <button
-                  type="button"
-                  className={styles.peekButton}
-                  onClick={() => setShowConfirm((p) => !p)}
-                  aria-label={showConfirm ? "Hide password" : "Show password"}
-                >
-                  {showConfirm ? <EyeOffIcon /> : <EyeIcon />}
-                </button>
-              </div>
+              <p id="password-hint" className={styles.passwordHint}>
+                {form.password.length >= 8 ? "✓ Great! Your password is long enough." : "Use 8 or more characters."}
+              </p>
+              {formError && <p className={styles.errorMessage} role="alert">{formError}</p>}
 
-              <button type="submit" className={styles.submitbtn} disabled={submitting}>
-                {submitting ? "Saving..." : "Set New Password"}
+              <button type="submit" className={styles.primaryButton} disabled={submitting}>
+                {submitting ? "Saving your password…" : "Save my new password"}
               </button>
             </form>
-          )}
-
-          {!validating && tokenError && (
-            <div className={styles.formSection}>
-              <Link to="/forgot-password" className={styles.submitbtn} style={{ textAlign: "center", textDecoration: "none", display: "block" }}>
-                Request a new link
-              </Link>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </section>
     </div>
   );

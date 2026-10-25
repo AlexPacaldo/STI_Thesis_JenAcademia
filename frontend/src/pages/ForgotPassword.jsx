@@ -1,32 +1,33 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import styles from "../assets/login.module.css";
-import { useNotification } from "../components/NotificationContainer.jsx";
+import styles from "../assets/passwordReset.module.css";
+import PasswordResetProgress from "../components/PasswordResetProgress.jsx";
 import { API_BASE_URL } from "../utils/api.js";
 
+const STEPS = ["Your email", "Check your email"];
+
 export default function ForgotPassword() {
-  const { notify } = useNotification() || {};
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function handleSubmit(event) {
+    event.preventDefault();
     setSubmitting(true);
+    setError("");
+
     try {
-      const res = await fetch(`${API_BASE_URL}/api/forgot-password`, {
+      const response = await fetch(`${API_BASE_URL}/api/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: email.trim() }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        notify(data.message || "Something went wrong", "error");
-        return;
-      }
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.message || "We couldn't send the link. Please try again.");
       setSent(true);
-    } catch {
-      notify("Network or server error. Please try again.", "error");
+    } catch (err) {
+      setError(err.message || "We couldn't reach the server. Check your connection and try again.");
     } finally {
       setSubmitting(false);
     }
@@ -34,52 +35,74 @@ export default function ForgotPassword() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.backRow}>
-        <Link to="/login" className={styles.backButton}>
-          ← Back to login
-        </Link>
-      </div>
+      <section className={styles.card} aria-labelledby="reset-title">
+        <div className={styles.topRow}>
+          <Link to="/login" className={styles.backLink}>← Back to sign in</Link>
+          <span className={styles.badge}>Account help</span>
+        </div>
 
-      <section className={styles.loginSection}>
-        <div className={styles.loginCard}>
-          <div className={styles.cardHeader}>
-            <span className={styles.cardLabel}>Password Reset</span>
-            <h1>Forgot your password?</h1>
-            <p>
-              {sent
-                ? "Check your inbox — if that email is registered, we sent a reset link."
-                : "Enter your email and we'll send you a link to reset your password."}
+        <PasswordResetProgress steps={STEPS} currentStep={sent ? 1 : 0} />
+
+        {!sent ? (
+          <div className={styles.content}>
+            <span className={styles.bigIcon} aria-hidden="true">🔑</span>
+            <p className={styles.eyebrow}>A little password help</p>
+            <h1 id="reset-title">Let’s get you back in!</h1>
+            <p className={styles.description}>
+              Tell us the email you use for JEN Academia. We’ll send you a safe link to choose a new password.
             </p>
-          </div>
 
-          {!sent && (
-            <form onSubmit={handleSubmit} className={styles.formSection}>
-              <label htmlFor="email">Email</label>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                className={styles.inputField}
-                placeholder="Enter your email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
+            <form className={styles.form} onSubmit={handleSubmit}>
+              <label className={styles.field} htmlFor="email">
+                <span>Your email address</span>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  inputMode="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(event) => {
+                    setEmail(event.target.value);
+                    setError("");
+                  }}
+                  required
+                />
+              </label>
 
-              <button type="submit" className={styles.submitbtn} disabled={submitting}>
-                {submitting ? "Sending..." : "Send Reset Link"}
+              {error && <p className={styles.errorMessage} role="alert">{error}</p>}
+
+              <button type="submit" className={styles.primaryButton} disabled={submitting}>
+                {submitting ? "Sending your link…" : "Send me a reset link"}
               </button>
             </form>
-          )}
-
-          {sent && (
-            <div className={styles.formSection}>
-              <Link to="/login" className={styles.submitbtn} style={{ textAlign: "center", textDecoration: "none", display: "block" }}>
-                Back to login
-              </Link>
+            <p className={styles.footerHint}>You’ll need to open the link from your email to continue.</p>
+          </div>
+        ) : (
+          <div className={styles.content} role="status" aria-live="polite">
+            <span className={styles.bigIcon} aria-hidden="true">📬</span>
+            <p className={styles.eyebrow}>Step 2 · Check your email</p>
+            <h1 id="reset-title">Your next step is in your inbox!</h1>
+            <p className={styles.description}>
+              If there’s an account for <strong>{email.trim()}</strong>, a reset link is on its way.
+            </p>
+            <div className={styles.tip}>
+              <strong>Can’t see it?</strong> Check your spam or junk folder. The link will only work for a little while.
             </div>
-          )}
-        </div>
+            <Link to="/login" className={styles.primaryButton}>Back to sign in</Link>
+            <button
+              type="button"
+              className={styles.textButton}
+              onClick={() => {
+                setSent(false);
+                setError("");
+              }}
+            >
+              Try a different email address
+            </button>
+          </div>
+        )}
       </section>
     </div>
   );
