@@ -236,6 +236,14 @@
 
 /* ============================= the mock screen ========================== */
 
+/*
+ * !! This is a SCALED COPY OF THE APP, not a cartoon of it. The screen is laid
+ * !! out at 1100 x 780 real desktop pixels and GuidePreview's useFit() scales
+ * !! the whole thing to the column. Every value below is therefore a real value
+ * !! taken from index.css, sidebar.module.css, header.module.css,
+ * !! Dashboard.module.css and the page modules - copy, do not invent.
+ */
+
 .visual {
   display: grid;
   gap: 10px;
@@ -267,207 +275,269 @@
   white-space: nowrap;
 }
 
-.mockWindow {
-  display: grid;
-  grid-template-rows: 26px minmax(0, 1fr);
-  height: 322px;
+.frame {
+  position: relative;
+  aspect-ratio: 1100 / 780;
   overflow: hidden;
-  border: 2px solid #dfe9d9;
+  border: 2px solid #dfe4e1;
   border-radius: 18px;
-  background: #fbfdf9;
+  background: #f7f9f8;
   box-shadow: 0 12px 26px rgba(20, 40, 26, 0.09);
-  font-size: 0.72rem;
-  line-height: 1.3;
 }
 
-.mockChrome {
+.screen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  width: 1100px;
+  height: 780px;
+  transform-origin: top left;
+  background: #f7f9f8;
+  color: #13251f;
+  font-family: inherit;
+  line-height: 1.35;
+}
+
+/* ------------------------------------------------------------- sidebar --- */
+
+.side {
+  display: flex;
+  flex: 0 0 232px;
+  flex-direction: column;
+  gap: 6px;
+  width: 232px;
+  padding: 20px 14px 24px;
+  background: linear-gradient(180deg, #1e3828 0%, #16301f 100%);
+}
+
+.sideBrand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  border-bottom: 1px solid #e0e9da;
-  background: #eef4ea;
+  justify-content: center;
+  width: 100%;
+  margin: 0 auto 4px;
+  padding: 4px 0;
 }
 
-.mockDots {
+.sideBrand img {
+  width: 78%;
+  max-width: 172px;
+  margin-bottom: 14px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.22));
+}
+
+.sideNav {
   display: flex;
-  flex: 0 0 auto;
-  gap: 4px;
+  flex-direction: column;
+  gap: 3px;
 }
 
-.mockDots i {
-  display: block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #c8d7c0;
+.sideItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: 20px;
+  color: rgba(238, 246, 239, 0.68);
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
-.mockDots i:first-child { background: #e5b0a5; }
-.mockDots i:nth-child(2) { background: #e7cf97; }
-.mockDots i:nth-child(3) { background: #a9cf9b; }
-
-.mockUrl {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: #fff;
-  color: #708274;
-  font-size: 0.6rem;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mockUrl span {
-  color: #a7b5a9;
-}
-
-.mockChromeGap {
-  flex: 0 0 18px;
-}
-
-.mockBody {
-  display: grid;
-  grid-template-columns: 98px minmax(0, 1fr);
-  min-height: 0;
-}
-
-.mockSidebar {
-  display: grid;
-  align-content: start;
-  gap: 8px;
-  padding: 9px 7px;
-  background: #1e3828;
-  color: #dfe9d8;
-}
-
-.mockBrand {
-  padding: 0 6px 2px;
+.sideItemActive {
+  background: #91a79a;
   color: #fff;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 1.15rem;
-  font-style: italic;
   font-weight: 700;
-  line-height: 1;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
-.mockNav {
-  display: grid;
-  gap: 2px;
-}
-
-.mockNavItem {
-  display: flex;
+.sideIcon {
+  display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
-  gap: 5px;
-  overflow: hidden;
-  padding: 4px 6px;
-  border-radius: 7px;
-  color: #c9d8c1;
-  font-size: 0.54rem;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow-wrap: normal;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(238, 246, 239, 0.72);
+  font-size: 0.92rem;
 }
 
-.mockNavItem span {
-  flex: 0 0 auto;
-  font-size: 0.64rem;
-  line-height: 1;
+.sideItemActive .sideIcon {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
 }
 
-.mockNavItemActive {
-  background: #79a847;
-  color: #12251b;
+.sideLabel {
+  line-height: 1.25;
 }
 
-.mockCanvas {
-  display: grid;
-  grid-template-rows: 30px minmax(0, 1fr);
+/* ---------------------------------------------------------------- top ---- */
+
+.appMain {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   min-width: 0;
-  min-height: 0;
-  background: #f7faf5;
+  background: #f7f9f8;
 }
 
-.mockTopbar {
+.topBar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 0 10px;
-  border-bottom: 1px solid #e8efe4;
-  background: #fff;
+  height: 72px;
+  flex: 0 0 72px;
+  padding: 0 1.6rem;
 }
 
-.mockTopbar strong {
+.topBrand {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow:
+    2px 2px 8px rgba(18, 34, 30, 0.08),
+    -2px -2px 6px rgba(255, 255, 255, 0.9);
   color: #1e3828;
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.topRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topIcon {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow:
+    2px 2px 8px rgba(18, 34, 30, 0.08),
+    -2px -2px 6px rgba(255, 255, 255, 0.9);
+  color: #1e3828;
+  font-size: 1.05rem;
+}
+
+.topBadge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid #f7f9f8;
+  border-radius: 50%;
+  background: #e8453c;
+}
+
+.topSep {
+  color: rgba(38, 66, 59, 0.18);
+  font-size: 1.4rem;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.topUser {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #13251f;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.topUser > i {
+  color: #5e7268;
   font-size: 0.7rem;
 }
 
-.mockTopbarRight {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.topAvatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 2px 8px rgba(18, 34, 30, 0.1);
 }
 
-.mockBell {
-  font-size: 0.62rem;
-}
+/* -------------------------------------------------------------- sheet ---- */
 
-.mockUser {
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: #eef4e9;
-  color: #3c5a44;
-  font-size: 0.56rem;
-  font-weight: 800;
-}
-
-.mockContent {
-  display: grid;
-  align-content: start;
-  gap: 7px;
+.contentArea {
+  flex: 1 1 auto;
   min-height: 0;
+  padding: 0 26px;
+}
+
+.sheet {
+  height: calc(100% - 34px);
+  padding: 24px 30px;
   overflow: hidden;
-  padding: 8px 10px 10px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 32px;
+  background: #fff;
+  box-shadow:
+    8px 8px 24px rgba(18, 34, 30, 0.1),
+    -5px -5px 16px rgba(255, 255, 255, 0.95);
 }
 
 /* ============================== the spotlight =========================== */
 
-.spotlight {
+.spot {
   position: relative;
-  display: block;
-  border-radius: 12px;
+  z-index: 3;
+  border-radius: 18px;
 }
 
-.spotlightBody {
-  display: grid;
-  gap: 6px;
-}
-
-.spotlightActive {
-  padding: 5px 7px;
-  background: rgba(233, 243, 221, 0.6);
+.spotDim {
   box-shadow:
-    0 0 0 2px #8fbd63,
-    0 0 0 6px rgba(143, 189, 99, 0.18);
-  animation: spotlightPulse 2.6s ease-in-out infinite;
+    0 0 0 3px #79a847,
+    0 0 0 9999px rgba(255, 255, 255, 0.62);
+  animation: guidePulseDim 2.8s ease-in-out infinite;
 }
 
-.spotlightTag {
-  display: inline-flex;
-  justify-self: start;
-  margin-bottom: 5px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: #1e3828;
-  color: #fff;
-  font-size: 0.56rem;
-  font-weight: 850;
-  letter-spacing: 0.02em;
+.spotRing {
+  animation: guidePulse 2.8s ease-in-out infinite;
+}
+
+@keyframes guidePulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 3px #79a847,
+      0 0 0 9px rgba(121, 168, 71, 0.22);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px #8fbd63,
+      0 0 0 13px rgba(121, 168, 71, 0.3);
+  }
+}
+
+/* Same pulse, but the veil outside the ring must never move. */
+@keyframes guidePulseDim {
+  0%, 100% {
+    box-shadow:
+      0 0 0 3px #79a847,
+      0 0 0 9999px rgba(255, 255, 255, 0.62);
+  }
+  50% {
+    box-shadow:
+      0 0 0 4px #8fbd63,
+      0 0 0 9999px rgba(255, 255, 255, 0.62);
+  }
 }
 
 /* The sentence under the screen. This is the accessible half of the pair. */
@@ -508,711 +578,2646 @@
   line-height: 1.45;
 }
 
-/* ============================ little app pieces ========================= */
+/* ================================ Home ================================== */
 
-.miniMonth {
-  padding: 7px 8px;
-  border: 1px solid #e3ecdd;
-  border-radius: 11px;
-  background: #fff;
+.dash {
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
 }
 
-.miniMonthHead {
+.dashShell {
+  display: flex;
+  width: 100%;
+  max-width: 700px;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.dashHero {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 32px 28px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 32px;
+  background: #fff;
+  box-shadow:
+    8px 8px 24px rgba(18, 34, 30, 0.1),
+    -5px -5px 16px rgba(255, 255, 255, 0.95);
+}
+
+.dashKicker {
+  margin: 0;
+  color: #5e7268;
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dashTitle {
+  margin: 0;
+  color: #1e3828;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.dashSection {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.sectionTitle {
+  margin: 0;
+  color: #13251f;
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.classList {
+  display: grid;
+  gap: 16px;
+}
+
+.classRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
+  gap: 20px;
+  min-height: 80px;
+  padding: 20px 24px;
+  border: 2px solid rgba(38, 66, 59, 0.11);
+  border-radius: 24px;
+  background: #fff;
+}
+
+.classInfo {
+  display: grid;
+  min-width: 0;
+}
+
+.className {
+  color: #13251f;
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.classMeta {
+  margin-top: 4px;
+  color: #5e7268;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.classArrow {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 50%;
+  background: #f0f3f1;
+  color: #2f7a3d;
+  font-size: 0.9rem;
+}
+
+.counterCard {
+  display: grid;
+  gap: 14px;
+  padding: 32px 28px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 32px;
+  background: #fff;
+  box-shadow:
+    8px 8px 24px rgba(18, 34, 30, 0.1),
+    -5px -5px 16px rgba(255, 255, 255, 0.95);
+}
+
+.counterLabel {
+  color: #5e7268;
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.counterNumber {
   color: #1e3828;
-  font-size: 0.62rem;
+  font-size: 4rem;
+  font-weight: 800;
+  line-height: 1;
 }
 
-.miniMonthArrows {
-  color: #7d8f80;
-  letter-spacing: 3px;
+.counterReady {
+  color: #26423b;
+  font-size: 1.25rem;
+  font-weight: 800;
 }
 
-.miniWeekRow,
-.miniDayGrid {
+.bookBig {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 84px;
+  padding: 0 32px;
+  border-radius: 32px;
+  background: #2f7a3d;
+  box-shadow: 0 12px 28px rgba(47, 122, 61, 0.32);
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.actionStack {
+  display: grid;
+  gap: 12px;
+}
+
+/* ============================== Calendar ================================ */
+
+.calWrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 20px;
+  align-items: start;
+}
+
+.calCol {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.viewSwitch {
+  display: inline-flex;
+  justify-self: start;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow:
+    2px 2px 8px rgba(18, 34, 30, 0.08),
+    -2px -2px 6px rgba(255, 255, 255, 0.9);
+}
+
+.viewOn,
+.viewOff {
+  display: inline-flex;
+  align-items: center;
+  min-height: 46px;
+  padding: 8px 22px;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.viewOn {
+  background: #2f7a3d;
+  color: #fff;
+}
+
+.viewOff {
+  color: #5e7268;
+}
+
+.calCard {
+  padding: 20px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow:
+    8px 8px 24px rgba(18, 34, 30, 0.1),
+    -5px -5px 16px rgba(255, 255, 255, 0.95);
+}
+
+.calHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.calNav {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 2px solid rgba(38, 66, 59, 0.11);
+  border-radius: 18px;
+  color: #1e3828;
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.calMonth {
+  color: #1e3828;
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.calWeek {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.calWeek span {
+  color: #5e7268;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.calGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.calBlank {
+  aspect-ratio: 1 / 1;
+}
+
+.calCell {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1 / 1;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 18px;
+  background: #fff;
+  color: #13251f;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.calPast {
+  border-color: transparent;
+  background: #edf0ef;
+  color: #8a9b93;
+}
+
+.calFree {
+  border-color: #79a847;
+  background: #e9f3dd;
+  color: #244a32;
+}
+
+.calBusy {
+  border-color: #4f7161;
+  background: #dce8e1;
+  color: #1e3828;
+}
+
+.calNone {
+  border-color: #d18a10;
+  background: #fdeeda;
+  color: #92400e;
+}
+
+.calToday {
+  outline: 3px solid #2f7a3d;
+  outline-offset: -3px;
+}
+
+.calChosen {
+  border: 3px solid #1e3828;
+}
+
+.calLegend {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(38, 66, 59, 0.14);
+}
+
+.calLegendTitle {
+  color: #1e3828;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.calLegendRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #5e7268;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.dotFree,
+.dotBusy,
+.dotNone {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgba(38, 66, 59, 0.18);
+  border-radius: 50%;
+}
+
+.dotFree { background: #79a847; }
+.dotBusy { background: #4f7161; }
+.dotNone { background: #d18a10; }
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.panelTitle {
+  margin-top: 4px;
+  color: #5e7268;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.panelAction {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  padding: 12px 16px;
+  border: 2px solid rgba(38, 66, 59, 0.11);
+  border-radius: 18px;
+  background: #fff;
+  color: #1e3828;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.dayClass {
+  display: grid;
+  gap: 4px;
+  padding: 12px 16px;
+  border: 2px solid rgba(38, 66, 59, 0.11);
+  border-radius: 18px;
+  background: #fff;
+}
+
+.dayClass strong {
+  color: #1e3828;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.dayClass span {
+  color: #5e7268;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+/* ============================ modal (in-app) ============================ */
+
+/*
+ * The real dialogs open in a portal over the whole window. Here the window is
+ * the 1100 x 780 replica, so the overlay covers the replica instead.
+ *
+ * !! The real colour and the real 780px width, and no blur: the app's dialogs
+ * are plain dimmed paper, and a frosted copy would read as a different product.
+ */
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: start center;
+  padding: 12px 20px;
+  overflow: auto;
+  background: rgba(15, 25, 20, 0.45);
+}
+
+/* The availability dialog: kid.filterDialog at maxWidth 780.
+   Scoped away from `.dialog`, which is the guide's own shell - sharing the
+   name made this rule resize the real dialog. */
+.sceneDialog {
+  display: flex;
+  flex-direction: column;
+  width: min(780px, 100%);
+  max-height: 100%;
+  padding: 20px 24px;
+  overflow: hidden;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 32px;
+  background: #fff;
+  box-shadow: 0 16px 44px rgba(18, 34, 30, 0.11);
+}
+
+.dialogHead {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(38, 66, 59, 0.08);
+}
+
+.dialogTitle {
+  margin: 0;
+  color: #1e3828;
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.dialogSub {
+  margin: 6px 0 0;
+  color: #5e7268;
+  font-size: 0.92rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.dialogClose {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 50%;
+  background: #f8fbf9;
+  color: #5e7268;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.dialogBody {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* The two buttons at the foot of a dialog, stacked as the real one stacks them. */
+.modalStack {
+  display: grid;
+  gap: 8px;
+}
+
+.btnWideGhost,
+.btnWidePrimary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 10px 18px;
+  border-radius: 18px;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.btnWideGhost {
+  border: 2px solid rgba(38, 66, 59, 0.11);
+  background: #fff;
+  color: #1e3828;
+}
+
+.btnWidePrimary {
+  background: #2f7a3d;
+  box-shadow: 0 8px 20px rgba(47, 122, 61, 0.28);
+  color: #fff;
+}
+
+/* "See my availabilities (12)": the lime outline the real dialog wears. */
+.seeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 50px;
+  padding: 10px 20px;
+  border: 2px solid #79a847;
+  border-radius: 18px;
+  background: #e9f3dd;
+  color: #1e3828;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.formGrid {
+  display: grid;
+  gap: 8px;
+}
+
+.formFull {
+  display: grid;
+  gap: 6px;
+}
+
+.formTwo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.formLabel {
+  color: #26423b;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.formHint {
+  margin: 0;
+  color: #5e7268;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+/* The real two-way choice in the availability form. */
+.segment {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.segmentBtn {
+  display: grid;
+  place-items: center;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 2px solid rgba(38, 66, 59, 0.11);
+  border-radius: 18px;
+  background: #fff;
+  color: #26423b;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.segmentOn {
+  border-color: #2f7a3d;
+  background: #e9f3dd;
+  color: #1e3828;
+}
+
+.segmentBtnDanger {
+  border-color: #a83a34;
+  background: #fce8e4;
+  color: #8a3e2e;
+}
+
+.weekChips {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.weekChip,
+.weekChipOn {
+  display: grid;
+  place-items: center;
+  min-height: 40px;
+  padding: 6px 4px;
+  border: 2px solid rgba(38, 66, 59, 0.11);
+  border-radius: 10px;
+  background: #fff;
+  color: #26423b;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.weekChipOn {
+  border-color: #2f7a3d;
+  background: #2f7a3d;
+  color: #fff;
+}
+
+.input {
+  padding: 10px 14px;
+  border: 1px solid rgba(38, 66, 59, 0.11);
+  border-radius: 18px;
+  background: #fff;
+  color: #13251f;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+/* ============================ wizard (booking) ========================== */
+
+/*
+ * Step 1 of the real student booking wizard. It replaces the kid home inline
+ * in the 720px centre column, so there is no dimmed backdrop at all - the
+ * wizard is simply the page while it is open.
+ */
+.kidCol {
+  display: grid;
+  gap: 8px;
+  width: min(720px, 100%);
+  margin: 24px auto;
+}
+
+.wizard {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow:
+    8px 8px 24px rgba(18, 34, 30, 0.1),
+    -5px -5px 16px rgba(255, 255, 255, 0.95);
+}
+
+.wizardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wizardTitle {
+  margin: 0;
+  color: #1e3828;
+  font-size: 1.45rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.wizardIntro {
+  margin: 4px 0 0;
+  color: #5e7268;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.wizardCancel {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 18px;
+  border: 2px solid rgba(38, 66, 59, 0.11);
+  border-radius: 999px;
+  background: #fff;
+  color: #5e7268;
+  font-size: 0.95rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stepDot {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 2px solid rgba(38, 66, 59, 0.18);
+  border-radius: 50%;
+  background: #f0f3f1;
+  color: #5e7268;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.stepDotNow {
+  border-color: #2f7a3d;
+  background: #2f7a3d;
+  color: #fff;
+}
+
+.stepLine {
+  flex: 1 1 auto;
+  min-width: 12px;
+  height: 4px;
+  border-radius: 999px;
+  background: #f0f3f1;
+}
+
+.wizardStepCount {
+  margin: 0;
+  color: #5e7268;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.wizardQuestion {
+  margin: 0;
+  color: #13251f;
+  font-size: 1.3rem;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+.wizardHelp {
+  margin: 4px 0 0;
+  color: #5e7268;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.dayGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 8px;
+}
+
+.dayCard {
+  display: grid;
   gap: 2px;
+  align-content: center;
+  justify-items: center;
+  min-width: 0;
+  min-height: 124px;
+  padding: 12px 8px;
+  border: 2px solid rgba(38, 66, 59, 0.11);
+  border-radius: 18px;
+  background: #fff;
+  color: #13251f;
 }
 
-.miniWeekRow {
-  margin-bottom: 2px;
+.dayCardOn {
+  border-color: #2f7a3d;
+  background: #2f7a3d;
+  color: #fff;
 }
 
-.miniWeekRow span {
-  color: #9aab9c;
-  font-size: 0.5rem;
+.dayCardOff {
+  background: #f0f3f1;
+  opacity: 0.6;
+}
+
+.dayName {
+  color: #5e7268;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.dayNum {
+  color: #13251f;
+  font-size: 2.1rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.dayMonth {
+  color: #8a9b93;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.dayCardOn .dayName,
+.dayCardOn .dayMonth {
+  color: #e9f3dd;
+}
+
+.dayCardOn .dayNum {
+  color: #fff;
+}
+
+.dayBadge {
+  margin-top: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.dayBadgeFree { background: #ecfdf3; color: #166534; }
+.dayBadgeBusy { background: #fce8e4; color: #8a3e2e; }
+.dayBadgeNone { background: #fff4df; color: #92400e; }
+
+.dayCardOn .dayBadge {
+  background: rgba(255, 255, 255, 0.9);
+  color: #1e3828;
+}
+
+.wizardFooter {
+  display: flex;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.btnGhostWide {
+  display: flex;
+  flex: 1 1 160px;
+  align-items: center;
+  justify-content: center;
+  min-height: 58px;
+  padding: 14px 22px;
+  border: 2px solid rgba(38, 66, 59, 0.11);
+  border-radius: 18px;
+  background: #fff;
+  color: #1e3828;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.wizardFooter .btnPrimaryWide {
+  flex: 2 1 220px;
+  min-height: 58px;
+  font-size: 1.05rem;
+}
+
+/* ------------------------- the student's class card ---------------------- */
+
+.kidDetail {
+  display: grid;
+  gap: 6px;
+}
+
+.kidDetailDay {
+  color: #5e7268;
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.kidDetailTime {
+  color: #13251f;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.kidDetailCourse {
+  color: #5e7268;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.kidTeacherRow {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 12px 16px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 18px;
+  background: #f8fbf9;
+}
+
+.kidTeacherRow em {
+  display: block;
+  color: #5e7268;
+  font-size: 0.85rem;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.kidTeacherRow strong {
+  display: block;
+  color: #1e3828;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+/* ============================== buttons ================================= */
+
+.btnGhost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 14px;
+  border: 1px solid #cadbcd;
+  border-radius: 10px;
+  background: #fff;
+  color: #244a32;
+  font-size: 0.8rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.btnPrimary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 11px 20px;
+  border-radius: 18px;
+  background: #2f7a3d;
+  box-shadow: 0 8px 20px rgba(47, 122, 61, 0.28);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.btnPrimaryWide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 0 18px;
+  border-radius: 18px;
+  background: #2f7a3d;
+  box-shadow: 0 8px 20px rgba(47, 122, 61, 0.28);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.btnSubmitWide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 14px;
+  background: #1e3828;
+  box-shadow: 0 8px 20px rgba(30, 56, 40, 0.2);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.btnWarn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 11px 14px;
+  border: 2px solid #d18a10;
+  border-radius: 18px;
+  background: #fff4df;
+  color: #92400e;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+/* ============================== page atoms ============================== */
+
+.page {
+  display: grid;
+  gap: 0;
+}
+
+.pageHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.pageTitle {
+  margin: 0;
+  color: #1e3828;
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.pageSub {
+  max-width: 640px;
+  margin: 4px 0 0;
+  color: #5e7268;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.mutedText {
+  color: #5e7268;
+  font-size: 0.78rem;
+}
+
+.pillGhost {
+  padding: 8px 14px;
+  border: 2px solid rgba(38, 66, 59, 0.11);
+  border-radius: 999px;
+  background: #fff;
+  color: #1e3828;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.chipGreen { background: #ecfdf3; color: #166534; }
+
+/* ============================== My students ============================= */
+
+.rosterPage {
+  display: grid;
+  gap: 12px;
+}
+
+.rosterHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.rosterTitle {
+  margin: 0;
+  color: #13251f;
+  font-size: 1.7rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.rosterSub {
+  margin: 4px 0 0;
+  color: #666;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+/* The status pills are coloured by the package state they filter, exactly as
+   the real page colours them; the selected one is always forest. */
+.statusTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(38, 66, 59, 0.08);
+}
+
+.statusTab {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 11px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.statusTab_all { background: #f3f4f6; color: #374151; }
+.statusTab_active { background: #dcfce7; color: #166534; }
+.statusTab_used_up { background: #fef3c7; color: #92400e; }
+.statusTab_inactive { background: #f3f4f6; color: #374151; }
+.statusTab_no_package { background: #fee2e2; color: #991b1b; }
+.statusTab_verified { background: #dcfce7; color: #166534; }
+.statusTab_needs_review { background: #fef3c7; color: #92400e; }
+.statusTab_incomplete { background: #fee2e2; color: #991b1b; }
+.statusTab_missing { background: #fee2e2; color: #991b1b; }
+.statusTab_student_confirmed { background: #dbeafe; color: #1d4ed8; }
+.statusTab_in_progress { background: #e0f2fe; color: #0369a1; }
+.statusTab_pending { background: #f3f4f6; color: #374151; }
+
+.statusTabOn {
+  border-color: #2f4d3e;
+  background: #2f4d3e;
+  color: #fff;
+}
+
+.searchInput input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 38px;
+  padding: 9px 12px;
+  border: 1px solid rgba(38, 66, 59, 0.11);
+  border-radius: 10px;
+  background: #fff;
+  color: #13251f;
+  font: inherit;
+  font-size: 0.82rem;
+  outline: 0;
+}
+
+.searchInput input::placeholder {
+  color: #8a9b93;
+}
+
+.rosterWrap {
+  overflow: hidden;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.rosterTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+}
+
+.rosterTable th {
+  padding: 8px 9px;
+  border-bottom: 1px solid #eef3ef;
+  background: #fff;
+  color: #2f7a3d;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-align: left;
+}
+
+.rosterTable td {
+  padding: 9px;
+  border-bottom: 1px solid #eef3ef;
+  vertical-align: middle;
+  color: #13251f;
+}
+
+.rosterTable tr:last-child td {
+  border-bottom: 0;
+}
+
+.cellStrong {
+  display: block;
+  font-weight: 800;
+}
+
+.cellBold {
+  display: block;
+  font-weight: 700;
+}
+
+.cellLine {
+  display: block;
+  margin-top: 3px;
+  color: #667085;
+  font-size: 0.68rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.expiryBadge {
+  display: inline-flex;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.expiry_ok { background: #eef4f0; color: #26423b; border-color: #d5e2da; }
+.expiry_warn { background: #fdf3e7; color: #8a5a1f; border-color: #f0dcc0; }
+
+.classListLine {
+  display: block;
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.rosterBar {
+  display: block;
+  width: 100%;
+  max-width: 110px;
+  height: 7px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eef3ef;
+}
+
+.rosterBar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #2f4d3e;
+}
+
+.rosterBarEmpty {
+  background: #f59e0b;
+}
+
+.statusPill {
+  display: inline-flex;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.statusPill_active { background: #dcfce7; color: #166534; }
+.statusPill_used_up { background: #fef3c7; color: #92400e; }
+.statusPill_inactive { background: #f3f4f6; color: #374151; }
+.statusPill_no_package { background: #fee2e2; color: #991b1b; }
+
+/* ============================ Class history ============================= */
+
+/* The real verification card: the class on the left, the proof buttons in a
+   180px column on the right. */
+.verificationItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 170px;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(47, 77, 62, 0.06);
+}
+
+.vMain {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.vTitleRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.vTitle {
+  margin: 0;
+  color: #13251f;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.vWhen {
+  margin: 4px 0 0;
+  color: #5e7268;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.vStatus {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.vGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.vGrid > div {
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.vGrid span {
+  display: block;
+  margin-bottom: 3px;
+  color: #5e7268;
+  font-size: 0.64rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.vGrid strong {
+  display: block;
+  color: #13251f;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.vGrid small {
+  display: block;
+  margin-top: 3px;
+  color: #5e7268;
+  font-size: 0.68rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.vGood {
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #ecfdf3;
+  color: #166534;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.vSummary {
+  margin: 0;
+  color: #5e7268;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.vActions {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.vActionsTitle {
+  color: #5e7268;
+  font-size: 0.64rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.vActionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid rgba(38, 66, 59, 0.11);
+  border-radius: 9px;
+  background: #fff;
+  color: #1e3828;
+  font-size: 0.72rem;
   font-weight: 800;
   text-align: center;
 }
 
-.miniDay {
-  position: relative;
+/* ============================ Class history ============================= */
+
+.toolbarRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+/* The student history page is the kid-friendly one. */
+.kidList {
   display: grid;
+  gap: 14px;
+}
+
+.kidHistoryCard {
+  display: flex;
+  gap: 14px;
+  padding: 16px;
+  border: 2px solid rgba(38, 66, 59, 0.11);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow:
+    8px 8px 24px rgba(18, 34, 30, 0.1),
+    -5px -5px 16px rgba(255, 255, 255, 0.95);
+}
+
+.kidIcon {
+  display: grid;
+  flex: 0 0 auto;
   place-items: center;
-  height: 18px;
-  border-radius: 5px;
-  background: #f4f7f2;
-  color: #66786a;
-  font-size: 0.54rem;
-  font-weight: 700;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: #eef7e6;
+  font-size: 1.5rem;
 }
 
-.miniDayAvail {
-  background: #e9f3dd;
-  color: #315e3b;
-}
-
-.miniDayBusy {
-  background: #dce8e1;
-  color: #2f4a3d;
-}
-
-.miniDayBusy::after {
-  position: absolute;
-  bottom: 2px;
-  width: 2px;
-  height: 2px;
-  border-radius: 50%;
-  background: #4f7161;
-  content: "";
-}
-
-.miniDaySelected {
-  background: #1e3828;
-  color: #fff;
-  box-shadow: 0 0 0 2px #9cbe58;
-}
-
-.mockGreeting {
+.kidHistoryBody {
   display: grid;
-  gap: 1px;
+  min-width: 0;
+  justify-items: start;
+  gap: 6px;
 }
 
-.mockGreeting span {
-  color: #7b8d7f;
-  font-size: 0.58rem;
+.kidTitle {
+  color: #1e3828;
+  font-size: 1.05rem;
   font-weight: 800;
 }
 
-.mockGreeting strong {
-  color: #1e3828;
-  font-size: 0.95rem;
-  line-height: 1.1;
+.kidWhen {
+  color: #617568;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
-.mockCounter {
-  display: flex;
+.kidFacts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  padding: 6px 9px;
-  border: 1px solid #e5eddf;
-  border-radius: 9px;
-  background: #fff;
-  color: #5b6f60;
-  font-size: 0.6rem;
-  font-weight: 750;
+  gap: 6px 10px;
+  font-size: 0.76rem;
 }
 
-.mockCounter strong {
-  color: #2f7a3d;
-  font-size: 1rem;
-}
-
-.mockBlockTitle {
-  color: #7b8d7f;
-  font-size: 0.58rem;
-  font-weight: 900;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.mockClassCard {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  padding: 7px 8px;
-  border: 1px solid #e6eedf;
-  border-radius: 10px;
-  background: #fff;
-}
-
-.mockBubble {
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
-  color: #1e3828;
-  font-size: 0.56rem;
-  font-weight: 900;
-}
-
-.mockBubbleLime { background: #e3f1cf; }
-.mockBubbleSky { background: #e2eefb; }
-.mockBubbleSand { background: #fdf0d5; }
-
-.mockClassInfo {
-  display: grid;
-  flex: 1;
-  gap: 1px;
-  min-width: 0;
-}
-
-.mockClassInfo strong {
-  overflow: hidden;
-  color: #1e3828;
-  font-size: 0.62rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mockClassInfo span {
-  color: #6d8071;
-  font-size: 0.54rem;
-}
-
-.mockJoin {
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: #2f7a3d;
-  color: #fff;
-  font-size: 0.52rem;
-  font-weight: 850;
-}
-
-.mockQuickRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.mockQuickRow span {
-  padding: 4px 7px;
-  border: 1px solid #e6eedf;
-  border-radius: 999px;
-  background: #fff;
-  color: #4c6652;
-  font-size: 0.54rem;
-  font-weight: 750;
-}
-
-.mockFieldRow {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px;
-}
-
-.mockSelectRow {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px;
-}
-
-.mockMiniField {
-  display: grid;
-  gap: 1px;
-  min-width: 0;
-  padding: 5px 7px;
-  border: 1px solid #e3ecdd;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.mockMiniField span {
-  color: #92a395;
-  font-size: 0.5rem;
+.kidFacts em {
+  display: block;
+  color: #8a9b93;
+  font-size: 0.64rem;
+  font-style: normal;
   font-weight: 800;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
-.mockMiniField strong {
-  color: #1e3828;
-  font-size: 0.6rem;
-  white-space: nowrap;
+.kidFacts strong {
+  color: #13251f;
+  font-size: 0.78rem;
 }
 
-.mockActionsRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
+/* ============================ contract review =========================== */
 
-.mockBtnPrimary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: #1e3828;
-  color: #fff;
-  font-size: 0.58rem;
-  font-weight: 850;
-  white-space: nowrap;
-  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.12);
-}
-
-.mockSlotGrid {
+.reviewPage {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px;
+  gap: 18px;
 }
 
-.mockSlot {
-  padding: 6px 4px;
-  border: 1px solid #dfe9d8;
-  border-radius: 8px;
-  background: #eef4e9;
-  color: #526a58;
-  font-size: 0.56rem;
+/* The real hero: a soft lime glow in the top-right corner of a white card. */
+.reviewHero {
+  padding: 26px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 32px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(121, 168, 71, 0.18), transparent 38%),
+    #fff;
+  box-shadow:
+    8px 8px 24px rgba(18, 34, 30, 0.1),
+    -5px -5px 16px rgba(255, 255, 255, 0.95);
+}
+
+.reviewKicker {
+  margin: 0 0 6px;
+  color: #5e7268;
+  font-size: 0.72rem;
   font-weight: 800;
-  text-align: center;
-}
-
-.mockSlotActive {
-  border-color: #79a847;
-  background: #e9f3dd;
-  color: #2c5734;
-}
-
-.mockSplit {
-  display: grid;
-  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
-  gap: 8px;
-  align-items: start;
-}
-
-.mockClassPanel {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid #e3ecdd;
-  border-radius: 11px;
-  background: #fff;
-}
-
-.mockKicker {
-  color: #93a496;
-  font-size: 0.5rem;
-  font-weight: 900;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
 }
 
-.mockClassPanel > strong {
+.reviewHeroTitle {
+  margin: 0;
   color: #1e3828;
-  font-size: 0.66rem;
-  line-height: 1.25;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
 }
 
-.mockMeta {
-  color: #6b7d70;
-  font-size: 0.55rem;
-}
-
-.mockTagRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin: 2px 0;
-}
-
-.mockTagRow span {
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: #f1f6ec;
-  color: #5a705f;
-  font-size: 0.5rem;
-  font-weight: 750;
-}
-
-.mockBtnWarn {
-  display: block;
-  padding: 6px;
-  border: 1px solid #f0c983;
-  border-radius: 8px;
-  background: #fff4df;
-  color: #8a5a12;
-  font-size: 0.55rem;
-  font-weight: 850;
-  text-align: center;
-}
-
-.mockHint {
-  color: #8a9b8e;
-  font-size: 0.5rem;
-  line-height: 1.35;
-}
-
-.mockSearch {
-  padding: 5px 8px;
-  border: 1px solid #e3ecdd;
-  border-radius: 8px;
-  background: #fff;
-  color: #93a496;
-  font-size: 0.56rem;
-}
-
-.mockStudentRow {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 8px;
-  border: 1px solid #e6eedf;
-  border-radius: 10px;
-  background: #fff;
-}
-
-.mockStudentInfo {
-  display: grid;
-  flex: 1;
-  gap: 1px;
-  min-width: 0;
-}
-
-.mockStudentInfo strong {
-  color: #1e3828;
-  font-size: 0.62rem;
-}
-
-.mockStudentInfo span {
-  color: #75877a;
-  font-size: 0.54rem;
-}
-
-.mockChevron {
-  color: #9cae9f;
+.reviewHeroText {
+  max-width: 660px;
+  margin: 10px 0 0;
+  color: #26423b;
   font-size: 0.9rem;
-  font-weight: 800;
+  line-height: 1.6;
 }
 
-.mockFilterRow {
+.heroStats {
   display: flex;
   align-items: center;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
 }
 
-.mockPill,
-.mockPillActive {
-  padding: 3px 7px;
+.statPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
   border-radius: 999px;
-  font-size: 0.52rem;
+  background: #ecfdf3;
+  color: #166534;
+  font-size: 0.78rem;
   font-weight: 800;
 }
 
-.mockPill {
-  background: #eef4e9;
-  color: #5c715f;
+.statMuted {
+  color: #5e7268;
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
-.mockPillActive {
-  background: #1e3828;
-  color: #fff;
+.reviewCard {
+  padding: 20px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 32px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(18, 34, 30, 0.05);
 }
 
-.mockSearchSmall {
-  margin-left: auto;
-  font-size: 0.56rem;
-  opacity: 0.7;
+.reviewHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-.mockHistoryRow {
+.reviewPerson {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 7px;
-  border: 1px solid #e6eedf;
-  border-radius: 9px;
-  background: #fff;
-}
-
-.mockDateChip {
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 30px;
-  border-radius: 8px;
-  background: #eef5e7;
-  color: #3f6246;
-  font-size: 0.5rem;
-  font-weight: 850;
-  line-height: 1.05;
-  text-align: center;
-}
-
-.mockHistoryInfo {
-  display: grid;
-  flex: 1;
-  gap: 1px;
+  gap: 12px;
   min-width: 0;
 }
 
-.mockHistoryInfo strong {
-  color: #1e3828;
-  font-size: 0.6rem;
-}
-
-.mockHistoryInfo span {
-  color: #75877a;
-  font-size: 0.52rem;
-}
-
-.mockPillDone {
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: #e6f5e9;
-  color: #1f6b3c;
-  font-size: 0.48rem;
-  font-weight: 850;
-}
-
-.mockPillOutline {
-  padding: 2px 6px;
-  border: 1px solid #cdddbd;
-  border-radius: 999px;
-  background: #f7fbf2;
-  color: #3f6b45;
-  font-size: 0.48rem;
-  font-weight: 850;
-  white-space: nowrap;
-}
-
-.mockReviewCard {
+.reviewAvatar {
   display: grid;
-  gap: 6px;
-  padding: 8px;
-  border: 1px solid #e3ecdd;
-  border-radius: 11px;
-  background: #fff;
-}
-
-.mockReviewHead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.mockReviewHead strong {
-  color: #1e3828;
-  font-size: 0.62rem;
-}
-
-.mockReviewHead span {
-  color: #75877a;
-  font-size: 0.52rem;
-}
-
-.mockCriterion {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.mockCriterionLabel {
-  color: #4f6755;
-  font-size: 0.54rem;
-  font-weight: 700;
-}
-
-.mockScoreChips {
-  display: flex;
-  gap: 2px;
-}
-
-.mockScoreChip {
-  display: grid;
-  place-items: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
-  background: #f1f5ee;
-  color: #849687;
-  font-size: 0.48rem;
-  font-weight: 800;
-}
-
-.mockScoreChipOn {
-  background: #2f7a3d;
-  color: #fff;
-}
-
-.mockLevelPill {
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: #eef6e6;
-  color: #2f6b3a;
-  font-size: 0.52rem;
-  font-weight: 850;
-}
-
-.mockReviewNote {
-  padding: 5px 7px;
-  border: 1px dashed #dce8d4;
-  border-radius: 7px;
-  background: #fbfdf9;
-  color: #8a9b8e;
-  font-size: 0.5rem;
-  line-height: 1.4;
-}
-
-.mockSelect {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 4px 7px;
-  border: 1px solid #e3ecdd;
-  border-radius: 8px;
-  background: #fff;
-  color: #93a496;
-  font-size: 0.48rem;
-  font-weight: 700;
-}
-
-.mockSelect strong {
-  color: #1e3828;
-  font-size: 0.56rem;
-}
-
-.mockTextarea {
-  min-height: 62px;
-  padding: 7px 8px;
-  border: 1.5px solid #cfe0c2;
-  border-radius: 9px;
-  background: #fff;
-  color: #405546;
-  font-size: 0.56rem;
-  line-height: 1.45;
-}
-
-.mockCounterText {
-  color: #93a496;
-  font-size: 0.5rem;
-}
-
-.mockNoteCard {
-  padding: 7px 8px;
-  border: 1px solid #e6eedf;
-  border-radius: 9px;
-  background: #fff;
-}
-
-.mockNoteDate {
-  color: #88a07f;
-  font-size: 0.5rem;
-  font-weight: 800;
-}
-
-.mockNoteCard p {
-  margin: 2px 0 0;
-  color: #405546;
-  font-size: 0.56rem;
-  line-height: 1.4;
-}
-
-.mockTaskCard {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  padding: 7px 8px;
-  border: 1px solid #e6eedf;
-  border-radius: 10px;
-  background: #fff;
-}
-
-.mockTaskInfo {
-  display: grid;
-  gap: 1px;
-  min-width: 0;
-}
-
-.mockTaskInfo strong {
-  color: #1e3828;
-  font-size: 0.6rem;
-}
-
-.mockTaskInfo span {
-  color: #75877a;
-  font-size: 0.52rem;
-}
-
-.mockBtnSmall {
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: 7px;
-  background: #1e3828;
-  color: #fff;
-  font-size: 0.52rem;
-  font-weight: 850;
-  white-space: nowrap;
-}
-
-.mockBookCard {
-  display: flex;
-  gap: 8px;
-  padding: 7px;
-  border: 1px solid #e6eedf;
-  border-radius: 11px;
-  background: #fff;
-}
-
-.mockCover {
   flex: 0 0 auto;
-  display: grid;
   place-items: center;
-  width: 38px;
-  height: 48px;
-  border-left: 4px solid rgba(255, 255, 255, 0.55);
-  border-radius: 6px 9px 9px 6px;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #e7f2dc, #d4e8c1);
+  color: #315b23;
   font-size: 1rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
 }
 
-.mockCoverLime { background: linear-gradient(135deg, #8ab857, #2f7a3d); }
-.mockCoverSky { background: linear-gradient(135deg, #7fb0d8, #3d6b8f); }
-
-.mockBookInfo {
-  display: grid;
-  flex: 1;
-  gap: 2px;
-  min-width: 0;
+.reviewRole {
+  margin: 0;
+  color: #5e7268;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
-.mockBookInfo > strong {
+.reviewName {
+  margin: 2px 0 3px;
   color: #1e3828;
-  font-size: 0.62rem;
+  font-size: 1.3rem;
+  font-weight: 800;
   line-height: 1.2;
 }
 
-.mockProgress {
-  height: 6px;
-  overflow: hidden;
-  border-radius: 99px;
-  background: #e9efe5;
+.reviewMeta {
+  margin: 0;
+  color: #5e7268;
+  font-size: 0.82rem;
 }
 
-.mockProgress span {
+.reviewStatus {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.reviewStatusPending {
+  background: #fff4df;
+  color: #92400e;
+}
+
+.reviewProgress {
+  height: 8px;
+  margin-top: 16px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eef3ef;
+}
+
+.reviewProgress i {
   display: block;
+  width: 100%;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #4f9345, #9cbe58);
+  background: linear-gradient(90deg, #2f7a3d, #79a847);
 }
 
-.mockProgressLabel {
-  color: #6f8374;
-  font-size: 0.5rem;
-  font-weight: 750;
+.reviewActions {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 10px 0 14px;
+}
+
+.reviewActionBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 11px 16px;
+  border-radius: 14px;
+  background: #1e3828;
+  box-shadow: 0 8px 20px rgba(30, 56, 40, 0.2);
+  color: #fff;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.reviewBlock {
+  padding: 14px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 24px;
+  background: #f8fbf9;
+}
+
+.reviewBlockHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.reviewBlockHead h4 {
+  margin: 0;
+  color: #1e3828;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.reviewNotYet {
+  color: #5e7268;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.reviewEmpty {
+  margin: 8px 0 0;
+  color: #5e7268;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+/* ------------------------------- the modal ------------------------------ */
+
+.reviewBackdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(7px);
+}
+
+/* 760px and scrollable, exactly like the real closing-evaluation dialog. The
+   lower fields can sit below the fold; the real one does too. */
+.reviewModal {
+  width: min(760px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  border-radius: 32px;
+  background: #fff;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.28);
+}
+
+.reviewModalHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid rgba(38, 66, 59, 0.08);
+}
+
+.reviewModalTitle {
+  margin: 0;
+  color: #1e3828;
+  font-size: 1.45rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.reviewModalSub {
+  margin: 6px 0 0;
+  color: #5e7268;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.reviewClose {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 50%;
+  background: #fff;
+  color: #5e7268;
+  font-size: 1.3rem;
+}
+
+.reviewModalBody {
+  padding: 16px 22px 20px;
+}
+
+.criteriaList {
+  display: grid;
+  gap: 10px;
+}
+
+.criterion {
+  min-width: 0;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 18px;
+  background: #f8fbf9;
+}
+
+.criterion legend {
+  padding: 0 5px;
+  color: #26423b;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.criterion p {
+  margin: 0 0 8px;
+  color: #5e7268;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.scoreScale {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.scoreOption {
+  display: grid;
+  place-items: center;
+  min-height: 36px;
+  border: 1px solid rgba(38, 66, 59, 0.11);
+  border-radius: 11px;
+  background: #fff;
+  color: #26423b;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.scoreOptionOn {
+  border-color: #1e3828;
+  background: #1e3828;
+  color: #fff;
+}
+
+.commentField {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  color: #26423b;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.commentArea {
+  min-height: 74px;
+  padding: 10px 12px;
+  border: 1px solid rgba(38, 66, 59, 0.11);
+  border-radius: 18px;
+  background: #fff;
+  color: #8a9b93;
+  font-size: 0.84rem;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.previewBox {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #cfe3c1;
+  border-radius: 18px;
+  background: #f4faf0;
+  color: #5e7268;
+  font-size: 0.8rem;
+}
+
+.previewBox strong {
+  color: #1e3828;
+  font-size: 0.95rem;
+}
+
+.previewBox small {
+  flex-basis: 100%;
+  color: #5e7268;
+  line-height: 1.4;
+}
+
+.stars {
+  display: inline-flex;
+  gap: 1px;
+  letter-spacing: 0.02em;
+}
+
+.starOn { color: #e0a11a; }
+.starOff { color: #d8dfdb; }
+
+.reviewModalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+/* =============================== Remarks ================================ */
+
+.remarksGrid,
+.assignGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 500px);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.remarksCol {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow:
+    8px 8px 24px rgba(18, 34, 30, 0.1),
+    -5px -5px 16px rgba(255, 255, 255, 0.95);
+}
+
+.panelHeading {
+  margin: 0;
+  color: #1e3828;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.rosterPick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 16px;
+  background: #fff;
+}
+
+/* The real selected roster row keeps every colour and only tints the card. */
+.rosterPickOn {
+  border-color: rgba(145, 167, 154, 0.9);
+  background: rgba(145, 167, 154, 0.15);
+  color: inherit;
+}
+
+.rosterPick span {
+  display: grid;
+  min-width: 0;
+}
+
+.rosterPick strong {
+  color: inherit;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.rosterPick em {
+  overflow: hidden;
+  color: #8a9b93;
+  font-size: 0.7rem;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rosterPickOn em {
+  color: #8a9b93;
+}
+
+.pickAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.pickTag {
+  margin-left: auto;
+  color: inherit;
+  font-size: 0.62rem;
+  font-style: normal;
+  font-weight: 700;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.pickedPerson {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 0 2px;
+}
+
+.pickedPerson strong {
+  color: #1e3828;
+  font-size: 1.12rem;
+  font-weight: 700;
+}
+
+.pickedPerson .remarkAvatar {
+  width: 56px;
+  height: 56px;
+}
+
+.leftHead {
+  padding: 2px 2px 0;
+}
+
+.composer {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 20px;
+  background: #fff;
+}
+
+.composerTitle {
+  margin: 0;
+  color: #13251f;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.textarea {
+  min-height: 110px;
+  padding: 10px 12px;
+  border: 1px solid rgba(38, 66, 59, 0.11);
+  border-radius: 18px;
+  background: #fff;
+  color: #8a9b93;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.remarkList {
+  display: grid;
+  gap: 14px;
+}
+
+.remarkCard {
+  padding: 14px 16px;
+  border: 2px solid rgba(38, 66, 59, 0.11);
+  border-radius: 24px;
+  background: #fff;
+}
+
+.remarkWho {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.remarkAvatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.remarkWho strong {
+  color: #1e3828;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.remarkWho span {
+  color: #8a9b93;
+  font-size: 0.72rem;
+}
+
+.remarkCard p {
+  margin: 0;
+  color: #13251f;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.remarkHistory {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 18px;
+  background: #fff;
+}
+
+.remarkTabs {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #f0f3f1;
+}
+
+.remarkTab {
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: #5e7268;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.remarkTabOn {
+  background: #1e3828;
+  color: #fff;
+}
+
+.remarkHistoryHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.remarkHistoryHead strong {
+  color: #1e3828;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.remarkHistoryHead > span {
+  color: #8a9b93;
+  font-size: 0.7rem;
+}
+
+.remarkHistory p {
+  margin: 0;
+  color: #26423b;
+  font-size: 0.8rem;
+}
+
+.historyFoot {
+  color: #8a9b93;
+  font-size: 0.66rem;
+}
+
+/* ============================== Assignments ============================= */
+
+/* The real assignment page puts the roster in a narrow column and gives the
+   form the rest. */
+.assignGrid {
+  grid-template-columns: minmax(200px, 1fr) minmax(0, 1.85fr);
+}
+
+.assignSearch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid rgba(38, 66, 59, 0.11);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.assignSearch i {
+  color: #5e7268;
+  font-size: 0.8rem;
+}
+
+.assignSearch input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 36px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #13251f;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.assignSearch input::placeholder {
+  color: #8a9b93;
+}
+
+.assignTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.assignTab {
+  padding: 9px 12px;
+  border: 1px solid rgba(38, 66, 59, 0.11);
+  border-radius: 18px;
+  background: #fff;
+  color: #1e3828;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.assignTabOn {
+  border-color: #1e3828;
+  background: #1e3828;
+  color: #fff;
+}
+
+.assignInfo {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 20px;
+  background: #fff;
+}
+
+.assignInstructions {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(38, 66, 59, 0.08);
+}
+
+.assignSectionTitle {
+  margin: 0;
+  color: #1e3828;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.assignTextarea {
+  min-height: 96px;
+  padding: 12px 14px;
+  border: 1px solid rgba(38, 66, 59, 0.11);
+  border-radius: 18px;
+  background: #fff;
+  color: #8a9b93;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.fileChoose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid rgba(38, 66, 59, 0.08);
+  border-radius: 10px;
+  background: rgba(145, 167, 154, 0.18);
+  color: #1e3828;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.assignCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 104px;
+  margin-bottom: 12px;
+  padding: 18px 20px;
+  border: 1px solid rgba(38, 66, 59, 0.11);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(18, 34, 30, 0.05);
+}
+
+.assignMain {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.assignTitle {
+  color: #13251f;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.assignGiven,
+.assignDue {
+  color: #5e7268;
+  font-size: 0.72rem;
+}
+
+.assignState {
+  color: #2f7a3d;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.assignDone {
+  color: #8a9b93;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-decoration: line-through;
+}
+
+.openBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 18px;
+  background: #2f7a3d;
+  box-shadow: 0 8px 20px rgba(30, 56, 40, 0.2);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.formInline {
+  display: grid;
+  gap: 5px;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #26423b;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.checkBox {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgba(38, 66, 59, 0.3);
+  border-radius: 4px;
+}
+
+/* ================================ Books ================================ */
+
+.booksPage {
+  display: grid;
+  gap: 14px;
+}
+
+/* The real compact header: a dark green icon tile, the title and one line of
+   context, and the count tile on the right. */
+.booksHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  border-radius: 20px;
+  background: linear-gradient(135deg, #f3f8f5 0%, #e7efea 100%);
+}
+
+.booksHeadMain {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.booksIcon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: #1e3828;
+  box-shadow:
+    4px 4px 12px rgba(18, 34, 30, 0.18),
+    -2px -2px 8px rgba(255, 255, 255, 0.6);
+  color: #eef6ef;
+  font-size: 1.2rem;
+}
+
+.booksHeadText {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.booksHeadText h1 {
+  margin: 0;
+  color: #1e3828;
+  font-size: 1.65rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.booksHeadText p {
+  margin: 0;
+  color: #5e7268;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.countTile {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  gap: 1px;
+  min-width: 74px;
+  padding: 8px 16px;
+  border: 1px solid rgba(38, 66, 59, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.countTile strong {
+  color: #1e3828;
+  font-size: 1.3rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.countTile span {
+  color: #8a9b93;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+/* auto-fill with a 340px minimum, exactly like the real list, so the cards
+   keep the same width as the window does. */
+.bookGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: 18px;
+  align-items: stretch;
+}
+
+.bookCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(18, 34, 30, 0.05);
+}
+
+.bookImagePlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  border-radius: 14px;
+  background: linear-gradient(135deg, #edf2ef, #dce7e2);
+}
+
+.bookPlaceholder {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(18, 34, 30, 0.12);
+  color: #1e3828;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.bookCardBody {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
+  min-width: 0;
+}
+
+.bookName {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: #13251f;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.bookMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  overflow: hidden;
+  color: #5e7268;
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookView {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 14px;
+  border-radius: 14px;
+  background: #1e3828;
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+/* --------------------------- the lesson reader -------------------------- */
+
+/* The real fullscreenPdf: fixed over the whole window, pale paper, a white
+   header card, then the file itself. */
+.readerScreen {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  background: #f4f7f5;
+}
+
+.readerHead {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow:
+    6px 6px 16px rgba(18, 34, 30, 0.16),
+    -4px -4px 12px rgba(255, 255, 255, 0.72);
+}
+
+.readerHeadText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.readerHeadText h2 {
+  margin: 0;
+  color: #1e3828;
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.readerHeadText p {
+  margin: 0;
+  overflow: hidden;
+  color: #5e7268;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.readerActions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.readerStatus {
+  padding: 0.55rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(145, 167, 154, 0.16);
+  color: #1e3828;
+  font-size: 0.86rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.readerComplete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0.7rem 1rem;
+  border-radius: 18px;
+  background: #1e3828;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.readerClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0.7rem 1rem;
+  border: 1px solid rgba(38, 66, 59, 0.12);
+  border-radius: 18px;
+  background: #fff;
+  color: #1e3828;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.readerBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 18px;
+  overflow: auto;
+  border: 1px solid rgba(38, 66, 59, 0.1);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow:
+    6px 6px 16px rgba(18, 34, 30, 0.16),
+    -4px -4px 12px rgba(255, 255, 255, 0.72);
+}
+
+.readerPage {
+  width: min(640px, 100%);
+  min-height: 480px;
+  margin: 0 auto;
+  padding: 34px 40px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(18, 34, 30, 0.08);
+  color: #13251f;
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.readerPage p {
+  margin: 0 0 12px;
+}
+
+.readerKicker {
+  color: #5e7268;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.readerTitle {
+  margin: 2px 0 14px;
+  color: #1e3828;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+/* ============================== responsive ============================== */
+
+@media (max-width: 620px) {
+  .frame {
+    border-radius: 14px;
+  }
+
+  .sheet {
+    padding: 16px 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spotDim,
+  .spotRing {
+    animation: none;
+  }
 }
 
 /* ============================ the example story ========================= */
@@ -1423,19 +3428,6 @@
   outline-offset: 2px;
 }
 
-@keyframes spotlightPulse {
-  0%,
-  100% {
-    box-shadow:
-      0 0 0 2px #8fbd63,
-      0 0 0 6px rgba(143, 189, 99, 0.18);
-  }
-  50% {
-    box-shadow:
-      0 0 0 2px #8fbd63,
-      0 0 0 9px rgba(143, 189, 99, 0.08);
-  }
-}
 
 @keyframes guideIn {
   from {
@@ -1471,9 +3463,6 @@
     width: min(100%, 720px);
   }
 
-  .mockWindow {
-    height: 300px;
-  }
 
   .example {
     grid-template-columns: minmax(0, 1fr);
@@ -1503,19 +3492,7 @@
     font-size: 1.6rem;
   }
 
-  .mockWindow {
-    height: 290px;
-  }
 
-  /* A 88px sidebar inside a 320px mock leaves nothing for the screen. Drop it
-     and keep the part that matters. */
-  .mockBody {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .mockSidebar {
-    display: none;
-  }
 
   .flowRow {
     flex-direction: column;
@@ -1556,16 +3533,13 @@
   .skipButton {
     font-size: 0.84rem;
   }
-
-  .mockWindow {
-    height: 280px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .backdrop,
   .dialog,
-  .spotlightActive {
+  .spotDim,
+  .spotRing {
     animation: none;
   }
 

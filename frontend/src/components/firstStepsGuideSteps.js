@@ -26,7 +26,7 @@ const TEACHER_STEPS = [
     icon: "👋",
     title: "Hello, teacher!",
     module: "Home",
-    text: "Home is your starting place. It shows your day and gives you quick links.",
+    text: "Home is your starting place. It shows the classes you have today, then two shortcuts.",
     points: [
       "See every class you have today, in order.",
       "Use the menu on the left to open Calendar, students, assignments, and books.",
@@ -36,8 +36,8 @@ const TEACHER_STEPS = [
       scene: "home",
       focus: "today",
       highlight: {
-        title: "Today’s classes",
-        text: "These cards show the classes waiting for you today, with the time, the student, and a Join button.",
+        title: "Classes today",
+        text: "Each card is one class today: the student and the subject. Tap a card to open that day in your calendar.",
       },
       example: {
         emoji: "🌤️",
@@ -125,16 +125,16 @@ const TEACHER_STEPS = [
     module: "My students",
     text: "My students is your list of everyone you teach.",
     points: [
-      "Find a student by scrolling or using search.",
-      "Choose their name to see their details and classes.",
-      "Use the same name in Remarks and Assignments.",
+      "Find a student by scrolling or using the search box.",
+      "Read each student’s course, package, and classes left.",
+      "Use the same list in Remarks and Assignments.",
     ],
     preview: {
       scene: "students",
       focus: "student",
       highlight: {
-        title: "Student card",
-        text: "Open a card to see the student’s package, contact details, and upcoming classes.",
+        title: "Student row",
+        text: "Each row is one student: their course, their package, and how many classes are left.",
       },
       example: {
         emoji: "🔎",
@@ -159,14 +159,14 @@ const TEACHER_STEPS = [
     points: [
       "Open Class history from the menu.",
       "Look through the list or search for a student.",
-      "Open a class to see its notes and details.",
+      "Check the status, the summary, and the recording proof.",
     ],
     preview: {
       scene: "history",
       focus: "row",
       highlight: {
         title: "Past class",
-        text: "Each row is a finished class. Open it to see the date, the student, and any notes you saved.",
+        text: "Each card is one finished class: when it was, who came, and the proof that it happened.",
       },
       example: {
         emoji: "📝",
@@ -222,10 +222,9 @@ const TEACHER_STEPS = [
     module: "Remarks",
     text: "Remarks are short notes about a student’s class.",
     points: [
-      "Open Remarks and choose the student.",
-      "Choose the class the note belongs to.",
+      "Open Remarks, then click the student on the left.",
       "Write a kind, clear note about what you noticed.",
-      "Check the student and class, then send it.",
+      "Press Submit Remarks. It attaches to their latest class.",
     ],
     preview: {
       scene: "remarks",
@@ -265,8 +264,8 @@ const TEACHER_STEPS = [
       scene: "assignments",
       focus: "assign",
       highlight: {
-        title: "Assign Task",
-        text: "This is where a new task starts. Add the instructions, a due date, and any file the student needs.",
+        title: "Create Assignment",
+        text: "Write the instructions, add a due date or a file, then press this to give the task to the student.",
       },
       example: {
         emoji: "📚",
@@ -297,8 +296,8 @@ const TEACHER_STEPS = [
       scene: "books",
       focus: "progress",
       highlight: {
-        title: "Lesson progress",
-        text: "The bar fills up as students finish lessons, so you can see who needs a nudge.",
+        title: "Your books",
+        text: "Each card is a book the admin shared with you. Open it to read the lessons and see how far a student has got.",
       },
       example: {
         emoji: "📖",
@@ -332,8 +331,8 @@ const STUDENT_STEPS = [
       scene: "home",
       focus: "today",
       highlight: {
-        title: "Your next class",
-        text: "This card tells you which class is next, what time it starts, and the button to join.",
+        title: "My classes today",
+        text: "Each card is a class you have today: the subject and your teacher. Tap it to see the time in your calendar.",
       },
       example: {
         emoji: "⏰",
@@ -357,14 +356,14 @@ const STUDENT_STEPS = [
       "Open Calendar and tap Book a class.",
       "Choose a day, then choose a time your teacher is free.",
       "Check the teacher, day, and time.",
-      "Tap Book to send your booking.",
+      "Tap Book it to send your booking.",
     ],
     preview: {
       scene: "booking",
       focus: "book",
       highlight: {
-        title: "Book",
-        text: "This sends your request. The new class appears on your calendar as soon as it is booked.",
+        title: "Green days are free",
+        text: "Green days are the days your teacher can teach. Pick one, then pick a time, then press Book it.",
       },
       example: {
         emoji: "🎒",
@@ -388,7 +387,7 @@ const STUDENT_STEPS = [
     text: "If you cannot come, ask your teacher for a new time.",
     points: [
       "Open Calendar and choose your class.",
-      "Tap Request for Reschedule.",
+      "Tap Change the time.",
       "Choose a free new day and time. Tell your teacher why.",
       "Check the new time and send your request.",
       "Your teacher must say yes before the class time changes.",
@@ -397,7 +396,7 @@ const STUDENT_STEPS = [
       scene: "reschedule",
       focus: "reschedule",
       highlight: {
-        title: "Request for Reschedule",
+        title: "Change the time",
         text: "This starts your request. Your old time stays on the calendar until your teacher approves the new one.",
       },
       example: {
@@ -422,15 +421,15 @@ const STUDENT_STEPS = [
     text: "Class history shows classes you have already had.",
     points: [
       "Open Class history from the menu.",
-      "Look through the list of past classes.",
-      "Choose a class to see its details.",
+      "Look through your past classes, newest first.",
+      "Tap a class to watch it again.",
     ],
     preview: {
       scene: "history",
       focus: "row",
       highlight: {
         title: "A past class",
-        text: "Tap a card to see the date, your teacher, and what the class was about.",
+        text: "Each card is one class you had: when it was, how long, and what you did together.",
       },
       example: {
         emoji: "🗂️",
@@ -470,7 +469,7 @@ const STUDENT_STEPS = [
         title: "Rating Ms. Ana’s classes",
         body: "You finished all your classes. Now you can say what helped you most.",
         flow: [
-          { label: "Stars", value: "5 · 5 · 4", meta: "one row per question" },
+          { label: "Scores", value: "5 · 5 · 4", meta: "one row per question" },
           { label: "Result", value: "Average shown", meta: "before you send it", tone: "new" },
         ],
         outcome: "Your review is private. Only you and the admin team can see it.",
@@ -521,8 +520,8 @@ const STUDENT_STEPS = [
     text: "Remarks are notes your teacher has shared with you.",
     points: [
       "Open Remarks from the menu.",
-      "Choose a note to read what your teacher said.",
-      "Use the note to remember what you did well and what to practise.",
+      "Read the notes your teacher wrote, newest first.",
+      "Use them to remember what you did well and what to practise.",
     ],
     preview: {
       scene: "remarks",
