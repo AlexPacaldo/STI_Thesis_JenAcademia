@@ -272,6 +272,9 @@ export default function Homepage() {
   const processIntroY = useTransform(scrollYProgress, [0.22, 0.34], ["0%", "-115%"]);
   const navigate = useNavigate();
   const goToLogin = () => navigate("/login");
+  const scrollToSection = (sectionId) => {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth" });
+  };
 
   async function handleContactSubmit(e) {
     e.preventDefault();
@@ -424,9 +427,9 @@ export default function Homepage() {
                 followMouse
                 proximity={260}
                 className={styles.ctaButton}
-                onClick={goToLogin}
+                onClick={() => scrollToSection("contact")}
               >
-                Start learning
+                Contact us to get started
               </SpecularButton>
               <SpecularButton
                 size="md"
@@ -444,7 +447,7 @@ export default function Homepage() {
                 followMouse
                 proximity={240}
                 className={styles.secondaryButton}
-                onClick={goToLogin}
+                onClick={() => scrollToSection("how-it-works")}
               >
                 See how it works
               </SpecularButton>

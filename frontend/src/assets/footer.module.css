@@ -46,7 +46,7 @@
 
 .footerNav{
   display: grid;
-  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  grid-template-columns: repeat(3, minmax(100px, 1fr));
   gap: 24px;
 }
 .footerTitle{
@@ -75,27 +75,6 @@
 
 .footerContact a{ color: var(--link); text-decoration: none; }
 .footerContact a:hover{ color: var(--surface-white); text-decoration: underline; }
-
-.socials{
-  margin-top: 14px;
-  display: flex;
-  gap: 10px;
-}
-.iconBtn{
-  width: 38px; height: 38px;
-  display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 999px;
-  color: var(--footer-fg);
-  background: rgba(255,255,255,0.14);
-  border: 1px solid var(--footer-border);
-  backdrop-filter: blur(4px);
-  transition: transform .2s ease, background .2s ease, color .2s ease;
-}
-.iconBtn:hover{
-  background: var(--surface-white);
-  color: #1e5a33;
-  transform: translateY(-3px);
-}
 
 .footerMeta{
   border-top: 1px solid var(--footer-border);
