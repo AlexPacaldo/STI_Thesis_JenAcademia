@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import styles from "../assets/account.module.css";
 import kid from "../assets/studentKid.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
+import LineConnectCard from "../components/LineConnectCard.jsx";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { describeStudentContract } from "../utils/contractExpiry.js";
 import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
@@ -1408,6 +1409,9 @@ export default function Account() {
           ) : null}
         </section>
 
+        {/* LINE reminders. Optional, but the fastest way to hear about a class. */}
+        <LineConnectCard userId={user.id} />
+
         <button className={kid.kidLogout} type="button" onClick={handleLogout}>
           {ACCOUNT.menuLogOut}
         </button>
@@ -1784,6 +1788,9 @@ export default function Account() {
             </p>
           )}
         </section>
+
+        {/* LINE reminders for staff too — teachers get reschedule and class alerts. */}
+        <LineConnectCard userId={user.id} />
 
         {/* The facts about the account itself, and the way out. */}
         <section className={styles.proCard}>

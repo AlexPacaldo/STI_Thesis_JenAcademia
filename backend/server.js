@@ -48,6 +48,30 @@ import {
   PHONE_CODE_TTL_MS,
 } from "./phoneVerification.js";
 import { isPhoneVerificationConfigured, sendPhoneVerificationCode, SmsError } from "./sms.js";
+import {
+  createLineLinkCode,
+  fetchLineDisplayName,
+  getLineBotInfo,
+  hashLineLinkCode,
+  isLineConfigured,
+  isLineWebhookConfigured,
+  lineAddFriendUrl,
+  lineBasicId,
+  normalizeLineUserId,
+  pushLineText,
+  replyLineText,
+  verifyLineSignature,
+  LINE_LINK_CODE_TTL_MS,
+} from "./line.js";
+import {
+  buildPendingRescheduleMessage,
+  buildRescheduleApprovedMessage,
+  buildRescheduleDeclinedMessage,
+  buildRescheduleRequestMessage,
+  formatMomentInTimezone,
+  runLineReminderSweep,
+  zonedWallClockToInstant,
+} from "./lineReminders.js";
 import { describeCorsOrigins, resolveCorsOrigins } from "./corsOrigins.js";
 import {
   MailTransportError,
@@ -226,7 +250,18 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 app.options(/(.*)/, cors(corsOptions));
-app.use(express.json());
+app.use(
+  express.json({
+    // LINE signs the exact bytes it sent, so the webhook needs the raw body.
+    // Re-serialising the parsed object can change key order or whitespace and
+    // make a valid signature look invalid. Only kept for the one public route.
+    verify: (req, _res, buffer) => {
+      if (String(req.originalUrl || "").startsWith("/api/line/webhook")) {
+        req.rawBody = Buffer.from(buffer);
+      }
+    },
+  })
+);
 
 const ENCRYPTED_VALUE_PREFIX = "enc:v1:";
 const ENCRYPTION_SECRET =
@@ -257,6 +292,11 @@ const SESSION_TTL_MS = Math.max(60_000, Number(process.env.SESSION_TTL_MS) || 12
 // out and rotating the session key does not invalidate codes in flight.
 const PHONE_CODE_SECRET = process.env.PHONE_CODE_SECRET || SESSION_SECRET;
 
+// Keys the HMAC over the six-digit LINE linking code. Keeping it separate from
+// the phone-code key means rotating one does not invalidate the other; both
+// still fall back to SESSION_SECRET so an existing deployment works unchanged.
+const LINE_LINK_SECRET = process.env.LINE_LINK_SECRET || PHONE_CODE_SECRET || SESSION_SECRET;
+
 if (!process.env.SESSION_SECRET) {
   console.warn(
     "SESSION_SECRET is not set; falling back to another secret for signing session tokens. " +
@@ -268,6 +308,27 @@ if (!isPhoneVerificationConfigured()) {
   console.warn(
     "[phone] Semaphore is not configured, so changing a phone number will be refused. " +
       "Set SEMAPHORE_API_KEY and SEMAPHORE_SENDER_NAME to enable text verification."
+  );
+}
+
+// What LINE reminders are going to do, said out loud for the same reason as the
+// mail and phone lines above: when this is half-configured the failure is a
+// student who never gets a reminder, and nobody notices until a class is missed.
+if (!isLineConfigured()) {
+  console.warn(
+    "[line] LINE reminders are not configured. Set LINE_CHANNEL_ACCESS_TOKEN, " +
+      "LINE_CHANNEL_SECRET and LINE_BOT_BASIC_ID, then run `node add-line-reminders.js`. " +
+      "The Account page will show that reminders are unavailable."
+  );
+} else if (!isLineWebhookConfigured()) {
+  console.warn(
+    "[line] LINE_CHANNEL_SECRET is missing, so the linking webhook will reject every event. " +
+      "Copy the channel secret from the LINE Developers console."
+  );
+} else {
+  console.log(
+    `[line] LINE reminders are configured${lineBasicId() ? ` for ${lineBasicId()}` : ""}. ` +
+      "Webhook: /api/line/webhook"
   );
 }
 
@@ -10154,6 +10215,8 @@ app.post("/api/calendar/reschedule-request", requireSession, requireBodyIdentity
     // Get class details to determine recipient
     const [classRows] = await pool.query(
       `SELECT c.*,
+              DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date_key,
+              TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time_key,
               tea.timezone AS teacher_timezone,
               stu.timezone AS student_timezone,
               ru.first_name AS requester_first,
@@ -10261,6 +10324,34 @@ app.post("/api/calendar/reschedule-request", requireSession, requireBodyIdentity
       `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [recipientId, "reschedule", encryptNullableText("Reschedule Request"), encryptNullableText(notificationMessage), result.insertId, "reschedule_request"]
+    );
+
+    // The other party may be away from the site, which is the whole point of a
+    // LINE push. Best effort: a failure here never fails the request.
+    const recipientTimezone =
+      recipientId === classData.teacher_id
+        ? classData.teacher_timezone
+        : classData.student_timezone;
+    const originalInstant = zonedWallClockToInstant(
+      classData.scheduled_date_key,
+      classData.start_time_key,
+      classData.teacher_timezone
+    );
+    const requestedInstant = zonedWallClockToInstant(
+      requestedDateKey,
+      requestedTimeKey,
+      classData.teacher_timezone
+    );
+    await sendLineToUser(
+      recipientId,
+      buildRescheduleRequestMessage({
+        requesterName,
+        className: classData.class_name,
+        originalMoment: formatMomentInTimezone(originalInstant, recipientTimezone),
+        requestedMoment: formatMomentInTimezone(requestedInstant, recipientTimezone),
+        reason: reasonText,
+        actionUrl: `${getFrontendBaseUrl()}/Calendar`,
+      })
     );
 
     res.status(201).json({ id: result.insertId, message: "Reschedule request sent and notification created" });
@@ -10375,7 +10466,13 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
 
     // Get reschedule request details
     const [rescheduleData] = await pool.query(
-      `SELECT class_id, requested_date, requested_time FROM reschedule_requests WHERE request_id = ?`,
+      `SELECT class_id,
+              requested_date,
+              requested_time,
+              DATE_FORMAT(requested_date, '%Y-%m-%d') AS requested_date_key,
+              TIME_FORMAT(requested_time, '%H:%i:%s') AS requested_time_key
+         FROM reschedule_requests
+        WHERE request_id = ?`,
       [id]
     );
 
@@ -10383,7 +10480,13 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
       return res.status(404).json({ message: "Reschedule request not found" });
     }
 
-    const { class_id, requested_date, requested_time } = rescheduleData[0];
+    const {
+      class_id,
+      requested_date,
+      requested_time,
+      requested_date_key,
+      requested_time_key,
+    } = rescheduleData[0];
 
     // Get current class end_time to calculate duration
     const [classData] = await pool.query(
@@ -10489,15 +10592,29 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
 
     // Get the requester info for notification
     const [requesterInfo] = await pool.query(
-      `SELECT rr.requested_by_id, c.teacher_id, c.student_id, c.class_name 
-       FROM reschedule_requests rr
-       JOIN classes c ON rr.class_id = c.class_id
-       WHERE rr.request_id = ?`,
+      `SELECT rr.requested_by_id,
+              c.teacher_id,
+              c.student_id,
+              c.class_name,
+              tea.timezone AS teacher_timezone,
+              stu.timezone AS student_timezone
+         FROM reschedule_requests rr
+         JOIN classes c ON rr.class_id = c.class_id
+         JOIN users tea ON tea.user_id = c.teacher_id
+         JOIN users stu ON stu.user_id = c.student_id
+        WHERE rr.request_id = ?`,
       [id]
     );
 
     if (requesterInfo.length) {
-      const { requested_by_id, teacher_id, student_id, class_name } = requesterInfo[0];
+      const {
+        requested_by_id,
+        teacher_id,
+        student_id,
+        class_name,
+        teacher_timezone,
+        student_timezone,
+      } = requesterInfo[0];
       const otherPartyId = requested_by_id === teacher_id ? student_id : teacher_id;
       
       // Create notification for the requester (they approved the requestor's request)
@@ -10516,6 +10633,24 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [otherPartyId, "reschedule", encryptNullableText("Reschedule Approved"), encryptNullableText(otherPartyMessage), id, "reschedule_request"]
+      );
+
+      // Only the requester needs a push: they were waiting for this answer.
+      // The person who approved it already knows what they just did.
+      const requesterTimezone =
+        requested_by_id === student_id ? student_timezone : teacher_timezone;
+      const newInstant = zonedWallClockToInstant(
+        requested_date_key || requested_date,
+        requested_time_key || requested_time,
+        teacher_timezone
+      );
+      await sendLineToUser(
+        requested_by_id,
+        buildRescheduleApprovedMessage({
+          className: class_name,
+          newMoment: formatMomentInTimezone(newInstant, requesterTimezone),
+          actionUrl: `${getFrontendBaseUrl()}/Calendar`,
+        })
       );
     }
 
@@ -10619,6 +10754,19 @@ app.post("/api/calendar/reschedule-requests/:id/reject", requireSession, async (
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [otherPartyId, "reschedule", encryptNullableText("Reschedule Declined"), encryptNullableText(otherPartyMessage), id, "reschedule_request"]
+      );
+
+      // The requester is the one waiting for an answer, so they are the one who
+      // gets the push. It includes the reason, because "declined" without a why
+      // is the notification people complain about.
+      await sendLineToUser(
+        requested_by_id,
+        buildRescheduleDeclinedMessage({
+          className: class_name,
+          declinerName: declinerLabel,
+          reason: declineReason,
+          actionUrl: `${getFrontendBaseUrl()}/Calendar`,
+        })
       );
     }
 
@@ -11608,6 +11756,347 @@ app.put("/api/notification-preferences/:user_id", requireSession, async (req, re
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error updating preferences" });
+  }
+});
+
+// ==================== LINE REMINDERS ====================
+//
+// LINE has no "send to this phone number" API. A push needs the LINE user id
+// that only exists after the person adds the school's Official Account. The
+// flow below is the bridge:
+//
+//   Account page -> POST /api/users/:id/line/link-code  (six-digit code)
+//   student adds the Official Account and sends that code to the chat
+//   LINE -> POST /api/line/webhook -> the code is matched and the id stored
+//
+// Once stored, the sweep in lineReminders.js can push class and reschedule
+// messages without the student ever typing a phone number.
+
+const LINE_LINK_FAILURE_WINDOW_MS = 10 * 60 * 1000;
+const LINE_LINK_MAX_FAILURES = 5;
+const lineLinkFailures = new Map();
+
+function lineLinkAttemptState(lineUserId, now = Date.now()) {
+  const current = lineLinkFailures.get(lineUserId);
+  if (!current || current.resetAt <= now) {
+    return { count: 0, resetAt: now + LINE_LINK_FAILURE_WINDOW_MS };
+  }
+  return current;
+}
+
+function lineLinkIsBlocked(lineUserId, now = Date.now()) {
+  return lineLinkAttemptState(lineUserId, now).count >= LINE_LINK_MAX_FAILURES;
+}
+
+function noteLineLinkFailure(lineUserId, now = Date.now()) {
+  const state = lineLinkAttemptState(lineUserId, now);
+  state.count += 1;
+  lineLinkFailures.set(lineUserId, state);
+}
+
+async function replyLineSafely(replyToken, text) {
+  try {
+    await replyLineText(replyToken, text);
+  } catch (err) {
+    // A reply failure is not worth retrying here: LINE will not resend the
+    // webhook, and the linking itself already happened. Log and move on.
+    console.error("[line] Could not reply to a webhook event:", err?.message || err);
+  }
+}
+
+const LINE_LINK_INSTRUCTIONS =
+  "Welcome to JEN Academia! 👋\n\n" +
+  "To get class reminders here:\n" +
+  "1. Open JEN Academia and go to Account.\n" +
+  "2. Tap \"Connect LINE\".\n" +
+  "3. Send the 6-digit code shown there to this chat.";
+
+async function handleLineWebhookEvent(event) {
+  const lineUserId = normalizeLineUserId(event?.source?.userId);
+  if (event?.source?.type !== "user" || !lineUserId) return;
+
+  if (event.type === "follow") {
+    await replyLineSafely(event.replyToken, LINE_LINK_INSTRUCTIONS);
+    return;
+  }
+
+  if (event.type === "unfollow") {
+    // The person blocked or removed the Official Account. Clearing the id now
+    // stops every future push from failing against a friend who is gone.
+    await pool.query(
+      `UPDATE users
+          SET line_user_id = NULL,
+              line_display_name = NULL,
+              line_linked_at = NULL,
+              line_link_code_hash = NULL,
+              line_link_code_expires_at = NULL
+        WHERE line_user_id = ?`,
+      [lineUserId]
+    );
+    return;
+  }
+
+  if (event.type !== "message" || event.message?.type !== "text") return;
+
+  const text = String(event.message.text || "").trim();
+
+  if (/^\d{6}$/.test(text)) {
+    if (lineLinkIsBlocked(lineUserId)) {
+      await replyLineSafely(
+        event.replyToken,
+        "Too many attempts. Please wait a few minutes and try again."
+      );
+      return;
+    }
+
+    const [rows] = await pool.query(
+      `SELECT user_id, first_name, last_name
+         FROM users
+        WHERE line_link_code_hash = ?
+          AND line_link_code_expires_at > NOW()
+          AND status = 'active'
+        LIMIT 1`,
+      [hashLineLinkCode(text, LINE_LINK_SECRET)]
+    );
+
+    if (!rows.length) {
+      noteLineLinkFailure(lineUserId);
+      await replyLineSafely(
+        event.replyToken,
+        "That code did not match an account, or it has expired.\n\n" +
+          "Open JEN Academia → Account → Connect LINE to get a new code."
+      );
+      return;
+    }
+
+    const account = rows[0];
+    const displayName = await fetchLineDisplayName(lineUserId);
+    const accountName = `${account.first_name || ""} ${account.last_name || ""}`.trim() || "your account";
+
+    await pool.query(
+      `UPDATE users
+          SET line_user_id = ?,
+              line_display_name = ?,
+              line_linked_at = NOW(),
+              line_link_code_hash = NULL,
+              line_link_code_expires_at = NULL
+        WHERE user_id = ?`,
+      [lineUserId, displayName || null, account.user_id]
+    );
+
+    lineLinkFailures.delete(lineUserId);
+    await replyLineSafely(
+      event.replyToken,
+      `✅ Connected to JEN Academia as ${accountName}.\n\n` +
+        "You will get class reminders and reschedule updates here.\n" +
+        "Send \"unlink\" at any time to stop."
+    );
+    return;
+  }
+
+  if (/^(unlink|disconnect|stop)$/i.test(text)) {
+    await pool.query(
+      `UPDATE users
+          SET line_user_id = NULL,
+              line_display_name = NULL,
+              line_linked_at = NULL,
+              line_link_code_hash = NULL,
+              line_link_code_expires_at = NULL
+        WHERE line_user_id = ?`,
+      [lineUserId]
+    );
+    lineLinkFailures.delete(lineUserId);
+    await replyLineSafely(
+      event.replyToken,
+      "Disconnected. You will no longer get JEN Academia reminders in this chat."
+    );
+    return;
+  }
+
+  await replyLineSafely(event.replyToken, LINE_LINK_INSTRUCTIONS);
+}
+
+async function handleLineWebhookEvents(events) {
+  for (const event of Array.isArray(events) ? events : []) {
+    try {
+      await handleLineWebhookEvent(event);
+    } catch (err) {
+      console.error("[line] Webhook event failed:", err?.message || err);
+    }
+  }
+}
+
+// Public endpoint: LINE calls it, not a signed-in user. The signature check is
+// the authentication. It answers 200 before doing the database work so LINE
+// does not time out and retry, which would link twice or reply twice.
+app.post("/api/line/webhook", (req, res) => {
+  if (!isLineWebhookConfigured()) {
+    return res.status(503).json({ message: "LINE webhook is not configured" });
+  }
+
+  const rawBody = Buffer.isBuffer(req.rawBody)
+    ? req.rawBody
+    : Buffer.from(JSON.stringify(req.body || {}), "utf8");
+
+  if (!verifyLineSignature(rawBody, req.get("x-line-signature"))) {
+    return res.status(401).json({ message: "Invalid LINE signature" });
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(rawBody.toString("utf8"));
+  } catch {
+    return res.status(400).json({ message: "Invalid LINE payload" });
+  }
+
+  res.status(200).json({ ok: true });
+  void handleLineWebhookEvents(payload?.events);
+});
+
+app.get("/api/users/:id/line", requireSession, async (req, res) => {
+  try {
+    if (!sessionMayActFor(req, req.params.id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT line_user_id, line_display_name, line_linked_at, line_reminders_enabled
+         FROM users
+        WHERE user_id = ?
+        LIMIT 1`,
+      [req.params.id]
+    );
+
+    if (!rows.length) return res.status(404).json({ message: "User not found" });
+
+    const row = rows[0];
+    const bot = await getLineBotInfo();
+    const basicId = lineBasicId() || String(bot?.basicId || "");
+
+    res.json({
+      configured: isLineConfigured(),
+      webhookConfigured: isLineWebhookConfigured(),
+      linked: Boolean(row.line_user_id),
+      displayName: row.line_display_name || "",
+      linkedAt: row.line_linked_at || null,
+      remindersEnabled:
+        row.line_reminders_enabled === null || row.line_reminders_enabled === undefined
+          ? true
+          : Boolean(Number(row.line_reminders_enabled)),
+      addFriendUrl: lineAddFriendUrl(basicId),
+      basicId,
+      botName: String(bot?.displayName || ""),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching LINE connection" });
+  }
+});
+
+app.post("/api/users/:id/line/link-code", requireSession, async (req, res) => {
+  try {
+    if (!sessionMayActFor(req, req.params.id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
+
+    if (!isLineConfigured()) {
+      return res.status(503).json({
+        message:
+          "LINE reminders are not set up yet. Ask the admin to connect the school's LINE Official Account.",
+      });
+    }
+
+    if (!isLineWebhookConfigured()) {
+      return res.status(503).json({
+        message:
+          "LINE reminders are half-configured: the webhook secret is missing. Ask the admin to finish the setup.",
+      });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT line_user_id FROM users WHERE user_id = ? LIMIT 1`,
+      [req.params.id]
+    );
+
+    if (!rows.length) return res.status(404).json({ message: "User not found" });
+    if (rows[0].line_user_id) {
+      return res.status(409).json({
+        message: "This account is already connected to LINE. Disconnect it first to connect a different account.",
+      });
+    }
+
+    const code = createLineLinkCode();
+    const codeHash = hashLineLinkCode(code, LINE_LINK_SECRET);
+
+    // DATE_ADD(NOW(), ...) keeps the expiry on the database clock, which is the
+    // same clock the webhook compares it with. Building the timestamp in Node
+    // and letting the driver convert it adds a time-zone hop for no benefit.
+    await pool.query(
+      `UPDATE users
+          SET line_link_code_hash = ?,
+              line_link_code_expires_at = DATE_ADD(NOW(), INTERVAL ? SECOND)
+        WHERE user_id = ?`,
+      [codeHash, Math.floor(LINE_LINK_CODE_TTL_MS / 1000), req.params.id]
+    );
+
+    const bot = await getLineBotInfo();
+    const basicId = lineBasicId() || String(bot?.basicId || "");
+
+    res.json({
+      code,
+      expiresAt: new Date(Date.now() + LINE_LINK_CODE_TTL_MS).toISOString(),
+      addFriendUrl: lineAddFriendUrl(basicId),
+      basicId,
+      botName: String(bot?.displayName || ""),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error creating a LINE linking code" });
+  }
+});
+
+app.patch("/api/users/:id/line/reminders", requireSession, async (req, res) => {
+  try {
+    if (!sessionMayActFor(req, req.params.id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
+
+    const enabled = req.body?.enabled ? 1 : 0;
+    const [result] = await pool.query(
+      `UPDATE users SET line_reminders_enabled = ? WHERE user_id = ?`,
+      [enabled, req.params.id]
+    );
+
+    if (!result.affectedRows) return res.status(404).json({ message: "User not found" });
+    res.json({ remindersEnabled: Boolean(enabled) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error updating LINE reminder preference" });
+  }
+});
+
+app.delete("/api/users/:id/line", requireSession, async (req, res) => {
+  try {
+    if (!sessionMayActFor(req, req.params.id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
+
+    const [result] = await pool.query(
+      `UPDATE users
+          SET line_user_id = NULL,
+              line_display_name = NULL,
+              line_linked_at = NULL,
+              line_link_code_hash = NULL,
+              line_link_code_expires_at = NULL
+        WHERE user_id = ?`,
+      [req.params.id]
+    );
+
+    if (!result.affectedRows) return res.status(404).json({ message: "User not found" });
+    res.json({ linked: false });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error disconnecting LINE" });
   }
 });
 
@@ -13488,6 +13977,43 @@ async function createNotificationsForUsers(userIds, type, title, message, relate
   );
 }
 
+/**
+ * Send one LINE message to one user, if they have linked LINE and left
+ * reminders on.
+ *
+ * Best effort by design. A reminder is a courtesy, not part of the booking or
+ * reschedule transaction: a blocked friend, an expired token or a LINE outage
+ * must never turn a successful approval into a 500. The caller does not await
+ * this for correctness; it awaits only so the log line appears in order.
+ *
+ * @returns {Promise<boolean>} true when LINE accepted the message.
+ */
+async function sendLineToUser(userId, text) {
+  if (!isLineConfigured() || !userId) return false;
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT line_user_id, line_reminders_enabled
+         FROM users
+        WHERE user_id = ? AND status = 'active'
+        LIMIT 1`,
+      [userId]
+    );
+
+    const row = rows[0];
+    if (!row?.line_user_id || !Number(row.line_reminders_enabled)) return false;
+
+    await pushLineText(row.line_user_id, text);
+    return true;
+  } catch (err) {
+    // Never include the recipient's LINE id or the channel token here. The
+    // user id is not a secret, but it is not useful in a log either, and the
+    // token must never be printed by accident.
+    console.error(`[line] Could not send a notification to user ${userId}:`, err?.message || err);
+    return false;
+  }
+}
+
 function formatChatUser(row, fallbackRole = null) {
   const name = `${row?.first_name || ""} ${row?.last_name || ""}`.trim() || row?.email || "Unknown";
   return {
@@ -15118,6 +15644,48 @@ app.get("/api/admin/books", requireAdminSession, async (req, res) => {
 app.listen(PORT, () => console.log(`🚀 API listening on http://localhost:${PORT}`));
 reportUploadPersistence();
 
+/**
+ * Run the LINE reminder sweep, at most one at a time.
+ *
+ * !! The guard matters because the sweep is called from the same 60-second
+ * !! interval as the rest of the class status work, and a slow LINE request
+ * !! must not stack a second sweep on top of the first. The reminder log is the
+ * !! real duplicate protection; this just avoids doing the same queries twice.
+ */
+let lineReminderSweepPromise = null;
+
+async function sendLineReminders() {
+  if (!isLineConfigured()) return;
+
+  if (lineReminderSweepPromise) return lineReminderSweepPromise;
+
+  lineReminderSweepPromise = runLineReminderSweep({
+    db: pool,
+    sendText: pushLineText,
+    now: new Date(),
+    actionUrl: `${getFrontendBaseUrl()}/Calendar`,
+    classReminderMinutes: process.env.LINE_CLASS_REMINDER_MINUTES,
+    pendingNudgeMinutes: process.env.LINE_PENDING_NUDGE_MINUTES,
+    contractExpiryWarningDays: CONTRACT_EXPIRY_WARNING_DAYS,
+    logger: console,
+  })
+    .then((counts) => {
+      const total = counts.classReminders + counts.pendingNudges + counts.contractExpiries;
+      if (total > 0) console.log("[line] Reminders sent this minute:", counts);
+      return counts;
+    })
+    .catch((err) => {
+      // A LINE outage or a temporary database error must not stop the class
+      // status sweep that also expires packages and marks no-shows.
+      console.error("[line] Reminder sweep error:", err?.message || err);
+    })
+    .finally(() => {
+      lineReminderSweepPromise = null;
+    });
+
+  return lineReminderSweepPromise;
+}
+
 const runClassStatusSweep = async () => {
   try {
     await Promise.all([
@@ -15127,6 +15695,9 @@ const runClassStatusSweep = async () => {
       // After the expiry pass, so a package that has just expired is not warned
       // about on its way out.
       notifyUpcomingContractExpirations(pool),
+      // Class reminders, pending reschedule nudges and LINE versions of the
+      // contract-expiry warning. Best effort and internally guarded.
+      sendLineReminders(),
       // Last, because it is the only task here that reads the package state the
       // expiry pass just settled. It throttles itself to hourly - it is called
       // every minute but only decides anything once an hour.

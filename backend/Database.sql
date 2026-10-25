@@ -867,11 +867,18 @@ CREATE TABLE `users` (
   `password_changed` tinyint(1) DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `line_user_id` varchar(64) DEFAULT NULL,
+  `line_display_name` varchar(100) DEFAULT NULL,
+  `line_linked_at` timestamp NULL DEFAULT NULL,
+  `line_link_code_hash` char(64) DEFAULT NULL,
+  `line_link_code_expires_at` timestamp NULL DEFAULT NULL,
+  `line_reminders_enabled` tinyint(1) NOT NULL DEFAULT '1',
   PRIMARY KEY (`user_id`),
   UNIQUE KEY `email` (`email`),
   KEY `idx_email` (`email`) /*!80000 INVISIBLE */,
   KEY `idx_role` (`role`) /*!80000 INVISIBLE */,
-  KEY `idx_status` (`status`)
+  KEY `idx_status` (`status`),
+  KEY `idx_users_line_user_id` (`line_user_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=70 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -881,9 +888,34 @@ CREATE TABLE `users` (
 
 LOCK TABLES `users` WRITE;
 /*!40000 ALTER TABLE `users` DISABLE KEYS */;
-INSERT INTO `users` VALUES (1,'Jennifer','Santos','jen@admin.com','$2b$10$62ZHvyEP3/sAePPXabUpx.jdrfxoAGe7z1M5aIVe34b7yEyGRX0ym','enc:v1:kfQonnI3SBMDzR8R:nhH3jPqCI9krkEt1MngdQQ==:FFYEU63hY81oSO6eRw==','Philippines','enc:v1:Un91S8PM4ug+HbJR:T95XtZaC6FKJv08GzMXZrQ==:/zUXB50Om7m65g==','/uploads/profiles/1779905408963-728f7de1faaa3eb6.png','Asia/Manila','admin','active',1,1,'2026-05-27 18:08:17','2026-05-27 18:11:02'),(67,'Richard ','Santos','RichardSantos@gmail.com','$2b$10$8Jy7vkZPa8BJZdUbwfc35.YJio63lKj9Y7bgXaAa4BgIIIfSXgEdS','enc:v1:uxEmyw8PKfpZEr12:Pu1f9TKSZdgvQ8QCqZFOMA==:O1tdblYO3AbNMsu14Q==','Philippines','enc:v1:Ndjp34m/Msge5/bG:gaaD/It32VL/fOVwi5WJcQ==:bRXIBeu9IMeCYg==','/uploads/profiles/1779906052478-034f5d24f050b66b.png','Asia/Manila','teacher','active',1,1,'2026-05-27 18:14:04','2026-05-27 18:21:16'),(68,'Jun','Gascon','JunGascon@gmail.com','$2b$10$ZLgTALe.0k34yaYLHHvixOAhv3cTckDAvCgYYusZUE9XA1myVfctm',NULL,'Philippines','enc:v1:A7CdHxU2UWnXE07u:a+0G1oYtNKROEoI82AtpEQ==:2obqDTkG1sbH1g==',NULL,'Asia/Manila','teacher','active',0,0,'2026-05-27 18:17:11','2026-05-28 11:43:27'),(69,'Alex','Pacaldo','AlexPacaldo@gmail.com','$2b$10$TMf3mTDA4Dt93NianOg23eShWFIwpTMd5b2alXQ5qzd/0nEE5TeLy','enc:v1:H2/McB8av8GrXZNs:H+j+FobED6g5soAdM9taFg==:lZHQN46wCXgK1JXS7g==','Philippines','enc:v1:uTf7+7BEntv7knMN:GJyeEkpgqrwqIfEqpioIGA==:q3p33FpEAIf14w==','/uploads/profiles/1779953937622-9cbf957b96ca04b5.png','Asia/Manila','student','active',1,1,'2026-05-27 18:19:29','2026-05-28 07:51:36');
+INSERT INTO `users` (`user_id`, `first_name`, `last_name`, `email`, `password_hash`, `contact_number`, `country`, `birth_date`, `profile_image_url`, `timezone`, `role`, `status`, `profile_completed`, `password_changed`, `created_at`, `updated_at`) VALUES (1,'Jennifer','Santos','jen@admin.com','$2b$10$62ZHvyEP3/sAePPXabUpx.jdrfxoAGe7z1M5aIVe34b7yEyGRX0ym','enc:v1:kfQonnI3SBMDzR8R:nhH3jPqCI9krkEt1MngdQQ==:FFYEU63hY81oSO6eRw==','Philippines','enc:v1:Un91S8PM4ug+HbJR:T95XtZaC6FKJv08GzMXZrQ==:/zUXB50Om7m65g==','/uploads/profiles/1779905408963-728f7de1faaa3eb6.png','Asia/Manila','admin','active',1,1,'2026-05-27 18:08:17','2026-05-27 18:11:02'),(67,'Richard ','Santos','RichardSantos@gmail.com','$2b$10$8Jy7vkZPa8BJZdUbwfc35.YJio63lKj9Y7bgXaAa4BgIIIfSXgEdS','enc:v1:uxEmyw8PKfpZEr12:Pu1f9TKSZdgvQ8QCqZFOMA==:O1tdblYO3AbNMsu14Q==','Philippines','enc:v1:Ndjp34m/Msge5/bG:gaaD/It32VL/fOVwi5WJcQ==:bRXIBeu9IMeCYg==','/uploads/profiles/1779906052478-034f5d24f050b66b.png','Asia/Manila','teacher','active',1,1,'2026-05-27 18:14:04','2026-05-27 18:21:16'),(68,'Jun','Gascon','JunGascon@gmail.com','$2b$10$ZLgTALe.0k34yaYLHHvixOAhv3cTckDAvCgYYusZUE9XA1myVfctm',NULL,'Philippines','enc:v1:A7CdHxU2UWnXE07u:a+0G1oYtNKROEoI82AtpEQ==:2obqDTkG1sbH1g==',NULL,'Asia/Manila','teacher','active',0,0,'2026-05-27 18:17:11','2026-05-28 11:43:27'),(69,'Alex','Pacaldo','AlexPacaldo@gmail.com','$2b$10$TMf3mTDA4Dt93NianOg23eShWFIwpTMd5b2alXQ5qzd/0nEE5TeLy','enc:v1:H2/McB8av8GrXZNs:H+j+FobED6g5soAdM9taFg==:lZHQN46wCXgK1JXS7g==','Philippines','enc:v1:uTf7+7BEntv7knMN:GJyeEkpgqrwqIfEqpioIGA==:q3p33FpEAIf14w==','/uploads/profiles/1779953937622-9cbf957b96ca04b5.png','Asia/Manila','student','active',1,1,'2026-05-27 18:19:29','2026-05-28 07:51:36');
 /*!40000 ALTER TABLE `users` ENABLE KEYS */;
 UNLOCK TABLES;
+
+--
+-- Table structure for table `line_reminder_log`
+--
+-- One row per reminder actually sent. The unique key is the duplicate guard:
+-- sweeps reserve a row with INSERT IGNORE before pushing, so two overlapping
+-- sweeps (or two server instances) cannot send the same reminder twice.
+--
+
+DROP TABLE IF EXISTS `line_reminder_log`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `line_reminder_log` (
+  `reminder_id` int NOT NULL AUTO_INCREMENT,
+  `user_id` int NOT NULL,
+  `reminder_type` varchar(50) NOT NULL,
+  `related_id` int NOT NULL,
+  `occurrence_key` varchar(64) NOT NULL DEFAULT '',
+  `sent_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`reminder_id`),
+  UNIQUE KEY `uniq_line_reminder` (`user_id`,`reminder_type`,`related_id`,`occurrence_key`),
+  KEY `idx_line_reminder_sent` (`sent_at`),
+  CONSTRAINT `line_reminder_log_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
 --
 -- Table structure for table `video_sessions`
