@@ -86,7 +86,7 @@ function describeWhen(dateKey, todayKey) {
   return formatFriendlyDate(dateKey);
 }
 
-export default function StudentClassHistoryKid() {
+export default function StudentClassHistoryKid({ mode = "student" }) {
   const { notify } = useNotification() || {};
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -99,13 +99,14 @@ export default function StudentClassHistoryKid() {
   const user = readStoredUser();
   const currentUserId = user?.id || user?.user_id || user?.userId;
   const userRole = String(user?.role || "").toLowerCase();
+  const isTeacherMode = mode === "teacher";
 
   const loadHistory = async () => {
     if (!currentUserId) return;
     setLoading(true);
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/api/student/${currentUserId}/class-history`,
+        `${API_BASE_URL}/api/${isTeacherMode ? "teacher" : "student"}/${currentUserId}/class-history`,
         { params: { limit: 200 } }
       );
       setHistory(response.data?.history || []);
@@ -113,7 +114,7 @@ export default function StudentClassHistoryKid() {
     } catch (err) {
       console.error(err);
       setHistory([]);
-      notify?.(err?.response?.data?.message || "Could not load your classes", "error");
+      notify?.(err?.response?.data?.message || "Could not load class history", "error");
     } finally {
       setLoading(false);
     }
@@ -124,13 +125,14 @@ export default function StudentClassHistoryKid() {
       window.location.href = "/";
       return;
     }
-    if (userRole !== "student") {
-      window.location.href = userRole === "teacher" ? "/TeacherDashboard" : "/AdminDashboard";
+    const expectedRole = isTeacherMode ? "teacher" : "student";
+    if (userRole !== expectedRole) {
+      window.location.href = userRole === "teacher" ? "/TeacherDashboard" : userRole === "student" ? "/StudentDashboard" : "/AdminDashboard";
       return;
     }
     loadHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUserId, userRole]);
+  }, [currentUserId, userRole, isTeacherMode]);
 
   const todayKey = useMemo(() => {
     const today = new Date();
@@ -150,16 +152,6 @@ export default function StudentClassHistoryKid() {
      * !! picks nothing. Every button here says something the student
      * !! recognises, because it is one of their own classes.
      */
-  const classNames = useMemo(() => {
-    const counts = new Map();
-    for (const row of history) {
-      const name = String(row.class_name || "").trim();
-      if (!name) continue;
-      counts.set(name, (counts.get(name) || 0) + 1);
-    }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  }, [history]);
-
   const periodOf = (row) => {
     if (!row.scheduled_date || !todayKey) return "earlier";
     const offset = daysBetween(row.scheduled_date, todayKey);
@@ -241,13 +233,20 @@ export default function StudentClassHistoryKid() {
   };
 
   const pill = (active) => `${kid.filterPill} ${active ? kid.filterPillActive : ""}`;
+  const pageTitle = isTeacherMode ? "Class history" : HISTORY.title;
+  const pageSubtitle = isTeacherMode
+    ? "Review your classes, student attendance, duration, and class summaries."
+    : HISTORY.subtitle;
+  const emptyTitle = isTeacherMode ? "No class history yet." : HISTORY.emptyTitle;
+  const emptyHelp = isTeacherMode ? "Classes you teach will appear here." : HISTORY.emptyHelp;
+  const otherPartyLabel = isTeacherMode ? "Student" : HISTORY.yourTeacher;
 
   return (
     <div className={kid.history}>
       <header className={kid.historyHead}>
         <div>
-          <h1 className={kid.historyTitle}>{HISTORY.title}</h1>
-          <p className={kid.historySubtitle}>{HISTORY.subtitle}</p>
+          <h1 className={kid.historyTitle}>{pageTitle}</h1>
+          <p className={kid.historySubtitle}>{pageSubtitle}</p>
         </div>
         <button
           type="button"
@@ -272,8 +271,8 @@ export default function StudentClassHistoryKid() {
           <span className={kid.historyEmptyIcon} aria-hidden="true">
             🗓️
           </span>
-          <p className={kid.historyEmptyTitle}>{HISTORY.emptyTitle}</p>
-          <p className={kid.historyEmptyHelp}>{HISTORY.emptyHelp}</p>
+          <p className={kid.historyEmptyTitle}>{emptyTitle}</p>
+          <p className={kid.historyEmptyHelp}>{emptyHelp}</p>
         </div>
       ) : (
         <>
@@ -303,6 +302,9 @@ export default function StudentClassHistoryKid() {
 
             {shown.map((row) => {
               const outcome = describeOutcome(row);
+              const studentName =
+                `${row.student_first_name || ""} ${row.student_last_name || ""}`.trim() ||
+                "Student";
               const teacherName =
                 `${row.teacher_first_name || ""} ${row.teacher_last_name || ""}`.trim() ||
                 HISTORY.yourTeacher;
@@ -315,7 +317,7 @@ export default function StudentClassHistoryKid() {
                 <article key={row.class_id} className={kid.pastCard}>
                   <div className={kid.pastHead}>
                     <span className={kid.pastIcon} aria-hidden="true">
-                      📘
+                    {isTeacherMode ? "🎓" : "📘"}
                     </span>
                     <div>
                       <h2 className={kid.pastName}>{row.class_name || HISTORY.title}</h2>
@@ -337,8 +339,8 @@ export default function StudentClassHistoryKid() {
                         👩‍🏫
                       </span>
                       <div>
-                        <div className={kid.pastFactLabel}>{HISTORY.yourTeacher}</div>
-                        <div className={kid.pastFactValue}>{teacherName}</div>
+                        <div className={kid.pastFactLabel}>{otherPartyLabel}</div>
+                        <div className={kid.pastFactValue}>{isTeacherMode ? studentName : teacherName}</div>
                       </div>
                     </div>
 

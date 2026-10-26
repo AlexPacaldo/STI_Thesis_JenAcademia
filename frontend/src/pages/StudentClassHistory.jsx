@@ -4,6 +4,7 @@ import styles from "../assets/AdminDashboard.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { API_BASE_URL } from "../utils/api.js";
 import { openClassRecording } from "../utils/classRecording.js";
+import { formatRecordingDuration } from "../utils/recordingDuration.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { openAuthenticatedFile } from "../utils/authenticatedFile.js";
 import { readStoredUser } from "../utils/sessionUser.js";
@@ -472,7 +473,7 @@ export default function StudentClassHistory({ mode = "student" }) {
                       </div>
 
                       {row.review_reason && <p><strong>Teacher review request:</strong> {row.review_reason}</p>}
-                      {row.evidence_mode && <p>Evidence: {row.evidence_mode === "screenshots" ? "Start and end screenshots" : `Recording (${Math.floor(Number(row.recording_duration_seconds || 0) / 60)} min)`}</p>}
+                      {row.evidence_mode && <p>Evidence: {row.evidence_mode === "screenshots" ? "Start and end screenshots" : `Recording (${formatRecordingDuration(row.recording_duration_seconds)})`}</p>}
                       <div className={styles.verificationActions}>
                         {row.start_proof_url && (
                           <button

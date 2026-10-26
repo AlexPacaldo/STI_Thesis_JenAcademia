@@ -72,6 +72,7 @@ import kid from "../assets/studentKid.module.css";
 import cal from "../assets/calendar.module.css";
 import { API_BASE_URL } from "../utils/api.js";
 import { openClassRecording } from "../utils/classRecording.js";
+import { formatRecordingDuration } from "../utils/recordingDuration.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { openAuthenticatedFile } from "../utils/authenticatedFile.js";
 import { compressImageFile } from "../utils/imageCompression.js";
@@ -145,14 +146,6 @@ const formatScheduleDate = (dateKey) => {
     day: "numeric",
     year: "numeric",
   });
-};
-
-const formatRecordingDuration = (secondsValue) => {
-  const seconds = Math.max(0, Math.round(Number(secondsValue || 0)));
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  if (minutes <= 0) return `${remainingSeconds} sec`;
-  return `${minutes} min ${String(remainingSeconds).padStart(2, "0")} sec`;
 };
 
 const rangesOverlap = (startA, endA, startB, endB) => startA < endB && endA > startB;
@@ -5884,6 +5877,45 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                   {recording.session?.status === "recording" ? "Stop Recording" : recording.session?.status === "uploading" ? "Uploading Recording..." : recording.session?.status === "starting" ? "Starting Recording..." : recording.session?.status === "failed" ? "Retry Recording Upload" : "Start Recording"}
                 </button>
                 <span style={{ fontSize: "0.74rem", color: "#667085" }}>Select the meeting tab with audio. Keep Calendar open until the upload finishes.</span>
+              </div>
+            )}
+            {recording.earlyStop
+              && String(recording.earlyStop.classId) === String(selectedClass.id)
+              && !selectedClassEnded && (
+              <div
+                role="alert"
+                style={{
+                  display: "grid",
+                  gap: 8,
+                  border: "1px solid #f0dcc0",
+                  borderRadius: 10,
+                  background: "#fdf3e7",
+                  padding: "12px 14px",
+                }}
+              >
+                <strong style={{ color: "#8a5a1f" }}>⚠️ Screen sharing stopped, so the recording ended early</strong>
+                <span style={{ fontSize: "0.85rem", color: "#8a5a1f", lineHeight: 1.5 }}>
+                  Only {formatRecordingDuration(recording.earlyStop.durationSeconds)} was captured. The class is still
+                  running, so record again to cover the rest — otherwise the admin has to reject this as incomplete.
+                </span>
+                {!recording.session && (
+                  <button
+                    type="button"
+                    onClick={() => recording.start(selectedClass.id)}
+                    style={{
+                      justifySelf: "start",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "10px 14px",
+                      background: "#8a5a1f",
+                      color: "#fff",
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Record again
+                  </button>
+                )}
               </div>
             )}
             {selectedClassStarted && !selectedClassEnded && (

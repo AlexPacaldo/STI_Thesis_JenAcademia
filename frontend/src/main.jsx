@@ -20,7 +20,6 @@ const Assignments = lazy(() => import("./pages/assignments.jsx"));
 const Remarks = lazy(() => import("./pages/remarks.jsx"));
 const BooksLessons = lazy(() => import("./pages/booksLessons.jsx"));
 const BooksContent = lazy(() => import("./pages/booksContent.jsx"));
-const StudentClassHistory = lazy(() => import("./pages/StudentClassHistory.jsx"));
 const StudentClassHistoryKid = lazy(() => import("./pages/StudentClassHistoryKid.jsx"));
 const ContractReview = lazy(() => import("./pages/ContractReview.jsx"));
 const PassRemarks = lazy(() => import("./pages/PassRemarks.jsx"));
@@ -67,7 +66,7 @@ const router = createBrowserRouter([
       {
         path: "Calendar",element: <Page><Calendar/></Page>},
       { path: "classroom/:classId", element: <Navigate to="/Calendar" replace /> },
-      { path: "teacherClassHistory", element: <Page><StudentClassHistory mode="teacher" /></Page> },
+      { path: "teacherClassHistory", element: <Page><StudentClassHistoryKid mode="teacher" /></Page> },
       { path: "PassRemarks", element: <Page><PassRemarks /></Page> },
       { path: "teacherStudents", element: <Page><TeacherStudents /></Page> },
       { path: "teacherAssignment", element: <Page><TeacherAssignment /></Page> },

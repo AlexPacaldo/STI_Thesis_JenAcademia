@@ -1,7 +1,7 @@
 import axios from "axios";
 import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
 import { useEffect, useMemo, useState } from "react";
-import styles from "../assets/AdminDashboard.module.css";
+import kid from "../assets/studentKid.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { API_BASE_URL } from "../utils/api.js";
 import { formatProficiencyLevel } from "../utils/proficiencyLevels.js";
@@ -27,16 +27,6 @@ const packageStatusLabel = {
   used_up: "Used Up",
   inactive: "Inactive",
   no_package: "No Package",
-};
-
-const packageStatusStyle = (status) => {
-  const map = {
-    active: { background: "#dcfce7", color: "#166534" },
-    used_up: { background: "#fef3c7", color: "#92400e" },
-    inactive: { background: "#f3f4f6", color: "#374151" },
-    no_package: { background: "#fee2e2", color: "#991b1b" },
-  };
-  return map[status] || { background: "#f3f4f6", color: "#374151" };
 };
 
 export default function TeacherStudents() {
@@ -117,172 +107,156 @@ export default function TeacherStudents() {
     (safePage - 1) * STUDENTS_PER_PAGE,
     safePage * STUDENTS_PER_PAGE
   );
+  const statusTone = (status) => ({
+    active: kid.pastStatusDone,
+    used_up: kid.pastStatusChecking,
+    inactive: kid.pastStatusWaiting,
+    no_package: kid.pastStatusAlmost,
+  }[status] || kid.pastStatusWaiting);
 
   return (
-    <div className={styles.Center}>
-      <div className={styles.page}>
-        <main className={styles.main}>
-          <section className={styles.card}>
-            <div className={styles.cardHead}>
-              <div>
-                <h2>Students</h2>
-                <p style={{ margin: "4px 0 0 0", fontSize: "0.9em", color: "#666" }}>
-                  Track your assigned students, course details, and remaining class package balance.
-                </p>
-              </div>
-              <button className={styles.linkBtn} type="button" onClick={loadStudents}>
-                Refresh
-              </button>
-            </div>
+    <main className={kid.history}>
+      <header className={kid.historyHead}>
+        <div>
+          <h1 className={kid.historyTitle}>Students</h1>
+          <p className={kid.historySubtitle}>
+            Review your assigned students, learning plans, and class balances.
+          </p>
+        </div>
+        <button className={kid.refreshBtn} type="button" onClick={loadStudents} disabled={loading}>
+          {loading ? "Refreshing..." : "Refresh"}
+        </button>
+      </header>
 
-            <div className={styles.filterTabs} style={{ marginBottom: 14 }}>
-              {["all", "active", "used_up", "inactive", "no_package"].map((status) => {
-                const active = statusFilter === status;
-                const colors = packageStatusStyle(status);
-                return (
-                  <button
-                    key={status}
-                    type="button"
-                    onClick={() => setStatusFilter(status)}
-                    style={{
-                      padding: "8px 12px",
-                      border: active ? "1px solid #2f4d3e" : "1px solid #e5e7eb",
-                      background: active ? "#2f4d3e" : colors.background,
-                      color: active ? "#fff" : colors.color,
-                      borderRadius: "999px",
-                      cursor: "pointer",
-                      fontWeight: 800,
-                      fontSize: "0.82em",
-                    }}
-                  >
-                    {packageStatusLabel[status]} ({counts[status] || 0})
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className={styles.searchBar}>
-              <input
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search by student, email, contact, course, level, or package status"
-                aria-label="Search students"
-              />
-            </div>
-
-            <div className={styles.tableWrap}>
-              {loading ? (
-                <div className={styles.empty}>Loading students...</div>
-              ) : students.length === 0 ? (
-                <div className={styles.empty}>No assigned students yet</div>
-              ) : filteredStudents.length === 0 ? (
-                <div className={styles.empty}>No students match your search</div>
-              ) : (
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Student</th>
-                      <th>Course</th>
-                      <th>Package</th>
-                      <th>Classes</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pagedStudents.map((student) => {
-                      const packageStatus = getPackageStatus(student);
-                      const statusColor = packageStatusStyle(packageStatus);
-                      const totalClasses = Number(student.total_classes || 0);
-                      const usedClasses = Number(student.classes_used || 0);
-                      const classesLeft = Number(student.classes_left || 0);
-                      const progress = totalClasses > 0 ? Math.min(100, Math.round((usedClasses / totalClasses) * 100)) : 0;
-
-                      return (
-                        <tr key={student.user_id}>
-                          <td data-label="Student">
-                            <div style={{ fontWeight: 800 }}>{getStudentName(student)}</div>
-                            <div style={{ fontSize: "0.8em", color: "#667085", marginTop: 3, wordBreak: "break-all" }}>
-                              {student.email || "No email"}
-                            </div>
-                            <div style={{ fontSize: "0.8em", color: "#667085", marginTop: 3 }}>
-                              {student.contact || "No contact"}
-                            </div>
-                          </td>
-                          <td data-label="Course">
-                            <div style={{ fontWeight: 700 }}>{student.course_name || "No course assigned"}</div>
-                            <div style={{ fontSize: "0.8em", color: "#667085", marginTop: 3 }}>
-                              {formatProficiencyLevel(student.proficiency_level)}
-                            </div>
-                          </td>
-                          <td data-label="Package">
-                            <div style={{ fontWeight: 800 }}>
-                              {student.package_id ? `${totalClasses} classes` : "No active package"}
-                            </div>
-                            <div style={{ fontSize: "0.8em", color: "#667085", marginTop: 3 }}>
-                              {student.class_duration ? `${student.class_duration} min per class` : "Duration not set"}
-                            </div>
-                            <div style={{ marginTop: 6 }}>
-                              <ContractExpiryBadge expiresAt={student.expires_at} size="sm" />
-                            </div>
-                          </td>
-                          <td data-label="Classes">
-                            <div style={{ display: "grid", gap: 4, fontSize: "0.84em" }}>
-                              <span>Left: <strong>{classesLeft}</strong></span>
-                              <span>Used: {usedClasses}</span>
-                              <span>Total: {totalClasses}</span>
-                            </div>
-                            <div style={{ marginTop: 8, width: 160, maxWidth: "100%", height: 7, borderRadius: 999, background: "#eef3ef", overflow: "hidden" }}>
-                              <div style={{ width: `${progress}%`, height: "100%", background: classesLeft > 0 ? "#2f4d3e" : "#f59e0b" }} />
-                            </div>
-                          </td>
-                          <td data-label="Status">
-                            <span
-                              style={{
-                                display: "inline-flex",
-                                padding: "5px 9px",
-                                borderRadius: 999,
-                                background: statusColor.background,
-                                color: statusColor.color,
-                                fontWeight: 800,
-                                fontSize: "0.78em",
-                              }}
-                            >
-                              {packageStatusLabel[packageStatus]}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            {filteredStudents.length > STUDENTS_PER_PAGE && (
-              <div className={styles.pagination}>
-                <button
-                  type="button"
-                  className={styles.pageBtn}
-                  onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
-                  disabled={safePage === 1}
-                >
-                  Previous
-                </button>
-                <span>Page {safePage} of {totalPages}</span>
-                <button
-                  type="button"
-                  className={styles.pageBtn}
-                  onClick={() => setPage((currentPage) => Math.min(totalPages, currentPage + 1))}
-                  disabled={safePage === totalPages}
-                >
-                  Next
-                </button>
-              </div>
-            )}
-          </section>
-        </main>
+      <div className={kid.filterPills} role="group" aria-label="Filter students by package status">
+        {["all", "active", "used_up", "inactive", "no_package"].map((status) => (
+          <button
+            key={status}
+            type="button"
+            className={`${kid.filterPill} ${statusFilter === status ? kid.filterPillActive : ""}`}
+            onClick={() => setStatusFilter(status)}
+          >
+            {packageStatusLabel[status]} <span className={kid.filterNum}>{counts[status] || 0}</span>
+          </button>
+        ))}
       </div>
-    </div>
+
+      <div className={kid.historySearch}>
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search by student, email, course, or package status"
+          aria-label="Search students"
+        />
+      </div>
+
+      {loading ? (
+        <div className={kid.historyList}>
+          {[0, 1, 2].map((index) => <div key={index} className={kid.loadingCard} />)}
+        </div>
+      ) : students.length === 0 ? (
+        <div className={kid.historyEmpty}>
+          <span className={kid.historyEmptyIcon} aria-hidden="true">👩‍🎓</span>
+          <p className={kid.historyEmptyTitle}>No assigned students yet</p>
+          <p className={kid.historyEmptyHelp}>Students assigned to you will appear here.</p>
+        </div>
+      ) : filteredStudents.length === 0 ? (
+        <div className={kid.historyEmpty}>
+          <span className={kid.historyEmptyIcon} aria-hidden="true">🔎</span>
+          <p className={kid.historyEmptyTitle}>No students match your search</p>
+        </div>
+      ) : (
+        <>
+          <p className={kid.historySummary}>
+            Showing {(safePage - 1) * STUDENTS_PER_PAGE + 1}–{Math.min(safePage * STUDENTS_PER_PAGE, filteredStudents.length)} of {filteredStudents.length} students.
+          </p>
+          <div className={kid.historyList}>
+            {pagedStudents.map((student) => {
+              const packageStatus = getPackageStatus(student);
+              const totalClasses = Number(student.total_classes || 0);
+              const usedClasses = Number(student.classes_used || 0);
+              const classesLeft = Number(student.classes_left || 0);
+              const progress = totalClasses > 0 ? Math.min(100, Math.round((usedClasses / totalClasses) * 100)) : 0;
+              return (
+                <article key={student.user_id} className={kid.pastCard}>
+                  <div className={kid.pastHead}>
+                    <span className={kid.pastIcon} aria-hidden="true">👩‍🎓</span>
+                    <div>
+                      <h2 className={kid.pastName}>{getStudentName(student)}</h2>
+                      <p className={kid.pastWhen}>{student.email || "No email provided"}</p>
+                    </div>
+                  </div>
+                  <span className={`${kid.pastStatus} ${statusTone(packageStatus)}`}>
+                    {packageStatusLabel[packageStatus]}
+                  </span>
+                  <div className={`${kid.pastFacts} ${kid.teacherStudentFacts}`}>
+                    <div className={kid.pastFact}>
+                      <span className={kid.pastFactIcon} aria-hidden="true">📚</span>
+                      <div>
+                        <div className={kid.pastFactLabel}>Course and level</div>
+                        <div className={kid.pastFactValue}>{student.course_name || "No course assigned"} · {formatProficiencyLevel(student.proficiency_level)}</div>
+                      </div>
+                    </div>
+                    <div className={kid.pastFact}>
+                      <span className={kid.pastFactIcon} aria-hidden="true">🎟️</span>
+                      <div>
+                        <div className={kid.pastFactLabel}>Class balance</div>
+                        <div className={kid.pastFactValue}>{classesLeft} of {totalClasses} classes remaining</div>
+                      </div>
+                    </div>
+                    <div className={kid.pastFact}>
+                      <span className={kid.pastFactIcon} aria-hidden="true">⏱️</span>
+                      <div>
+                        <div className={kid.pastFactLabel}>Class duration</div>
+                        <div className={kid.pastFactValue}>{student.class_duration ? `${student.class_duration} minutes per class` : "Not set"}</div>
+                      </div>
+                    </div>
+                    <div className={kid.pastFact}>
+                      <span className={kid.pastFactIcon} aria-hidden="true">📞</span>
+                      <div>
+                        <div className={kid.pastFactLabel}>Contact</div>
+                        <div className={kid.pastFactValue}>{student.contact || "No contact provided"}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className={kid.historyProgress}>
+                    <div className={kid.historyProgressLabel}>
+                      <span>Classes used</span><strong>{usedClasses} / {totalClasses}</strong>
+                    </div>
+                    <div className={kid.historyProgressTrack} role="progressbar" aria-label={`${getStudentName(student)} classes used`} aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>
+                      <div className={kid.historyProgressFill} style={{ width: `${progress}%` }} />
+                    </div>
+                    <ContractExpiryBadge expiresAt={student.expires_at} size="sm" />
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {filteredStudents.length > STUDENTS_PER_PAGE && (
+        <div className={kid.teacherStudentPagination}>
+          <button
+            type="button"
+            className={`${kid.btn} ${kid.btnGhost}`}
+            onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
+            disabled={safePage === 1}
+          >
+            Previous
+          </button>
+          <span>Page {safePage} of {totalPages}</span>
+          <button
+            type="button"
+            className={`${kid.btn} ${kid.btnGhost}`}
+            onClick={() => setPage((currentPage) => Math.min(totalPages, currentPage + 1))}
+            disabled={safePage === totalPages}
+          >
+            Next
+          </button>
+        </div>
+      )}
+    </main>
   );
 }

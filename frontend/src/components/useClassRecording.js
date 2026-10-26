@@ -5,13 +5,27 @@ import { API_BASE_URL } from "../utils/api.js";
 
 export default function useClassRecording({ teacherId, notify, onUploaded }) {
   const [session, setSession] = useState(null);
+  // Set when the browser ended the capture on its own (the teacher clicked
+  // "Stop sharing", or the shared tab/window closed) while the recorder was
+  // still running. Kept separate from `session` because the session is cleared
+  // once the upload finishes, and the teacher still needs to see why the video
+  // is only a few seconds long.
+  const [earlyStop, setEarlyStop] = useState(null);
   const recorderRef = useRef(null);
+  // True only when the stop came from the Stop Recording button (or the page
+  // going away). Everything else - the teacher clicking "Stop sharing", the
+  // shared tab closing - is the browser ending the capture on its own.
+  const stopRequestedRef = useRef(false);
   const callbackRef = useRef(onUploaded);
   useEffect(() => { callbackRef.current = onUploaded; }, [onUploaded]);
 
   useEffect(() => () => {
     const recorder = recorderRef.current;
-    if (recorder?.state === "recording") recorder.stop();
+    if (recorder?.state === "recording") {
+      // Leaving the page is not a failed share, so don't warn about it.
+      stopRequestedRef.current = true;
+      recorder.stop();
+    }
     recorder?.stream.getTracks().forEach((track) => track.stop());
   }, []);
 
@@ -59,6 +73,8 @@ export default function useClassRecording({ teacherId, notify, onUploaded }) {
       return;
     }
     setSession({ classId, status: "starting" });
+    setEarlyStop(null);
+    stopRequestedRef.current = false;
     notify?.("Select the meeting tab and enable tab audio. Keep Calendar open until the recording uploads.", "info");
     let stream;
     try {
@@ -78,11 +94,51 @@ export default function useClassRecording({ teacherId, notify, onUploaded }) {
         audioBitsPerSecond: 32_000,
       });
       recorderRef.current = recorder;
+
+      // The capture can end without the teacher asking for it: Chrome stops the
+      // share when "Stop sharing" is clicked, or when the shared tab or window
+      // closes. Before this was silent, so the class carried on for another
+      // half hour while the only proof was a two-second video that the admin
+      // then had to reject. `shareEndedEarly` travels with the upload so the
+      // Calendar page can say what happened.
+      let shareEndedEarly = false;
+      const videoTrack = stream.getVideoTracks()[0];
+      const noteShareEnded = () => {
+        if (shareEndedEarly) return;
+        shareEndedEarly = true;
+        notify?.(
+          "Screen sharing stopped, so the recording ended early. If the class is still running, start a new recording.",
+          "warning"
+        );
+      };
+      videoTrack?.addEventListener("ended", () => {
+        // !! Chrome stops the MediaRecorder itself once every track has ended,
+        // !! and it does that before this listener runs, so `recorder.state` is
+        // !! already "inactive" here. Keying off it meant the unexpected stop
+        // !! was never noticed. Whether we asked for the stop is the fact that
+        // !! actually distinguishes the two cases.
+        if (stopRequestedRef.current) return;
+        noteShareEnded();
+        if (recorder.state === "recording") recorder.stop();
+      });
+
       await axios.post(`${API_BASE_URL}/api/calendar/classes/${classId}/recording-start`, { teacher_id: teacherId });
+      if (videoTrack?.readyState === "ended") {
+        // The share ended during the request above, before the recorder was
+        // running. Starting it now would only capture nothing.
+        stream.getTracks().forEach((track) => track.stop());
+        setSession(null);
+        noteShareEnded();
+        setEarlyStop({ classId, durationSeconds: 0 });
+        return;
+      }
       const captureStarted = performance.now();
       const chunks = [];
       recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
       recorder.onstop = async () => {
+        // Read the track state before stopping the tracks below, which would
+        // make it "ended" regardless of why the recording finished.
+        const endedByBrowser = !stopRequestedRef.current && videoTrack?.readyState === "ended";
         stream.getTracks().forEach((track) => track.stop());
         const durationSeconds = (performance.now() - captureStarted) / 1000;
         const blob = new Blob(chunks, { type: recorder.mimeType || "video/webm" });
@@ -101,11 +157,12 @@ export default function useClassRecording({ teacherId, notify, onUploaded }) {
           }
         }
 
+        if (endedByBrowser) noteShareEnded();
+        if (shareEndedEarly) {
+          setEarlyStop({ classId, durationSeconds });
+        }
         upload(classId, uploadBlob, durationSeconds);
       };
-      stream.getVideoTracks()[0]?.addEventListener("ended", () => {
-        if (recorder.state === "recording") recorder.stop();
-      });
       recorder.start(1000);
       setSession({ classId, status: "recording" });
     } catch {
@@ -117,9 +174,10 @@ export default function useClassRecording({ teacherId, notify, onUploaded }) {
 
   const stop = () => {
     if (recorderRef.current?.state === "recording") {
+      stopRequestedRef.current = true;
       setSession((current) => ({ ...current, status: "uploading" }));
       recorderRef.current.stop();
     }
   };
-  return { session, start, stop, discardFailed: () => { if (session?.status === "failed") setSession(null); }, retry: () => session?.blob && upload(session.classId, session.blob, session.durationSeconds) };
+  return { session, earlyStop, start, stop, discardFailed: () => { if (session?.status === "failed") setSession(null); }, retry: () => session?.blob && upload(session.classId, session.blob, session.durationSeconds) };
 }

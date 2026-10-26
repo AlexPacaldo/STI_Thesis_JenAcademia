@@ -39,6 +39,7 @@ import ModalPortal from "../utils/ModalPortal.jsx";
 import Calendar from "./Calendar.jsx"; // admin calendar view
 import { API_BASE_URL } from "../utils/api.js";
 import { openClassRecording } from "../utils/classRecording.js";
+import { formatRecordingDuration } from "../utils/recordingDuration.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { openAuthenticatedFile } from "../utils/authenticatedFile.js";
 
@@ -284,25 +285,30 @@ const setupInviteStatusStyle = (status) => {
 const VERIFICATION_STATUS_LABELS = {
   all: "All",
   verified: "Verified",
-  needs_review: "Needs Review",
-  student_confirmed: "Student Confirmed",
-  in_progress: "In Progress",
+  needs_review: "Needs review",
+  student_confirmed: "Student confirmed",
+  in_progress: "In progress",
   pending: "Pending",
   incomplete: "Incomplete",
-  missing: "No Log",
+  missing: "No log yet",
 };
 
-const verificationStatusStyle = (status) => {
-  const palette = {
-    verified: { background: "#dcfce7", color: "#166534" },
-    needs_review: { background: "#fef3c7", color: "#92400e" },
-    student_confirmed: { background: "#dbeafe", color: "#1e40af" },
-    in_progress: { background: "#e0f2fe", color: "#075985" },
-    pending: { background: "#f3f4f6", color: "#374151" },
-    incomplete: { background: "#fee2e2", color: "#991b1b" },
-    missing: { background: "#fee2e2", color: "#991b1b" },
-  };
-  return palette[status] || palette.pending;
+// A class with no timestamps at all has no log, whatever its stored status
+// says. Every view (filter, counts, cards) reads the same answer from here so
+// the tabs and the list can never disagree.
+const getVerificationDisplayStatus = (row) =>
+  row.teacher_started_at || row.student_joined_at || row.teacher_ended_at
+    ? row.verification_status
+    : "missing";
+
+const VERIFICATION_STATUS_ICONS = {
+  verified: "✅",
+  needs_review: "🔔",
+  student_confirmed: "🙋",
+  in_progress: "⏳",
+  pending: "🕓",
+  incomplete: "⚠️",
+  missing: "📭",
 };
 
 // Upload paths come back both with and without a leading slash, and Windows
@@ -1167,6 +1173,8 @@ export default function AdminDashboard() {
         await saveContract(adminConfirm.payload.row);
       } else if (adminConfirm.action === "contract_request") {
         shouldClose = await updateContractRequest(adminConfirm.payload.requestId, adminConfirm.payload.status);
+      } else if (adminConfirm.action === "archive_contract_request") {
+        shouldClose = await archiveContractRequest(adminConfirm.payload.requestId);
       } else if (adminConfirm.action === "approve_verification") {
         await approveVerificationRecord(adminConfirm.payload.classId);
       } else if (adminConfirm.action === "mark_verification_incomplete") {
@@ -1867,6 +1875,31 @@ export default function AdminDashboard() {
     }
   }
 
+  /**
+   * Hide a resolved request from the admin queue.
+   *
+   * The server archives it instead of deleting it, so the student's own history
+   * and the audit trail survive. The card disappears from this list only.
+   */
+  async function archiveContractRequest(requestId) {
+    setUpdatingContractRequestId(requestId);
+    try {
+      await axios.delete(`${API}/api/admin/contract-requests/${requestId}`);
+      notify("Request removed from the list", "success");
+      setContractRequests((current) =>
+        current.filter((request) => String(request.request_id) !== String(requestId))
+      );
+      return true;
+    } catch (e) {
+      console.error(e);
+      notify(e?.response?.data?.message || "Failed to remove contract request", "error");
+      void loadContractRequests();
+      return false;
+    } finally {
+      setUpdatingContractRequestId(null);
+    }
+  }
+
   async function loadClassVerifications() {
     setVerificationsLoading(true);
     try {
@@ -2007,15 +2040,14 @@ export default function AdminDashboard() {
   const accountModalRoleLabel = studentAccountModal?.role === "teacher" ? "Teacher" : "Student";
   const verificationSearchTerm = verificationSearch.trim().toLowerCase();
   const filteredVerifications = verifications.filter((row) => {
-    const displayStatus = row.teacher_started_at || row.student_joined_at || row.teacher_ended_at
-      ? row.verification_status
-      : "missing";
+    const displayStatus = getVerificationDisplayStatus(row);
     if (verificationFilter !== "all" && displayStatus !== verificationFilter) return false;
     if (!verificationSearchTerm) return true;
     return [
       row.class_name,
       row.class_status,
       row.verification_status,
+      VERIFICATION_STATUS_LABELS[displayStatus],
       row.teacher_first_name,
       row.teacher_last_name,
       row.teacher_email,
@@ -2036,17 +2068,73 @@ export default function AdminDashboard() {
     (safeVerificationPage - 1) * VERIFICATIONS_PER_PAGE,
     safeVerificationPage * VERIFICATIONS_PER_PAGE
   );
-  const verificationCounts = {
-    all: verifications.length,
-    verified: verifications.filter((row) => row.verification_status === "verified").length,
-    needs_review: verifications.filter((row) => row.verification_status === "needs_review").length,
-    student_confirmed: verifications.filter((row) => row.verification_status === "student_confirmed").length,
-    in_progress: verifications.filter((row) => row.verification_status === "in_progress").length,
-    pending: verifications.filter((row) => row.verification_status === "pending").length,
-    incomplete: verifications.filter((row) => row.verification_status === "incomplete").length,
-    missing: verifications.filter((row) => !row.teacher_started_at && row.verification_status === "pending").length,
+  const verificationCounts = verifications.reduce((counts, row) => {
+    const status = getVerificationDisplayStatus(row);
+    counts[status] = (counts[status] || 0) + 1;
+    return counts;
+  }, { all: verifications.length });
+  const clearableVerificationCount = (verificationCounts.verified || 0) + (verificationCounts.incomplete || 0);
+
+  // Tone classes keep every status on the same colour language: green is done,
+  // amber is a decision for the admin, red is a missing log, blue is in motion.
+  const verificationToneClass = (status) => {
+    if (status === "verified") return styles.verifyToneSuccess;
+    if (status === "needs_review") return styles.verifyToneReview;
+    if (status === "incomplete" || status === "missing") return styles.verifyToneDanger;
+    if (status === "in_progress" || status === "student_confirmed") return styles.verifyToneInfo;
+    return styles.verifyToneNeutral;
   };
-  const clearableVerificationCount = verificationCounts.verified + verificationCounts.incomplete;
+
+  // The four states an admin actually acts on are always shown; the rest only
+  // appear when they have records, so the row never becomes a wall of zeroes.
+  const verificationQuickFilterOrder = [
+    "needs_review",
+    "missing",
+    "in_progress",
+    "student_confirmed",
+    "pending",
+    "verified",
+    "incomplete",
+  ];
+  const verificationQuickFilters = [
+    { key: "all", label: "All classes", icon: "🗂️", count: verificationCounts.all || 0 },
+    ...verificationQuickFilterOrder
+      .filter((status) => ["needs_review", "missing", "verified", "incomplete"].includes(status) || (verificationCounts[status] || 0) > 0)
+      .map((status) => ({
+        key: status,
+        label: VERIFICATION_STATUS_LABELS[status],
+        icon: VERIFICATION_STATUS_ICONS[status],
+        count: verificationCounts[status] || 0,
+      })),
+  ];
+
+  // Reschedule requests reuse the verification colour language: amber still
+  // needs a decision, green is approved, red is declined. Every tone also
+  // carries a word, so colour is never the only signal.
+  const requestStatusToneClass = (status) => {
+    if (status === "approved") return styles.verifyToneSuccess;
+    if (status === "declined") return styles.verifyToneDanger;
+    return styles.verifyToneWarn;
+  };
+  const requestStatusMeta = (status) => ({
+    pending: { label: "Waiting", icon: "⏳" },
+    approved: { label: "Approved", icon: "✅" },
+    declined: { label: "Declined", icon: "🚫" },
+  }[status] || { label: status || "Waiting", icon: "⏳" });
+  const requestQuickFilters = [
+    { key: "all", label: "All requests", icon: "🗂️", tone: styles.verifyToneNeutral },
+    { key: "pending", label: "Waiting", icon: "⏳", tone: styles.verifyToneWarn },
+    { key: "approved", label: "Approved", icon: "✅", tone: styles.verifyToneSuccess },
+    { key: "declined", label: "Declined", icon: "🚫", tone: styles.verifyToneDanger },
+  ].map((filter) => ({
+    ...filter,
+    count: filter.key === "all"
+      ? requests.length
+      : requests.filter((request) => request.status === filter.key).length,
+  }));
+  const filteredRequests = requests.filter(
+    (request) => requestFilter === "all" || request.status === requestFilter
+  );
 
   const updateStudentCourse = (courseId) => {
     const currentTeacherCanTeach = !sForm.teacherId || !courseId || teacherCourseMap[String(sForm.teacherId)]?.has(String(courseId));
@@ -2280,6 +2368,25 @@ export default function AdminDashboard() {
     });
   }
 
+  function requestArchiveContractRequest(requestRow) {
+    const studentName = `${requestRow?.first_name || ""} ${requestRow?.last_name || ""}`.trim() || "this student";
+    const statusLabel = requestRow?.status ? requestRow.status.charAt(0).toUpperCase() + requestRow.status.slice(1) : "resolved";
+
+    openAdminConfirm({
+      action: "archive_contract_request",
+      title: "Remove request from the list?",
+      message:
+        `This hides ${studentName}'s ${statusLabel.toLowerCase()} request from the admin list. ` +
+        "The student's own history and the full record stay intact, so nothing is lost.",
+      confirmLabel: "Remove from list",
+      tone: "danger",
+      payload: {
+        requestId: requestRow?.request_id,
+        requestRow: { ...requestRow },
+      },
+    });
+  }
+
   function requestRemoveVerification(row) {
     const teacherName = `${row.teacher_first_name || ""} ${row.teacher_last_name || ""}`.trim() || "Teacher";
     const studentName = `${row.student_first_name || ""} ${row.student_last_name || ""}`.trim() || "Student";
@@ -2418,6 +2525,19 @@ export default function AdminDashboard() {
         `Action: ${payload.status === "approved" ? "Approve" : "Decline"}`,
       ];
     }
+    if (adminConfirm.action === "archive_contract_request") {
+      const requestRow = payload.requestRow || {};
+      const course = courses.find((item) => String(item.course_id) === String(requestRow.course_id));
+      const statusLabel = requestRow.status
+        ? requestRow.status.charAt(0).toUpperCase() + requestRow.status.slice(1)
+        : "Resolved";
+      return [
+        `Student: ${requestRow.first_name || ""} ${requestRow.last_name || ""}`.trim(),
+        `Course: ${course?.course_name || requestRow.course_name || "Not set"}`,
+        `Status: ${statusLabel}`,
+        "The record is archived, not deleted.",
+      ];
+    }
     if (adminConfirm.action === "approve_verification" || adminConfirm.action === "mark_verification_incomplete" || adminConfirm.action === "remove_verification") {
       return [
         `Class: ${payload.className || "-"}`,
@@ -2454,81 +2574,108 @@ export default function AdminDashboard() {
         )}
 
         {active === "verifications" && (
-          <section className={styles.card}>
-            <div className={styles.cardHead}>
-              <div>
+          <section className={`${styles.card} ${styles.verifyPage}`}>
+            <div className={styles.verifyHero}>
+              <div className={styles.verifyHeroMark} aria-hidden="true">📋</div>
+              <div className={styles.verifyHeroText}>
+                <span className={styles.verifyKicker}>Admin check-in</span>
                 <h2>Class Verifications</h2>
-                <p style={{ margin: "4px 0 0 0", fontSize: "0.9em", color: "#666" }}>
-                  Track whether scheduled classes have teacher start, student attendance, end time, duration, and proof.
-                </p>
+                <p>Check that every class has a start, attendance, an end time, and proof. Green means done. Amber means it needs you.</p>
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                <button className={styles.linkBtn} type="button" onClick={() => loadClassVerifications()}>
-                  Refresh
+              <div className={styles.verifyHeroActions}>
+                <button
+                  className={styles.verifyHeroBtn}
+                  type="button"
+                  onClick={() => loadClassVerifications()}
+                  disabled={verificationsLoading}
+                >
+                  <span aria-hidden="true">↻</span> {verificationsLoading ? "Refreshing..." : "Refresh"}
                 </button>
                 <button
-                  className={styles.dangerBtn}
+                  className={`${styles.verifyHeroBtn} ${styles.verifyHeroBtnDanger}`}
                   type="button"
                   onClick={requestClearVerifications}
                   disabled={!clearableVerificationCount || verificationsLoading}
                   title="Clears only verified and incomplete records"
                 >
-                  Clear
+                  <span aria-hidden="true">🧹</span> Clear done
                 </button>
               </div>
             </div>
 
-            <div className={styles.filterTabs} style={{ marginBottom: 14 }}>
-              {["all", "verified", "needs_review", "incomplete", "student_confirmed", "in_progress", "pending", "missing"].map((status) => {
-                const activeFilter = verificationFilter === status;
-                const colors = verificationStatusStyle(status === "all" ? "pending" : status);
-                return (
+            <div className={styles.verifyQuickFilters} role="group" aria-label="Filter class verifications by status">
+              {verificationQuickFilters.map((filter) => (
+                <button
+                  key={filter.key}
+                  type="button"
+                  className={`${styles.verifyFilterCard} ${verificationToneClass(filter.key)} ${verificationFilter === filter.key ? styles.verifyFilterCardActive : ""}`}
+                  onClick={() => updateVerificationFilter(filter.key)}
+                  aria-pressed={verificationFilter === filter.key}
+                >
+                  <span className={styles.verifyFilterTop}>
+                    <span className={styles.verifyFilterIcon} aria-hidden="true">{filter.icon}</span>
+                    <span className={styles.verifyFilterCount}>{filter.count}</span>
+                  </span>
+                  <span className={styles.verifyFilterLabel}>{filter.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className={styles.verifyToolbar}>
+              <div className={styles.verifySearchWrap}>
+                <span className={styles.verifySearchIcon} aria-hidden="true">🔍</span>
+                <input
+                  type="search"
+                  value={verificationSearch}
+                  onChange={(e) => setVerificationSearch(e.target.value)}
+                  placeholder="Search a class, teacher, student, or date"
+                  aria-label="Search class verifications"
+                />
+                {verificationSearch && (
                   <button
-                    key={status}
                     type="button"
-                    onClick={() => updateVerificationFilter(status)}
-                    style={{
-                      padding: "8px 12px",
-                      border: activeFilter ? "1px solid #2f4d3e" : "1px solid #e5e7eb",
-                      background: activeFilter ? "#2f4d3e" : colors.background,
-                      color: activeFilter ? "#fff" : colors.color,
-                      borderRadius: "999px",
-                      cursor: "pointer",
-                      fontWeight: 800,
-                      fontSize: "0.82em",
-                    }}
+                    className={styles.verifySearchClear}
+                    onClick={() => setVerificationSearch("")}
+                    aria-label="Clear search"
                   >
-                    {VERIFICATION_STATUS_LABELS[status]} ({verificationCounts[status] || 0})
+                    Clear
                   </button>
-                );
-              })}
+                )}
+              </div>
+              <p className={styles.verifyCountLine} aria-live="polite">
+                Showing <strong>{pagedVerifications.length}</strong> of <strong>{filteredVerifications.length}</strong> classes
+              </p>
             </div>
 
-            <div className={styles.searchBar}>
-              <input
-                type="search"
-                value={verificationSearch}
-                onChange={(e) => setVerificationSearch(e.target.value)}
-                placeholder="Search by class, teacher, student, status, date, or summary"
-                aria-label="Search class verifications"
-              />
-            </div>
-
-            <div className={styles.verificationList}>
+            <div className={styles.verifyList} aria-busy={verificationsLoading}>
               {verificationsLoading ? (
-                <div className={styles.empty}>Loading class verifications...</div>
+                <div className={styles.verifyEmpty}>
+                  <span className={styles.verifyEmptyIcon} aria-hidden="true">⏳</span>
+                  <h3>Checking the classes...</h3>
+                  <p>This will only take a moment.</p>
+                </div>
               ) : verifications.length === 0 ? (
-                <div className={styles.empty}>No class verification records found</div>
+                <div className={styles.verifyEmpty}>
+                  <span className={styles.verifyEmptyIcon} aria-hidden="true">🌱</span>
+                  <h3>No classes to check yet</h3>
+                  <p>Scheduled classes will show up here once they happen.</p>
+                </div>
               ) : filteredVerifications.length === 0 ? (
-                <div className={styles.empty}>No class verifications match your search</div>
+                <div className={styles.verifyEmpty}>
+                  <span className={styles.verifyEmptyIcon} aria-hidden="true">🔎</span>
+                  <h3>Nothing matches that search</h3>
+                  <p>Try a different class, teacher, student, or status.</p>
+                </div>
               ) : (
                 pagedVerifications.map((row) => {
-                  const displayStatus = row.teacher_started_at || row.student_joined_at || row.teacher_ended_at
-                    ? row.verification_status
-                    : "missing";
-                  const statusColor = verificationStatusStyle(displayStatus);
+                  const displayStatus = getVerificationDisplayStatus(row);
+                  const statusLabel = VERIFICATION_STATUS_LABELS[displayStatus] || displayStatus;
+                  const statusIcon = VERIFICATION_STATUS_ICONS[displayStatus] || "🕓";
+                  const toneClass = verificationToneClass(displayStatus);
                   const teacherName = `${row.teacher_first_name || ""} ${row.teacher_last_name || ""}`.trim() || "Teacher";
                   const studentName = `${row.student_first_name || ""} ${row.student_last_name || ""}`.trim() || "Student";
+                  const teacherInitials = teacherName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "T";
+                  const studentInitials = studentName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "S";
                   const missingItems = getVerificationMissingItems(row);
                   const reviewReasons = getVerificationReviewReasons(row);
                   const hasRequiredEvidence = missingItems.length === 0;
@@ -2537,108 +2684,141 @@ export default function AdminDashboard() {
                   const evidenceLabel = row.evidence_mode === "screenshots"
                     ? "Start and end screenshots"
                     : row.evidence_mode === "recording"
-                      ? `Recording (${Math.floor(Number(row.recording_duration_seconds || 0) / 60)} min)`
+                      ? `Recording (${formatRecordingDuration(row.recording_duration_seconds)})`
                       : "No evidence mode selected";
                   const hasAnyProof = Boolean(row.start_proof_url || row.proof_url || row.recording_url);
+                  const evidenceSteps = [
+                    { label: "Started", done: Boolean(row.teacher_started_at) },
+                    { label: "Student joined", done: Boolean(row.student_joined_at) },
+                    { label: "Ended", done: Boolean(row.teacher_ended_at) },
+                    { label: "Proof", done: hasAnyProof },
+                  ];
+                  const showEvidenceNotice = (needsAdminReview || !hasRequiredEvidence)
+                    && !["verified", "incomplete"].includes(displayStatus);
+                  const noticeItems = needsAdminReview
+                    ? (reviewReasons.length ? reviewReasons : ["Manual admin review required"])
+                    : missingItems.map((item) => item.charAt(0).toUpperCase() + item.slice(1));
 
                   return (
-                    <article key={row.class_id} className={styles.verificationItem}>
-                      <div className={styles.verificationMain}>
-                        <div className={styles.verificationTitleRow}>
-                          <div>
-                            <h3>{row.class_name || "Untitled Class"}</h3>
-                            <p>{formatDate(row.scheduled_date)} · {formatTime(row.start_time)} - {formatTime(row.end_time)} · {row.duration || 0} min</p>
-                          </div>
-                          <span
-                            className={styles.statusPill}
-                            style={{ background: statusColor.background, color: statusColor.color }}
-                          >
-                            {VERIFICATION_STATUS_LABELS[displayStatus] || displayStatus}
-                          </span>
+                    <article key={row.class_id} className={`${styles.verifyCard} ${toneClass}`}>
+                      <div className={styles.verifyCardHead}>
+                        <span className={styles.verifyStatusIcon} aria-hidden="true">{statusIcon}</span>
+                        <div className={styles.verifyCardTitle}>
+                          <h3>{row.class_name || "Untitled Class"}</h3>
+                          <p className={styles.verifyWhen}>
+                            <span aria-hidden="true">📅</span> {formatDate(row.scheduled_date)}
+                            <span aria-hidden="true"> · </span>
+                            {formatTime(row.start_time)} – {formatTime(row.end_time)}
+                            <span aria-hidden="true"> · </span>
+                            {row.duration || 0} min
+                          </p>
                         </div>
-
-                        <div className={styles.verificationMetaGrid}>
-                          <div>
-                            <span>Teacher</span>
-                            <strong>{teacherName}</strong>
-                            <small>{row.teacher_email || "-"}</small>
-                          </div>
-                          <div>
-                            <span>Student</span>
-                            <strong>{studentName}</strong>
-                            <small>{row.student_email || "-"}</small>
-                          </div>
-                          <div>
-                            <span>Class Status</span>
-                            <strong>{row.class_status || "scheduled"}</strong>
-                            <small>Calendar lifecycle</small>
-                          </div>
-                        </div>
-
-                        <div className={styles.evidenceGrid}>
-                          <div><span>Start</span><strong>{formatDateTime(row.teacher_started_at)}</strong></div>
-                          <div><span>Student</span><strong>{formatDateTime(row.student_joined_at)}</strong></div>
-                          <div><span>End</span><strong>{formatDateTime(row.teacher_ended_at)}</strong></div>
-                          <div><span>Duration</span><strong>{Number(row.duration_minutes || 0)} min</strong></div>
-                        </div>
-
-                        <div className={styles.verificationNotes}>
-                          {row.review_reason && (
-                            <div className={styles.teacherReviewBox}>
-                              <span>Teacher Review Request</span>
-                              <p>{row.review_reason}</p>
-                            </div>
-                          )}
-                          <div className={styles.evidenceModeBox}>
-                            <span>Evidence</span>
-                            <strong>{evidenceLabel}</strong>
-                          </div>
-                          <div className={needsAdminReview ? styles.reviewReasonBox : hasRequiredEvidence ? styles.goodEvidenceNote : styles.missingEvidenceNote}>
-                            <strong>{needsAdminReview ? "Admin Check" : hasRequiredEvidence ? "Ready" : "Missing"}</strong>
-                            {needsAdminReview
-                              ? (
-                                  reviewReasons.length
-                                    ? reviewReasons.map((reason, index) => (
-                                        <span key={`${reason}-${index}`}>{reason}</span>
-                                      ))
-                                    : <span>Manual admin review required</span>
-                                )
-                              : <span>{hasRequiredEvidence ? "Evidence complete" : missingItems.join(", ")}</span>}
-                          </div>
-                        </div>
-
-                        {row.summary && (
-                          <div className={styles.verificationSummaryBlock}>
-                            <span>Class Summary</span>
-                            <p className={styles.verificationSummary}>{row.summary}</p>
-                          </div>
-                        )}
+                        <span className={`${styles.verifyBadge} ${toneClass}`}>{statusLabel}</span>
                       </div>
 
-                      <div className={styles.verificationActions}>
-                        <div className={styles.verificationActionsTitle}>Proof & Actions</div>
-                        {!hasAnyProof && <span className={styles.noProofText}>No proof uploaded</span>}
+                      <div className={styles.verifyPeople}>
+                        <div className={styles.verifyPerson}>
+                          <span className={styles.verifyAvatar} aria-hidden="true">{teacherInitials}</span>
+                          <div>
+                            <span className={styles.verifyPersonLabel}>Teacher</span>
+                            <strong>{teacherName}</strong>
+                          </div>
+                        </div>
+                        <div className={styles.verifyPerson}>
+                          <span className={`${styles.verifyAvatar} ${styles.verifyAvatarStudent}`} aria-hidden="true">{studentInitials}</span>
+                          <div>
+                            <span className={styles.verifyPersonLabel}>Student</span>
+                            <strong>{studentName}</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className={styles.verifySteps} aria-label="Class evidence checklist">
+                        {evidenceSteps.map((step) => (
+                          <span
+                            key={step.label}
+                            className={`${styles.verifyStep} ${step.done ? styles.verifyStepDone : styles.verifyStepMissing}`}
+                          >
+                            <span aria-hidden="true">{step.done ? "✓" : "○"}</span> {step.label}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className={styles.verifyFacts}>
+                        <div className={styles.verifyFact}>
+                          <span className={styles.verifyFactIcon} aria-hidden="true">⏱️</span>
+                          <div>
+                            <span>Class length</span>
+                            <strong>{Number(row.duration_minutes || 0)} min</strong>
+                          </div>
+                        </div>
+                        <div className={styles.verifyFact}>
+                          <span className={styles.verifyFactIcon} aria-hidden="true">
+                            {row.evidence_mode === "recording" ? "🎬" : row.evidence_mode === "screenshots" ? "🖼️" : "📎"}
+                          </span>
+                          <div>
+                            <span>Proof</span>
+                            <strong>{evidenceLabel}</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      {showEvidenceNotice && (
+                        <div className={`${styles.verifyNotice} ${needsAdminReview ? styles.verifyNoticeReview : styles.verifyNoticeMissing}`}>
+                          <div className={styles.verifyNoticeHead}>
+                            <span aria-hidden="true">{needsAdminReview ? "🔔" : "📭"}</span>
+                            <strong>{needsAdminReview ? "Needs your review" : "Some proof is missing"}</strong>
+                          </div>
+                          <ul className={styles.verifyNoticeList}>
+                            {noticeItems.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      <details className={styles.verifyDetails}>
+                        <summary>
+                          <span aria-hidden="true">📝</span>
+                          <span>Attendance and notes</span>
+                          <span className={styles.verifyChevron} aria-hidden="true">⌄</span>
+                        </summary>
+                        <div className={styles.verifyDetailsGrid}>
+                          <p><span>Teacher started</span><strong>{formatDateTime(row.teacher_started_at)}</strong></p>
+                          <p><span>Student joined</span><strong>{formatDateTime(row.student_joined_at)}</strong></p>
+                          <p><span>Teacher ended</span><strong>{formatDateTime(row.teacher_ended_at)}</strong></p>
+                          <p><span>Class status</span><strong>{row.class_status || "scheduled"}</strong></p>
+                          {row.review_reason && (
+                            <p className={styles.verifyDetailWide}><span>Teacher review request</span><strong>{row.review_reason}</strong></p>
+                          )}
+                          {row.summary && (
+                            <p className={styles.verifyDetailWide}><span>Class summary</span><strong>{row.summary}</strong></p>
+                          )}
+                        </div>
+                      </details>
+
+                      <div className={styles.verifyActions}>
                         {row.start_proof_url && (
                           <button
                             type="button"
-                            className={`${styles.linkBtn} ${styles.tableActionBtn}`}
+                            className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`}
                             onClick={() => openAuthenticatedFile(row.start_proof_url)}
                           >
-                            View Start
+                            <span aria-hidden="true">🖼️</span> Start photo
                           </button>
                         )}
                         {row.recording_url ? (
                           <button
                             type="button"
-                            className={`${styles.linkBtn} ${styles.tableActionBtn}`}
+                            className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`}
                             onClick={() => openClassRecording({ classId: row.class_id, notify })}
                           >
-                            View Recording
+                            <span aria-hidden="true">▶</span> Watch recording
                           </button>
                         ) : row.proof_url ? (
                           <button
                             type="button"
-                            className={`${styles.linkBtn} ${styles.tableActionBtn}`}
+                            className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`}
                             onClick={() => setSelectedProof({
                               url: resolveUploadUrl(row.proof_url),
                               className: row.class_name || "Class",
@@ -2647,7 +2827,7 @@ export default function AdminDashboard() {
                               schedule: `${formatDate(row.scheduled_date)} ${formatTime(row.start_time)}`,
                             })}
                           >
-                            View End
+                            <span aria-hidden="true">🖼️</span> End photo
                           </button>
                         ) : null}
 
@@ -2655,17 +2835,17 @@ export default function AdminDashboard() {
                           <>
                             <button
                               type="button"
-                              className={`${styles.approve} ${styles.tableActionBtn}`}
+                              className={`${styles.verifyActionBtn} ${styles.verifyActionPrimary}`}
                               onClick={() => requestApproveVerification(row)}
                             >
-                              Approve Verified
+                              <span aria-hidden="true">✅</span> Approve verified
                             </button>
                             <button
                               type="button"
-                              className={`${styles.warn} ${styles.tableActionBtn}`}
+                              className={`${styles.verifyActionBtn} ${styles.verifyActionWarn}`}
                               onClick={() => requestMarkVerificationIncomplete(row)}
                             >
-                              Mark Incomplete
+                              <span aria-hidden="true">⚠️</span> Mark incomplete
                             </button>
                           </>
                         )}
@@ -2673,10 +2853,10 @@ export default function AdminDashboard() {
                         {canRemoveVerification && (
                           <button
                             type="button"
-                            className={`${styles.dangerBtn} ${styles.tableActionBtn}`}
+                            className={`${styles.verifyActionBtn} ${styles.verifyActionDanger}`}
                             onClick={() => requestRemoveVerification(row)}
                           >
-                            Remove
+                            <span aria-hidden="true">🗑️</span> Remove record
                           </button>
                         )}
                       </div>
@@ -2685,26 +2865,27 @@ export default function AdminDashboard() {
                 })
               )}
             </div>
+
             {filteredVerifications.length > VERIFICATIONS_PER_PAGE && (
-              <div className={styles.pagination}>
+              <div className={styles.verifyPager}>
                 <button
                   type="button"
-                  className={styles.pageBtn}
+                  className={styles.verifyPagerBtn}
                   onClick={() => setVerificationPage((page) => Math.max(1, page - 1))}
                   disabled={safeVerificationPage === 1}
                 >
-                  Previous
+                  ← Previous
                 </button>
-                <span>
-                  Page {safeVerificationPage} of {verificationTotalPages}
+                <span className={styles.verifyPagerText}>
+                  Page <strong>{safeVerificationPage}</strong> of <strong>{verificationTotalPages}</strong>
                 </span>
                 <button
                   type="button"
-                  className={styles.pageBtn}
+                  className={styles.verifyPagerBtn}
                   onClick={() => setVerificationPage((page) => Math.min(verificationTotalPages, page + 1))}
                   disabled={safeVerificationPage === verificationTotalPages}
                 >
-                  Next
+                  Next →
                 </button>
               </div>
             )}
@@ -3654,392 +3835,478 @@ export default function AdminDashboard() {
         )}
 
         {active === "contracts" && (
-          <section className={styles.card}>
-            <div className={styles.cardHead}>
-              <div>
+          <section className={`${styles.card} ${styles.verifyPage}`}>
+            <div className={styles.verifyHero}>
+              <div className={styles.verifyHeroMark} aria-hidden="true">📦</div>
+              <div className={styles.verifyHeroText}>
+                <span className={styles.verifyKicker}>Class packages</span>
                 <h2>Manage Class Contracts</h2>
-                <p style={{ margin: "4px 0 0 0", fontSize: "0.9em", color: "#666" }}>
-                  Manage enrolled courses and active class packages for each student.
-                </p>
+                <p>Every student's course, teacher, and class balance in one place. Green means the package is healthy, amber is running out, and red needs a fix.</p>
               </div>
-              <button
-                className={styles.primary}
-                type="button"
-                onClick={contractSubTab === "packages" ? loadContracts : loadContractRequests}
-                disabled={contractsLoading || contractRequestsLoading}
-              >
-                {contractsLoading || contractRequestsLoading ? "Refreshing..." : "Refresh"}
-              </button>
-            </div>
-
-            <div className={styles.subTabs}>
-              <button
-                type="button"
-                className={`${styles.subTab} ${contractSubTab === "packages" ? styles.subTabActive : ""}`}
-                onClick={() => setContractSubTab("packages")}
-              >
-                Class Packages
-              </button>
-              <button
-                type="button"
-                className={`${styles.subTab} ${contractSubTab === "requests" ? styles.subTabActive : ""}`}
-                onClick={() => setContractSubTab("requests")}
-              >
-                Contract Requests
-              </button>
-            </div>
-
-            {contractSubTab === "requests" && (
-            <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 14, background: "#fafafa" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
-                <h3 style={{ margin: 0, fontSize: "1rem" }}>Student Contract Requests</h3>
-                <button className={styles.linkBtn} type="button" onClick={loadContractRequests}>
-                  Refresh Requests
+              <div className={styles.verifyHeroActions}>
+                <button
+                  className={styles.verifyHeroBtn}
+                  type="button"
+                  onClick={contractSubTab === "packages" ? loadContracts : loadContractRequests}
+                  disabled={contractsLoading || contractRequestsLoading}
+                >
+                  <span aria-hidden="true">↻</span> {contractsLoading || contractRequestsLoading ? "Refreshing..." : "Refresh"}
                 </button>
               </div>
-              <div className={styles.searchBar}>
-                <input
-                  type="search"
-                  value={contractRequestSearch}
-                  onChange={(e) => setContractRequestSearch(e.target.value)}
-                  placeholder="Search requests by student, email, course, status, or classes"
-                  aria-label="Search contract requests"
-                />
-              </div>
-              {contractRequestsLoading ? (
-                <div className={styles.empty}>Loading contract requests...</div>
-              ) : contractRequests.length === 0 ? (
-                <div className={styles.empty}>No contract requests yet</div>
-              ) : filteredContractRequests.length === 0 ? (
-                <div className={styles.empty}>No contract requests match your search</div>
-              ) : (
-                <div className={styles.tableWrap}>
-                  <table className={styles.table}>
-                    <thead>
-                      {/* One set of columns for both kinds of request. The
-                          header used to describe the new-contract shape while
-                          the extension rows had a different number of cells,
-                          so the two kinds did not line up - and the student
-                          note had nowhere to go at all. */}
-                      <tr>
-                        <th>Student</th>
-                        <th>Type</th>
-                        <th>Requested</th>
-                        <th>Duration</th>
-                        <th>Reason</th>
-                        <th>Status</th>
-                        <th>Requested at</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredContractRequests.map((request) => {
-                        // An extension is not a class purchase, so it gets its own
-                        // row shape. Rendering it in the same columns as a new
-                        // contract invited the admin to approve it as one - and
-                        // approving a new contract expires the student's package
-                        // and starts a fresh one at zero used, discarding the
-                        // balance they were asking to keep.
-                        const isExtension = request.request_type === "extension";
-                        const decisionChip = (
-                          <span
-                            style={{
-                              padding: "4px 8px",
-                              borderRadius: 999,
-                              background:
-                                request.status === "pending" ? "#fef3c7"
-                                : request.status === "approved" ? "#dcfce7"
-                                : request.status === "cancelled" ? "#f3f4f6" : "#fee2e2",
-                              color:
-                                request.status === "pending" ? "#92400e"
-                                : request.status === "approved" ? "#166534"
-                                : request.status === "cancelled" ? "#4b5563" : "#991b1b",
-                              fontWeight: 700,
-                              textTransform: "capitalize",
-                            }}
-                          >
-                            {request.status}
-                          </span>
-                        );
-
-                        // The earlier versions of a request the student changed.
-                        //
-                        // !! Kept because the request the admin reads is the LAST
-                        // !! one, and the last one alone is not the whole story.
-                        // !! A student who asked for a month, then realised they
-                        // !! needed two, then realised the illness had passed -
-                        // !! the admin should be able to see that, not just the
-                        // !! final version with no indication that it is the
-                        // !! third.
-                        const revisionHistory = Array.isArray(request.revisions) ? request.revisions : [];
-
-                        return (
-                          <tr key={request.request_id}>
-                            <td data-label="Student">
-                              <strong>{request.first_name} {request.last_name}</strong>
-                              <div style={{ fontSize: "0.8em", color: "#666" }}>{request.email}</div>
-                            </td>
-                            <td data-label="Type">
-                              <span
-                                style={{
-                                  padding: "4px 8px",
-                                  borderRadius: 999,
-                                  background: isExtension ? "#e0f2fe" : "#f3f4f6",
-                                  color: isExtension ? "#075985" : "#374151",
-                                  fontWeight: 700,
-                                  fontSize: "0.85em",
-                                }}
-                              >
-                                {isExtension ? "Extension" : "New contract"}
-                              </span>
-                            </td>
-                            {isExtension ? (
-                              <td data-label="Requested">
-                                <div style={{ fontWeight: 700 }}>
-                                  {request.classes_left_at_request ?? "?"} unused classes
-                                </div>
-                                <div style={{ fontSize: "0.8em", color: "#666" }}>
-                                  now: {request.package_classes_left ?? "?"}
-                                </div>
-                                <div style={{ fontSize: "0.8em", color: "#666", marginTop: 2 }}>
-                                  contract ended {formatDate(request.package_expires_at)}
-                                </div>
-                                <div style={{ fontSize: "0.8em", color: "#666" }}>
-                                  status: {request.package_status || "unknown"}
-                                </div>
-                              </td>
-                            ) : (
-                              <td data-label="Requested">
-                                <div style={{ fontWeight: 700 }}>
-                                  {request.course_name || "Course not set"}
-                                </div>
-                                <div style={{ fontSize: "0.8em", color: "#666" }}>
-                                  {request.requested_classes} classes
-                                </div>
-                              </td>
-                            )}
-                            <td data-label="Duration">{request.class_duration || 50} min</td>
-                            <td data-label="Reason">
-                              {/* The reason the student gave, and what they said
-                                  before. An extension request exists to say "I
-                                  need more time, here is why" - so the why has
-                                  to be in the queue, not only in the database. */}
-                              <div style={{ fontSize: "0.85em", color: "#374151", maxWidth: 260 }}>
-                                {request.trial_notes || "—"}
-                              </div>
-                              {revisionHistory.length > 0 && (
-                                <details style={{ marginTop: 4, fontSize: "0.8em", color: "#666" }}>
-                                  <summary style={{ cursor: "pointer" }}>
-                                    {request.revision_label || "Revised"}
-                                  </summary>
-                                  {revisionHistory.map((revision, index) => (
-                                    <div
-                                      key={`${revision.revision}-${index}`}
-                                      style={{ marginTop: 4, paddingLeft: 8, borderLeft: "2px solid #e5e7eb" }}
-                                    >
-                                      <div style={{ fontWeight: 700 }}>
-                                        Earlier version {index + 1}
-                                        {revision.revised_at
-                                          ? ` - ${formatDate(revision.revised_at)}`
-                                          : ""}
-                                      </div>
-                                      <div>{revision.trial_notes || "No reason given."}</div>
-                                    </div>
-                                  ))}
-                                </details>
-                              )}
-                            </td>
-                            <td data-label="Status">{decisionChip}</td>
-                            <td data-label="Requested at">{formatDate(request.requested_at)}</td>
-                            <td data-label="Actions">
-                              {request.status === "pending" ? (
-                                <div className={styles.rowActions}>
-                                  <button
-                                    className={styles.approve}
-                                    type="button"
-                                    onClick={() =>
-                                      isExtension
-                                        ? setExtensionApproval({
-                                            request,
-                                            date: defaultExtensionDate(request),
-                                          })
-                                        : requestUpdateContractRequest(request.request_id, "approved", request)
-                                    }
-                                    disabled={updatingContractRequestId === request.request_id}
-                                  >
-                                    Approve
-                                  </button>
-                                  <button
-                                    className={styles.decline}
-                                    type="button"
-                                    onClick={() => requestUpdateContractRequest(request.request_id, "declined", request)}
-                                    disabled={updatingContractRequestId === request.request_id}
-                                  >
-                                    Decline
-                                  </button>
-                                </div>
-                              ) : (
-                                <span style={{ color: "#666", fontSize: "0.9em" }}>
-                                  {request.resolved_at ? `Resolved ${formatDate(request.resolved_at)}` : "Resolved"}
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
             </div>
-            )}
+
+            <div className={styles.contractTabs} role="tablist" aria-label="Contract sections">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={contractSubTab === "packages"}
+                className={`${styles.contractTab} ${contractSubTab === "packages" ? styles.contractTabActive : ""}`}
+                onClick={() => setContractSubTab("packages")}
+              >
+                <span aria-hidden="true">📦</span>
+                <span className={styles.contractTabLabel}>Class Packages</span>
+                <span className={styles.contractTabCount}>{contracts.length}</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={contractSubTab === "requests"}
+                className={`${styles.contractTab} ${contractSubTab === "requests" ? styles.contractTabActive : ""}`}
+                onClick={() => setContractSubTab("requests")}
+              >
+                <span aria-hidden="true">📨</span>
+                <span className={styles.contractTabLabel}>Contract Requests</span>
+                <span className={styles.contractTabCount}>
+                  {contractRequests.length}
+                </span>
+              </button>
+            </div>
 
             {contractSubTab === "packages" && (
-            <>
-            <div className={styles.searchBar}>
-              <input
-                type="search"
-                value={contractSearch}
-                onChange={(e) => setContractSearch(e.target.value)}
-                placeholder="Search packages by student, email, course, teacher, or status"
-                aria-label="Search class packages"
-              />
-            </div>
-            <div className={styles.tableWrap}>
-              {contractsLoading ? (
-                <div className={styles.empty}>Loading contracts...</div>
-              ) : contracts.length === 0 ? (
-                <div className={styles.empty}>No active students found</div>
-              ) : filteredContracts.length === 0 ? (
-                <div className={styles.empty}>No class packages match your search</div>
-              ) : (
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Student</th>
-                      <th>Course</th>
-                      <th>Teacher</th>
-                      <th>Duration</th>
-                      <th>Total</th>
-                      <th>Used</th>
-                      <th>Left</th>
-                      <th>Expires</th>
-                      <th>Status</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredContracts.map((row) => {
+              <>
+                <div className={styles.verifyToolbar}>
+                  <div className={styles.verifySearchWrap}>
+                    <span className={styles.verifySearchIcon} aria-hidden="true">🔍</span>
+                    <input
+                      type="search"
+                      value={contractSearch}
+                      onChange={(e) => setContractSearch(e.target.value)}
+                      placeholder="Search a student, email, course, teacher, or status"
+                      aria-label="Search class packages"
+                    />
+                    {contractSearch && (
+                      <button
+                        type="button"
+                        className={styles.verifySearchClear}
+                        onClick={() => setContractSearch("")}
+                        aria-label="Clear search"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <p className={styles.verifyCountLine} aria-live="polite">
+                    Showing <strong>{filteredContracts.length}</strong> of <strong>{contracts.length}</strong>{" "}
+                    {contracts.length === 1 ? "student" : "students"}
+                  </p>
+                </div>
+
+                <div className={styles.contractList} aria-busy={contractsLoading}>
+                  {contractsLoading ? (
+                    <div className={styles.verifyEmpty}>
+                      <span className={styles.verifyEmptyIcon} aria-hidden="true">⏳</span>
+                      <h3>Checking the packages...</h3>
+                      <p>This will only take a moment.</p>
+                    </div>
+                  ) : contracts.length === 0 ? (
+                    <div className={styles.verifyEmpty}>
+                      <span className={styles.verifyEmptyIcon} aria-hidden="true">🌱</span>
+                      <h3>No class packages yet</h3>
+                      <p>Active students will show up here once they are enrolled.</p>
+                    </div>
+                  ) : filteredContracts.length === 0 ? (
+                    <div className={styles.verifyEmpty}>
+                      <span className={styles.verifyEmptyIcon} aria-hidden="true">🔎</span>
+                      <h3>Nothing matches that search</h3>
+                      <p>Try a different student, course, teacher, or status.</p>
+                    </div>
+                  ) : (
+                    filteredContracts.map((row) => {
                       const total = Math.max(0, parseInt(row.total_classes, 10) || 0);
                       const used = Math.max(0, parseInt(row.classes_used, 10) || 0);
                       const classesLeft = Math.max(0, total - used);
+                      const leftPercent = total > 0 ? Math.min(100, Math.round((classesLeft / total) * 100)) : 0;
+                      const studentName = `${row.first_name || ""} ${row.last_name || ""}`.trim() || "Student";
+                      const initials = studentName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "S";
+                      const packageStatus = row.package_status || "active";
+                      const statusMeta = packageStatus === "expired"
+                        ? { label: "Expired", icon: "⏰", tone: styles.verifyToneDanger }
+                        : packageStatus === "cancelled"
+                          ? { label: "Cancelled", icon: "🚫", tone: styles.verifyToneNeutral }
+                          : classesLeft <= 0
+                            ? { label: "No classes left", icon: "📭", tone: styles.verifyToneDanger }
+                            : { label: "Active", icon: "✅", tone: styles.verifyToneSuccess };
+
                       return (
-                        <tr key={row.user_id}>
-                          <td data-label="Student">
-                            <strong>{row.first_name} {row.last_name}</strong>
-                            <div style={{ fontSize: "0.8em", color: "#666" }}>{row.email}</div>
-                          </td>
-                          <td data-label="Course">
-                            <select
-                              value={row.course_id}
-                              onChange={(e) => updateContractRow(row.user_id, "course_id", e.target.value)}
-                            >
-                              <option value="">Keep current</option>
-                              {courses.map((course) => (
-                                <option key={course.course_id} value={course.course_id}>
-                                  {course.course_name}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td data-label="Teacher">
-                            <select
-                              value={row.assigned_teacher_id}
-                              onChange={(e) => updateContractRow(row.user_id, "assigned_teacher_id", e.target.value)}
-                            >
-                              <option value="">Unassigned</option>
-                              {teachers
-                                .filter((teacher) => !row.course_id || teacherCourseMap[String(teacher.user_id)]?.has(String(row.course_id)))
-                                .map((teacher) => (
-                                <option key={teacher.user_id} value={teacher.user_id}>
-                                  {teacher.first_name} {teacher.last_name}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td data-label="Duration">
-                            <select
-                              value={row.class_duration || 50}
-                              onChange={(e) => updateContractRow(row.user_id, "class_duration", e.target.value)}
-                            >
-                              <option value="25">25 min</option>
-                              <option value="50">50 min</option>
-                            </select>
-                          </td>
-                          <td data-label="Total">
-                            <input
-                              type="number"
-                              min="0"
-                              value={row.total_classes}
-                              onChange={(e) => updateContractRow(row.user_id, "total_classes", e.target.value)}
-                              style={{ width: 78 }}
-                            />
-                          </td>
-                          <td data-label="Used">
-                            <input
-                              type="number"
-                              min="0"
-                              max={total}
-                              value={row.classes_used}
-                              onChange={(e) => updateContractRow(row.user_id, "classes_used", e.target.value)}
-                              style={{ width: 78 }}
-                            />
-                          </td>
-                          <td data-label="Left">
-                            <span style={{
-                              display: "inline-block",
-                              minWidth: 34,
-                              textAlign: "center",
-                              padding: "4px 8px",
-                              borderRadius: 999,
-                              background: classesLeft <= 0 ? "#fee2e2" : "#dcfce7",
-                              color: classesLeft <= 0 ? "#991b1b" : "#166534",
-                              fontWeight: 700,
-                            }}>
-                              {classesLeft}
+                        <article key={row.user_id} className={`${styles.verifyCard} ${styles.contractCard} ${statusMeta.tone}`}>
+                          <div className={styles.verifyCardHead}>
+                            <span className={`${styles.verifyAvatar} ${styles.verifyAvatarStudent}`} aria-hidden="true">{initials}</span>
+                            <div className={styles.verifyCardTitle}>
+                              <h3>{studentName}</h3>
+                              <p className={styles.verifyWhen}>
+                                <span aria-hidden="true">✉️</span> {row.email || "No email on file"}
+                              </p>
+                            </div>
+                            <span className={`${styles.verifyBadge} ${styles.contractBadge} ${statusMeta.tone}`}>
+                              <span aria-hidden="true">{statusMeta.icon}</span> {statusMeta.label}
                             </span>
-                          </td>
-                          <td data-label="Expires">
-                            <ContractExpiryBadge expiresAt={row.expires_at} size="sm" />
-                          </td>
-                          <td data-label="Status">
-                            <select
-                              value={row.package_status}
-                              onChange={(e) => updateContractRow(row.user_id, "package_status", e.target.value)}
+                          </div>
+
+                          <div className={styles.contractProgress}>
+                            <div className={styles.contractProgressTop}>
+                              <span>{classesLeft} of {total} classes left</span>
+                              <strong>{used} used</strong>
+                            </div>
+                            <div
+                              className={styles.contractBar}
+                              role="progressbar"
+                              aria-valuemin={0}
+                              aria-valuemax={total || 1}
+                              aria-valuenow={Math.min(classesLeft, total || 1)}
+                              aria-valuetext={`${classesLeft} of ${total} classes left`}
+                              aria-label={`${studentName} class balance`}
                             >
-                              <option value="active">Active</option>
-                              <option value="expired">Expired</option>
-                              <option value="cancelled">Cancelled</option>
-                            </select>
-                          </td>
-                          <td data-label="Actions">
+                              <span style={{ width: `${leftPercent}%` }} />
+                            </div>
+                            <div className={styles.contractProgressMeta}>
+                              <span className={styles.contractProgressLabel}>
+                                <span aria-hidden="true">📅</span> Expires
+                              </span>
+                              <ContractExpiryBadge expiresAt={row.expires_at} showDate />
+                            </div>
+                          </div>
+
+                          <div className={styles.contractFields}>
+                            <label className={styles.contractField}>
+                              <span>Course</span>
+                              <select
+                                value={row.course_id}
+                                onChange={(e) => updateContractRow(row.user_id, "course_id", e.target.value)}
+                              >
+                                <option value="">Keep current</option>
+                                {courses.map((course) => (
+                                  <option key={course.course_id} value={course.course_id}>
+                                    {course.course_name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className={styles.contractField}>
+                              <span>Teacher</span>
+                              <select
+                                value={row.assigned_teacher_id}
+                                onChange={(e) => updateContractRow(row.user_id, "assigned_teacher_id", e.target.value)}
+                              >
+                                <option value="">Unassigned</option>
+                                {teachers
+                                  .filter((teacher) => !row.course_id || teacherCourseMap[String(teacher.user_id)]?.has(String(row.course_id)))
+                                  .map((teacher) => (
+                                    <option key={teacher.user_id} value={teacher.user_id}>
+                                      {teacher.first_name} {teacher.last_name}
+                                    </option>
+                                  ))}
+                              </select>
+                            </label>
+                            <label className={styles.contractField}>
+                              <span>Duration</span>
+                              <select
+                                value={row.class_duration || 50}
+                                onChange={(e) => updateContractRow(row.user_id, "class_duration", e.target.value)}
+                              >
+                                <option value="25">25 min</option>
+                                <option value="50">50 min</option>
+                              </select>
+                            </label>
+                            <label className={styles.contractField}>
+                              <span>Total classes</span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={row.total_classes}
+                                onChange={(e) => updateContractRow(row.user_id, "total_classes", e.target.value)}
+                              />
+                            </label>
+                            <label className={styles.contractField}>
+                              <span>Classes used</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max={total}
+                                value={row.classes_used}
+                                onChange={(e) => updateContractRow(row.user_id, "classes_used", e.target.value)}
+                              />
+                            </label>
+                            <label className={styles.contractField}>
+                              <span>Status</span>
+                              <select
+                                value={row.package_status}
+                                onChange={(e) => updateContractRow(row.user_id, "package_status", e.target.value)}
+                              >
+                                <option value="active">Active</option>
+                                <option value="expired">Expired</option>
+                                <option value="cancelled">Cancelled</option>
+                              </select>
+                            </label>
+                          </div>
+
+                          <div className={styles.verifyActions}>
                             <button
-                              className={styles.approve}
+                              className={`${styles.verifyActionBtn} ${styles.verifyActionPrimary}`}
                               type="button"
                               onClick={() => requestSaveContract(row)}
                               disabled={savingContractId === row.user_id}
                             >
-                              {savingContractId === row.user_id ? "Saving..." : row.package_id ? "Save" : "Create"}
+                              <span aria-hidden="true">💾</span>{" "}
+                              {savingContractId === row.user_id
+                                ? "Saving..."
+                                : row.package_id
+                                  ? "Save changes"
+                                  : "Create package"}
                             </button>
-                          </td>
-                        </tr>
+                          </div>
+                        </article>
                       );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-            </>
+                    })
+                  )}
+                </div>
+              </>
+            )}
+
+            {contractSubTab === "requests" && (
+              <>
+                <div className={styles.verifyToolbar}>
+                  <div className={styles.verifySearchWrap}>
+                    <span className={styles.verifySearchIcon} aria-hidden="true">🔍</span>
+                    <input
+                      type="search"
+                      value={contractRequestSearch}
+                      onChange={(e) => setContractRequestSearch(e.target.value)}
+                      placeholder="Search requests by student, email, course, status, or classes"
+                      aria-label="Search contract requests"
+                    />
+                    {contractRequestSearch && (
+                      <button
+                        type="button"
+                        className={styles.verifySearchClear}
+                        onClick={() => setContractRequestSearch("")}
+                        aria-label="Clear search"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <p className={styles.verifyCountLine} aria-live="polite">
+                    Showing <strong>{filteredContractRequests.length}</strong> of <strong>{contractRequests.length}</strong>{" "}
+                    {contractRequests.length === 1 ? "request" : "requests"}
+                  </p>
+                </div>
+
+                <div className={styles.contractList} aria-busy={contractRequestsLoading}>
+                  {contractRequestsLoading ? (
+                    <div className={styles.verifyEmpty}>
+                      <span className={styles.verifyEmptyIcon} aria-hidden="true">⏳</span>
+                      <h3>Checking the requests...</h3>
+                      <p>This will only take a moment.</p>
+                    </div>
+                  ) : contractRequests.length === 0 ? (
+                    <div className={styles.verifyEmpty}>
+                      <span className={styles.verifyEmptyIcon} aria-hidden="true">🌱</span>
+                      <h3>No contract requests yet</h3>
+                      <p>When a student asks for more classes, the request will show up here.</p>
+                    </div>
+                  ) : filteredContractRequests.length === 0 ? (
+                    <div className={styles.verifyEmpty}>
+                      <span className={styles.verifyEmptyIcon} aria-hidden="true">🔎</span>
+                      <h3>Nothing matches that search</h3>
+                      <p>Try a different student, course, or status.</p>
+                    </div>
+                  ) : (
+                    filteredContractRequests.map((request) => {
+                      const isExtension = request.request_type === "extension";
+                      const studentName = `${request.first_name || ""} ${request.last_name || ""}`.trim() || "Student";
+                      const initials = studentName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "S";
+                      const statusMeta = {
+                        pending: { label: "Waiting", icon: "⏳", tone: styles.verifyToneWarn },
+                        approved: { label: "Approved", icon: "✅", tone: styles.verifyToneSuccess },
+                        declined: { label: "Declined", icon: "🚫", tone: styles.verifyToneDanger },
+                        cancelled: { label: "Cancelled", icon: "⚪", tone: styles.verifyToneNeutral },
+                      }[request.status] || { label: request.status || "Waiting", icon: "⏳", tone: styles.verifyToneWarn };
+                      const revisionHistory = Array.isArray(request.revisions) ? request.revisions : [];
+
+                      return (
+                        <article key={request.request_id} className={`${styles.verifyCard} ${styles.contractCard} ${statusMeta.tone}`}>
+                          <div className={styles.verifyCardHead}>
+                            <span className={`${styles.verifyAvatar} ${styles.verifyAvatarStudent}`} aria-hidden="true">{initials}</span>
+                            <div className={styles.verifyCardTitle}>
+                              <h3>{studentName}</h3>
+                              <p className={styles.verifyWhen}>
+                                <span aria-hidden="true">✉️</span> {request.email || "No email on file"}
+                              </p>
+                            </div>
+                            <span className={`${styles.verifyBadge} ${styles.contractBadge} ${statusMeta.tone}`}>
+                              <span aria-hidden="true">{statusMeta.icon}</span> {statusMeta.label}
+                            </span>
+                          </div>
+
+                          <div className={styles.verifyFacts}>
+                            <div className={styles.verifyFact}>
+                              <span className={styles.verifyFactIcon} aria-hidden="true">📦</span>
+                              <div>
+                                <span>Type</span>
+                                <strong>{isExtension ? "Extension" : "New contract"}</strong>
+                              </div>
+                            </div>
+                            {isExtension ? (
+                              <>
+                                <div className={styles.verifyFact}>
+                                  <span className={styles.verifyFactIcon} aria-hidden="true">🧮</span>
+                                  <div>
+                                    <span>Unused at request</span>
+                                    <strong>{request.classes_left_at_request ?? "?"} classes</strong>
+                                  </div>
+                                </div>
+                                <div className={styles.verifyFact}>
+                                  <span className={styles.verifyFactIcon} aria-hidden="true">📦</span>
+                                  <div>
+                                    <span>Left now</span>
+                                    <strong>{request.package_classes_left ?? "?"} classes</strong>
+                                  </div>
+                                </div>
+                                <div className={styles.verifyFact}>
+                                  <span className={styles.verifyFactIcon} aria-hidden="true">📅</span>
+                                  <div>
+                                    <span>Contract ended</span>
+                                    <strong>{formatDate(request.package_expires_at)}</strong>
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div className={styles.verifyFact}>
+                                  <span className={styles.verifyFactIcon} aria-hidden="true">🎓</span>
+                                  <div>
+                                    <span>Course</span>
+                                    <strong>{request.course_name || "Course not set"}</strong>
+                                  </div>
+                                </div>
+                                <div className={styles.verifyFact}>
+                                  <span className={styles.verifyFactIcon} aria-hidden="true">🧮</span>
+                                  <div>
+                                    <span>Classes</span>
+                                    <strong>{request.requested_classes} classes</strong>
+                                  </div>
+                                </div>
+                                <div className={styles.verifyFact}>
+                                  <span className={styles.verifyFactIcon} aria-hidden="true">⏱️</span>
+                                  <div>
+                                    <span>Duration</span>
+                                    <strong>{request.class_duration || 50} min</strong>
+                                  </div>
+                                </div>
+                              </>
+                            )}
+                          </div>
+
+                          <p className={styles.requestMeta}>
+                            <span aria-hidden="true">📨</span> Requested {formatDate(request.requested_at)}
+                            {isExtension && request.package_status ? ` · package ${request.package_status}` : ""}
+                          </p>
+
+                          <div className={styles.requestReason}>
+                            <span className={styles.requestReasonIcon} aria-hidden="true">💬</span>
+                            <div>
+                              <span className={styles.requestReasonLabel}>Why they are asking</span>
+                              <strong>{request.trial_notes || "No reason given."}</strong>
+                            </div>
+                          </div>
+
+                          {revisionHistory.length > 0 && (
+                            <details className={styles.verifyDetails}>
+                              <summary>
+                                <span aria-hidden="true">🕘</span>
+                                <span>{request.revision_label || `${revisionHistory.length} earlier version${revisionHistory.length === 1 ? "" : "s"}`}</span>
+                                <span className={styles.verifyChevron} aria-hidden="true">⌄</span>
+                              </summary>
+                              <div className={styles.contractRevisions}>
+                                {revisionHistory.map((revision, index) => (
+                                  <div className={styles.contractRevision} key={`${revision.revision}-${index}`}>
+                                    <strong>
+                                      Earlier version {index + 1}
+                                      {revision.revised_at ? ` · ${formatDate(revision.revised_at)}` : ""}
+                                    </strong>
+                                    <span>{revision.trial_notes || "No reason given."}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          )}
+
+                          {request.status === "pending" ? (
+                            <div className={styles.verifyActions}>
+                              <button
+                                className={`${styles.verifyActionBtn} ${styles.verifyActionPrimary}`}
+                                type="button"
+                                onClick={() =>
+                                  isExtension
+                                    ? setExtensionApproval({
+                                        request,
+                                        date: defaultExtensionDate(request),
+                                      })
+                                    : requestUpdateContractRequest(request.request_id, "approved", request)
+                                }
+                                disabled={updatingContractRequestId === request.request_id}
+                              >
+                                <span aria-hidden="true">✅</span>{" "}
+                                {updatingContractRequestId === request.request_id
+                                  ? "Working..."
+                                  : isExtension
+                                    ? "Approve extension"
+                                    : "Approve request"}
+                              </button>
+                              <button
+                                className={`${styles.verifyActionBtn} ${styles.verifyActionDanger}`}
+                                type="button"
+                                onClick={() => requestUpdateContractRequest(request.request_id, "declined", request)}
+                                disabled={updatingContractRequestId === request.request_id}
+                              >
+                                <span aria-hidden="true">✋</span> Decline
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              {request.resolved_at && (
+                                <p className={styles.requestMeta}>
+                                  <span aria-hidden="true">✔</span> Resolved {formatDate(request.resolved_at)}
+                                </p>
+                              )}
+                              <div className={styles.verifyActions}>
+                                <button
+                                  className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`}
+                                  type="button"
+                                  onClick={() => requestArchiveContractRequest(request)}
+                                  disabled={updatingContractRequestId === request.request_id}
+                                >
+                                  <span aria-hidden="true">🗂️</span> Remove from list
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </article>
+                      );
+                    })
+                  )}
+                </div>
+              </>
             )}
           </section>
         )}
@@ -4156,170 +4423,185 @@ export default function AdminDashboard() {
           </section>
         )}
         {active === "requests" && (
-          <section className={styles.card}>
-            <div className={styles.cardHead}>
-              <h2>Schedule Requests</h2>
-              <p style={{ margin: "4px 0 0 0", fontSize: "0.9em", color: "#666" }}>Manage student reschedule requests</p>
-            </div>
-
-            {/* Filter Tabs */}
-            <div className={styles.filterTabs}>
-              {["all", "pending", "approved", "declined"].map((status) => {
-                const counts = {
-                  all: requests.length,
-                  pending: requests.filter(r => r.status === "pending").length,
-                  approved: requests.filter(r => r.status === "approved").length,
-                  declined: requests.filter(r => r.status === "declined").length,
-                };
-                return (
-                  <button
-                    key={status}
-                    onClick={() => setRequestFilter(status)}
-                    style={{
-                      padding: "8px 16px",
-                      border: "none",
-                      background: requestFilter === status ? "#0f0f0f" : "#f5f5f5",
-                      color: requestFilter === status ? "#fff" : "#333",
-                      borderRadius: "6px",
-                      cursor: "pointer",
-                      fontWeight: requestFilter === status ? "600" : "500",
-                      fontSize: "0.9em",
-                      transition: "all 0.2s",
-                    }}
-                  >
-                    {status.charAt(0).toUpperCase() + status.slice(1)} ({counts[status]})
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Clear All Button */}
-            {requests.length > 0 && (
-              <div style={{ marginBottom: "16px", textAlign: "right" }}>
+          <section className={`${styles.card} ${styles.verifyPage}`}>
+            <div className={styles.verifyHero}>
+              <div className={styles.verifyHeroMark} aria-hidden="true">🔁</div>
+              <div className={styles.verifyHeroText}>
+                <span className={styles.verifyKicker}>Schedule helpers</span>
+                <h2>Reschedule Requests</h2>
+                <p>A class needs a new time, so the request lands here. Amber is still waiting, green is approved, and red is declined.</p>
+              </div>
+              <div className={styles.verifyHeroActions}>
                 <button
-                  onClick={requestDeleteAllRequests}
-                  className={styles.warn}
-                  style={{ fontSize: "0.9em" }}
+                  className={styles.verifyHeroBtn}
+                  type="button"
+                  onClick={() => loadRequests()}
+                  disabled={requestsLoading}
                 >
-                  Clear All Requests
+                  <span aria-hidden="true">↻</span> {requestsLoading ? "Refreshing..." : "Refresh"}
+                </button>
+                <button
+                  className={`${styles.verifyHeroBtn} ${styles.verifyHeroBtnDanger}`}
+                  type="button"
+                  onClick={requestDeleteAllRequests}
+                  disabled={!requests.length || requestsLoading}
+                  title="Deletes every reschedule request"
+                >
+                  <span aria-hidden="true">🧹</span> Clear all
                 </button>
               </div>
-            )}
+            </div>
 
-            {/* Requests List */}
-            <div className={styles.tableWrap}>
+            <div className={styles.verifyQuickFilters} role="group" aria-label="Filter reschedule requests by status">
+              {requestQuickFilters.map((filter) => (
+                <button
+                  key={filter.key}
+                  type="button"
+                  className={`${styles.verifyFilterCard} ${filter.tone} ${requestFilter === filter.key ? styles.verifyFilterCardActive : ""}`}
+                  onClick={() => setRequestFilter(filter.key)}
+                  aria-pressed={requestFilter === filter.key}
+                >
+                  <span className={styles.verifyFilterTop}>
+                    <span className={styles.verifyFilterIcon} aria-hidden="true">{filter.icon}</span>
+                    <span className={styles.verifyFilterCount}>{filter.count}</span>
+                  </span>
+                  <span className={styles.verifyFilterLabel}>{filter.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <p className={styles.verifyCountLine} aria-live="polite">
+              Showing <strong>{filteredRequests.length}</strong> of <strong>{requests.length}</strong>{" "}
+              {requests.length === 1 ? "request" : "requests"}
+            </p>
+
+            <div className={styles.requestList} aria-busy={requestsLoading}>
               {requestsLoading ? (
-                <div style={{ textAlign: "center", padding: "32px", color: "#999" }}>
-                  Loading requests...
+                <div className={styles.verifyEmpty}>
+                  <span className={styles.verifyEmptyIcon} aria-hidden="true">⏳</span>
+                  <h3>Checking the requests...</h3>
+                  <p>This will only take a moment.</p>
                 </div>
               ) : requests.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "32px", color: "#999" }}>
-                  No reschedule requests at this time
+                <div className={styles.verifyEmpty}>
+                  <span className={styles.verifyEmptyIcon} aria-hidden="true">🌱</span>
+                  <h3>No reschedule requests yet</h3>
+                  <p>When a class needs a new time, the request will show up here.</p>
+                </div>
+              ) : filteredRequests.length === 0 ? (
+                <div className={styles.verifyEmpty}>
+                  <span className={styles.verifyEmptyIcon} aria-hidden="true">🔎</span>
+                  <h3>No {requestQuickFilters.find((filter) => filter.key === requestFilter)?.label.toLowerCase() || "matching"} requests</h3>
+                  <p>Try another filter to see the rest.</p>
                 </div>
               ) : (
-                <table className={styles.table}>
-                  <thead>
-                    <tr style={{ background: "#f5f5f5", borderBottom: "2px solid #e0e0e0" }}>
-                      <th style={{ padding: "12px", textAlign: "left", fontWeight: "600", color: "#333" }}>Class</th>
-                      <th style={{ padding: "12px", textAlign: "left", fontWeight: "600", color: "#333" }}>Requester</th>
-                      <th style={{ padding: "12px", textAlign: "left", fontWeight: "600", color: "#333" }}>Current Schedule</th>
-                      <th style={{ padding: "12px", textAlign: "left", fontWeight: "600", color: "#333" }}>Requested Schedule</th>
-                      <th style={{ padding: "12px", textAlign: "left", fontWeight: "600", color: "#333" }}>Status</th>
-                      <th style={{ padding: "12px", textAlign: "left", fontWeight: "600", color: "#333" }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {requests
-                      .filter(r => requestFilter === "all" || r.status === requestFilter)
-                      .map((r) => {
-                        const statusColors = {
-                          pending: { bg: "#fff3cd", text: "#856404" },
-                          approved: { bg: "#d4edda", text: "#155724" },
-                          declined: { bg: "#f8d7da", text: "#721c24" },
-                        };
-                        const statusColor = statusColors[r.status] || statusColors.pending;
+                filteredRequests.map((request) => {
+                  const toneClass = requestStatusToneClass(request.status);
+                  const statusMeta = requestStatusMeta(request.status);
+                  const requesterName = `${request.requester_first || ""} ${request.requester_last || ""}`.trim() || "Requester";
+                  const teacherName = `${request.teacher_first || ""} ${request.teacher_last || ""}`.trim();
+                  const studentName = `${request.student_first || ""} ${request.student_last || ""}`.trim();
+                  const initialsFor = (name, fallback) =>
+                    name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || fallback;
 
-                        return (
-                          <tr key={r.request_id} style={{ borderBottom: "1px solid #e0e0e0", background: "#fff" }}>
-                            <td data-label="Class" style={{ padding: "12px", verticalAlign: "top" }}>
-                              <div style={{ fontWeight: "500", color: "#333" }}>{r.class_name || "Untitled Class"}</div>
-                              <div style={{ fontSize: "0.8em", color: "#666", marginTop: "2px" }}>
-                                Teacher: {r.teacher_first} {r.teacher_last}
+                  return (
+                    <article className={`${styles.verifyCard} ${toneClass}`} key={request.request_id}>
+                      <div className={styles.verifyCardHead}>
+                        <span className={styles.verifyStatusIcon} aria-hidden="true">{statusMeta.icon}</span>
+                        <div className={styles.verifyCardTitle}>
+                          <h3>{request.class_name || "Untitled class"}</h3>
+                          <p className={styles.verifyWhen}>
+                            <span aria-hidden="true">📨</span> Requested by {requesterName}
+                            {request.requested_at && (
+                              <>
+                                <span aria-hidden="true"> · </span>
+                                {formatDate(request.requested_at)}
+                              </>
+                            )}
+                          </p>
+                        </div>
+                        <span className={`${styles.verifyBadge} ${toneClass}`}>{statusMeta.label}</span>
+                      </div>
+
+                      <div className={styles.requestSwap} aria-label="Current and requested class schedule">
+                        <div className={styles.requestSlot}>
+                          <span className={styles.requestSlotLabel}>Now</span>
+                          <strong className={styles.requestSlotDate}>{formatDate(request.scheduled_date)}</strong>
+                          <span className={styles.requestSlotTime}>{formatTime(request.start_time)}</span>
+                        </div>
+                        <span className={styles.requestArrow} aria-hidden="true">→</span>
+                        <div className={`${styles.requestSlot} ${styles.requestSlotNew}`}>
+                          <span className={styles.requestSlotLabel}>Wants</span>
+                          <strong className={styles.requestSlotDate}>{formatDate(request.requested_date)}</strong>
+                          <span className={styles.requestSlotTime}>{formatTime(request.requested_time)}</span>
+                        </div>
+                      </div>
+
+                      {(teacherName || studentName) && (
+                        <div className={styles.verifyPeople}>
+                          {teacherName && (
+                            <div className={styles.verifyPerson}>
+                              <span className={styles.verifyAvatar} aria-hidden="true">{initialsFor(teacherName, "T")}</span>
+                              <div>
+                                <span className={styles.verifyPersonLabel}>Teacher</span>
+                                <strong>{teacherName}</strong>
                               </div>
-                              {r.student_first && (
-                                <div style={{ fontSize: "0.8em", color: "#666", marginTop: "2px" }}>
-                                  Student: {r.student_first} {r.student_last}
-                                </div>
-                              )}
-                              {r.reason && (
-                                <div style={{ fontSize: "0.8em", color: "#666", marginTop: "4px", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.reason}>
-                                  Reason: {r.reason}
-                                </div>
-                              )}
-                            </td>
-                            <td data-label="Requester" style={{ padding: "12px", verticalAlign: "top" }}>
-                              <div style={{ fontWeight: "500" }}>{r.requester_first} {r.requester_last}</div>
-                              <div style={{ fontSize: "0.8em", color: "#666" }}>{r.requester_email || ""}</div>
-                            </td>
-                            <td data-label="Current Schedule" style={{ padding: "12px", verticalAlign: "top" }}>
-                              <div style={{ fontWeight: "500" }}>{formatDate(r.scheduled_date)}</div>
-                              <div style={{ fontSize: "0.8em", color: "#666" }}>{r.start_time || "-"}</div>
-                            </td>
-                            <td data-label="Requested Schedule" style={{ padding: "12px", verticalAlign: "top" }}>
-                              <div style={{ fontWeight: "500" }}>{formatDate(r.requested_date)}</div>
-                              <div style={{ fontSize: "0.8em", color: "#666" }}>{r.requested_time || "-"}</div>
-                            </td>
-                            <td data-label="Status" style={{ padding: "12px", verticalAlign: "top" }}>
-                              <span style={{
-                                padding: "4px 8px",
-                                borderRadius: "12px",
-                                background: statusColor.bg,
-                                color: statusColor.text,
-                                fontSize: "0.8em",
-                                fontWeight: "600",
-                                textTransform: "capitalize",
-                              }}>
-                                {r.status}
-                              </span>
-                              {r.resolved_at && (
-                                <div style={{ fontSize: "0.7em", color: "#999", marginTop: "4px" }}>
-                                  Resolved: {formatDate(r.resolved_at)}
-                                </div>
-                              )}
-                              {r.status === "declined" && r.decline_reason && (
-                                <div
-                                  style={{
-                                    fontSize: "0.75em",
-                                    color: "#8a3e2e",
-                                    marginTop: "6px",
-                                    padding: "6px 8px",
-                                    borderRadius: "8px",
-                                    background: "rgba(214, 106, 85, 0.12)",
-                                    borderLeft: "3px solid #d66a55",
-                                    maxWidth: "220px",
-                                  }}
-                                  title={r.decline_reason}
-                                >
-                                  Decline reason: {r.decline_reason}
-                                </div>
-                              )}
-                            </td>
-                            <td data-label="Actions" style={{ padding: "12px", verticalAlign: "top" }}>
-                              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                                <button
-                                  onClick={() => requestDeleteRequest(r.request_id)}
-                                  className={styles.warn}
-                                  style={{ fontSize: "0.8em", padding: "6px 10px" }}
-                                >
-                                  Remove
-                                </button>
+                            </div>
+                          )}
+                          {studentName && (
+                            <div className={styles.verifyPerson}>
+                              <span className={`${styles.verifyAvatar} ${styles.verifyAvatarStudent}`} aria-hidden="true">{initialsFor(studentName, "S")}</span>
+                              <div>
+                                <span className={styles.verifyPersonLabel}>Student</span>
+                                <strong>{studentName}</strong>
                               </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {request.reason && (
+                        <div className={styles.requestReason}>
+                          <span className={styles.requestReasonIcon} aria-hidden="true">💬</span>
+                          <div>
+                            <span className={styles.requestReasonLabel}>Why they want a change</span>
+                            <strong>{request.reason}</strong>
+                          </div>
+                        </div>
+                      )}
+
+                      {request.status === "declined" && request.decline_reason && (
+                        <div className={`${styles.verifyNotice} ${styles.verifyNoticeMissing}`}>
+                          <div className={styles.verifyNoticeHead}>
+                            <span aria-hidden="true">🚫</span>
+                            <strong>Why it was declined</strong>
+                          </div>
+                          <p className={styles.requestNoticeText}>{request.decline_reason}</p>
+                        </div>
+                      )}
+
+                      {request.status === "pending" ? (
+                        <p className={styles.requestMeta}>
+                          <span aria-hidden="true">⏳</span> Still waiting for a decision
+                        </p>
+                      ) : request.resolved_at ? (
+                        <p className={styles.requestMeta}>
+                          <span aria-hidden="true">✔</span> Resolved {formatDate(request.resolved_at)}
+                        </p>
+                      ) : null}
+
+                      <div className={styles.verifyActions}>
+                        <button
+                          type="button"
+                          className={`${styles.verifyActionBtn} ${styles.verifyActionDanger}`}
+                          onClick={() => requestDeleteRequest(request.request_id)}
+                        >
+                          <span aria-hidden="true">🗑️</span> Remove request
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })
               )}
             </div>
           </section>

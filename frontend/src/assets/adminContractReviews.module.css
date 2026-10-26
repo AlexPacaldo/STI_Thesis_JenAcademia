@@ -193,6 +193,79 @@
 }
 
 .reviewCards {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.reviewCard {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-lg, 20px);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+}
+
+.reviewPeople {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.reviewPerson {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+}
+
+.reviewPerson > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.reviewPerson strong {
+  color: var(--text);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.reviewLabel {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.reviewDetails {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 12px;
+}
+
+.reviewDetail {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 5px;
+  min-width: 0;
+}
+
+.reviewCardButton {
+  width: 100%;
+  min-height: 46px;
+  font-size: 0.9rem;
+}
+
+.tableWrap {
   display: none;
 }
 

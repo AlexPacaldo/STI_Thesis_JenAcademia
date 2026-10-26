@@ -1586,6 +1586,70 @@
   color: var(--muted);
 }
 
+.historySearch {
+  width: 100%;
+}
+
+.historySearch input {
+  width: 100%;
+  min-height: 56px;
+  box-sizing: border-box;
+  padding: 12px 16px;
+  border: 2px solid var(--border-mid);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.historySearch input:focus {
+  outline: 3px solid rgba(47, 122, 61, 0.2);
+  border-color: var(--brand-green);
+}
+
+.pastFacts.teacherStudentFacts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.historyProgress {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.historyProgressLabel {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--text-mid);
+  font-size: 0.9rem;
+}
+
+.historyProgressTrack {
+  height: 12px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--surface-recessed);
+}
+
+.historyProgressFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--brand-green);
+  transition: width var(--duration-normal) var(--ease-out);
+}
+
+.teacherStudentPagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
 /* --------------------------------------------------------- the filter window */
 
 .filterBackdrop {

@@ -2871,6 +2871,17 @@ async function ensureContractRequestLifecycleColumns() {
     );
   }
 
+  // !! Archiving is not deleting. The admin list hides a resolved request once
+  // !! it has been dealt with, but the student's own history and the audit trail
+  // !! stay in place. Pending requests are never archived: they have to be
+  // !! approved or declined so the student gets an answer.
+  if (!(await columnExists("student_contract_requests", "archived_at"))) {
+    await pool.query(
+      `ALTER TABLE student_contract_requests
+       ADD COLUMN archived_at TIMESTAMP NULL DEFAULT NULL AFTER resolved_at`
+    );
+  }
+
   // The status enum. MODIFY is safe to repeat: it always sets the same set.
   await pool.query(
     `ALTER TABLE student_contract_requests
@@ -7231,6 +7242,7 @@ app.get("/api/admin/contract-requests", requireAdminSession, async (_req, res) =
        JOIN users u ON u.user_id = r.student_id
        LEFT JOIN courses c ON c.course_id = r.course_id
        LEFT JOIN student_class_packages p ON p.package_id = r.package_id
+       WHERE r.archived_at IS NULL
        ORDER BY FIELD(r.status, 'pending', 'approved', 'declined', 'cancelled'), r.requested_at DESC`
     );
 
@@ -7372,6 +7384,62 @@ app.post("/api/student/contract-match-preview", requireSession, requireBodyIdent
       message: "Could not work out a match right now.",
       ...(process.env.NODE_ENV !== "production" ? { error: err.message } : {}),
     });
+  }
+});
+
+/**
+ * Remove a resolved contract request from the admin list.
+ *
+ * !! This is an archive, not a DELETE. The student's request history, the
+ * !! admin's decision, and the record of what changed stay in the database.
+ * !! Deleting the row would erase why a package or teacher was assigned, break
+ * !! the student's own history, and leave notifications pointing at nothing.
+ * !!
+ * !! Pending requests are refused. The admin has to approve or decline them so
+ * !! the student gets an answer; silently hiding one would leave it pending
+ * !! forever from the student's point of view.
+ */
+app.delete("/api/admin/contract-requests/:request_id", requireAdminSession, async (req, res) => {
+  try {
+    const requestId = parseInt(req.params.request_id, 10);
+    if (!Number.isFinite(requestId)) {
+      return res.status(400).json({ message: "That is not a request." });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT request_id, status, archived_at
+         FROM student_contract_requests
+        WHERE request_id = ?
+        LIMIT 1`,
+      [requestId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Contract request not found" });
+    }
+
+    const request = rows[0];
+    if (request.status === "pending") {
+      return res.status(409).json({
+        message: "Pending requests must be approved or declined, not removed from the list.",
+      });
+    }
+
+    if (request.archived_at) {
+      return res.json({ message: "Request is already removed from the list.", request_id: requestId });
+    }
+
+    await pool.query(
+      `UPDATE student_contract_requests
+          SET archived_at = CURRENT_TIMESTAMP
+        WHERE request_id = ? AND archived_at IS NULL`,
+      [requestId]
+    );
+
+    res.json({ message: "Request removed from the list.", request_id: requestId });
+  } catch (err) {
+    console.error("DELETE /api/admin/contract-requests/:request_id error:", err);
+    res.status(500).json({ message: "Error removing contract request" });
   }
 });
 
