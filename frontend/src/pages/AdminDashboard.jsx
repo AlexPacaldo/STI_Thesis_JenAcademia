@@ -550,6 +550,7 @@ export default function AdminDashboard() {
   const [contractRequests, setContractRequests] = useState([]);
   const [contractRequestSearch, setContractRequestSearch] = useState("");
   const [contractRequestsLoading, setContractRequestsLoading] = useState(false);
+  const [adminConfirmSubmitting, setAdminConfirmSubmitting] = useState(false);
   // The extension approval dialog. Approving one cannot be a single click: it
   // changes the end date of a real contract, and there is no obviously correct
   // amount of time - the admin knows what was agreed outside this system. So the
@@ -1140,12 +1141,15 @@ export default function AdminDashboard() {
   }
 
   function closeAdminConfirm() {
+    if (adminConfirmSubmitting) return;
     setAdminConfirm(null);
   }
 
   async function executeAdminConfirm() {
-    if (!adminConfirm) return;
+    if (!adminConfirm || adminConfirmSubmitting) return;
 
+    let shouldClose = true;
+    setAdminConfirmSubmitting(true);
     try {
       if (adminConfirm.action === "create_teacher") {
         await createTeacher(adminConfirm.payload);
@@ -1162,7 +1166,7 @@ export default function AdminDashboard() {
       } else if (adminConfirm.action === "save_contract") {
         await saveContract(adminConfirm.payload.row);
       } else if (adminConfirm.action === "contract_request") {
-        await updateContractRequest(adminConfirm.payload.requestId, adminConfirm.payload.status);
+        shouldClose = await updateContractRequest(adminConfirm.payload.requestId, adminConfirm.payload.status);
       } else if (adminConfirm.action === "approve_verification") {
         await approveVerificationRecord(adminConfirm.payload.classId);
       } else if (adminConfirm.action === "mark_verification_incomplete") {
@@ -1175,7 +1179,8 @@ export default function AdminDashboard() {
         await applyBookStatusChange(adminConfirm.payload);
       }
     } finally {
-      setAdminConfirm(null);
+      setAdminConfirmSubmitting(false);
+      if (shouldClose) setAdminConfirm(null);
     }
   }
 
@@ -1769,11 +1774,14 @@ export default function AdminDashboard() {
     setContractRequestsLoading(true);
     try {
       const r = await axios.get(`${API}/api/admin/contract-requests`);
-      setContractRequests(r.data.requests || []);
+      const requests = r.data.requests || [];
+      setContractRequests(requests);
+      return requests;
     } catch (e) {
       console.error(e);
       setContractRequests([]);
       notify("Failed to load contract requests", "error");
+      return null;
     } finally {
       setContractRequestsLoading(false);
     }
@@ -1831,11 +1839,29 @@ export default function AdminDashboard() {
     try {
       await axios.put(`${API}/api/admin/contract-requests/${requestId}`, { status });
       notify(`Contract request ${status}`, "success");
-      loadContractRequests();
-      loadContracts();
+      setContractRequests((current) =>
+        current.map((request) =>
+          request.request_id === requestId
+            ? { ...request, status, resolved_at: new Date().toISOString() }
+            : request
+        )
+      );
+      void loadContractRequests();
+      void loadContracts();
+      return true;
     } catch (e) {
       console.error(e);
+      const refreshedRequests = await loadContractRequests();
+      const refreshedRequest = refreshedRequests?.find(
+        (request) => String(request.request_id) === String(requestId)
+      );
+      if (refreshedRequest && refreshedRequest.status !== "pending") {
+        notify("This request has already been resolved. The request list has been refreshed.", "success");
+        void loadContracts();
+        return true;
+      }
       notify(e?.response?.data?.message || "Failed to update contract request", "error");
+      return false;
     } finally {
       setUpdatingContractRequestId(null);
     }
@@ -4771,9 +4797,19 @@ export default function AdminDashboard() {
                   ))}
                 </div>
               )}
+              {adminConfirmSubmitting && (
+                <p role="status" aria-live="polite" style={{ margin: "0 0 16px", color: "#26423b", lineHeight: 1.5 }}>
+                  {adminConfirm.action === "contract_request"
+                    ? adminConfirm.payload.status === "approved"
+                      ? "Approval is processing. Please keep this window open."
+                      : "Your decision is processing. Please keep this window open."
+                    : "Processing. Please keep this window open."}
+                </p>
+              )}
               <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
                 <button
                   onClick={closeAdminConfirm}
+                  disabled={adminConfirmSubmitting}
                   style={{
                     minHeight: "42px",
                     padding: "10px 18px",
@@ -4783,13 +4819,15 @@ export default function AdminDashboard() {
                     background: "#fff",
                     color: "#26423b",
                     borderRadius: 14,
-                    cursor: "pointer",
+                    cursor: adminConfirmSubmitting ? "not-allowed" : "pointer",
+                    opacity: adminConfirmSubmitting ? 0.6 : 1,
                   }}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={executeAdminConfirm}
+                  disabled={adminConfirmSubmitting}
                   style={{
                     minHeight: "42px",
                     padding: "10px 18px",
@@ -4799,10 +4837,17 @@ export default function AdminDashboard() {
                     background: adminConfirm.tone === "danger" ? "#8a3e2e" : "#26423b",
                     color: "#fff",
                     borderRadius: 14,
-                    cursor: "pointer",
+                    cursor: adminConfirmSubmitting ? "not-allowed" : "pointer",
+                    opacity: adminConfirmSubmitting ? 0.7 : 1,
                   }}
                 >
-                  {adminConfirm.confirmLabel || "Confirm"}
+                  {adminConfirmSubmitting
+                    ? adminConfirm.action === "contract_request"
+                      ? adminConfirm.payload.status === "approved"
+                        ? "Approving..."
+                        : "Declining..."
+                      : "Processing..."
+                    : adminConfirm.confirmLabel || "Confirm"}
                 </button>
               </div>
             </div>

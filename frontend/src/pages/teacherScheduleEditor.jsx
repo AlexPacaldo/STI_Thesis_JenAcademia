@@ -194,7 +194,7 @@ export default function teacherScheduleEditor({ title = "Teacher Availability" }
             </div>
           </div>
 
-          <aside className={styles.bookPanel}>
+          <aside className={styles.calendarAside}>
             {selectedClass ? (
               // Class selected view - show student info
               <>
@@ -284,7 +284,7 @@ export default function teacherScheduleEditor({ title = "Teacher Availability" }
             ) : (
               // No selection view - show actions
               <>
-                <div className={cal.panelTitle}>Actions</div>
+                <div className={cal.actionHeading}>Actions</div>
                 <div className={styles.slotList}>
                   <button className={styles.slotBtn} onClick={jumpToToday}>
                     Jump to Today

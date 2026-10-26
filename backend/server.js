@@ -3673,7 +3673,7 @@ async function loadTeacherAvailability(teacherIds, preference, db) {
 // measuring what the AI changed costs no extra query. It exists only to report
 // whether the suggestions moved the pick - the returned teacher always comes
 // from criteria.
-async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNotes = "", courseId = null, courseName = "", proficiencyLevel = "", studentBirthDate = null, preferredTeacherId = null, baselineCriteria = null, preferredSchedule = null, honourPreferredTeacher = false, db = pool }) {
+async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNotes = "", courseId = null, courseName = "", proficiencyLevel = "", studentBirthDate = null, preferredTeacherId = null, baselineCriteria = null, preferredSchedule = null, honourPreferredTeacher = false, useAdvisor = true, db = pool }) {
   // What the admin actually typed, available immediately. The insights only ever
   // add to it, so this is a sound basis for ranking before they have arrived.
   const baseCriteria = normalizeCriteria(criteria);
@@ -3743,16 +3743,18 @@ async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNo
   // The catch is because a dangling rejected promise would surface as an
   // unhandled rejection rather than as a failed request. adviseTeacherRanking
   // does not throw; this keeps that true even if it ever did.
-  const advisorPromise = adviseTeacherRanking({
-    criteria: baseCriteria,
-    trialNotes,
-    courseName,
-    scored: scoreWith(baseCriteria),
-    availability,
-    preferredLabel: preference
-      ? `${preference.days.join(", ")} ${preference.start}-${preference.end}`
-      : "",
-  }).catch(() => ({ ok: false, reason: "unavailable" }));
+  const advisorPromise = useAdvisor
+    ? adviseTeacherRanking({
+        criteria: baseCriteria,
+        trialNotes,
+        courseName,
+        scored: scoreWith(baseCriteria),
+        availability,
+        preferredLabel: preference
+          ? `${preference.days.join(", ")} ${preference.start}-${preference.end}`
+          : "",
+      }).catch(() => ({ ok: false, reason: "unavailable" }))
+    : Promise.resolve({ ok: false, reason: "not-requested" });
 
   // The one edge that genuinely has to wait. The inferred criteria change the
   // rules' scores, so the rules cannot run until the notes have been read. If
@@ -7456,6 +7458,10 @@ app.put("/api/admin/contract-requests/:request_id", requireAdminSession, async (
         );
 
         await connection.commit();
+        broadcastCalendarChange(request.student_id, "contract-request-updated", {
+          request_id: request.request_id,
+          status,
+        });
         return res.json({ message: "Extension request declined" });
       }
 
@@ -7540,6 +7546,10 @@ app.put("/api/admin/contract-requests/:request_id", requireAdminSession, async (
       );
 
       await connection.commit();
+      broadcastCalendarChange(request.student_id, "contract-request-updated", {
+        request_id: request.request_id,
+        status,
+      });
       return res.json({
         message: "Extension approved",
         package_id: target.package_id,
@@ -7596,6 +7606,11 @@ app.put("/api/admin/contract-requests/:request_id", requireAdminSession, async (
         // stored at all. Without it the preference is a note the admin reads and
         // the one process that could have acted on it never sees.
         preferredSchedule: preferredScheduleFromRow(request),
+        // Approval runs inside a database transaction. Keep that transaction
+        // short and deterministic instead of waiting up to 25 seconds for the
+        // optional language-model ranking; rule-based matching still applies
+        // course, age, availability, and workload constraints.
+        useAdvisor: false,
         db: connection,
       });
       const assignedTeacherId = recommendation.teacher?.user_id || null;
@@ -7659,6 +7674,10 @@ app.put("/api/admin/contract-requests/:request_id", requireAdminSession, async (
     );
 
     await connection.commit();
+    broadcastCalendarChange(request.student_id, "contract-request-updated", {
+      request_id: request.request_id,
+      status,
+    });
     res.json({ message: `Contract request ${status}` });
   } catch (err) {
     await connection.rollback();
@@ -9568,24 +9587,6 @@ app.put("/api/calendar/classes/:class_id/complete", requireSession, requireClass
       });
     }
 
-    // A class remark is mandatory. The teacher writes it in the class panel in
-    // Calendar; completing the class before the note exists would leave the
-    // student without feedback and the teacher without a record of the class.
-    const [remarkRows] = await connection.query(
-      `SELECT remark_id FROM class_remarks
-       WHERE class_id = ? AND teacher_id = ? AND student_id = ? AND status = 'active'
-       LIMIT 1`,
-      [class_id, classInfo.teacher_id, classInfo.student_id]
-    );
-
-    if (!remarkRows.length) {
-      await connection.rollback();
-      return res.status(400).json({
-        message:
-          "Add a class remark before completing this class. Open the class panel in Calendar, write a note, and press Send the note.",
-      });
-    }
-
     const [packageRows] = await connection.query(
       `SELECT package_id, student_id, total_classes, classes_used, classes_left, status
        FROM student_class_packages
@@ -10871,8 +10872,16 @@ app.post("/api/calendar/remarks", requireSession, async (req, res) => {
     await pool.query(
       `INSERT INTO class_remarks (class_id, teacher_id, student_id, remarks, rating, status, archived_at)
        VALUES (?, ?, ?, ?, ?, 'active', NULL)
-       ON DUPLICATE KEY UPDATE remarks = ?, rating = ?, status = 'active', archived_at = NULL`,
+       ON DUPLICATE KEY UPDATE remarks = ?, rating = ?, status = 'active', archived_at = NULL, created_at = CURRENT_TIMESTAMP`,
       [class_id, teacher_id, student_id, encryptNullableText(remarks), rating, encryptNullableText(remarks), rating]
+    );
+
+    const [remarkRows] = await pool.query(
+      `SELECT remark_id
+       FROM class_remarks
+       WHERE class_id = ? AND teacher_id = ? AND student_id = ? AND status = 'active'
+       LIMIT 1`,
+      [class_id, teacher_id, student_id]
     );
 
     const [classRows] = await pool.query(
@@ -10921,7 +10930,7 @@ app.post("/api/calendar/remarks", requireSession, async (req, res) => {
       ]
     );
 
-    res.json({ message: "Remarks saved successfully" });
+    res.json({ message: "Remark submitted successfully", remark_id: remarkRows[0]?.remark_id });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error saving remarks" });
@@ -10945,7 +10954,7 @@ app.get("/api/student/:student_id/remarks", requireSession, async (req, res) => 
        JOIN users t ON cr.teacher_id = t.user_id
        WHERE cr.student_id = ?
          AND cr.status = 'active'
-       ORDER BY cr.created_at DESC`,
+       ORDER BY cr.created_at DESC, cr.remark_id DESC`,
       [student_id]
     );
 
@@ -11083,7 +11092,9 @@ app.patch("/api/teacher/remarks/:remark_id", requireSession, async (req, res) =>
     }
 
     await pool.query(
-      `UPDATE class_remarks SET remarks = ? WHERE remark_id = ? AND teacher_id = ?`,
+      `UPDATE class_remarks
+       SET remarks = ?, created_at = CURRENT_TIMESTAMP
+       WHERE remark_id = ? AND teacher_id = ?`,
       [encryptNullableText(text), remark_id, teacher_id]
     );
 

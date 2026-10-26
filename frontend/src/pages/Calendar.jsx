@@ -58,7 +58,8 @@ import {
   filterOptionsForCourses,
   hasPreferredSchedule,
   pruneSelectionToCourses,
-  SIMPLE_CRITERIA_OPTIONS,
+  STUDENT_CRITERIA_DISPLAY_OPTIONS,
+  toCriteriaSlug,
   toPreferredSchedulePayload,
   toggleValue,
 } from "../utils/matchingCriteria.js";
@@ -120,6 +121,14 @@ const SCHEDULE_WINDOW_MONTHS = 3;
  * !! all.
  */
 const MAX_WEEKLY_SUGGESTIONS = 30;
+const NEW_PLAN_STEPS = [
+  { icon: "📚", title: "Select a course", prompt: "Choose a course, class duration, and number of classes." },
+  { icon: "⭐", title: "Set learning objectives", prompt: "Select one or more objectives for your learning plan." },
+  { icon: "🎯", title: "Select your skill focus", prompt: "Choose the skills you would like to develop." },
+  { icon: "🎨", title: "Set learning preferences", prompt: "Select the approaches that support your learning." },
+  { icon: "🐢", title: "Set your learning pace", prompt: "Choose the pace that best supports your progress." },
+  { icon: "🗓️", title: "Review your plan", prompt: "Review your selections. Adding your availability is optional." },
+];
 
 const normalizeClassDuration = (value) => {
   const parsed = parseInt(value, 10);
@@ -1205,6 +1214,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [studentRemarks, setStudentRemarks] = useState([]);
   const [remarkDraft, setRemarkDraft] = useState("");
   const [remarkSubmitting, setRemarkSubmitting] = useState(false);
+  const [isEditingSelectedRemark, setIsEditingSelectedRemark] = useState(false);
   const [teacherClassesCache, setTeacherClassesCache] = useState({});
   const [studentBookingMode, setStudentBookingMode] = useState(false);  const [studentBookingDate, setStudentBookingDate] = useState(fmtDate(today));
   const [studentBookingTime, setStudentBookingTime] = useState("");
@@ -1219,6 +1229,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [isSubmittingStudentBooking, setIsSubmittingStudentBooking] = useState(false);
   const [courses, setCourses] = useState([]);
   const [contractRequestOpen, setContractRequestOpen] = useState(false);
+  const [newPlanStep, setNewPlanStep] = useState(0);
   const [contractCourseId, setContractCourseId] = useState("");
   const [contractClassCount, setContractClassCount] = useState("10");
   const [contractClassDuration, setContractClassDuration] = useState("50");
@@ -1240,10 +1251,6 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   // True while the open form is editing a request that is already with the
   // admin, rather than sending a first one.
   const [contractRequestEditing, setContractRequestEditing] = useState(false);
-  // True while the student has opened the extra questions on the new-plan
-  // form. Closed by default: a form that opens with eight questions is a form
-  // a student gives up on, and the extra ones are genuinely optional.
-  const [showContractExtraOptions, setShowContractExtraOptions] = useState(false);
   const [isCancellingContractRequest, setIsCancellingContractRequest] = useState(false);
   const [isSubmittingContractRequest, setIsSubmittingContractRequest] = useState(false);
   // The extension's "why do you need longer" box, and the only free text left in
@@ -1346,6 +1353,38 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     pace: criteriaWithCustom(contractAiCriteria?.pace, contractCriteriaOther.pace),
   };
 
+  const missingContractPreferences = () => {
+    const missing = [];
+    if (!mergedContractCriteria.learningGoal.length) missing.push("a learning goal");
+    if (!mergedContractCriteria.focusArea.length) missing.push("a focus area");
+    if (!mergedContractCriteria.learningStyle.length) missing.push("a learning style");
+    if (!mergedContractCriteria.pace.length) missing.push("a learning pace");
+    const hasAnyPreferredSchedule =
+      contractPreferredSchedule.days.length > 0 ||
+      contractPreferredSchedule.start ||
+      contractPreferredSchedule.end;
+    if (hasAnyPreferredSchedule && !hasPreferredSchedule(contractPreferredSchedule)) {
+      missing.push("at least one available day and both availability times");
+    } else if (
+      hasPreferredSchedule(contractPreferredSchedule) &&
+      contractPreferredSchedule.start >= contractPreferredSchedule.end
+    ) {
+      missing.push("an end time later than the start time");
+    }
+    return missing;
+  };
+
+  const contractCriterionSummary = (key, options) =>
+    mergedContractCriteria[key]
+      .map((value) => {
+        if (value === toCriteriaSlug(contractCriteriaOther[key])) {
+          return contractCriteriaOther[key].trim();
+        }
+        return options.find(([optionValue]) => optionValue === value)?.[1] || value;
+      })
+      .filter(Boolean)
+      .join(", ");
+
   // The preview of who this would match.
   //
   // Cleared whenever anything it depends on changes - course, criteria, schedule -
@@ -1354,10 +1393,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [matchPreview, setMatchPreview] = useState(null);
   const [previewingMatch, setPreviewingMatch] = useState(false);
   const [matchPreviewError, setMatchPreviewError] = useState("");
+  const matchPreviewRequestId = useRef(0);
 
   useEffect(() => {
+    matchPreviewRequestId.current += 1;
     setMatchPreview(null);
     setMatchPreviewError("");
+    setPreviewingMatch(false);
   }, [
     contractCourseId,
     contractAiCriteria,
@@ -1370,6 +1412,12 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       setMatchPreviewError("Choose a course first.");
       return;
     }
+    const missing = missingContractPreferences();
+    if (missing.length) {
+      setMatchPreviewError(`Complete all required preferences first: ${missing.join(", ")}.`);
+      return;
+    }
+    const requestId = ++matchPreviewRequestId.current;
     setPreviewingMatch(true);
     setMatchPreviewError("");
     try {
@@ -1379,14 +1427,20 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         criteria: mergedContractCriteria,
         preferred_schedule: toPreferredSchedulePayload(contractPreferredSchedule),
       });
-      setMatchPreview(res.data);
+      if (requestId === matchPreviewRequestId.current) {
+        setMatchPreview(res.data);
+      }
     } catch (err) {
-      setMatchPreview(null);
-      setMatchPreviewError(
-        err?.response?.data?.message || "Could not work out a match right now."
-      );
+      if (requestId === matchPreviewRequestId.current) {
+        setMatchPreview(null);
+        setMatchPreviewError(
+          err?.response?.data?.message || "Could not work out a match right now."
+        );
+      }
     } finally {
-      setPreviewingMatch(false);
+      if (requestId === matchPreviewRequestId.current) {
+        setPreviewingMatch(false);
+      }
     }
   };
   const [currentTimeTick, setCurrentTimeTick] = useState(() => Date.now());
@@ -1503,7 +1557,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
       || null)
     : null;
   const [classVerification, setClassVerification] = useState(null);
-  const [evidenceChoice, setEvidenceChoice] = useState("screenshots");
+  const [evidenceChoice, setEvidenceChoice] = useState("recording");
   const [isUploadingStartProof, setIsUploadingStartProof] = useState(false);
   const evidenceReminders = useRef(new Set());
   const [classVerificationRefreshToken, setClassVerificationRefreshToken] = useState(0);
@@ -1635,7 +1689,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     const sorted = [...studentRemarks].sort((a, b) => {
       const aTime = new Date(a.created_at || 0).getTime();
       const bTime = new Date(b.created_at || 0).getTime();
-      return bTime - aTime;
+      return bTime - aTime || Number(b.remark_id || 0) - Number(a.remark_id || 0);
     });
     return sorted[0] || null;
   }, [studentRemarks]);
@@ -1646,11 +1700,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         .trim()
     : "";
   const contractLearningGoalOptions = useMemo(
-    () => filterOptionsForCourses(SIMPLE_CRITERIA_OPTIONS.learningGoal, selectedContractCourseNames),
+    () => filterOptionsForCourses(STUDENT_CRITERIA_DISPLAY_OPTIONS.learningGoal, selectedContractCourseNames),
     [selectedContractCourseNames]
   );
   const contractFocusAreaOptions = useMemo(
-    () => filterOptionsForCourses(SIMPLE_CRITERIA_OPTIONS.focusArea, selectedContractCourseNames),
+    () => filterOptionsForCourses(STUDENT_CRITERIA_DISPLAY_OPTIONS.focusArea, selectedContractCourseNames),
     [selectedContractCourseNames]
   );
 
@@ -1696,6 +1750,39 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     setTeacherAvailabilityRecordForDate(null);
     setCalendarRefreshToken(token => token + 1);
   }, []);
+  const refreshStudentPlanData = useCallback(async () => {
+    if (localRole !== "student" || !localUserId) return;
+
+    const [packageResult, requestsResult] = await Promise.allSettled([
+      axios.get(`${API}/api/calendar/student-package/${localUserId}`),
+      axios.get(`${API}/api/student/contract-requests/${localUserId}`),
+    ]);
+
+    if (packageResult.status === "fulfilled") {
+      setStudentPackage(packageResult.value.data?.package || null);
+      setLatestStudentPackage(
+        packageResult.value.data?.latest_package ?? packageResult.value.data?.package ?? null
+      );
+      setStudentPackageLoaded(true);
+    } else if (packageResult.reason?.response?.status === 404) {
+      setStudentPackage(null);
+      setLatestStudentPackage(packageResult.reason.response?.data?.latest_package ?? null);
+      setStudentPackageLoaded(true);
+    } else {
+      console.warn("Could not refresh the student's class plan:", packageResult.reason);
+    }
+
+    if (requestsResult.status === "fulfilled") {
+      const requests = requestsResult.value.data?.requests || [];
+      const pending = Array.isArray(requestsResult.value.data?.pending)
+        ? requestsResult.value.data.pending
+        : requests.filter((request) => request?.status === "pending");
+      setContractRequests(requests);
+      setPendingContractRequests(pending);
+    } else {
+      console.warn("Could not refresh the student's contract requests:", requestsResult.reason);
+    }
+  }, [localRole, localUserId]);
 
   const applyVerificationToSelectedClass = useCallback((verification) => {
     if (!selectedClass?.id || !selectedDate || !verification) return;
@@ -1772,22 +1859,52 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       setClassVerificationRefreshToken(token => token + 1);
       triggerCalendarRefresh();
     };
+    const handleContractRequestUpdated = () => {
+      void refreshStudentPlanData();
+      triggerCalendarRefresh();
+    };
 
-    ["class-booked", "class-rescheduled", "availability-changed", "class-completed", "class-no-show"].forEach(eventName => {
-      stream.addEventListener(eventName, handleCalendarChange);
+    ["class-booked", "class-rescheduled", "availability-changed", "class-completed", "class-no-show", "contract-request-updated"].forEach(eventName => {
+      stream.addEventListener(
+        eventName,
+        eventName === "contract-request-updated" ? handleContractRequestUpdated : handleCalendarChange
+      );
     });
     stream.addEventListener("class-verification-changed", handleClassVerificationChange);
 
     stream.onerror = () => {};
 
     return () => {
-      ["class-booked", "class-rescheduled", "availability-changed", "class-completed", "class-no-show"].forEach(eventName => {
-        stream.removeEventListener(eventName, handleCalendarChange);
+      ["class-booked", "class-rescheduled", "availability-changed", "class-completed", "class-no-show", "contract-request-updated"].forEach(eventName => {
+        stream.removeEventListener(
+          eventName,
+          eventName === "contract-request-updated" ? handleContractRequestUpdated : handleCalendarChange
+        );
       });
       stream.removeEventListener("class-verification-changed", handleClassVerificationChange);
       stream.close();
     };
-  }, [localUserId, localRole, triggerCalendarRefresh]);
+  }, [localUserId, localRole, triggerCalendarRefresh, refreshStudentPlanData]);
+
+  useEffect(() => {
+    if (localRole !== "student" || !localUserId) return;
+
+    let refreshing = false;
+    const refreshWhenVisible = () => {
+      if (refreshing || document.visibilityState === "hidden") return;
+      refreshing = true;
+      void refreshStudentPlanData().finally(() => {
+        refreshing = false;
+      });
+    };
+    const intervalId = window.setInterval(refreshWhenVisible, 10000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [localRole, localUserId, refreshStudentPlanData]);
 
   // Fetch booked dates when user changes
   useEffect(() => {
@@ -2014,6 +2131,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   // class's words into the new class's note.
   useEffect(() => {
     setRemarkDraft("");
+    setIsEditingSelectedRemark(false);
   }, [selectedClass?.id]);
 
   useEffect(() => {
@@ -3453,6 +3571,22 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       }
     }
 
+    if (action.type === "archive-remark") {
+      try {
+        await axios.patch(`${API}/api/teacher/remarks/${action.remarkId}/archive`, {
+          teacher_id: localUserId,
+        });
+        setStudentRemarks((prev) =>
+          prev.filter((remark) => String(remark.remark_id) !== String(action.remarkId))
+        );
+        setRemarkDraft("");
+        setIsEditingSelectedRemark(false);
+        notify?.("Remark removed from the student's view.", "success");
+      } catch (error) {
+        notify?.(error?.response?.data?.message || "Unable to remove the remark. Please try again.", "error");
+      }
+    }
+
     if (action.type === "no-show") {
       setIsMarkingClassDone(true);
       try {
@@ -3650,10 +3784,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   const requiredRecordingMinutes = Math.max(1, Math.min(30, Math.ceil(Number(selectedClass?.duration || 50) * 0.6)));
   const hasVerificationProof = evidenceMode === "recording" ? hasVerificationRecording && Number(selectedClassVerification?.recording_duration_seconds || 0) >= requiredRecordingMinutes * 60
     : Boolean(hasStartScreenshot && hasEndScreenshot);
-  // A class remark is mandatory: the class cannot be completed until the
-  // teacher has sent a note about this exact class from the class panel. The
-  // match is on class_id because "latestRemark" can belong to an older class.
-  const hasSelectedClassRemark = studentRemarks.some(
+  // Match the remark to this class because "latestRemark" may belong to an older class.
+  const selectedClassRemark = studentRemarks.find(
     (remark) =>
       String(remark.class_id) === String(selectedClass?.id) &&
       String(remark.remarks || "").trim().length > 0
@@ -3663,7 +3795,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     selectedClassStudentConfirmed &&
     hasVerificationSummarySentence &&
     hasVerificationProof &&
-    hasSelectedClassRemark &&
     !recording.session &&
     !isUpdatingVerification;
   const canSubmitClassForReview =
@@ -3682,13 +3813,11 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     evidenceMode === "screenshots" && !hasEndScreenshot ? "end screenshot" : "",
     evidenceMode === "recording" && !hasVerificationRecording ? "recording" : "",
     !hasVerificationSummarySentence ? "class summary" : "",
-    !hasSelectedClassRemark ? "class remark" : "",
   ].filter(Boolean);
   const endVerifyDisabledReason = (() => {
     if (recording.session) return "Stop recording and finish uploading before completing the class.";
     if (!selectedClassStudentConfirmed) return "Student must join and confirm attendance first.";
     if (!hasVerificationSummarySentence) return "Enter at least one complete sentence in the class summary.";
-    if (!hasSelectedClassRemark) return "Write a note about this class and press Send the note before completing it.";
     if (!hasVerificationProof) return evidenceMode === "recording" ? `Upload a recording covering at least ${requiredRecordingMinutes} minutes, or submit for review.` : "Upload both the start and end screenshots.";
     return "";
   })();
@@ -3748,8 +3877,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                 "By continuing, you consent to join with recording verification.",
               ]
             : [
-                "We keep the recording for 7 days, then it is deleted.",
-                "Only the admin, your teacher and you can watch it.",
+                "Recordings are automatically deleted after 7 days.",
               ],
         confirmLabel:
           localRole === "teacher" && !selectedClassStarted
@@ -3958,6 +4086,10 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return;
     }
     meetingTab.opener = null;
+    if (localRole === "teacher") {
+      meetingTab.blur();
+      window.focus();
+    }
     if (localRole === "teacher" && !selectedClassStarted) {
       const verification = await startSelectedClassSession();
       if (!verification) { meetingTab.close(); return; }
@@ -3970,8 +4102,9 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     if (
       meetingOpened &&
       localRole === "teacher" &&
-      !selectedClassStarted &&
-      evidenceChoice === "recording"
+      evidenceMode === "recording" &&
+      !hasVerificationRecording &&
+      !recording.session
     ) {
       window.setTimeout(() => {
         recording.start(selectedClass.id);
@@ -3995,10 +4128,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     }
     if (!hasVerificationSummarySentence) {
       notify?.("Please enter at least one complete sentence in the class summary.", "error");
-      return;
-    }
-    if (completeAfterVerify && !hasSelectedClassRemark) {
-      notify?.("Write a note about this class and press Send the note before completing it.", "error");
       return;
     }
     if (!hasVerificationProof && !reviewReason) {
@@ -4053,7 +4182,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
     const text = remarkDraft.trim();
     if (!text) {
-      notify?.("Please write a note before sending.", "warning");
+      notify?.("Please write a remark before submitting it.", "warning");
       return;
     }
 
@@ -4069,14 +4198,14 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
       const data = response.data || {};
       setRemarkDraft("");
+      setIsEditingSelectedRemark(false);
       setRemarkSubmitting(false);
 
-      // Add the new remark to the local list so the "Latest Remark" panel and
-      // the completion gate update without a full refresh. Re-sending a note
-      // for the same class replaces the old entry instead of duplicating it.
       setStudentRemarks((prev) => {
+        const existing = prev.find((remark) => String(remark.class_id) === String(selectedClass.id));
         const entry = {
-          remark_id: data.remark_id ?? data.id ?? null,
+          ...existing,
+          remark_id: data.remark_id ?? data.id ?? existing?.remark_id ?? null,
           class_id: selectedClass.id,
           class_name: selectedClass.className || selectedClass.class_name,
           scheduled_date: selectedClass.scheduled_date || selectedDate,
@@ -4093,11 +4222,26 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         ];
       });
 
-      notify?.("Note sent to the student.", "success");
+      notify?.("Remark submitted to the student.", "success");
     } catch (error) {
       setRemarkSubmitting(false);
-      notify?.(error?.response?.data?.message || "Unable to send the note. Please try again.", "error");
+      notify?.(error?.response?.data?.message || "Unable to submit the remark. Please try again.", "error");
     }
+  };
+
+  const confirmRemoveSelectedRemark = () => {
+    if (!selectedClassRemark?.remark_id) {
+      notify?.("This remark cannot be removed right now. Please refresh and try again.", "error");
+      return;
+    }
+
+    setConfirmAction({
+      type: "archive-remark",
+      remarkId: selectedClassRemark.remark_id,
+      title: "Remove this remark?",
+      message: "The student will no longer see this remark. You can restore it later from Remark History.",
+      confirmLabel: "Remove remark",
+    });
   };
 
   const openClassDoneConfirmation = () => {
@@ -4124,11 +4268,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   };
 
   const markSelectedClassDone = async ({ verifiedOverride = false } = {}) => {
-    if (!hasSelectedClassRemark) {
-      notify?.("Write a note about this class and press Send the note before completing it.", "error");
-      return;
-    }
-
     if (!selectedClassVerified && !verifiedOverride) {
       notify?.("Verify the class first before marking it done.", "error");
       return;
@@ -5057,6 +5196,11 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   const submitContractRequest = async () => {
     setContractRequestError("");
 
+    if (!matchPreview) {
+      setContractRequestError(NEW_PLAN_WINDOW.checkTeacherRequired);
+      return;
+    }
+
     if (!contractCourseId) {
       setContractRequestError("Please pick a course.");
       return;
@@ -5064,6 +5208,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
     if (!contractClassCount || Number(contractClassCount) <= 0) {
       setContractRequestError("Please pick how many classes you want.");
+      return;
+    }
+
+    const missing = missingContractPreferences();
+    if (missing.length) {
+      setContractRequestError(`Complete all required preferences before sending: ${missing.join(", ")}.`);
       return;
     }
 
@@ -5092,11 +5242,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       // press changed their ask rather than adding to it.
       notify?.(
         response.data?.isRevision
-          ? "Your ask was changed. The admin sees the latest one."
-          : "Sent to the admin. We will let you know when it is answered.",
+          ? "Your request was updated. The administrator will review the latest version."
+          : "Your request was submitted. We will notify you when the administrator makes a decision.",
         "success"
       );
       setContractRequestOpen(false);
+      setNewPlanStep(0);
       // Cleared so the form does not linger next time. The extension route is
       // hidden while this is set, and a leftover `true` would keep showing a new
       // contract form to a student who should only be offered an extension.
@@ -5109,7 +5260,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       setContractPreferredSchedule(createEmptyPreferredSchedule());
       loadContractRequests();
     } catch (err) {
-      setContractRequestError(err?.response?.data?.message || "We could not send your ask. Please try again.");
+      setContractRequestError(err?.response?.data?.message || "We could not submit your request. Please try again.");
     } finally {
       setIsSubmittingContractRequest(false);
     }
@@ -5119,7 +5270,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     setContractRequestError("");
 
     if (!contractExtensionNote.trim()) {
-      setContractRequestError("Please tell the admin why you need more time.");
+      setContractRequestError("Please explain why you need additional time.");
       return;
     }
 
@@ -5133,8 +5284,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
       notify?.(
         response.data?.isRevision
-          ? "Your ask was changed. Your classes stay safe until the admin answers."
-          : "Sent to the admin. Your classes stay safe until the admin answers.",
+          ? "Your request was updated. Your unused classes remain available while it is being reviewed."
+          : "Your request was submitted. Your unused classes remain available while it is being reviewed.",
         "success"
       );
       setContractRequestOpen(false);
@@ -5142,7 +5293,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       setContractExtensionNote("");
       loadContractRequests();
     } catch (err) {
-      setContractRequestError(err?.response?.data?.message || "We could not send your ask. Please try again.");
+      setContractRequestError(err?.response?.data?.message || "We could not submit your request. Please try again.");
     } finally {
       setIsSubmittingContractRequest(false);
     }
@@ -5167,7 +5318,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         `${API}/api/student/contract-requests/${requestId}/cancel`,
         { student_id: localUserId }
       );
-      notify?.(response.data?.message || "Your ask was cancelled.", "success");
+      notify?.(response.data?.message || "Your request was withdrawn.", "success");
       setContractRequestOpen(false);
       setContractRequestEditing(false);
       setContractExtensionNote("");
@@ -5208,13 +5359,33 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
    */
   const openNewContractForm = ({ editing = false } = {}) => {
     setRequestingNewContract(true);
+    setNewPlanStep(0);
     setContractRequestOpen(true);
     setContractRequestEditing(editing);
     setContractRequestError("");
-    // The extra questions start closed every time. A student who opened them
-    // last time is not automatically someone who wants them this time.
-    setShowContractExtraOptions(false);
     updateContractCourse(studentProfile?.course_id || "");
+  };
+
+  const continueNewPlanStep = () => {
+    setContractRequestError("");
+    if (newPlanStep === 0 && !contractCourseId) {
+      setContractRequestError("Select a course to continue.");
+      return;
+    }
+
+    const requiredCriterionByStep = {
+      1: ["learningGoal", "Select at least one learning objective."],
+      2: ["focusArea", "Select at least one skill to focus on."],
+      3: ["learningStyle", "Select at least one learning preference."],
+      4: ["pace", "Select a learning pace."],
+    };
+    const requirement = requiredCriterionByStep[newPlanStep];
+    if (requirement && !mergedContractCriteria[requirement[0]].length) {
+      setContractRequestError(requirement[1]);
+      return;
+    }
+
+    setNewPlanStep((step) => Math.min(step + 1, NEW_PLAN_STEPS.length - 1));
   };
 
   const updateContractCourse = (courseId) => {
@@ -5227,12 +5398,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       ...current,
       learningGoal: pruneSelectionToCourses(
         current?.learningGoal,
-        SIMPLE_CRITERIA_OPTIONS.learningGoal,
+        STUDENT_CRITERIA_DISPLAY_OPTIONS.learningGoal,
         selectedCourseNames
       ),
       focusArea: pruneSelectionToCourses(
         current?.focusArea,
-        SIMPLE_CRITERIA_OPTIONS.focusArea,
+        STUDENT_CRITERIA_DISPLAY_OPTIONS.focusArea,
         selectedCourseNames
       ),
     }));
@@ -5891,18 +6062,86 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                 )}
               </>
             )}
+            {localRole === "teacher" &&
+              selectedClassStarted &&
+              selectedClassStudentConfirmed &&
+              !isSelectedClassCompleted && (
+                <div className={styles.verificationRemark}>
+                  <div>
+                    <div className={styles.verificationSectionTitle}>Remark to student</div>
+                    <div className={styles.verificationHelpText}>Optional: submit a remark to the student before completing this class.</div>
+                  </div>
+                  {selectedClassRemark && !isEditingSelectedRemark ? (
+                    <div className={styles.verificationRemarkCard}>
+                      <p>{selectedClassRemark.remarks}</p>
+                      <div className={styles.verificationRemarkActions}>
+                        <button
+                          type="button"
+                          className={styles.verificationRemarkEdit}
+                          onClick={() => {
+                            setRemarkDraft(selectedClassRemark.remarks);
+                            setIsEditingSelectedRemark(true);
+                          }}
+                        >
+                          Edit remark
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.verificationRemarkRemove}
+                          onClick={confirmRemoveSelectedRemark}
+                        >
+                          Remove remark
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <textarea
+                        value={remarkDraft}
+                        onChange={(event) => setRemarkDraft(event.target.value)}
+                        disabled={remarkSubmitting}
+                        rows={4}
+                        placeholder="Write a remark about this class..."
+                        className={styles.verificationTextarea}
+                      />
+                      <div className={styles.verificationRemarkActions}>
+                        {isEditingSelectedRemark && (
+                          <button
+                            type="button"
+                            className={styles.verificationRemarkEdit}
+                            onClick={() => {
+                              setRemarkDraft("");
+                              setIsEditingSelectedRemark(false);
+                            }}
+                            disabled={remarkSubmitting}
+                          >
+                            Cancel
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={remarkSubmitting || !remarkDraft.trim()}
+                          onClick={handleGiveRemark}
+                          className={`${cal.actionCard} ${cal.actionInfo}`}
+                          style={{
+                            opacity: remarkSubmitting || !remarkDraft.trim() ? 0.6 : 1,
+                            cursor: remarkSubmitting || !remarkDraft.trim() ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          {remarkSubmitting ? "Saving..." : isEditingSelectedRemark ? "Save changes" : "Submit remark"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             {selectedClassEnded && selectedClassVerified && (
               <button
                 type="button"
                 className={`${cal.actionCard} ${cal.actionInfo}`}
-                disabled={isMarkingClassDone || !hasSelectedClassRemark}
+                disabled={isMarkingClassDone}
                 onClick={() => handleConfirmClassDone()}
-                title={
-                  hasSelectedClassRemark
-                    ? ""
-                    : "Write a note about this class and press Send the note before completing it."
-                }
-                style={{ opacity: isMarkingClassDone || !hasSelectedClassRemark ? 0.6 : 1 }}
+                style={{ opacity: isMarkingClassDone ? 0.6 : 1 }}
               >
                 {isMarkingClassDone ? "Saving..." : "Complete Verified Class"}
               </button>
@@ -6179,7 +6418,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
             </div>
           )}
 
-          <aside className={styles.bookPanel}>
+          <aside className={styles.calendarAside}>
             {isTeacherOrAdmin ? (
               selectedClass ? (
                 <>
@@ -6270,11 +6509,11 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     </div>
                   </div>
                   </div>
-                  {/* Latest Remark - kid designed */}
+                  {/* Latest teacher remark */}
                   <div className={kid.pastCard}>
                     <div className={kid.head}>
                       <div className={kid.headRow}>
-                        <h3 className={kid.title}>Latest Remark</h3>
+                        <h3 className={kid.title}>Latest teacher remark</h3>
                       </div>
                     </div>
                     {latestRemark ? (
@@ -6293,7 +6532,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         <div className={kid.pastFact}>
                           <span className={kid.pastFactIcon} aria-hidden="true">💬</span>
                           <div>
-                            <div className={kid.detailLabel}>Note</div>
+                            <div className={kid.detailLabel}>Remark</div>
                             <div className={kid.detailValue}>
                               {latestRemark.remarks || CLASS_INFO.noNoteYet}
                             </div>
@@ -6307,48 +6546,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                       </div>
                     )}
                   </div>
-                  {localRole === "teacher" && selectedClass && !isSelectedClassCompleted && (isClassJoinable(selectedClass, selectedDate, currentTimeTick) || isClassPast(selectedClass, selectedDate, currentTimeTick)) && (
-                    <div className={kid.summary}>
-                      <div className={kid.summaryRow}>
-                        <div className={kid.summaryIcon} aria-hidden="true">📝</div>
-                        <div>
-                          <div className={kid.summaryLabel}>Say something about this class</div>
-                          <div className={kid.summaryValue}>{selectedClass.studentFullName || selectedClass.studentName}</div>
-                        </div>
-                      </div>
-                      <p className={kid.kidFieldNote}>
-                        {hasSelectedClassRemark
-                          ? "A note is saved for this class. You can send an updated note before completing it."
-                          : "Required: send a note about this class before you can complete it."}
-                      </p>
-                      <textarea
-                        style={{
-                          width: "100%",
-                          minHeight: 120,
-                          border: "1px solid var(--border-mid)",
-                          borderRadius: "var(--control-radius)",
-                          padding: 12,
-                          background: "var(--surface)",
-                          color: "var(--text)",
-                          fontFamily: "inherit",
-                          fontSize: "1rem",
-                          resize: "vertical",
-                        }}
-                        placeholder="Write a note about this class..."
-                        value={remarkDraft}
-                        onChange={(event) => setRemarkDraft(event.target.value)}
-                        disabled={remarkSubmitting}
-                      />
-                      <button
-                        type="button"
-                        disabled={remarkSubmitting || !remarkDraft.trim()}
-                        onClick={handleGiveRemark}
-                        className={`${kid.btn} ${kid.btnPrimary} ${kid.btnWide}`}
-                      >
-                        {remarkSubmitting ? "Sending…" : "Send the note"}
-                      </button>
-                    </div>
-                  )}
                   {renderVerificationPanel()}
 
                   {canShowClassEntryAction && (
@@ -6684,21 +6881,22 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
                         {/* Booking Modal */}
                         {bookingFormOpen && selectedTimeSlot && (
-                          <div style={{
-                            position: "fixed",
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            backgroundColor: "rgba(15, 23, 42, 0.48)",
-                            backdropFilter: "blur(8px)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            zIndex: 1000,
-                            padding: 20,
-                            animation: "fadeIn 0.2s ease-out"
-                          }}>
+                          <ModalPortal>
+                            <div style={{
+                              position: "fixed",
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              backgroundColor: "rgba(15, 23, 42, 0.48)",
+                              backdropFilter: "blur(8px)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              zIndex: 1200,
+                              padding: 20,
+                              animation: "fadeIn 0.2s ease-out"
+                            }}>
                             <div style={{
                               background: "var(--surface)",
                               border: "1px solid var(--border)",
@@ -6853,7 +7051,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                 </button>
                               </div>
                             </div>
-                          </div>
+                            </div>
+                          </ModalPortal>
                         )}
                       </>
                     )}
@@ -6869,7 +7068,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                 </>
               ) : (
                 <>
-                  <div className={cal.panelTitle}>Actions</div>
+                  <div className={cal.actionHeading}>Actions</div>
                   <div className={styles.slotList}>
                     {localRole === "teacher" && (
                       <button
@@ -7705,11 +7904,11 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                !! want the new plan, and the admin may decide
                                !! this one first. */
                             <div style={{ padding: 10, border: "1px solid #e5a3a3", borderRadius: 8, background: "#fdecec", fontSize: 12, color: "#8c2020", lineHeight: 1.45 }}>
-                              You also asked for a new plan. Only one ask can wait for the admin at
-                              a time. A new plan replaces your old one, so your{" "}
+                              You already have a new plan request under review. Only one request can
+                              be active at a time. A new plan replaces your current plan, so your{" "}
                               {latestStudentPackage?.classes_left ?? 0} class
                               {Number(latestStudentPackage?.classes_left ?? 0) === 1 ? "" : "es"} will not
-                              carry over. Cancel that ask first if you would rather have more time.
+                              carry over. Withdraw that request first if you would rather request additional time.
                             </div>
                           )}
 
@@ -7796,8 +7995,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                           setContractRequestOpen(false);
                           setRequestingNewContract(false);
                           setContractRequestEditing(false);
+                          setNewPlanStep(0);
                           setContractRequestError("");
-                          setShowContractExtraOptions(false);
                         }}
                       >
                             {/* The consequence, stated here rather than assumed. This
@@ -7816,10 +8015,9 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                  !! unused classes, and this form is asking for
                                  !! the plan that would replace them. */
                               <div style={{ marginBottom: 10, padding: 10, border: "1px solid #e5a3a3", borderRadius: 8, background: "#fdecec", fontSize: 12, color: "#8c2020", lineHeight: 1.45 }}>
-                                You also asked for more time. Only one ask can wait for the admin at a
-                                time. That one is asking to keep the classes on your current plan, and
-                                a new plan replaces it instead. Cancel that ask first if you would
-                                rather keep those classes.
+                                You already have a request for additional time under review. Only one
+                                request can be active at a time. A new plan replaces your current plan.
+                                Withdraw the existing request first if you would rather request a new plan.
                               </div>
                             )}
                             {contractRequestEditing && (
@@ -7845,30 +8043,49 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                 {contractRequests[0].class_duration ? ` - ${contractRequests[0].class_duration} min` : ""}
                               </div>
                             )}
-                              <div style={{ display: "grid", gap: 10 }}>
-                                {/* Three questions. That is the whole form.
-                                    !!
-                                    !! It used to be eight, four of them
-                                    !! multi-select with a paragraph of help
-                                    !! text under each. A student who cannot
-                                    !! read that is not a student who is
-                                    !! choosing - they are a student who is
-                                    !! guessing and pressing the first thing
-                                    !! they recognise.
-                                    !!
-                                    !! The rest is still here, and it still
-                                    !! goes to the admin. It is folded away,
-                                    !! because "you can skip these" is a
-                                    !! sentence a student can act on and
-                                    !! "Learning Goal" is not. */}
+                              <div className={kid.newPlanWizard}>
+                                <div className={kid.newPlanProgress}>
+                                  <p className={kid.newPlanProgressLabel}>
+                                    Step {newPlanStep + 1} of {NEW_PLAN_STEPS.length}
+                                  </p>
+                                  <div
+                                    className={kid.newPlanProgressTrack}
+                                    role="progressbar"
+                                    aria-label="New plan request progress"
+                                    aria-valuemin={1}
+                                    aria-valuemax={NEW_PLAN_STEPS.length}
+                                    aria-valuenow={newPlanStep + 1}
+                                  >
+                                    <div
+                                      className={kid.newPlanProgressFill}
+                                      style={{ width: `${((newPlanStep + 1) / NEW_PLAN_STEPS.length) * 100}%` }}
+                                    />
+                                  </div>
+                                </div>
+                                <div className={kid.newPlanPrompt} aria-live="polite">
+                                  <span className={kid.newPlanStepIcon} aria-hidden="true">
+                                    {NEW_PLAN_STEPS[newPlanStep].icon}
+                                  </span>
+                                  <div>
+                                    <h4 className={kid.newPlanStepTitle}>
+                                      {NEW_PLAN_STEPS[newPlanStep].title}
+                                    </h4>
+                                    <p className={kid.newPlanStepHint}>
+                                      {NEW_PLAN_STEPS[newPlanStep].prompt}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div style={{ display: "grid", gap: 12 }}>
+                                {newPlanStep === 0 && (
+                                <div style={{ display: "grid", gap: 12 }}>
                                 <div>
-                                  <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4 }}>
+                                  <label style={{ display: "block", fontSize: "1rem", fontWeight: 800, marginBottom: 8 }}>
                                     {NEW_PLAN_WINDOW.course}
                                   </label>
                                   <select
                                     value={contractCourseId}
                                     onChange={(e) => updateContractCourse(e.target.value)}
-                                    style={{ width: "100%", padding: "11px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit", fontSize: "0.95rem" }}
+                                    style={{ width: "100%", minHeight: 56, padding: "12px 14px", border: "2px solid #d1d5db", borderRadius: 16, fontFamily: "inherit", fontSize: "1rem" }}
                                   >
                                     <option value="">{NEW_PLAN_WINDOW.coursePlaceholder}</option>
                                     {courses.map((course) => (
@@ -7879,13 +8096,13 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                   </select>
                                 </div>
                                 <div>
-                                  <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4 }}>
+                                  <label style={{ display: "block", fontSize: "1rem", fontWeight: 800, marginBottom: 8 }}>
                                     {NEW_PLAN_WINDOW.classCount}
                                   </label>
                                   <select
                                     value={contractClassCount}
                                     onChange={(e) => setContractClassCount(e.target.value)}
-                                    style={{ width: "100%", padding: "11px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit", fontSize: "0.95rem" }}
+                                    style={{ width: "100%", minHeight: 56, padding: "12px 14px", border: "2px solid #d1d5db", borderRadius: 16, fontFamily: "inherit", fontSize: "1rem" }}
                                   >
                                     <option value="10">10 classes</option>
                                     <option value="15">15 classes</option>
@@ -7893,110 +8110,131 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                   </select>
                                 </div>
                                 <div>
-                                  <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4 }}>
+                                  <label style={{ display: "block", fontSize: "1rem", fontWeight: 800, marginBottom: 8 }}>
                                     {NEW_PLAN_WINDOW.classLength}
                                   </label>
                                   <select
                                     value={contractClassDuration}
                                     onChange={(e) => setContractClassDuration(e.target.value)}
-                                    style={{ width: "100%", padding: "11px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontFamily: "inherit", fontSize: "0.95rem" }}
+                                    style={{ width: "100%", minHeight: 56, padding: "12px 14px", border: "2px solid #d1d5db", borderRadius: 16, fontFamily: "inherit", fontSize: "1rem" }}
                                   >
                                     <option value="25">25 minutes</option>
                                     <option value="50">50 minutes</option>
                                   </select>
                                 </div>
+                                </div>
+                                )}
 
-                                {/* Everything else, folded away.
-                                    !!
-                                    !! The teacher match uses all of it, so it
-                                    !! cannot be thrown away - but a student
-                                    !! who has not answered it still gets a
-                                    !! good teacher, because the match falls
-                                    !! back to what it does know. */}
-                                <div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowContractExtraOptions((current) => !current)}
-                                    aria-expanded={showContractExtraOptions}
-                                    style={{
-                                      width: "100%",
-                                      padding: "11px 12px",
-                                      border: "1px solid #d1d5db",
-                                      borderRadius: 8,
-                                      background: "#fff",
-                                      color: "#374151",
-                                      fontWeight: 700,
-                                      fontSize: "0.9rem",
-                                      cursor: "pointer",
-                                    }}
-                                  >
-                                    {showContractExtraOptions
-                                      ? NEW_PLAN_WINDOW.lessOptions
-                                      : NEW_PLAN_WINDOW.moreOptions}
-                                  </button>
-
-                                  {showContractExtraOptions && (
-                                    <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                                {newPlanStep === 1 && (
                                       <CriteriaChipField
-                                        legend={NEW_PLAN_WINDOW.learningGoal}
+                                        legend={`${NEW_PLAN_WINDOW.learningGoal} *`}
+                                        hint="Select at least one option."
                                         options={contractLearningGoalOptions}
                                         selected={contractAiCriteria.learningGoal}
                                         onToggle={(value) => toggleContractAiCriterionValue("learningGoal", value)}
-                                        emptyMessage="Pick a course first."
+                                        emptyMessage="Select a course to view the available options."
                                         name="contract-learning-goal"
+                                        required
+                                        kidFriendly
                                         allowCustom
                                         othersLabel="Something else"
                                         customPlaceholder="Tell us in your own words"
                                         customValue={contractCriteriaOther.learningGoal}
                                         onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, learningGoal: text }))}
                                       />
+                                )}
+                                {newPlanStep === 2 && (
                                       <CriteriaChipField
-                                        legend={NEW_PLAN_WINDOW.focusArea}
+                                        legend={`${NEW_PLAN_WINDOW.focusArea} *`}
+                                        hint="Select at least one option."
                                         options={contractFocusAreaOptions}
                                         selected={contractAiCriteria.focusArea}
                                         onToggle={(value) => toggleContractAiCriterionValue("focusArea", value)}
-                                        emptyMessage="Pick a course first."
+                                        emptyMessage="Select a course to view the available options."
                                         name="contract-focus-area"
+                                        required
+                                        kidFriendly
                                         allowCustom
                                         othersLabel="Something else"
                                         customPlaceholder="Tell us in your own words"
                                         customValue={contractCriteriaOther.focusArea}
                                         onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, focusArea: text }))}
                                       />
+                                )}
+                                {newPlanStep === 3 && (
                                       <CriteriaChipField
-                                        legend={NEW_PLAN_WINDOW.learningStyle}
-                                        options={SIMPLE_CRITERIA_OPTIONS.learningStyle}
+                                        legend={`${NEW_PLAN_WINDOW.learningStyle} *`}
+                                        hint="Select at least one option."
+                                        options={STUDENT_CRITERIA_DISPLAY_OPTIONS.learningStyle}
                                         selected={contractAiCriteria.learningStyle}
                                         onToggle={(value) => toggleContractAiCriterionValue("learningStyle", value)}
                                         name="contract-learning-style"
+                                        required
+                                        kidFriendly
                                         allowCustom
                                         othersLabel="Something else"
                                         customPlaceholder="Tell us in your own words"
                                         customValue={contractCriteriaOther.learningStyle}
                                         onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, learningStyle: text }))}
                                       />
+                                )}
+                                {newPlanStep === 4 && (
                                       <CriteriaChipField
-                                        legend={NEW_PLAN_WINDOW.learningPace}
-                                        options={SIMPLE_CRITERIA_OPTIONS.pace}
+                                        legend={`${NEW_PLAN_WINDOW.learningPace} *`}
+                                        hint="Select at least one option."
+                                        options={STUDENT_CRITERIA_DISPLAY_OPTIONS.pace}
                                         selected={contractAiCriteria.pace}
                                         onToggle={(value) => toggleContractAiCriterionValue("pace", value)}
                                         name="contract-pace"
+                                        required
+                                        kidFriendly
                                         allowCustom
                                         othersLabel="Something else"
                                         customPlaceholder="Tell us in your own words"
                                         customValue={contractCriteriaOther.pace}
                                         onCustomChange={(text) => setContractCriteriaOther((prev) => ({ ...prev, pace: text }))}
                                       />
-                                      <div style={{ marginBottom: 4 }}>
-                                        <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#1d3a2c" }}>
+                                )}
+                                {newPlanStep === 5 && (
+                                  <>
+                                      <div className={kid.newPlanSummary} aria-label="Plan summary">
+                                        <div className={kid.newPlanSummaryRow}>
+                                          <span className={kid.newPlanSummaryLabel}>Course</span>
+                                          <span className={kid.newPlanSummaryValue}>
+                                            {courses.find((course) => String(course.course_id) === String(contractCourseId))?.course_name || "No course selected"}
+                                          </span>
+                                        </div>
+                                        <div className={kid.newPlanSummaryRow}>
+                                          <span className={kid.newPlanSummaryLabel}>Class plan</span>
+                                          <span className={kid.newPlanSummaryValue}>{contractClassCount} classes, {contractClassDuration} minutes each</span>
+                                        </div>
+                                        <div className={kid.newPlanSummaryRow}>
+                                          <span className={kid.newPlanSummaryLabel}>Learning objectives</span>
+                                          <span className={kid.newPlanSummaryValue}>{contractCriterionSummary("learningGoal", contractLearningGoalOptions)}</span>
+                                        </div>
+                                        <div className={kid.newPlanSummaryRow}>
+                                          <span className={kid.newPlanSummaryLabel}>Skill focus</span>
+                                          <span className={kid.newPlanSummaryValue}>{contractCriterionSummary("focusArea", contractFocusAreaOptions)}</span>
+                                        </div>
+                                        <div className={kid.newPlanSummaryRow}>
+                                          <span className={kid.newPlanSummaryLabel}>Learning preferences</span>
+                                          <span className={kid.newPlanSummaryValue}>{contractCriterionSummary("learningStyle", STUDENT_CRITERIA_DISPLAY_OPTIONS.learningStyle)}</span>
+                                        </div>
+                                        <div className={kid.newPlanSummaryRow}>
+                                          <span className={kid.newPlanSummaryLabel}>Learning pace</span>
+                                          <span className={kid.newPlanSummaryValue}>{contractCriterionSummary("pace", STUDENT_CRITERIA_DISPLAY_OPTIONS.pace)}</span>
+                                        </div>
+                                      </div>
+                                      <div style={{ display: "grid", gap: 12 }}>
+                                        <label style={{ display: "block", fontSize: "1rem", fontWeight: 800, marginBottom: 4, color: "#1d3a2c" }}>
                                           {NEW_PLAN_WINDOW.freeTime}{" "}
                                           <span style={{ fontWeight: 400, color: "#6b7d73" }}>({NEW_PLAN_WINDOW.freeTimeOptional})</span>
                                         </label>
-                                        <p style={{ margin: "0 0 10px 0", fontSize: "0.85em", color: "#4b5f55", lineHeight: 1.5 }}>
+                                        <p style={{ margin: 0, fontSize: "1rem", color: "#4b5f55", lineHeight: 1.5 }}>
                                           {NEW_PLAN_WINDOW.freeTimeHelp}
                                         </p>
 
-                                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
+                                        <div role="group" aria-label={`${NEW_PLAN_WINDOW.freeTime} (${NEW_PLAN_WINDOW.freeTimeOptional})`} style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                                           {WEEKDAY_CHOICES.map(([value, label]) => {
                                             const active = contractPreferredSchedule.days.includes(value);
                                             return (
@@ -8011,14 +8249,16 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                                   setContractPreferredSchedule((prev) => ({ ...prev, days }));
                                                 }}
                                                 style={{
-                                                  padding: "7px 14px",
+                                                  minWidth: 56,
+                                                  minHeight: 48,
+                                                  padding: "10px 16px",
                                                   borderRadius: "999px",
-                                                  border: `1px solid ${active ? "#26423b" : "#d0d0d0"}`,
-                                                  background: active ? "#26423b" : "#fff",
-                                                  color: active ? "#fff" : "#333",
+                                                  border: `2px solid ${active ? "#2f7a3d" : "#cbd5cd"}`,
+                                                  background: active ? "#e8f5e9" : "#fff",
+                                                  color: "#1e3828",
                                                   cursor: "pointer",
-                                                  fontSize: "0.88em",
-                                                  fontWeight: 600,
+                                                  fontSize: "1rem",
+                                                  fontWeight: 800,
                                                 }}
                                               >
                                                 {label}
@@ -8027,40 +8267,38 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                           })}
                                         </div>
 
-                                        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-                                          <label style={{ fontSize: "0.85em", color: "#555" }}>{NEW_PLAN_WINDOW.from}</label>
+                                        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                                          <label style={{ fontSize: "1rem", fontWeight: 700, color: "#1e3828" }}>{NEW_PLAN_WINDOW.from}</label>
                                           <input
                                             type="time"
+                                            aria-label={NEW_PLAN_WINDOW.from}
                                             value={contractPreferredSchedule.start}
                                             onChange={(e) =>
                                               setContractPreferredSchedule((prev) => ({ ...prev, start: e.target.value }))
                                             }
-                                            style={{ padding: "7px 9px", border: "1px solid #cbd5cd", borderRadius: 8, fontFamily: "inherit" }}
+                                            style={{ minHeight: 48, padding: "10px 12px", border: "2px solid #cbd5cd", borderRadius: 14, fontFamily: "inherit", fontSize: "1rem" }}
                                           />
-                                          <label style={{ fontSize: "0.85em", color: "#555" }}>{NEW_PLAN_WINDOW.to}</label>
+                                          <label style={{ fontSize: "1rem", fontWeight: 700, color: "#1e3828" }}>{NEW_PLAN_WINDOW.to}</label>
                                           <input
                                             type="time"
+                                            aria-label={NEW_PLAN_WINDOW.to}
                                             value={contractPreferredSchedule.end}
                                             onChange={(e) =>
                                               setContractPreferredSchedule((prev) => ({ ...prev, end: e.target.value }))
                                             }
-                                            style={{ padding: "7px 9px", border: "1px solid #cbd5cd", borderRadius: 8, fontFamily: "inherit" }}
+                                            style={{ minHeight: 48, padding: "10px 12px", border: "2px solid #cbd5cd", borderRadius: 14, fontFamily: "inherit", fontSize: "1rem" }}
                                           />
                                         </div>
 
-                                        {/* Only when it is actually true. Warning on every
-                                            keystroke of an optional field is how a
-                                            helpful hint becomes noise people ignore. */}
                                         {contractPreferredSchedule.days.length > 0 &&
                                         !hasPreferredSchedule(contractPreferredSchedule) && (
-                                          <p style={{ margin: "8px 0 0", fontSize: "0.85em", color: "#7a5210" }}>
+                                          <p style={{ margin: "8px 0 0", fontSize: "1rem", color: "#7a5210" }}>
                                             {NEW_PLAN_WINDOW.fromToHelp}
                                           </p>
                                         )}
                                       </div>
-                                    </div>
-                                  )}
-                                </div>
+                                  </>
+                                )}
                                 {/* Who this would match, before sending it.
                                     !! The same recommendTeacher the approval
                                     !! path runs, so this is a preview rather than
@@ -8069,6 +8307,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                     !! worse than none. Nothing is assigned: the
                                     !! admin still decides, and a student cannot
                                     !! name a teacher here. */}
+                                {newPlanStep === 5 && (
                                 <div style={{ marginTop: 6 }}>
                                   <button
                                     type="button"
@@ -8101,31 +8340,55 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
                                   {matchPreview && <MatchPreviewCard preview={matchPreview} />}
                                 </div>
+                                )}
 
                                 {contractRequestError && (
-                                  <div style={{ padding: 8, border: "1px solid #fecaca", borderRadius: 8, background: "#fef2f2", color: "#b91c1c", fontSize: 12 }}>
+                                  <div role="alert" style={{ padding: 12, border: "2px solid #fecaca", borderRadius: 16, background: "#fef2f2", color: "#b91c1c", fontSize: "1rem", fontWeight: 700 }}>
                                     {contractRequestError}
                                   </div>
                                 )}
-                                <div style={{ display: "flex", gap: 8 }}>
+                                <div className={kid.newPlanControls}>
                                   <button
                                     type="button"
                                     onClick={() => {
-                              setContractRequestOpen(false);
-                              setRequestingNewContract(false);
-                              setContractRequestEditing(false);
-                              setShowContractExtraOptions(false);
-                            }}
+                                      setContractRequestOpen(false);
+                                      setRequestingNewContract(false);
+                                      setContractRequestEditing(false);
+                                      setNewPlanStep(0);
+                                    }}
                                     disabled={isSubmittingContractRequest}
-                                    style={{ flex: 1, padding: "11px 10px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", fontWeight: 700, cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
+                                    className={`${kid.btn} ${kid.btnGhost}`}
                                   >
                                     {NEW_PLAN_WINDOW.cancel}
                                   </button>
+                                  {newPlanStep > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setContractRequestError("");
+                                        setNewPlanStep((step) => Math.max(step - 1, 0));
+                                      }}
+                                      disabled={isSubmittingContractRequest}
+                                      className={`${kid.btn} ${kid.btnGhost}`}
+                                    >
+                                      Back
+                                    </button>
+                                  )}
+                                  {newPlanStep < NEW_PLAN_STEPS.length - 1 ? (
+                                    <button
+                                      type="button"
+                                      onClick={continueNewPlanStep}
+                                      disabled={isSubmittingContractRequest}
+                                      className={`${kid.btn} ${kid.btnPrimary}`}
+                                    >
+                                      Next
+                                    </button>
+                                  ) : (
                                   <button
                                     type="button"
                                     onClick={submitContractRequest}
-                                    disabled={isSubmittingContractRequest}
-                                    style={{ flex: 1, padding: "11px 10px", border: "none", borderRadius: 8, background: "#111827", color: "#fff", fontWeight: 700, cursor: isSubmittingContractRequest ? "not-allowed" : "pointer" }}
+                                    disabled={isSubmittingContractRequest || previewingMatch || !matchPreview}
+                                    className={`${kid.btn} ${kid.btnPrimary}`}
                                   >
                                     {isSubmittingContractRequest
                                       ? NEW_PLAN_WINDOW.sending
@@ -8133,7 +8396,14 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                         ? NEW_PLAN_WINDOW.update
                                         : NEW_PLAN_WINDOW.send}
                                   </button>
+                                  )}
                                 </div>
+                                {newPlanStep === NEW_PLAN_STEPS.length - 1 && !matchPreview && (
+                                  <p style={{ margin: "8px 0 0", fontSize: "1rem", fontWeight: 700, color: "#4b5f55" }}>
+                                    {NEW_PLAN_WINDOW.checkTeacherRequired}
+                                  </p>
+                                )}
+                              </div>
                               </div>
 
                       </RequestDialog>
@@ -8597,11 +8867,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     </section>
     </main>
     {classEntryConfirmOpen && selectedClass && (
-      <div
-        role="presentation"
-        className={styles.confirmOverlay}
-        onClick={() => setClassEntryConfirmOpen(false)}
-      >
+      <ModalPortal>
+        <div
+          role="presentation"
+          className={styles.confirmOverlay}
+          onClick={() => setClassEntryConfirmOpen(false)}
+        >
         <div
           role="dialog"
           aria-modal="true"
@@ -8645,164 +8916,168 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
             </button>
           </div>
         </div>
-      </div>
+        </div>
+      </ModalPortal>
     )}
     {availabilityConfirmOpen && (
-      <div
-        role="presentation"
-        onClick={() => {
-          if (!isSubmittingAvailability) setAvailabilityConfirmOpen(false);
-        }}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(15, 23, 42, 0.48)",
-          backdropFilter: "blur(8px)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 20,
-          zIndex: 2000,
-          animation: "fadeIn 0.2s ease-out",
-        }}
-      >
+      <ModalPortal>
         <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="availability-confirm-title"
-          onClick={(event) => event.stopPropagation()}
+          role="presentation"
+          onClick={() => {
+            if (!isSubmittingAvailability) setAvailabilityConfirmOpen(false);
+          }}
           style={{
-            width: "min(460px, 100%)",
-            background: "#fff",
-            border: "1px solid rgba(38, 66, 59, 0.12)",
-            borderRadius: 24,
-            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
-            padding: 24,
-            animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.48)",
+            backdropFilter: "blur(8px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+            zIndex: 2000,
+            animation: "fadeIn 0.2s ease-out",
           }}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="availability-confirm-title"
+            onClick={(event) => event.stopPropagation()}
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: "50%",
-              background: "#e8f5e9",
-              color: "#2e7d32",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 800,
-              fontSize: 18,
-              marginBottom: 14,
+              width: "min(460px, 100%)",
+              background: "#fff",
+              border: "1px solid rgba(38, 66, 59, 0.12)",
+              borderRadius: 24,
+              boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
+              padding: 24,
+              animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
             }}
           >
-            SCH
-          </div>
-          <h3 id="availability-confirm-title" style={{ margin: "0 0 8px", fontSize: "1.15rem", color: "#111827" }}>
-            Confirm availability
-          </h3>
-          <p style={{ margin: "0 0 16px", color: "#4b5563", lineHeight: 1.5, fontSize: "0.92rem" }}>
-            Please review the schedule before saving it.
-          </p>
-          <div
-            style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: 10,
-              background: "#f9fafb",
-              padding: "12px 14px",
-              marginBottom: 20,
-              display: "grid",
-              gap: 8,
-            }}
-          >
-            <div style={{ fontWeight: 700, color: "#111827" }}>
-              {availabilityApplyMode === "bulk"
-                ? `${monthName} ${year}: ${bulkAvailabilityDates.length} date${bulkAvailabilityDates.length === 1 ? "" : "s"}`
-                : availabilityDate ? new Date(availabilityDate + "T00:00:00").toLocaleDateString() : "Selected date"}
+            <div
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: "50%",
+                background: "#e8f5e9",
+                color: "#2e7d32",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 800,
+                fontSize: 18,
+                marginBottom: 14,
+              }}
+            >
+              SCH
             </div>
-            {availabilityApplyMode === "bulk" && (
-              <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-                Days: {[
-                  [0, "Sun"],
-                  [1, "Mon"],
-                  [2, "Tue"],
-                  [3, "Wed"],
-                  [4, "Thu"],
-                  [5, "Fri"],
-                  [6, "Sat"],
-                ].filter(([weekday]) => bulkAvailabilityWeekdays.includes(weekday)).map(([, label]) => label).join(", ")}
+            <h3 id="availability-confirm-title" style={{ margin: "0 0 8px", fontSize: "1.15rem", color: "#111827" }}>
+              Confirm availability
+            </h3>
+            <p style={{ margin: "0 0 16px", color: "#4b5563", lineHeight: 1.5, fontSize: "0.92rem" }}>
+              Please review the schedule before saving it.
+            </p>
+            <div
+              style={{
+                border: "1px solid #e5e7eb",
+                borderRadius: 10,
+                background: "#f9fafb",
+                padding: "12px 14px",
+                marginBottom: 20,
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div style={{ fontWeight: 700, color: "#111827" }}>
+                {availabilityApplyMode === "bulk"
+                  ? `${monthName} ${year}: ${bulkAvailabilityDates.length} date${bulkAvailabilityDates.length === 1 ? "" : "s"}`
+                  : availabilityDate ? new Date(availabilityDate + "T00:00:00").toLocaleDateString() : "Selected date"}
               </div>
-            )}
-            <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-              Status: {availabilityStatus === "available" ? "Available" : "Unavailable"}
+              {availabilityApplyMode === "bulk" && (
+                <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+                  Days: {[
+                    [0, "Sun"],
+                    [1, "Mon"],
+                    [2, "Tue"],
+                    [3, "Wed"],
+                    [4, "Thu"],
+                    [5, "Fri"],
+                    [6, "Sat"],
+                  ].filter(([weekday]) => bulkAvailabilityWeekdays.includes(weekday)).map(([, label]) => label).join(", ")}
+                </div>
+              )}
+              <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+                Status: {availabilityStatus === "available" ? "Available" : "Unavailable"}
+              </div>
+              {availabilityStatus === "available" && (
+                <>
+                  <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+                    Time: {humanTime(availabilityStartTime)} - {humanTime(availabilityEndTime)}
+                  </div>
+                  <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
+                    Break: {availabilityBreakStart && availabilityBreakEnd ? `${humanTime(availabilityBreakStart)} - ${humanTime(availabilityBreakEnd)}` : "None"}
+                  </div>
+                </>
+              )}
             </div>
-            {availabilityStatus === "available" && (
-              <>
-                <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-                  Time: {humanTime(availabilityStartTime)} - {humanTime(availabilityEndTime)}
-                </div>
-                <div style={{ fontSize: "0.88rem", color: "#4b5563" }}>
-                  Break: {availabilityBreakStart && availabilityBreakEnd ? `${humanTime(availabilityBreakStart)} - ${humanTime(availabilityBreakEnd)}` : "None"}
-                </div>
-              </>
-            )}
-          </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => setAvailabilityConfirmOpen(false)}
-              disabled={isSubmittingAvailability}
-              style={{
-                border: "1px solid rgba(38, 66, 59, 0.14)",
-                background: "#fff",
-                color: "#26423b",
-                borderRadius: 14,
-                padding: "10px 18px",
-                minHeight: 42,
-                fontWeight: 700,
-                cursor: isSubmittingAvailability ? "not-allowed" : "pointer",
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={confirmTeacherAvailability}
-              disabled={isSubmittingAvailability}
-              style={{
-                border: "none",
-                background: "#26423b",
-                color: "#fff",
-                borderRadius: 14,
-                padding: "10px 18px",
-                minHeight: 42,
-                fontWeight: 700,
-                cursor: isSubmittingAvailability ? "not-allowed" : "pointer",
-                boxShadow: "0 8px 20px rgba(38, 66, 59, 0.22)",
-              }}
-            >
-              {isSubmittingAvailability ? "Saving..." : "Save Availability"}
-            </button>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => setAvailabilityConfirmOpen(false)}
+                disabled={isSubmittingAvailability}
+                style={{
+                  border: "1px solid rgba(38, 66, 59, 0.14)",
+                  background: "#fff",
+                  color: "#26423b",
+                  borderRadius: 14,
+                  padding: "10px 18px",
+                  minHeight: 42,
+                  fontWeight: 700,
+                  cursor: isSubmittingAvailability ? "not-allowed" : "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmTeacherAvailability}
+                disabled={isSubmittingAvailability}
+                style={{
+                  border: "none",
+                  background: "#26423b",
+                  color: "#fff",
+                  borderRadius: 14,
+                  padding: "10px 18px",
+                  minHeight: 42,
+                  fontWeight: 700,
+                  cursor: isSubmittingAvailability ? "not-allowed" : "pointer",
+                  boxShadow: "0 8px 20px rgba(38, 66, 59, 0.22)",
+                }}
+              >
+                {isSubmittingAvailability ? "Saving..." : "Save Availability"}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </ModalPortal>
     )}
     {requestConfirmOpen && selectedClass && (
-      <div
-        role="presentation"
-        onClick={() => {
-          if (!isSubmittingRequest) setRequestConfirmOpen(false);
-        }}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(15, 25, 20, 0.45)",
-          display: "grid", placeItems: "center",
-          padding: 20,
-          zIndex: 2000,
-          animation: "fadeIn 0.2s ease-out",
-        }}
-      >
+      <ModalPortal>
+        <div
+          role="presentation"
+          onClick={() => {
+            if (!isSubmittingRequest) setRequestConfirmOpen(false);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 25, 20, 0.45)",
+            display: "grid", placeItems: "center",
+            padding: 20,
+            zIndex: 2000,
+            animation: "fadeIn 0.2s ease-out",
+          }}
+        >
         <div
           role="dialog"
           aria-modal="true"
@@ -8900,27 +9175,29 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
             </div>
           </div>
         </div>
-      </div>
+        </div>
+      </ModalPortal>
     )}
     {classDoneConfirmOpen && selectedClass && (
-      <div
-        role="presentation"
-        onClick={() => {
-          if (!isMarkingClassDone) setClassDoneConfirmOpen(false);
-        }}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(15, 23, 42, 0.48)",
-          backdropFilter: "blur(8px)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 20,
-          zIndex: 2000,
-          animation: "fadeIn 0.2s ease-out",
-        }}
-      >
+      <ModalPortal>
+        <div
+          role="presentation"
+          onClick={() => {
+            if (!isMarkingClassDone) setClassDoneConfirmOpen(false);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.48)",
+            backdropFilter: "blur(8px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+            zIndex: 2000,
+            animation: "fadeIn 0.2s ease-out",
+          }}
+        >
         <div
           role="dialog"
           aria-modal="true"
@@ -9013,18 +9290,20 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
             </button>
           </div>
         </div>
-      </div>
+        </div>
+      </ModalPortal>
     )}
     {confirmAction && (
-      <div
-        onClick={closeConfirmAction}
-        style={{
-          position: "fixed", inset: 0, zIndex: 9999,
-          background: "rgba(15, 25, 20, 0.45)",
-          display: "grid", placeItems: "center",
-          padding: 20,
-        }}
-      >
+      <ModalPortal>
+        <div
+          onClick={closeConfirmAction}
+          style={{
+            position: "fixed", inset: 0, zIndex: 9999,
+            background: "rgba(15, 25, 20, 0.45)",
+            display: "grid", placeItems: "center",
+            padding: 20,
+          }}
+        >
         <div
           onClick={(e) => e.stopPropagation()}
           className={kid.filterDialog}
@@ -9058,7 +9337,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
             </div>
           </div>
         </div>
-      </div>
+        </div>
+      </ModalPortal>
     )}
     </>
   );

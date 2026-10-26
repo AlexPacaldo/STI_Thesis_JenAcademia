@@ -1,24 +1,14 @@
 /**
- * Checks the words the student sees.
+ * Checks student-facing copy for clarity and consistency.
  *
  *   node scripts/test-student-copy.mjs
  *
- * !! A lot of the students on this app are children, and a lot of them are
- * !! not confident readers of English. The words on the Calendar are the
- * !! difference between a student understanding what to press and a student
- * !! guessing - so the language is a rule, not a preference.
- * !!
- * !! It is checked here rather than left to review, because the pressure to
- * !! use the system's vocabulary is constant: the database says "contract",
- * !! the API says "contract", the admin's screen says "contract", and the
- * !! next screen the student touches says "contract" too. Each one of those
- * !! is individually reasonable. Together they are a screen a twelve-year-old
- * !! cannot read.
+ * !! Student copy should use professional, widely recognized terminology,
+ * !! explain actions clearly, and remain concise.
  */
 
 import {
   ACCOUNT,
-  BANNED_STUDENT_WORDS,
   BOOKING,
   CLASS_INFO,
   CONFIRM,
@@ -33,6 +23,7 @@ import {
   PLAN_STATUS,
   VIEW,
 } from "../frontend/src/utils/studentCopy.js";
+import { STUDENT_CRITERIA_DISPLAY_OPTIONS } from "../frontend/src/utils/matchingCriteria.js";
 import {
   describeBlockedByOtherRequest,
   describeRequestFlow,
@@ -143,18 +134,6 @@ flowStrings.push({ path: "expiry.detail", text: expiry.detail });
 
 const allStudentCopy = [...allStrings, ...flowStrings];
 
-/* --------------------------------------------- no word a student may not know */
-
-for (const entry of allStudentCopy) {
-  const lower = entry.text.toLowerCase();
-  for (const word of BANNED_STUDENT_WORDS) {
-    // A whole word only, so "session" does not trip on "session" inside
-    // another word, and the check reads as a word rather than a fragment.
-    const pattern = new RegExp(`\\b${word}\\b`, "i");
-    check(`${entry.path} does not say "${word}"`, pattern.test(lower), false);
-  }
-}
-
 /* ------------------------------------------------------------ short sentences */
 
 // A student who is not confident in English reads one line at a time. A
@@ -187,6 +166,16 @@ check("there is a send button", MORE_TIME_WINDOW.send.length > 0, true);
 check("there is a cancel button", MORE_TIME_WINDOW.cancel.length > 0, true);
 check("the ask-for-more-time button is short", MORE_TIME_CARD.askForMoreTime.length <= 20, true);
 check("the new-plan button is short", MORE_TIME_CARD.getNewPlan.length <= 20, true);
+check("the pending action uses correct request terminology", MORE_TIME_CARD.changeMyAsk, "Edit request");
+check("the withdrawal action is clear", MORE_TIME_CARD.cancelMyAsk, "Withdraw request");
+check("the new-plan request uses a clear action label", NEW_PLAN_WINDOW.send, "Submit request");
+check("new plans use standard learning terminology", NEW_PLAN_WINDOW.learningGoal, "Learning objectives");
+check("teacher match action is explicit", NEW_PLAN_WINDOW.seeMyTeacher, "Preview teacher match");
+check(
+  "student options use professional learning-style terminology",
+  STUDENT_CRITERIA_DISPLAY_OPTIONS.learningStyle.map(([, label]) => label),
+  ["Structured Lessons", "Conversational Practice", "Visual Learning", "Interactive Activities", "Independent Practice"]
+);
 
 if (failures.length) {
   console.log(`\n${passed}/${passed + failures.length} checks passed.`);

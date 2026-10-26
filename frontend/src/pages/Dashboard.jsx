@@ -4,6 +4,7 @@ import axios from "axios";
 import styles from "../assets/Dashboard.module.css";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { openSseStream } from "../utils/sseClient.js";
 import FirstStepsGuide from "../components/FirstStepsGuide.jsx";
 
 const API = API_BASE_URL;
@@ -185,6 +186,60 @@ export default function Dashboard({ mode }) {
       ignore = true;
     };
   }, [currentUserId, isTeacher]);
+
+  useEffect(() => {
+    if (isTeacher || String(user.role || "").toLowerCase() !== "student" || !currentUserId) return;
+
+    let active = true;
+    let refreshing = false;
+    const refreshStudentPackage = async () => {
+      if (!active || refreshing || document.visibilityState === "hidden") return;
+      refreshing = true;
+      try {
+        const response = await axios.get(`${API}/api/calendar/student-package/${currentUserId}`);
+        if (!active) return;
+        setStudentData((current) => ({
+          ...current,
+          package: response.data?.package || null,
+          latest_package: response.data?.latest_package || response.data?.package || null,
+        }));
+      } catch (err) {
+        if (!active) return;
+        if (err?.response?.status === 404) {
+          setStudentData((current) => ({
+            ...current,
+            package: null,
+            latest_package: err.response?.data?.latest_package || null,
+          }));
+        } else {
+          console.warn("Could not refresh the student's class plan:", err);
+        }
+      } finally {
+        refreshing = false;
+      }
+    };
+
+    const stream = openSseStream(`${API}/api/calendar/stream/${currentUserId}`, { reconnectMs: 5000 });
+    const handleContractRequestUpdated = () => {
+      void refreshStudentPackage();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshStudentPackage();
+    };
+
+    stream.addEventListener("contract-request-updated", handleContractRequestUpdated);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    const intervalId = window.setInterval(refreshStudentPackage, 10000);
+    stream.onerror = () => {};
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      stream.removeEventListener("contract-request-updated", handleContractRequestUpdated);
+      stream.close();
+    };
+  }, [currentUserId, isTeacher, user.role]);
 
   const classesLeft = studentData.package?.classes_left ?? 0;
   const readyToBook =

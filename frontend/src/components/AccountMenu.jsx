@@ -54,7 +54,7 @@ function AccountAvatar({ user, className = "" }) {
   );
 }
 
-export default function AccountMenu({ user, role, classHistoryPath = "/classHistory" }) {
+export default function AccountMenu({ user, role }) {
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState(null);
   const [logoutConfirmationOpen, setLogoutConfirmationOpen] = useState(false);
@@ -65,9 +65,6 @@ export default function AccountMenu({ user, role, classHistoryPath = "/classHist
 
   const fullName = `${user?.firstName || ""} ${user?.lastName || ""}`.trim();
   const roleLabel = role === "admin" ? "Admin" : role === "teacher" ? "Teacher" : "Student";
-  // Only a student and a teacher have classes of their own to look back on.
-  const showClasses = role === "student" || role === "teacher";
-
   /**
    * Where the panel goes.
    *
@@ -201,28 +198,6 @@ export default function AccountMenu({ user, role, classHistoryPath = "/classHist
                 <i className={`bi bi-chevron-right ${styles.itemChevron}`} aria-hidden="true" />
               </Link>
 
-              {showClasses ? (
-                <Link
-                  to={classHistoryPath}
-                  className={styles.item}
-                  role="menuitem"
-                  onClick={closeMenu}
-                >
-                  <span className={styles.itemIcon} aria-hidden="true">
-                    <i className="bi bi-clock-history" />
-                  </span>
-                  <span className={styles.itemLabel}>{ACCOUNT.menuMyClasses}</span>
-                  <i className={`bi bi-chevron-right ${styles.itemChevron}`} aria-hidden="true" />
-                </Link>
-              ) : null}
-
-              <a href="/#contact" className={styles.item} role="menuitem" onClick={closeMenu}>
-                <span className={styles.itemIcon} aria-hidden="true">
-                  <i className="bi bi-question-circle-fill" />
-                </span>
-                <span className={styles.itemLabel}>{ACCOUNT.menuGetHelp}</span>
-                <i className={`bi bi-chevron-right ${styles.itemChevron}`} aria-hidden="true" />
-              </a>
             </div>
 
             <div className={styles.divider} />

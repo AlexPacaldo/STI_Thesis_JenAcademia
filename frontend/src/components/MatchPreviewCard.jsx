@@ -110,26 +110,23 @@ export default function MatchPreviewCard({ preview }) {
           lineHeight: 1.5,
         }}
       >
-        <strong>No teacher for this course yet.</strong>{" "}
+        <strong>No teacher is available for this course.</strong>{" "}
         {preview.noTeacherReason === "no-teachers"
-          ? "There are no active teachers to match against."
+          ? "There are no active teachers available for matching."
           : "No active teacher currently teaches this course."}{" "}
-        You can still send the ask - the admin will find you a teacher.
+        You may submit your request. An administrator will review it and identify a teacher.
       </div>
     );
   }
 
   const { teacher, matchStrength, advisor, availabilityConflict, availabilityReason, preferredScheduleEvaluated } = preview;
 
-  // The student's words. "Strong match" and "Rule scores" are the system's
-  // language; a student only needs to know whether this teacher is a good
-  // fit and what to do about it.
   const strength = {
-    strong: { bg: "#eef5f0", border: "#a9c9b4", text: "#2f5a43", label: "Great fit" },
-    partial: { bg: "#fdf6e8", border: "#e0c98a", text: "#7a5a10", label: "Good fit" },
-    weak: { bg: "#fdf1f1", border: "#e0b0b0", text: "#8c2020", label: "Closest teacher we have" },
-    unknown: { bg: "#f4f6f5", border: "#d0d7d3", text: "#4a5a52", label: "We do not know yet" },
-  }[matchStrength?.level] || { bg: "#f4f6f5", border: "#d0d7d3", text: "#4a5a52", label: "Your teacher" };
+    strong: { bg: "#eef5f0", border: "#a9c9b4", text: "#2f5a43", label: "Strong match" },
+    partial: { bg: "#fdf6e8", border: "#e0c98a", text: "#7a5a10", label: "Partial match" },
+    weak: { bg: "#fdf1f1", border: "#e0b0b0", text: "#8c2020", label: "Best available match" },
+    unknown: { bg: "#f4f6f5", border: "#d0d7d3", text: "#4a5a52", label: "Match not determined" },
+  }[matchStrength?.level] || { bg: "#f4f6f5", border: "#d0d7d3", text: "#4a5a52", label: "Recommended teacher" };
 
   return (
     <div
@@ -152,8 +149,8 @@ export default function MatchPreviewCard({ preview }) {
 
       {matchStrength?.total > 0 && matchStrength.level !== "strong" && (
         <p style={{ margin: 0, fontSize: "0.86em", color: strength.text, lineHeight: 1.5 }}>
-          This teacher covers {matchStrength.matched} of the {matchStrength.total} things you asked
-          for.
+          This teacher matches {matchStrength.matched} of the {matchStrength.total} learning objectives
+          and skills you selected.
         </p>
       )}
 
@@ -189,14 +186,14 @@ export default function MatchPreviewCard({ preview }) {
       {preferredScheduleEvaluated && (
         <p style={{ margin: 0, fontSize: "0.84em", color: availabilityConflict ? "#8c2020" : "#2f5a43", lineHeight: 1.5 }}>
           {availabilityConflict
-            ? `Not free then - ${availabilityReason || "their free times do not cover it"}.`
-            : "Free at the times you chose."}
+            ? `Unavailable during your selected times - ${availabilityReason || "the teacher's schedule does not match your availability"}.`
+            : "Available during your selected times."}
         </p>
       )}
 
       <p style={{ margin: "2px 0 0", fontSize: "0.8em", color: "#6b7d73", lineHeight: 1.45 }}>
-        This is the teacher we think fits you best. Nothing is decided yet - the
-        admin reads your ask and chooses.
+        This is the closest match based on your selections. An administrator
+        will review your request and make the final assignment.
       </p>
     </div>
   );

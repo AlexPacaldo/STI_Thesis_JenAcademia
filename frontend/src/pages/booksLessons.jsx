@@ -35,7 +35,10 @@ export default function StudentBooksLessons() {
         if (packageResponse.ok) {
           const packageData = await packageResponse.json();
           if (Number(packageData.package?.classes_left) <= 0) {
-            notify?.("Contact the admin for a new contract to view Books / Lessons.", "error");
+            notify?.(
+              "An active class plan is required to access Books & Lessons. Please contact the administrator about a new plan.",
+              "error"
+            );
             navigate("/Calendar");
             return;
           }
@@ -52,8 +55,9 @@ export default function StudentBooksLessons() {
       setBooks(data.books || []);
     } catch (err) {
       console.error("Error fetching books:", err);
-      setError(err.message);
-      notify?.(`Error: ${err.message}`, "error");
+      const message = "We couldn’t load your books. Please try again.";
+      setError(message);
+      notify?.(message, "error");
     } finally {
       setLoading(false);
     }
@@ -92,7 +96,7 @@ export default function StudentBooksLessons() {
 
         {/* Loading/Error State */}
         {loading && <p className={styles.loading}>Loading books...</p>}
-        {error && <p className={styles.error}>Error: {error}</p>}
+        {error && <p className={styles.error}>{error}</p>}
 
         {/* Books Grid */}
         {!loading && books.length > 0 && (

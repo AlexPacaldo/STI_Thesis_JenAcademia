@@ -74,11 +74,11 @@ check(
 const fresh = describeRequestFlow({ pending: [], history: [], kind: REQUEST_KIND_NEW });
 check("a student who has asked nothing may ask", fresh.canSubmit, true);
 check("and is not waiting on anything", fresh.isPending, false);
-check("and is shown the plain action", fresh.actionLabel, "Get a new plan");
+check("and is shown the plain action", fresh.actionLabel, "Request a new plan");
 check("and is told nothing", fresh.banner, "");
 
 const freshExtension = describeRequestFlow({ pending: [], history: [], kind: REQUEST_KIND_EXTENSION });
-check("the extension asks for more time", freshExtension.actionLabel, "Ask for more time");
+check("the extension requests more time", freshExtension.actionLabel, "Request more time");
 
 /* --------------------------------------------------------- still pending */
 
@@ -93,8 +93,9 @@ check("and cannot be sent again as a new one", waiting.canSubmit, false);
 check("but it can be changed", waiting.canEdit, true);
 check("and it can be taken back", waiting.canCancel, true);
 check("and there is nothing to ask again about", waiting.canAskAgain, false);
-check("the banner says it is with the admin", waiting.banner.includes("with the admin"), true);
-check("the action is to update it", waiting.actionLabel, "Change my ask");
+check("the banner says the request is under review", waiting.banner.includes("under review"), true);
+check("the action is to update it", waiting.actionLabel, "Edit request");
+check("the pending banner uses standard request terminology", waiting.banner.includes("request for more time"), true);
 check("the revision count is not mentioned for a first request", waiting.revisionLabel, "");
 
 // The bug this whole thing exists for: the pending check used to run against
@@ -116,15 +117,15 @@ const revised = describeRequestFlow({
   kind: REQUEST_KIND_EXTENSION,
 });
 
-check("a revised request says so", revised.revisionLabel, "Changed 2 times");
-check("and the banner says the admin sees the latest", revised.banner.includes("latest one"), true);
+check("a revised request says so", revised.revisionLabel, "Updated 2 times");
+check("and the banner says the latest version will be reviewed", revised.banner.includes("latest version"), true);
 
 const revisedOnce = describeRequestFlow({
   pending: [{ ...pendingExtension, revision_count: 2 }],
   history: [{ ...pendingExtension, revision_count: 2 }],
   kind: REQUEST_KIND_EXTENSION,
 });
-check("one change is singular", revisedOnce.revisionLabel, "Changed 1 time");
+check("one change is singular", revisedOnce.revisionLabel, "Updated 1 time");
 
 /* ------------------------------------------------------------ answered */
 
@@ -136,9 +137,9 @@ const declined = describeRequestFlow({
 
 check("a decline is not pending", declined.isPending, false);
 check("and can be asked again", declined.canAskAgain, true);
-check("the action is to ask again", declined.actionLabel, "Ask again");
-check("the outcome is stated", declined.outcome.includes("said no"), true);
-check("and says the classes are still there", declined.outcome.includes("still on your old plan"), true);
+check("the action is to submit another request", declined.actionLabel, "Submit another request");
+check("the outcome is stated", declined.outcome.includes("was declined"), true);
+check("and says unused classes remain available", declined.outcome.includes("remain on your current plan"), true);
 
 const approved = describeRequestFlow({
   pending: [],
@@ -147,7 +148,7 @@ const approved = describeRequestFlow({
 });
 
 check("an approval opens nothing", approved.canAskAgain, false);
-check("but it is stated", approved.outcome.includes("said yes"), true);
+check("but it is stated", approved.outcome.includes("was approved"), true);
 
 const withdrawn = describeRequestFlow({
   pending: [],
@@ -156,7 +157,7 @@ const withdrawn = describeRequestFlow({
 });
 
 check("a withdrawn request is not pending", withdrawn.isPending, false);
-check("and says so", withdrawn.outcome.includes("cancelled"), true);
+check("and says so", withdrawn.outcome.includes("withdrew"), true);
 check("and offers the request again", withdrawn.canSubmit, true);
 check("a withdrawn request is not a decline", withdrawn.canAskAgain, false);
 
@@ -164,7 +165,7 @@ check("a withdrawn request is not a decline", withdrawn.canAskAgain, false);
 // had a request", so withdrawing a request left the student with no way to
 // ask for the thing they withdrew it in order to ask for.
 check("and there is a button to press", withdrawn.canRequest, true);
-check("which asks for the request", withdrawn.actionLabel, "Get a new plan");
+check("which offers to submit the request again", withdrawn.actionLabel, "Request a new plan");
 
 const withdrawnExtension = describeRequestFlow({
   pending: [],
@@ -173,7 +174,7 @@ const withdrawnExtension = describeRequestFlow({
 });
 
 check("a withdrawn extension can be asked for again", withdrawnExtension.canRequest, true);
-check("and the button says so", withdrawnExtension.actionLabel, "Ask for more time");
+check("and the button says so", withdrawnExtension.actionLabel, "Request more time");
 check("and it is not an approval", withdrawnExtension.canAskAgain, false);
 
 // An approval is the one thing that closes the road, and only for the
@@ -235,8 +236,8 @@ const newContractInTheWay = describeBlockedByOtherRequest({
   otherIsPending: true,
 });
 check("a pending new contract blocks the extension", newContractInTheWay.isBlocked, true);
-check("and the hint says which ask is in the way", newContractInTheWay.hint.includes("ask for a new plan"), true);
-check("and what to do about it", newContractInTheWay.hint.includes("Cancel"), true);
+check("and the hint identifies the request in the way", newContractInTheWay.hint.includes("request for a new plan"), true);
+check("and explains how to proceed", newContractInTheWay.hint.includes("Withdraw"), true);
 
 const extensionInTheWay = describeBlockedByOtherRequest({
   kind: REQUEST_KIND_NEW,
@@ -244,7 +245,7 @@ const extensionInTheWay = describeBlockedByOtherRequest({
   otherIsPending: true,
 });
 check("a pending extension blocks the new contract", extensionInTheWay.isBlocked, true);
-check("and the hint names the extension", extensionInTheWay.hint.includes("ask for more time"), true);
+check("and the hint names the extension", extensionInTheWay.hint.includes("request for additional time"), true);
 
 /* ------------------------------------------------- what can be asked for */
 

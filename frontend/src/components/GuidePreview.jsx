@@ -1111,12 +1111,12 @@ function ClassNoteScene({ focus }) {
                 </span>
               </div>
               <p className={styles.classNoteRequired}>
-                Required: send a note about this class before you can complete it.
+                Required: submit a remark about this class before you can complete it.
               </p>
               <div className={styles.classNoteBox}>
                 You used the past tense all by yourself today. Great work!
               </div>
-              <span className={styles.classNoteBtn}>Send the note</span>
+              <span className={styles.classNoteBtn}>Submit a remark</span>
             </div>
           </Spotlight>
         </aside>

@@ -445,7 +445,10 @@ export default function BooksContent({ mode = "student" }) {
           if (packageResponse.ok) {
             const packageData = await packageResponse.json();
             if (Number(packageData.package?.classes_left) <= 0) {
-              notify?.("Contact the admin for a new contract to view Books / Lessons.", "error");
+              notify?.(
+                "An active class plan is required to access Books & Lessons. Please contact the administrator about a new plan.",
+                "error"
+              );
               navigate("/Calendar");
               return;
             }
@@ -517,7 +520,7 @@ export default function BooksContent({ mode = "student" }) {
         setProgress(progressMap);
       } catch (err) {
         console.error("Error loading book content:", err);
-        notify?.(`Error: ${err.message}`, "error");
+        notify?.("We couldn’t load this book or its lessons. Please try again.", "error");
       } finally {
         setLoading(false);
       }
@@ -825,7 +828,7 @@ export default function BooksContent({ mode = "student" }) {
       }
     } catch (err) {
       console.error("Error completing lesson:", err);
-      notify?.(`Error: ${err.message}`, "error");
+      notify?.("We couldn’t update your lesson progress. Please try again.", "error");
     } finally {
       setCompletingLessonId(null);
     }

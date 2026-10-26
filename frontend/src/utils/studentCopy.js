@@ -1,55 +1,26 @@
 /**
  * The words the student sees.
  *
- * !! The Calendar is used by students, and a lot of them are children, and a
- * !! lot of them are not strong readers of English. So the words on this
- * !! screen are not a copywriter's choice - they are the difference between
- * !! a student understanding what to press and a student guessing.
+ * !! Student-facing language should be clear, professional, and familiar
+ * !! across educational settings. Use standard learning terminology, explain
+ * !! actions directly, and avoid both internal system terms and childish
+ * !! wording.
  * !!
  * !! Three rules, applied everywhere below:
  * !!
- * !!   1. Say the thing, not the system. The database has "contracts",
- * !!      "packages", "extensions" and "requests". A student has a class plan,
- * !!      needs more time, and asks the admin. The words on screen are the
- * !!      student's words, not the system's.
+ * !!   1. Use established educational terminology, such as "learning
+ * !!      objectives", "skill focus", and "learning preferences".
  * !!
- * !!   2. One idea per sentence. A student who is not confident in English
- * !!      reads one sentence at a time. Sentences that need a comma and a
- * !!      "but" to survive are sentences that lose the meaning.
+ * !!   2. Keep instructions direct and accessible without oversimplifying
+ * !!      professional concepts.
  * !!
  * !!   3. Ask one question at a time. The new-plan form used to ask eight
  * !!      questions at once, four of them multi-select. That is a form for
  * !!      somebody filling in a survey, not for a student on a phone.
  * !!
- * !! Everything a student reads lives here, so the language can be reviewed in
- * !! one place and checked by a test. scripts/test-student-copy.mjs fails if a
- * !! word that a student may not know appears here.
+ * !! Keep reusable student-facing copy here so wording remains consistent
+ * !! and can be reviewed and tested in one place.
  */
-
-/** Words a student may not know, or that mean something else to them. */
-export const BANNED_STUDENT_WORDS = [
-  "contract",
-  "extension",
-  "package",
-  "reschedule",
-  "criteria",
-  "availability",
-  "duration",
-  "pending",
-  "approved",
-  "declined",
-  "slot",
-  "session",
-  "utilise",
-  "utilize",
-  "proceed",
-  "inquire",
-  "enquire",
-  "regarding",
-  "assistance",
-  "purchase",
-  "subscription",
-];
 
 /** The student's class plan. */
 export const PLAN = {
@@ -74,65 +45,65 @@ export const PLAN_STATUS = {
 export const MORE_TIME_CARD = {
   heading: "Your plan has ended",
   body: (count) =>
-    `You still have ${count} class${count === 1 ? "" : "es"} that you paid for. Ask the admin for more time and you can use them.`,
-  askForMoreTime: "Ask for more time",
-  changeMyAsk: "Change my ask",
-  cancelMyAsk: "Cancel my ask",
-  askAgain: "Ask again",
-  getNewPlan: "Get a new plan",
-  getNewPlanInstead: "Get a new plan instead",
-  bookedPlan: "Get a new plan",
+    `You have ${count} unused class${count === 1 ? "" : "es"} remaining. Submit a request for additional time to use them.`,
+  askForMoreTime: "Request more time",
+  changeMyAsk: "Edit request",
+  cancelMyAsk: "Withdraw request",
+  askAgain: "Submit another request",
+  getNewPlan: "Request a new plan",
+  getNewPlanInstead: "Request a new plan instead",
+  bookedPlan: "Request a new plan",
 };
 
-/** The window that asks the admin for more time. */
+/** The window for requesting additional time. */
 export const MORE_TIME_WINDOW = {
-  title: "Ask for more time",
-  titleEditing: "Change your ask for more time",
-  question: "Why do you need more time?",
-  placeholder: "e.g. I was sick for two weeks",
+  title: "Request more time",
+  titleEditing: "Edit your request for more time",
+  question: "Please explain why you need additional time.",
+  placeholder: "For example: I was unable to attend classes for two weeks.",
   sending: "Sending...",
-  send: "Send",
-  update: "Send again",
+  send: "Submit request",
+  update: "Update request",
   cancel: "Cancel",
-  note: "You do not pay here. Talk to the admin and agree how much more time you need.",
+  note: "No payment is made here. Please contact the administrator to agree on the additional time.",
   replacing:
-    "You already asked the admin. If you send this, it replaces your last ask. The admin will see this one.",
+    "You already have a request under review. Updating it will replace the version currently on file.",
   keeping:
-    "Your classes are saved. Asking for more time keeps them, and nothing you have used is reset.",
+    "Your unused classes remain on your current plan while your request is being reviewed. Classes already used will not be reset.",
 };
 
-/** The window that asks the admin for a new class plan. */
+/** The window for requesting a new class plan. */
 export const NEW_PLAN_WINDOW = {
-  title: "Get a new plan",
-  titleEditing: "Change your ask for a new plan",
-  course: "Which course?",
-  coursePlaceholder: "Pick a course",
-  classLength: "How long is one class?",
-  classCount: "How many classes?",
-  moreOptions: "More options (you can skip these)",
-  lessOptions: "Hide the extra options",
-  learningGoal: "What do you want to learn?",
-  focusArea: "What should we work on?",
-  learningStyle: "How do you like to learn?",
-  learningPace: "How fast do you want to go?",
-  freeTime: "When are you free?",
+  title: "Request a new plan",
+  titleEditing: "Edit your new plan request",
+  course: "Course",
+  coursePlaceholder: "Select a course",
+  classLength: "Class duration",
+  classCount: "Number of classes",
+  moreOptions: "Your learning choices",
+  learningGoal: "Learning objectives",
+  focusArea: "Skill focus",
+  learningStyle: "Learning preferences",
+  learningPace: "Learning pace",
+  freeTime: "Availability",
   freeTimeOptional: "optional",
-  freeTimeHelp: "Pick the days and times you are free. Leave it empty if you are free any time.",
+  freeTimeHelp: "Select the days and times that work for you. This information is optional.",
   from: "From",
   to: "Until",
-  fromToHelp: "Pick a start and an end time as well.",
-  seeMyTeacher: "See my teacher",
-  findingTeacher: "Finding your teacher...",
-  checkAgain: "Check again",
+  fromToHelp: "Choose an end time later than the start time.",
+  seeMyTeacher: "Preview teacher match",
+  findingTeacher: "Finding a teacher match...",
+  checkAgain: "Refresh teacher match",
+  checkTeacherRequired: "Preview a teacher match before submitting your request.",
   sending: "Sending...",
-  send: "Send",
-  update: "Send again",
+  send: "Submit request",
+  update: "Update request",
   cancel: "Cancel",
-  lastAsk: "Last ask",
+  lastAsk: "Most recent request",
   replacing:
-    "You already asked the admin. If you send this, it replaces your last ask. The admin will see this one.",
+    "You already have a request under review. Updating it will replace the version currently on file.",
   losesClasses: (count) =>
-    `A new plan replaces your old one, so your ${count} unused class${count === 1 ? "" : "es"} will not carry over. If you want to keep them, close this and ask for more time instead.`,
+    `A new plan replaces your current plan, so your ${count} unused class${count === 1 ? "" : "es"} will not carry over. To keep them, close this window and submit a request for additional time instead.`,
 };
 
 /** The student's own page: their classes, and what they have left. */
@@ -256,7 +227,7 @@ export const CLASS_INFO = {
   title: "Class info",
   teacher: "Teacher",
   email: "Email",
-  teacherNote: "Teacher's note",
+  teacherNote: "Latest teacher remark",
   noNoteYet: "No note yet",
   dateMissing: "No date",
   waitingForTeacher: "Waiting for teacher",
@@ -355,8 +326,6 @@ export const ACCOUNT = {
   /* The menu in the header. */
   menuLabel: "Your account menu",
   menuMyAccount: "My account",
-  menuMyClasses: "My classes",
-  menuGetHelp: "Get help",
   menuLogOut: "Log out",
   menuFooter: "JEN Academia",
 
@@ -425,10 +394,10 @@ export const CONFIRM = {
   send: "Send",
   sending: "Sending...",
   cancel: "Cancel",
-  recordingTitle: "This class is recorded",
+  recordingTitle: "Class recording notice",
   recordingBody:
-    "This class may be recorded so the admin can check it. Only the admin, your teacher and you can watch it.",
-  yesJoin: "Yes, join",
+    "This class may be recorded for attendance verification. The recording is accessible only to you, your assigned teacher, and the administrator.",
+  yesJoin: "Join class",
 };
 
 /** The loading screen. */

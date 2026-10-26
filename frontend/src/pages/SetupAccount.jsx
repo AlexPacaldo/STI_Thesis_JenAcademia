@@ -64,7 +64,7 @@ export default function SetupAccount() {
       return;
     }
     if (form.password.length < 8) {
-      setError("Your password needs at least 8 letters or numbers.");
+      setError("Your password must contain at least 8 characters.");
       return;
     }
     if (form.password !== form.confirmPassword) {
@@ -104,7 +104,7 @@ export default function SetupAccount() {
         ) : error && !invite ? (
           <div className={styles.messageState} role="alert">
             <span className={styles.bigIcon} aria-hidden="true">💌</span>
-            <h1 id="setup-title">Let’s get help</h1>
+            <h1 id="setup-title">We couldn’t open your invite</h1>
             <p>{error}</p>
             <Link className={styles.primaryButton} to="/login">Go to sign in</Link>
           </div>
@@ -145,7 +145,7 @@ export default function SetupAccount() {
                 <span className={styles.bigIcon} aria-hidden="true">🔐</span>
                 <p className={styles.eyebrow}>Step 1</p>
                 <h1 id="setup-title">Make a secret password</h1>
-                <p className={styles.description}>Choose at least 8 letters or numbers. Keep it safe.</p>
+                <p className={styles.description}>Choose a password with at least 8 characters. Keep it secure.</p>
 
                 {isDifferentLoggedInUser && (
                   <div className={styles.errorMessage} role="alert">

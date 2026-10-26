@@ -92,54 +92,52 @@ export const TEACHER_CRITERIA_OPTIONS = {
 };
 
 /**
- * The same choices, in words a student can read.
+ * The same choices, using consistent educational terminology for students.
  *
  * !! The values and the course scoping come from STUDENT_CRITERIA_OPTIONS, so
  * !! they cannot drift - only the LABELS differ. The values are the contract
  * !! with backend/teacherMatching.js and must not be touched.
  * !!
- * !! The admin's own forms keep the original wording. An admin matching a
- * !! teacher against a student is working with the teacher's professional
- * !! vocabulary - "Structured Lessons", "Slow and Guided" - and changing it to
- * !! "Step by step" and "Slow" for a form the admin fills in was the wrong
- * !! call. The plain words are for the student, and only the student.
+ * !! The admin's own forms keep the original wording. The student-facing labels
+ * !! use the same professional vocabulary so both sides describe matching
+ * !! learning preferences consistently.
  */
-const SIMPLE_CRITERIA_LABELS = {
-  "school-support": "Help with school",
-  conversation: "Talking",
-  "exam-prep": "Exam prep",
-  business: "Work English",
-  confidence: "Feel more confident",
-  "interview-readiness": "Job interview",
-  "news-discussion": "Talk about news",
+const STUDENT_CRITERIA_DISPLAY_LABELS = {
+  "school-support": "Academic Support",
+  conversation: "Conversational English",
+  "exam-prep": "Exam Preparation",
+  business: "Business English",
+  confidence: "Confidence Building",
+  "interview-readiness": "Interview Preparation",
+  "news-discussion": "News Discussion",
 
-  structured: "Step by step",
-  conversational: "Talk a lot",
-  visual: "Pictures",
-  interactive: "Games",
-  independent: "On my own",
+  structured: "Structured Lessons",
+  conversational: "Conversational Practice",
+  visual: "Visual Learning",
+  interactive: "Interactive Activities",
+  independent: "Independent Practice",
 
   speaking: "Speaking",
   grammar: "Grammar",
   reading: "Reading",
   writing: "Writing",
   listening: "Listening",
-  vocabulary: "Words",
-  pronunciation: "Pronouncing",
-  "interview-answers": "Job interview answers",
+  vocabulary: "Vocabulary",
+  pronunciation: "Pronunciation",
+  "interview-answers": "Interview Responses",
 
-  slow: "Slow",
-  balanced: "Just right",
-  fast: "Fast",
-  "review-heavy": "Lots of review",
+  slow: "Guided Pace",
+  balanced: "Balanced Pace",
+  fast: "Accelerated Pace",
+  "review-heavy": "Review-focused Pace",
 };
 
-export const SIMPLE_CRITERIA_OPTIONS = Object.fromEntries(
+export const STUDENT_CRITERIA_DISPLAY_OPTIONS = Object.fromEntries(
   Object.entries(STUDENT_CRITERIA_OPTIONS).map(([group, options]) => [
     group,
     options.map(([value, label, allowedCourses]) => [
       value,
-      SIMPLE_CRITERIA_LABELS[value] || label,
+      STUDENT_CRITERIA_DISPLAY_LABELS[value] || label,
       allowedCourses,
     ]),
   ])

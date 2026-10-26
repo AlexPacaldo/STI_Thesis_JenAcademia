@@ -53,12 +53,18 @@ export default function CriteriaChipField({
   onCustomChange,
   othersLabel = "Others",
   customPlaceholder = "Describe it in your own words",
+  required = false,
+  kidFriendly = false,
 }) {
   const selectedValues = Array.isArray(selected) ? selected : [];
   const customSelected = selectedValues.includes(CUSTOM_OPTION_VALUE);
 
   return (
-    <fieldset className={styles.field} id={id}>
+    <fieldset
+      className={`${styles.field} ${kidFriendly ? styles.fieldKid : ""}`}
+      id={id}
+      aria-required={required || undefined}
+    >
       <legend className={prominent ? `${styles.label} ${styles.labelProminent}` : styles.label}>
         {legend}
       </legend>

@@ -223,8 +223,8 @@ const TEACHER_STEPS = [
     text: "A class note tells the student what you noticed. You write it in the class panel.",
     points: [
       "Open Calendar and choose the class you just taught.",
-      "Write your note under Say something about this class.",
-      "Press Send the note. You must send it before the class can be completed.",
+      "After you start the class and the student confirms attendance, you can write a remark in the class panel.",
+      "Submitting a remark is optional. You can still complete the class without one.",
     ],
     preview: {
       scene: "classNote",

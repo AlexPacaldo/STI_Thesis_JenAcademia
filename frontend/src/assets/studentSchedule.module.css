@@ -205,12 +205,16 @@
 
 .clickableCell:hover { outline: 2px solid rgba(38, 66, 59, 0.2); }
 
-.bookPanel {
+.calendarAside {
   display: flex;
   flex-direction: column;
   gap: 12px;
   align-items: stretch;
   min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 /* Everything in the panel has to be allowed to shrink.
@@ -219,7 +223,7 @@
    grew to fit it, and the content spilled out of the card and off the
    screen. min-width: 0 is the fix, and it has to be on every step of the
    way down. */
-.bookPanel > * {
+.calendarAside > * {
   min-width: 0;
 }
 
@@ -420,6 +424,83 @@
 .evidenceGrid {
   display: grid;
   gap: 8px;
+}
+
+.verificationRemark {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--border-mid);
+  margin-top: 4px;
+  padding-top: 14px;
+}
+
+.verificationRemarkCard {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-mid);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.verificationRemarkCard p {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.verificationRemarkActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.verificationRemarkEdit {
+  justify-self: end;
+  border: 1px solid var(--border-mid);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.verificationRemarkEdit:hover {
+  border-color: var(--accent);
+}
+
+.verificationRemarkRemove {
+  justify-self: end;
+  border: 1px solid #e4b7b7;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #fff;
+  color: #a12c2c;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.verificationRemarkRemove:hover {
+  border-color: #a12c2c;
+  background: #fff7f7;
+}
+
+.verificationRemarkEdit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.verificationRemarkRemove:focus-visible {
+  outline: 2px solid #a12c2c;
+  outline-offset: 2px;
 }
 
 .verificationSectionTitle {
@@ -852,11 +933,11 @@
   }
 
   .calendarCard,
-  .bookPanel {
+  .calendarAside {
     width: 100%;
   }
 
-  .bookPanel { order: -1; }
+  .calendarAside { order: -1; }
 }
 
 @media (max-width: 520px) {
@@ -876,7 +957,7 @@
   }
 
   .calendarCard,
-  .bookPanel {
+  .calendarAside {
     min-width: 0;
   }
 

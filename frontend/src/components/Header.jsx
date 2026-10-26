@@ -352,7 +352,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
 
               <span className={styles.headerSeparator} aria-hidden="true">|</span>
 
-              <AccountMenu user={user} role={role} classHistoryPath="/classHistory" />
+              <AccountMenu user={user} role={role} />
 
              
             </>
@@ -379,7 +379,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
 
               <span className={styles.headerSeparator} aria-hidden="true">|</span>
 
-              <AccountMenu user={user} role={role} classHistoryPath="/teacherClassHistory" />
+              <AccountMenu user={user} role={role} />
 
               
             </>
@@ -409,7 +409,7 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
 
               <span className={styles.headerSeparator} aria-hidden="true">|</span>
 
-              <AccountMenu user={user} role={role} classHistoryPath="/teacherClassHistory" />
+              <AccountMenu user={user} role={role} />
 
               
             </>
