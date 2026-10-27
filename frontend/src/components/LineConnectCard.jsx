@@ -56,7 +56,7 @@ export default function LineConnectCard({
   const refresh = useCallback(async () => {
     if (!userId) return null;
     try {
-      const response = await axios.get(`${API}/api/users/${userId}/line`);
+      const response = await axios.get(`${API}/api/users/${userId}/line`, { timeout: 15000 });
       const next = { loading: false, ...response.data };
       setStatus(next);
       setError("");

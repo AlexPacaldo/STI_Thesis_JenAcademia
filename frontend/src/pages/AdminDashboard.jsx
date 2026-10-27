@@ -2574,6 +2574,8 @@ export default function AdminDashboard() {
     return [];
   })() : [];
 
+  const accountSetupComplete = studentAccountModal?.setup_invite_status === "completed";
+
   return (
     <div className={styles.Center}>
     <div className={styles.page}>
@@ -4934,53 +4936,68 @@ export default function AdminDashboard() {
                 )}
 
                 <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 14 }}>
-                  <label htmlFor="studentEmailDraft">{accountModalRoleLabel} Email</label>
-                  <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                    <input
-                      id="studentEmailDraft"
-                      type="email"
-                      value={studentEmailDraft}
-                      onChange={(e) => setStudentEmailDraft(e.target.value)}
-                      style={{
-                        flex: "1 1 260px",
-                        padding: "10px 12px",
-                        borderRadius: 8,
-                        border: "1px solid #d0d5dd",
-                        fontSize: "0.95rem",
-                      }}
-                    />
+                  {accountSetupComplete ? (
+                    <>
+                      <div style={{ color: "#667085", fontSize: "0.9rem", marginBottom: 6 }}>
+                        {accountModalRoleLabel} Email
+                      </div>
+                      <div style={{ color: "#10231d", fontWeight: 700, overflowWrap: "anywhere" }}>
+                        {studentAccountModal.email || "-"}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <label htmlFor="studentEmailDraft">{accountModalRoleLabel} Email</label>
+                      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                        <input
+                          id="studentEmailDraft"
+                          type="email"
+                          value={studentEmailDraft}
+                          onChange={(e) => setStudentEmailDraft(e.target.value)}
+                          style={{
+                            flex: "1 1 260px",
+                            padding: "10px 12px",
+                            borderRadius: 8,
+                            border: "1px solid #d0d5dd",
+                            fontSize: "0.95rem",
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className={styles.approve}
+                          onClick={saveStudentEmail}
+                          disabled={studentAccountActionLoading === "email"}
+                        >
+                          {studentAccountActionLoading === "email" ? "Saving..." : "Save & Resend"}
+                        </button>
+                      </div>
+                      <p style={{ margin: "8px 0 0", color: "#667085", fontSize: "0.82rem", lineHeight: 1.5 }}>
+                        Saving a new email invalidates old unused invites and sends a fresh setup link.
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                {!accountSetupComplete && (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                     <button
                       type="button"
                       className={styles.approve}
-                      onClick={saveStudentEmail}
-                      disabled={studentAccountActionLoading === "email"}
+                      onClick={() => resendStudentInvite()}
+                      disabled={Boolean(studentAccountActionLoading)}
                     >
-                      {studentAccountActionLoading === "email" ? "Saving..." : "Save & Resend"}
+                      {studentAccountActionLoading === "resend" ? "Sending..." : "Resend Invite"}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.approve}
+                      onClick={() => resendStudentInvite({ copyOnly: true })}
+                      disabled={Boolean(studentAccountActionLoading)}
+                    >
+                      {studentAccountActionLoading === "copy" ? "Copying..." : "Copy Fresh Link"}
                     </button>
                   </div>
-                  <p style={{ margin: "8px 0 0", color: "#667085", fontSize: "0.82rem", lineHeight: 1.5 }}>
-                    Saving a new email invalidates old unused invites and sends a fresh setup link.
-                  </p>
-                </div>
-
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                  <button
-                    type="button"
-                    className={styles.approve}
-                    onClick={() => resendStudentInvite()}
-                    disabled={Boolean(studentAccountActionLoading)}
-                  >
-                    {studentAccountActionLoading === "resend" ? "Sending..." : "Resend Invite"}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.approve}
-                    onClick={() => resendStudentInvite({ copyOnly: true })}
-                    disabled={Boolean(studentAccountActionLoading)}
-                  >
-                    {studentAccountActionLoading === "copy" ? "Copying..." : "Copy Fresh Link"}
-                  </button>
-                </div>
+                )}
               </div>
             </section>
           </div>

@@ -189,6 +189,8 @@ export default function Account() {
   const [isProfileIncomplete, setIsProfileIncomplete] = useState(false);
   const [firstSetupStep, setFirstSetupStep] = useState(0);
   const [firstSetupFinished, setFirstSetupFinished] = useState(false);
+  const [lineCheckError, setLineCheckError] = useState("");
+  const [lineCheckAttempt, setLineCheckAttempt] = useState(0);
   // LINE reminders are a student-only feature. Teachers and admins don't use
   // them, so LINE never gates their onboarding or their Account page.
   const isStudent = user?.role === "student";
@@ -227,7 +229,7 @@ export default function Account() {
   // to the finished Account page, so they must not open over the wizard.
   const firstSetupActive =
     Boolean(user) &&
-    (isProfileIncomplete || firstSetupFinished || (isStudent && !lineState.loading && !lineState.linked)) &&
+    (isProfileIncomplete || firstSetupFinished || (isStudent && !lineState.linked)) &&
     ["student", "teacher", "admin"].includes(user.role);
   const editDialogOpen = !firstSetupActive && (profileEditing || passwordEditing);
   // Kept by identity: the LINE card reports on every status change, and a new
@@ -240,7 +242,14 @@ export default function Account() {
         ? current
         : next
     );
-  }, []);
+    if (isStudent && next.linked) {
+      if (isProfileIncomplete) {
+        setFirstSetupStep(2);
+      } else {
+        setFirstSetupFinished(true);
+      }
+    }
+  }, [isProfileIncomplete, isStudent]);
   const lineReady = lineApplies ? lineState.linked : true;
   // The contract summary the student sees on their own page.
   //
@@ -395,9 +404,10 @@ export default function Account() {
   useEffect(() => {
     if (!user?.id || user.role !== "student") return undefined;
     let ignore = false;
+    setLineCheckError("");
     setLineState({ loading: true, linked: false, usable: false });
 
-    axios.get(`${API}/api/users/${user.id}/line`)
+    axios.get(`${API}/api/users/${user.id}/line`, { timeout: 15000 })
       .then((response) => {
         if (ignore) return;
         const linked = Boolean(response.data?.linked);
@@ -414,6 +424,7 @@ export default function Account() {
       .catch((error) => {
         if (ignore) return;
         console.error("Could not check the student's LINE setup:", error);
+        setLineCheckError("We could not check LINE. Check your internet, then try again.");
         setLineState({ loading: false, linked: false, usable: false });
         setFirstSetupFinished(false);
       });
@@ -421,7 +432,7 @@ export default function Account() {
     return () => {
       ignore = true;
     };
-  }, [user?.id, user?.role, user?.profileCompleted, user?.profileImageUrl]);
+  }, [user?.id, user?.role, user?.profileCompleted, user?.profileImageUrl, lineCheckAttempt]);
 
   useEffect(() => {
     return () => {
@@ -811,11 +822,7 @@ export default function Account() {
 
     return (
       <section className={styles.firstSetupCard} aria-labelledby="first-setup-title">
-        {lineOnlySetup ? (
-          <div className={styles.firstSetupProgress} aria-label="Step 1 of 1">
-            <span className={styles.firstSetupCurrent}>1</span>
-          </div>
-        ) : (
+        {!lineOnlySetup && (
           <div className={styles.firstSetupProgress} aria-label={`Step ${progressStep + 1} of ${totalSteps}`}>
             <span className={progressStep === 0 ? styles.firstSetupCurrent : styles.firstSetupDone}>
               {progressStep > 0 ? "✓" : "1"}
@@ -847,7 +854,7 @@ export default function Account() {
           {lineOnlySetup ? `Let’s connect LINE, ${firstName}!` : `Hi, ${firstName}!`}
         </h1>
 
-        {firstSetupStep === 0 ? (
+        {firstSetupStep === 0 && !lineOnlySetup ? (
           <div className={styles.firstSetupContent}>
             <span className={styles.firstSetupIcon} aria-hidden="true">📸</span>
             <h2>First, add your picture</h2>
@@ -887,7 +894,7 @@ export default function Account() {
             </button>
             {pictureUploading && <p role="status">Saving your picture...</p>}
           </div>
-        ) : isStudent && firstSetupStep === 1 ? (
+        ) : isStudent && (lineOnlySetup || firstSetupStep === 1) ? (
           <div className={styles.firstSetupContent}>
             <span className={styles.firstSetupIcon} aria-hidden="true">💬</span>
             <h2>Connect LINE</h2>
@@ -1692,12 +1699,21 @@ export default function Account() {
     );
   }
 
-  if (isStudent && lineState.loading) {
+  if (isStudent && lineCheckError) {
     return (
       <main className={styles.pageShell}>
-        <section className={styles.emptyState} role="status">
-          <h1>Getting your account ready</h1>
-          <p>Checking your LINE connection…</p>
+        <section className={styles.firstSetupCard} role="alert">
+          <span className={styles.firstSetupIcon} aria-hidden="true">📶</span>
+          <p className={styles.firstSetupStep}>Let’s try again</p>
+          <h1>We can’t check LINE yet</h1>
+          <p>{lineCheckError}</p>
+          <button
+            type="button"
+            className={styles.firstSetupPrimary}
+            onClick={() => setLineCheckAttempt((attempt) => attempt + 1)}
+          >
+            Try again
+          </button>
         </section>
       </main>
     );

@@ -16,6 +16,7 @@ import { API_BASE_URL } from "./utils/api.js";
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 60 * 1000; // 5 hours
 const ACCOUNT_STATUS_CHECK_MS = 60 * 1000;
+const LINE_STATUS_TIMEOUT_MS = 15 * 1000;
 const PUBLIC_PATHS = ["/", "/login", "/setup-account", "/forgot-password", "/reset-password"];
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
 
@@ -222,8 +223,12 @@ function App() {
 
       async function checkRequiredLineSetup() {
         if (role !== "student" || !currentUserId) return;
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), LINE_STATUS_TIMEOUT_MS);
         try {
-          const response = await apiFetch(`${API_BASE_URL}/api/users/${currentUserId}/line`);
+          const response = await apiFetch(`${API_BASE_URL}/api/users/${currentUserId}/line`, {
+            signal: controller.signal,
+          });
           if (!response.ok) {
             setLineGate({ userId: currentUserId, status: "required" });
             if (path !== "/account") navigate("/account", { replace: true });
@@ -231,14 +236,10 @@ function App() {
           }
           const data = await response.json();
           const setupRequired = !data?.linked;
-          setLineGate((current) => ({
+          setLineGate({
             userId: currentUserId,
-            status: setupRequired || (
-              path === "/account" &&
-              current?.userId === currentUserId &&
-              current.status === "required"
-            ) ? "required" : "ready",
-          }));
+            status: setupRequired ? "required" : "ready",
+          });
           if (setupRequired && path !== "/account") {
             navigate("/account", { replace: true });
           }
@@ -246,6 +247,8 @@ function App() {
           console.warn("Could not check required LINE setup:", error);
           setLineGate({ userId: currentUserId, status: "required" });
           if (path !== "/account") navigate("/account", { replace: true });
+        } finally {
+          window.clearTimeout(timeout);
         }
       }
 
