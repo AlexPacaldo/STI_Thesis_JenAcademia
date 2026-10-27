@@ -255,7 +255,7 @@
       }
       html, body { background: white; }
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      :root { font-size: 9.6pt; line-height: 1.36; }
+      :root { font-size: 9.4pt; line-height: 1.32; }
       .page { min-height: 0; }
       .cover { min-height: 9.25in; break-after: page; page-break-after: always; }
       a { color: inherit; }
@@ -264,6 +264,10 @@
       p { margin-bottom: 6pt; }
       .chapter-intro { margin-bottom: 10pt; }
       .steps li { padding-bottom: 5pt; margin-bottom: 4pt; }
+      #student-calendar h3 { margin: 7pt 0 3pt; }
+      #student-calendar .steps li { padding-bottom: 2pt; margin-bottom: 2pt; }
+      #student-calendar .checklist li { margin-bottom: 2pt; }
+      #student-calendar .callout, #student-calendar .tip { padding: 5pt 7pt; margin: 5pt 0; }
       .card-grid { gap: 6pt; margin: 7pt 0; }
       .card { padding: 8pt 9pt; }
       .callout, .tip, .info { padding: 7pt 9pt; margin: 7pt 0; }
@@ -351,7 +355,7 @@
           <tr><td><b>Home</b></td><td>Shows a useful starting view, such as the classes scheduled for today.</td></tr>
           <tr><td><b>Menu / sidebar</b></td><td>Opens the pages available to your role. On a phone, open the menu button first.</td></tr>
           <tr><td><b>Notifications</b></td><td>Shows updates that may need your attention, including class and schedule information.</td></tr>
-          <tr><td><b>Account</b></td><td>Manage your profile, password, contact details, and available reminder settings.</td></tr>
+          <tr><td><b>Account</b></td><td>Manage your profile, password, contact details, and LINE connection when available for your role.</td></tr>
         </tbody>
       </table>
       <div class="tip"><b>Getting started tip:</b> use the menu to return Home at any time. If a page is missing, check that you are signed in with the correct account role.</div>
@@ -362,14 +366,21 @@
       <p class="eyebrow">02 · Your account</p>
       <h2>Profile &amp; account settings</h2>
       <p class="chapter-intro">Keep your contact details current so scheduling and account messages reach you. The Account page may show different profile fields for learners and teachers.</p>
+      <h3>First-time setup</h3>
+      <ul class="checklist">
+        <li><b>Teachers and administrators:</b> upload a profile picture, then check your name and time zone. A phone number and LINE connection are not required to finish staff setup.</li>
+        <li><b>Students:</b> add a profile picture, check your name and time zone, then connect LINE. Student setup cannot be completed without linking LINE; if the connection is missing later, the app will ask you to connect again.</li>
+        <li>Use the on-screen Back and Next controls to move through setup. When it is complete, choose <b>Go to Home</b>.</li>
+      </ul>
+      <div class="info"><b>Student LINE access:</b> connect using the school's configured LINE account and the short-lived code shown in the app. A real LINE account is needed; a seeded demo user does not come with a pre-linked LINE identity.</div>
       <ol class="steps">
         <li>Open <b>Account</b> from the navigation menu or profile menu.</li>
         <li>To change your profile picture, choose the picture controls and select an image or use the camera if your device offers it.</li>
         <li>Choose the edit option in your profile information, update the fields you need, and save.</li>
-        <li>When asked to verify a phone number, request the code and enter it in the verification dialog.</li>
         <li>To change your password, open the Security section, enter your current password and a new password, then save.</li>
         <li>Use <b>Log out</b> when you finish on a shared or public device.</li>
       </ol>
+      <div class="info"><b>Phone number:</b> phone verification is not part of first-time setup. Keep any contact details on your profile up to date if the account page allows you to edit them.</div>
       <div class="card-grid">
         <div class="card"><h3>Time zone</h3><p>Check your account time zone and keep it correct. Dates and class times are displayed using account and schedule settings.</p></div>
         <div class="card"><h3>Teacher profile</h3><p>Teachers can review their teaching profile and other role-specific details on the Account page. Ask an administrator if a managed field needs correction.</p></div>
@@ -399,7 +410,7 @@
         <li>Enter a short reason (at least five characters), review the request, and send it.</li>
         <li>Watch your notifications for your teacher's decision. The original class time stays in place until the request is approved.</li>
       </ol>
-      <div class="callout"><b>Important:</b> sending a request does not move the class. Do not assume the new time is confirmed until the other participant approves it.</div>
+      <div class="callout"><b>Timing and approval:</b> the app does not set a separate advance-notice cutoff. A request can no longer be made or approved once the teacher has started the class. Sending a request does not move the class; keep the original time until the other participant approves it.</div>
       <h3>Join your scheduled class</h3>
       <ol class="steps">
         <li>Open the class from your Calendar at the scheduled time.</li>
@@ -458,6 +469,13 @@
         <li>Add a comment if you wish, then read your answers again.</li>
         <li>Submit the review. Submitted reviews cannot be changed.</li>
       </ol>
+      <h3>Contracts and classes remaining</h3>
+      <ul class="checklist">
+        <li>Check the student class package for the total classes, classes used, remaining balance, and expiry information.</li>
+        <li>When requesting a new contract, choose one of the available packages: 10, 15, or 20 classes. Select the course and class duration and complete the requested preferences.</li>
+        <li>If you need more time for unused classes, submit an extension request when the option is available. The administrator reviews requests; submitting one does not automatically extend the package.</li>
+        <li>Ask the administrator if a package has expired, its remaining balance looks wrong, or the new-contract/extension option is unavailable.</li>
+      </ul>
       <div class="info"><b>Missing a book or assignment?</b> Only materials made available to your account appear in these pages. Ask your teacher or the school administrator to check that the item was shared with you.</div>
       <div class="footerline"><span>04 · Learner guide</span><span>JEN Academia</span></div>
     </section>
@@ -596,8 +614,8 @@
         <li>If you are asked to decide on a reschedule, review the date, time, and reason before approving or rejecting it.</li>
         <li>Return to Calendar to check the current schedule after a decision.</li>
       </ol>
-      <h3>Connect LINE reminders (optional)</h3>
-      <p>When LINE reminders are configured for the school, a learner can connect a LINE account from the Account page.</p>
+      <h3>Connect LINE for student access and reminders</h3>
+      <p>Students must connect LINE during first-time setup to finish onboarding and access student pages. Teachers and administrators do not need LINE to complete staff setup. When LINE reminders are configured, a linked student may also receive reminders through the school's LINE account.</p>
       <ol class="steps">
         <li>Open <b>Account</b>, find the <b>LINE reminders</b> card, and choose <b>Connect LINE</b>.</li>
         <li>Use the add-friend link or search for the school's LINE account shown on screen.</li>
@@ -614,7 +632,7 @@
         </tbody>
       </table>
       <div class="tip"><b>Pause or disconnect:</b> use the LINE reminders card in Account to pause messages while keeping the link, or disconnect LINE. Reconnect if you have changed LINE accounts.</div>
-      <div class="callout"><b>No LINE card or no message?</b> LINE messages are optional and depend on school setup. Check your connection and reminder settings. Contact the school administrator if the feature is not available.</div>
+      <div class="callout"><b>No LINE card or no reminder?</b> Reminder delivery depends on the school's LINE configuration and your reminder settings. Student LINE linking is still required for student access. Contact the school administrator if the LINE connection controls are missing.</div>
       <div class="footerline"><span>09 · Alerts &amp; communication</span><span>JEN Academia</span></div>
     </section>
 
@@ -624,6 +642,7 @@
       <table class="table">
         <thead><tr><th>If this happens…</th><th>Try this</th></tr></thead>
         <tbody>
+          <tr><td>You cannot finish student setup or reach a student page</td><td>Open the Account setup prompt and complete LINE linking with the school's configured LINE account. The student account must be linked; demo data does not create LINE links.</td></tr>
           <tr><td>You cannot sign in</td><td>Check the email and password, confirm the correct role entry, and use <b>Forgot password</b> if needed.</td></tr>
           <tr><td>The page sends you back to sign-in</td><td>Your session may have expired or your account may need attention. Sign in again; contact the administrator if the issue continues.</td></tr>
           <tr><td>No booking time is available</td><td>Try another available date. Teachers publish their own availability and already-booked times cannot be selected.</td></tr>

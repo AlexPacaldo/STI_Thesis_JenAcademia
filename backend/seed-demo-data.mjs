@@ -4,7 +4,8 @@
  *
  *   cd backend && node seed-demo-data.mjs
  *
- * Run it against a WIPED database. Every account uses the same password.
+ * Run it only against the reset demo database after its schema and courses exist.
+ * Every account uses the same password.
  *
  * The data itself lives in scripts/demo-accounts.mjs, which SAMPLE_ACCOUNTS.txt
  * is also generated from - so the account list you read cannot disagree with
@@ -26,12 +27,11 @@
  * !! writes readable plaintext and the first server start after seeding converts
  * !! it. That also means the seed keeps working if the key is ever rotated.
  *
- * !! What it deliberately never writes: expires_at and status.
+ * !! It writes the derived expires_at deadline, but never writes package status.
  * !!
- * !! The contract deadline is derived by the server from created_at (+3 months).
- * !! Seeding the purchase age therefore seeds the deadline, and the demo cannot
- * !! drift out of sync with the rule it demonstrates. Danica's package expires
- * !! because the rule says so, not because a column was set to "expired".
+ * !! The deadline is derived from created_at (+3 months) using the same shared
+ * !! term rule as the server. Danica's package expires because the rule says so,
+ * !! not because a column was set to "expired".
  *
  * Idempotent: re-running updates the same rows rather than duplicating them.
  */
@@ -44,9 +44,10 @@ import { DB_PASSWORD, describeDbConfig } from "./dbConfig.js";
 import { toMinutes } from "./teacherMatching.js";
 import { CONTRACT_TERM_MONTHS } from "./contractTerms.js";
 import {
-  ADMIN, ALL_COURSES, BOOKED_CLASSES, COUNTRY, PASSWORD, STUDENTS, TEACHERS,
-  TIMEZONE, WEEKLY_AVAILABILITY, aiBio, criteriaNotes, daysLeftFrom,
-  validateDemoAccounts,
+  ADMIN, ALL_COURSES, BOOKED_CLASSES, COUNTRY, DEMO_ASSIGNMENTS,
+  DEMO_BOOK_PROGRESS, DEMO_BOOKS, DEMO_CLASS_WORKFLOWS, PASSWORD, STUDENTS,
+  TEACHERS, TIMEZONE, WEEKLY_AVAILABILITY, aiBio, criteriaNotes,
+  daysLeftFrom, validateDemoAccounts,
 } from "../scripts/demo-accounts.mjs";
 
 // The app loads backend/.env. Load it the same way so one set of credentials
@@ -177,11 +178,30 @@ const db = await mysql.createConnection({
 
 /* --------------------------------------------------------------- helpers */
 
+function demoAvatar(firstName, lastName, role) {
+  const palettes = {
+    admin: ["#6C5CE7", "#2D9CDB", "#27AE60"],
+    teacher: ["#F2994A", "#EB5757", "#9B51E0", "#2D9CDB"],
+    student: ["#56CCF2", "#6FCF97", "#F2C94C", "#BB6BD9", "#F2994A"],
+  };
+  const colors = palettes[role] ?? palettes.student;
+  const seed = `${firstName}${lastName}`.charCodeAt(0) || 0;
+  const color = colors[seed % colors.length];
+  const initials = `${firstName[0] ?? ""}${lastName[0] ?? ""}`.toUpperCase();
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">` +
+    `<rect width="64" height="64" rx="32" fill="${color}"/>` +
+    `<text x="32" y="41" text-anchor="middle" font-family="Arial,sans-serif" ` +
+    `font-size="23" font-weight="700" fill="#fff">${initials}</text></svg>`;
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+}
+
 async function upsertUser({
   email, firstName, lastName, role, birthDate = null,
   country = COUNTRY, contact = null, password = PASSWORD,
 }) {
   const hash = await bcrypt.hash(password, 10);
+  const profileImageUrl = demoAvatar(firstName, lastName, role);
   const [existing] = await db.execute(
     "SELECT user_id FROM users WHERE email = ? LIMIT 1", [email]
   );
@@ -190,24 +210,27 @@ async function upsertUser({
     await db.execute(
       `UPDATE users
           SET first_name = ?, last_name = ?, role = ?, country = ?,
-              birth_date = ?, contact_number = ?, profile_completed = TRUE,
+              birth_date = ?, contact_number = ?, profile_image_url = ?,
+              profile_completed = TRUE,
               status = 'active', password_hash = ?, timezone = ?
         WHERE user_id = ?`,
-      [firstName, lastName, role, country, birthDate, contact, hash, TIMEZONE, id]
+      [firstName, lastName, role, country, birthDate, contact, profileImageUrl, hash, TIMEZONE, id]
     );
     return id;
   }
   const [ins] = await db.execute(
     `INSERT INTO users
        (email, password_hash, first_name, last_name, contact_number, country,
-        birth_date, timezone, role, status, profile_completed, password_changed)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', TRUE, TRUE)`,
-    [email, hash, firstName, lastName, contact, country, birthDate, TIMEZONE, role]
+        birth_date, profile_image_url, timezone, role, status, profile_completed, password_changed)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', TRUE, TRUE)`,
+    [email, hash, firstName, lastName, contact, country, birthDate, profileImageUrl, TIMEZONE, role]
   );
   return ins.insertId;
 }
 
-async function upsertTeacherProfile(userId, { bio, specialization, experienceYears, teachesChildren }) {
+async function upsertTeacherProfile(userId, {
+  bio, specialization, experienceYears, teachesChildren, profileImageUrl,
+}) {
   const [[existing]] = await db.execute(
     "SELECT teacher_id FROM teacher_profiles WHERE user_id = ? LIMIT 1", [userId]
   );
@@ -215,16 +238,18 @@ async function upsertTeacherProfile(userId, { bio, specialization, experienceYea
   if (existing) {
     await db.execute(
       `UPDATE teacher_profiles
-          SET bio = ?, specialization = ?, experience_years = ?, teaches_children = ?
+          SET bio = ?, specialization = ?, experience_years = ?, teaches_children = ?,
+              profile_image_url = ?
         WHERE teacher_id = ?`,
-      [...values, existing.teacher_id]
+      [...values, profileImageUrl, existing.teacher_id]
     );
     return;
   }
   await db.execute(
-    `INSERT INTO teacher_profiles (user_id, bio, specialization, experience_years, teaches_children)
-     VALUES (?, ?, ?, ?, ?)`,
-    [userId, ...values]
+    `INSERT INTO teacher_profiles
+       (user_id, bio, specialization, experience_years, teaches_children, profile_image_url)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [userId, ...values, profileImageUrl]
   );
 }
 
@@ -264,10 +289,12 @@ async function upsertStudentProfile(userId, { courseId, level, teacherId = null,
 /**
  * A class package bought `createdDaysAgo` days ago.
  *
- * expires_at is left NULL on purpose - the server derives it from created_at on
- * the next boot, which is what keeps the demo tied to the real rule.
+ * expires_at is derived from created_at with the shared contract term. The
+ * server still owns the status transition to expired.
  */
-async function upsertPackage(userId, { total, createdDaysAgo, classDuration = 50 }) {
+async function upsertPackage(userId, {
+  total, classesUsed = 0, createdDaysAgo, classDuration = 50,
+}) {
   const [[existing]] = await db.execute(
     "SELECT package_id FROM student_class_packages WHERE student_id = ? ORDER BY created_at DESC LIMIT 1",
     [userId]
@@ -294,34 +321,34 @@ async function upsertPackage(userId, { total, createdDaysAgo, classDuration = 50
   if (existing) {
     await db.execute(
       `UPDATE student_class_packages
-          SET total_classes = ?, classes_used = 0, class_duration = ?, status = 'active',
+          SET total_classes = ?, classes_used = ?, class_duration = ?, status = 'active',
               created_at = ?, expires_at = ${expiry}, expiry_notified_at = NULL
         WHERE package_id = ?`,
-      [total, classDuration, created, created, CONTRACT_TERM_MONTHS, existing.package_id]
+      [total, classesUsed, classDuration, created, created, CONTRACT_TERM_MONTHS, existing.package_id]
     );
     return;
   }
   await db.execute(
     `INSERT INTO student_class_packages
        (student_id, total_classes, classes_used, class_duration, status, created_at, expires_at)
-     VALUES (?, ?, 0, ?, 'active', ?, ${expiry})`,
-    [userId, total, classDuration, created, created, CONTRACT_TERM_MONTHS]
+     VALUES (?, ?, ?, ?, 'active', ?, ${expiry})`,
+    [userId, total, classesUsed, classDuration, created, created, CONTRACT_TERM_MONTHS]
   );
 }
 
 /**
- * Course ids by name.
- *
- * Looked up rather than hardcoded so a re-seed that renumbers the catalogue cannot
- * point a teacher at the wrong course. Throws loudly rather than silently
- * creating a course nobody teaches, which would leave the demo with an empty
- * candidate pool and no explanation.
+ * Course ids by name. Create the demo's required catalogue rows if a fresh
+ * database has none, then resolve ids instead of hardcoding them.
  */
 async function courseIds(names) {
   const ids = {};
   for (const name of names) {
-    const [[row]] = await db.execute("SELECT course_id FROM courses WHERE course_name = ? LIMIT 1", [name]);
-    if (!row) throw new Error(`Course "${name}" does not exist. Seed the courses table first.`);
+    await db.execute("INSERT IGNORE INTO courses (course_name) VALUES (?)", [name]);
+    const [[row]] = await db.execute(
+      "SELECT course_id FROM courses WHERE course_name = ? LIMIT 1",
+      [name]
+    );
+    if (!row) throw new Error(`Could not create or find required course "${name}".`);
     ids[name] = row.course_id;
   }
   return ids;
@@ -517,14 +544,484 @@ async function seedAvailability() {
   return rows;
 }
 
+function dateOffset(days) {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  return isoDate(date);
+}
+
+function dateTimeOffset(days) {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return `${isoDate(date)} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:00`;
+}
+
+async function seedBooksAndProgress() {
+  const bookIds = {};
+  const lessonIds = {};
+
+  for (const book of DEMO_BOOKS) {
+    const courseId = C[book.course];
+    const [[existing]] = await db.execute(
+      "SELECT book_id FROM books WHERE course_id = ? AND title = ? LIMIT 1",
+      [courseId, book.title]
+    );
+    let bookId = existing?.book_id;
+
+    if (bookId) {
+      await db.execute(
+        `UPDATE books
+            SET teacher_id = NULL, description = ?, author = ?, status = 'active',
+                archived_at = NULL
+          WHERE book_id = ?`,
+        [book.description, book.author, bookId]
+      );
+    } else {
+      const [result] = await db.execute(
+        `INSERT INTO books (course_id, teacher_id, title, description, author, status)
+         VALUES (?, NULL, ?, ?, ?, 'active')`,
+        [courseId, book.title, book.description, book.author]
+      );
+      bookId = result.insertId;
+    }
+
+    bookIds[book.key] = bookId;
+    await db.execute("DELETE FROM book_teachers WHERE book_id = ?", [bookId]);
+    for (const teacherKey of book.teachers) {
+      await db.execute(
+        "INSERT INTO book_teachers (book_id, teacher_id, assigned_by) VALUES (?, ?, ?)",
+        [bookId, byKey[teacherKey], byKey.admin]
+      );
+    }
+
+    for (const lesson of book.lessons) {
+      const [[existingLesson]] = await db.execute(
+        "SELECT lesson_id FROM lessons WHERE book_id = ? AND lesson_number = ? LIMIT 1",
+        [bookId, lesson.number]
+      );
+      let lessonId = existingLesson?.lesson_id;
+      if (lessonId) {
+        await db.execute(
+          `UPDATE lessons
+              SET title = ?, content = ?, order_number = ?, is_published = TRUE
+            WHERE lesson_id = ?`,
+          [lesson.title, lesson.content, lesson.number, lessonId]
+        );
+      } else {
+        const [result] = await db.execute(
+          `INSERT INTO lessons
+             (book_id, lesson_number, title, content, order_number, is_published)
+           VALUES (?, ?, ?, ?, ?, TRUE)`,
+          [bookId, lesson.number, lesson.title, lesson.content, lesson.number]
+        );
+        lessonId = result.insertId;
+      }
+      lessonIds[`${book.key}/${lesson.number}`] = lessonId;
+    }
+  }
+
+  const studentId = byKey[DEMO_BOOK_PROGRESS.student];
+  const bookId = bookIds[DEMO_BOOK_PROGRESS.book];
+  const book = DEMO_BOOKS.find((item) => item.key === DEMO_BOOK_PROGRESS.book);
+  const completedLessons = DEMO_BOOK_PROGRESS.lessonProgress.filter((item) => item.completed).length;
+  const progressPercentage = Math.round(
+    DEMO_BOOK_PROGRESS.lessonProgress.reduce((sum, item) => sum + item.percentage, 0) /
+      book.lessons.length
+  );
+  const [[existingCourseProgress]] = await db.execute(
+    "SELECT progress_id FROM student_course_progress WHERE student_id = ? AND book_id = ? LIMIT 1",
+    [studentId, bookId]
+  );
+  if (existingCourseProgress) {
+    await db.execute(
+      `UPDATE student_course_progress
+          SET course_id = ?, status = 'In Progress', completed_lessons = ?,
+              total_lessons = ?, progress_percentage = ?, completed_at = NULL
+        WHERE progress_id = ?`,
+      [C[book.course], completedLessons, book.lessons.length, progressPercentage, existingCourseProgress.progress_id]
+    );
+  } else {
+    await db.execute(
+      `INSERT INTO student_course_progress
+         (student_id, book_id, course_id, status, completed_lessons, total_lessons, progress_percentage)
+       VALUES (?, ?, ?, 'In Progress', ?, ?, ?)`,
+      [studentId, bookId, C[book.course], completedLessons, book.lessons.length, progressPercentage]
+    );
+  }
+
+  for (const progress of DEMO_BOOK_PROGRESS.lessonProgress) {
+    const lessonId = lessonIds[`${DEMO_BOOK_PROGRESS.book}/${progress.lessonNumber}`];
+    const startedAt = dateTimeOffset(2);
+    const completedAt = progress.completed ? dateTimeOffset(1) : null;
+    const [[existingProgress]] = await db.execute(
+      "SELECT progress_id FROM lesson_progress WHERE student_id = ? AND lesson_id = ? LIMIT 1",
+      [studentId, lessonId]
+    );
+    const values = [
+      progress.percentage,
+      progress.completed ? 1 : 0,
+      startedAt,
+      completedAt,
+      progress.minutes,
+    ];
+    if (existingProgress) {
+      await db.execute(
+        `UPDATE lesson_progress
+            SET progress_percentage = ?, is_completed = ?, started_at = ?,
+                completed_at = ?, time_spent_minutes = ?
+          WHERE progress_id = ?`,
+        [...values, existingProgress.progress_id]
+      );
+    } else {
+      await db.execute(
+        `INSERT INTO lesson_progress
+           (student_id, lesson_id, progress_percentage, is_completed, started_at, completed_at, time_spent_minutes)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [studentId, lessonId, ...values]
+      );
+    }
+  }
+
+  return { books: DEMO_BOOKS.length, lessons: Object.keys(lessonIds).length };
+}
+
+async function seedAssignments() {
+  for (const assignment of DEMO_ASSIGNMENTS) {
+    const teacherId = byKey[assignment.teacher];
+    const studentId = byKey[assignment.student];
+    const dueDate = dateOffset(assignment.dueDaysFromNow);
+    const [[existing]] = await db.execute(
+      `SELECT assignment_id FROM assignments
+        WHERE teacher_id = ? AND student_id = ? AND title = ?
+        LIMIT 1`,
+      [teacherId, studentId, assignment.title]
+    );
+    let assignmentId = existing?.assignment_id;
+    if (assignmentId) {
+      await db.execute(
+        `UPDATE assignments
+            SET course_id = ?, instructions = ?, due_date = ?, due_time = '23:59:00',
+                attempt_limit = 2, status = ?, is_archived = FALSE
+          WHERE assignment_id = ?`,
+        [C[assignment.course], assignment.instructions, dueDate, assignment.status, assignmentId]
+      );
+    } else {
+      const [result] = await db.execute(
+        `INSERT INTO assignments
+           (teacher_id, student_id, course_id, title, instructions, due_date, due_time, attempt_limit, status)
+         VALUES (?, ?, ?, ?, ?, ?, '23:59:00', 2, ?)`,
+        [teacherId, studentId, C[assignment.course], assignment.title, assignment.instructions, dueDate, assignment.status]
+      );
+      assignmentId = result.insertId;
+    }
+
+    if (assignment.submission) {
+      const submittedAt = dateTimeOffset(assignment.status === "graded" ? 2 : 1);
+      const [[existingSubmission]] = await db.execute(
+        "SELECT submission_id FROM assignment_submissions WHERE assignment_id = ? AND student_id = ? LIMIT 1",
+        [assignmentId, studentId]
+      );
+      const values = [
+        assignment.submission,
+        submittedAt,
+        assignment.grade ?? null,
+        assignment.feedback ?? null,
+        assignment.grade == null ? null : submittedAt,
+      ];
+      if (existingSubmission) {
+        await db.execute(
+          `UPDATE assignment_submissions
+              SET submission_text = ?, submitted_at = ?, grade = ?, feedback = ?, graded_at = ?
+            WHERE submission_id = ?`,
+          [...values, existingSubmission.submission_id]
+        );
+      } else {
+        await db.execute(
+          `INSERT INTO assignment_submissions
+             (assignment_id, student_id, submission_text, submitted_at, grade, feedback, graded_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [assignmentId, studentId, ...values]
+        );
+      }
+    } else {
+      await db.execute(
+        "DELETE FROM assignment_submissions WHERE assignment_id = ? AND student_id = ?",
+        [assignmentId, studentId]
+      );
+    }
+  }
+
+  return DEMO_ASSIGNMENTS.length;
+}
+
+async function upsertDemoClass(workflow, status) {
+  const teacherId = byKey[workflow.teacher];
+  const studentId = byKey[workflow.student];
+  const scheduledDate = dateOffset(workflow.daysFromNow);
+  const duration = Math.max(0, (toMinutes(workflow.end) ?? 0) - (toMinutes(workflow.start) ?? 0));
+  if (!duration) throw new Error(`Demo class "${workflow.className}" has an invalid time range.`);
+
+  const [[existing]] = await db.execute(
+    `SELECT class_id FROM classes
+      WHERE teacher_id = ? AND student_id = ? AND class_name = ?
+      LIMIT 1`,
+    [teacherId, studentId, workflow.className]
+  );
+  if (existing) {
+    await db.execute(
+      `UPDATE classes
+          SET scheduled_date = ?, start_time = ?, end_time = ?, duration = ?,
+              status = ?, class_link = NULL
+        WHERE class_id = ?`,
+      [scheduledDate, workflow.start, workflow.end, duration, status, existing.class_id]
+    );
+    return existing.class_id;
+  }
+
+  const [result] = await db.execute(
+    `INSERT INTO classes
+       (class_name, teacher_id, student_id, scheduled_date, start_time, end_time, duration, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [workflow.className, teacherId, studentId, scheduledDate, workflow.start, workflow.end, duration, status]
+  );
+  return result.insertId;
+}
+
+async function seedCompletedClass(workflow) {
+  const classId = await upsertDemoClass(workflow, "completed");
+  const [[existingRemark]] = await db.execute(
+    "SELECT remark_id FROM class_remarks WHERE class_id = ? AND teacher_id = ? AND student_id = ? LIMIT 1",
+    [classId, byKey[workflow.teacher], byKey[workflow.student]]
+  );
+  if (existingRemark) {
+    await db.execute(
+      "UPDATE class_remarks SET remarks = ?, rating = ? WHERE remark_id = ?",
+      [workflow.remark, workflow.rating, existingRemark.remark_id]
+    );
+  } else {
+    await db.execute(
+      `INSERT INTO class_remarks (class_id, teacher_id, student_id, remarks, rating)
+       VALUES (?, ?, ?, ?, ?)`,
+      [classId, byKey[workflow.teacher], byKey[workflow.student], workflow.remark, workflow.rating]
+    );
+  }
+}
+
+async function seedAttendanceReview(workflow) {
+  const classId = await upsertDemoClass(workflow, "scheduled");
+  const scheduledDate = dateOffset(workflow.daysFromNow);
+  const startedAt = `${scheduledDate} ${workflow.start}:00`;
+  const studentJoinedAt = `${scheduledDate} ${workflow.studentJoined}:00`;
+  const endedAt = `${scheduledDate} ${workflow.end}:00`;
+  const values = [
+    byKey[workflow.teacher],
+    byKey[workflow.student],
+    startedAt,
+    studentJoinedAt,
+    startedAt,
+    studentJoinedAt,
+    endedAt,
+    Math.max(0, (toMinutes(workflow.end) ?? 0) - (toMinutes(workflow.start) ?? 0)),
+    workflow.summary,
+  ];
+  const [[existingLog]] = await db.execute(
+    "SELECT log_id FROM class_attendance_logs WHERE class_id = ? LIMIT 1",
+    [classId]
+  );
+  if (existingLog) {
+    await db.execute(
+      `UPDATE class_attendance_logs
+          SET teacher_id = ?, student_id = ?, teacher_started_at = ?,
+              student_joined_at = ?, teacher_recording_consent_at = ?,
+              student_recording_consent_at = ?, teacher_ended_at = ?,
+              duration_minutes = ?, summary = ?,
+              verification_status = 'needs_review', proof_url = NULL
+        WHERE log_id = ?`,
+      [...values, existingLog.log_id]
+    );
+  } else {
+    await db.execute(
+      `INSERT INTO class_attendance_logs
+         (class_id, teacher_id, student_id, teacher_started_at, student_joined_at,
+          teacher_recording_consent_at, student_recording_consent_at, teacher_ended_at,
+          duration_minutes, summary, verification_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'needs_review')`,
+      [classId, ...values]
+    );
+  }
+}
+
+async function seedPendingReschedule(workflow) {
+  const classId = await upsertDemoClass(workflow, "scheduled");
+  const requestedDate = dateOffset(workflow.requestedDaysFromNow);
+  const requesterId = byKey[workflow.student];
+  const [[existing]] = await db.execute(
+    `SELECT request_id FROM reschedule_requests
+      WHERE class_id = ? AND requested_by_id = ?
+      ORDER BY request_id DESC LIMIT 1`,
+    [classId, requesterId]
+  );
+  if (existing) {
+    await db.execute(
+      `UPDATE reschedule_requests
+          SET requested_date = ?, requested_time = ?, reason = ?,
+              status = 'pending', decline_reason = NULL,
+              requested_at = CURRENT_TIMESTAMP, resolved_at = NULL
+        WHERE request_id = ?`,
+      [requestedDate, workflow.requestedTime, workflow.reason, existing.request_id]
+    );
+  } else {
+    await db.execute(
+      `INSERT INTO reschedule_requests
+         (class_id, requested_by_id, requested_date, requested_time, reason, status)
+       VALUES (?, ?, ?, ?, ?, 'pending')`,
+      [classId, requesterId, requestedDate, workflow.requestedTime, workflow.reason]
+    );
+  }
+}
+
+async function seedTeachingWorkflows() {
+  const content = await seedBooksAndProgress();
+  const assignmentCount = await seedAssignments();
+  await seedCompletedClass(DEMO_CLASS_WORKFLOWS.completed);
+  await seedAttendanceReview(DEMO_CLASS_WORKFLOWS.attendanceReview);
+  await seedPendingReschedule(DEMO_CLASS_WORKFLOWS.reschedule);
+
+  const bookTitles = DEMO_BOOKS.map((book) => book.title);
+  const [bookRows] = await db.query(
+    `SELECT b.title, COUNT(DISTINCT l.lesson_id) AS lessons,
+            COUNT(DISTINCT bt.teacher_id) AS teachers
+       FROM books b
+       LEFT JOIN lessons l ON l.book_id = b.book_id
+       LEFT JOIN book_teachers bt ON bt.book_id = b.book_id
+      WHERE b.title IN (${bookTitles.map(() => "?").join(", ")})
+      GROUP BY b.book_id, b.title`,
+    bookTitles
+  );
+  const bookProblems = DEMO_BOOKS.flatMap((book) => {
+    const row = bookRows.find((item) => item.title === book.title);
+    if (!row) return [`book "${book.title}" missing`];
+    const problems = [];
+    if (Number(row.lessons) !== book.lessons.length) {
+      problems.push(`book "${book.title}" expected ${book.lessons.length} lessons, found ${row.lessons}`);
+    }
+    if (Number(row.teachers) !== book.teachers.length) {
+      problems.push(`book "${book.title}" expected ${book.teachers.length} teachers, found ${row.teachers}`);
+    }
+    return problems;
+  });
+
+  const assignmentTitles = DEMO_ASSIGNMENTS.map((assignment) => assignment.title);
+  const [assignmentRows] = await db.query(
+    `SELECT a.title, a.status, COUNT(s.submission_id) AS submissions
+       FROM assignments a
+       LEFT JOIN assignment_submissions s
+         ON s.assignment_id = a.assignment_id AND s.student_id = a.student_id
+      WHERE a.title IN (${assignmentTitles.map(() => "?").join(", ")})
+      GROUP BY a.assignment_id, a.title, a.status`,
+    assignmentTitles
+  );
+  const assignmentProblems = DEMO_ASSIGNMENTS.flatMap((assignment) => {
+    const row = assignmentRows.find((item) => item.title === assignment.title);
+    if (!row) return [`assignment "${assignment.title}" missing`];
+    const expectedSubmissions = assignment.submission ? 1 : 0;
+    const problems = [];
+    if (row.status !== assignment.status) {
+      problems.push(`assignment "${assignment.title}" expected ${assignment.status}, found ${row.status}`);
+    }
+    if (Number(row.submissions) !== expectedSubmissions) {
+      problems.push(`assignment "${assignment.title}" expected ${expectedSubmissions} submission(s), found ${row.submissions}`);
+    }
+    return problems;
+  });
+
+  const completed = DEMO_CLASS_WORKFLOWS.completed;
+  const [[classRecord]] = await db.execute(
+    `SELECT c.class_id, c.status, cr.remark_id
+       FROM classes c
+       LEFT JOIN class_remarks cr
+         ON cr.class_id = c.class_id AND cr.teacher_id = c.teacher_id AND cr.student_id = c.student_id
+      WHERE c.teacher_id = ? AND c.student_id = ? AND c.class_name = ?
+      LIMIT 1`,
+    [byKey[completed.teacher], byKey[completed.student], completed.className]
+  );
+  const attendanceReview = DEMO_CLASS_WORKFLOWS.attendanceReview;
+  const [[attendanceRecord]] = await db.execute(
+    `SELECT c.status AS class_status, cal.verification_status, cal.proof_url,
+            cal.teacher_started_at, cal.student_joined_at,
+            cal.teacher_recording_consent_at, cal.student_recording_consent_at,
+            cal.teacher_ended_at
+       FROM classes c
+       JOIN class_attendance_logs cal ON cal.class_id = c.class_id
+      WHERE c.teacher_id = ? AND c.student_id = ? AND c.class_name = ?
+      LIMIT 1`,
+    [
+      byKey[attendanceReview.teacher],
+      byKey[attendanceReview.student],
+      attendanceReview.className,
+    ]
+  );
+  const reschedule = DEMO_CLASS_WORKFLOWS.reschedule;
+  const [[request]] = await db.execute(
+    `SELECT r.status
+       FROM reschedule_requests r
+       JOIN classes c ON c.class_id = r.class_id
+      WHERE c.teacher_id = ? AND c.student_id = ? AND c.class_name = ?
+        AND r.requested_by_id = ?
+      ORDER BY r.request_id DESC LIMIT 1`,
+    [
+      byKey[reschedule.teacher],
+      byKey[reschedule.student],
+      reschedule.className,
+      byKey[reschedule.student],
+    ]
+  );
+  const workflowProblems = [
+    ...bookProblems,
+    ...assignmentProblems,
+    !classRecord || classRecord.status !== "completed"
+      ? "completed class missing or has the wrong status"
+      : null,
+    classRecord && !classRecord.remark_id ? "completed class remark missing" : null,
+    !attendanceRecord ||
+      attendanceRecord.class_status !== "scheduled" ||
+      attendanceRecord.verification_status !== "needs_review" ||
+      attendanceRecord.proof_url !== null ||
+      !attendanceRecord.teacher_started_at ||
+      !attendanceRecord.student_joined_at ||
+      !attendanceRecord.teacher_recording_consent_at ||
+      !attendanceRecord.student_recording_consent_at ||
+      !attendanceRecord.teacher_ended_at
+      ? "attendance review record is incomplete or was incorrectly marked verified"
+      : null,
+    request?.status !== "pending" ? "pending reschedule request missing" : null,
+  ].filter(Boolean);
+
+  if (workflowProblems.length) {
+    throw new Error(
+      `Teaching workflow seed verification failed:\n${workflowProblems.map((item) => `  - ${item}`).join("\n")}`
+    );
+  }
+
+  return {
+    ...content,
+    assignments: assignmentCount,
+    rescheduleRequests: 1,
+    completedClasses: 1,
+    attendanceReviews: 1,
+  };
+}
+
 /* ------------------------------------------------------------------ main */
 
 const C = await courseIds(ALL_COURSES);
 const pick = (...names) => names.map((n) => C[n]);
+const byKey = {};
 
 console.log("\nSeeding demo accounts. Password for every account:", PASSWORD, "\n");
 
-await upsertUser(ADMIN);
+byKey.admin = await upsertUser(ADMIN);
 console.log(`  admin      ${ADMIN.email}`);
 
 /* ---------------------------------------------------------------- teachers */
@@ -532,7 +1029,6 @@ console.log(`  admin      ${ADMIN.email}`);
 // made the next bug take so long to find: every lookup below passes a key like
 // "alvarez", so reading "byEmail" made those lookups look wrong when they were
 // not.
-const byKey = {};
 
 for (const t of TEACHERS) {
   const id = await upsertUser({
@@ -548,6 +1044,7 @@ for (const t of TEACHERS) {
     specialization: t.specialization,
     experienceYears: t.experienceYears,
     teachesChildren: t.teachesChildren,
+    profileImageUrl: demoAvatar(t.firstName, t.lastName, "teacher"),
   });
   await setTeacherCourses(id, pick(...t.courses));
 
@@ -581,7 +1078,10 @@ for (const s of STUDENTS) {
     trialNotes: [s.notes, criteriaNotes(s.criteria)].filter(Boolean).join("\n\n"),
   });
   await upsertPackage(id, {
-    total: s.totalClasses, createdDaysAgo: s.createdDaysAgo, classDuration: s.classDuration,
+    total: s.totalClasses,
+    classesUsed: s.classesUsed ?? 0,
+    createdDaysAgo: s.createdDaysAgo,
+    classDuration: s.classDuration,
   });
 
   const left = daysLeftFrom(s.createdDaysAgo);
@@ -593,6 +1093,15 @@ for (const s of STUDENTS) {
 /* ---------------------------------------------------------- availability */
 const availRows = await seedAvailability();
 console.log(`  availability  ${availRows} rows across ${WEEKLY_AVAILABILITY.length} weekly patterns`);
+
+/* ------------------------------------------------ teaching workflows */
+const workflows = await seedTeachingWorkflows();
+console.log(
+  `  teaching     ${workflows.books} books, ${workflows.lessons} lessons, ` +
+    `${workflows.assignments} assignments, ${workflows.completedClasses} completed class ` +
+    `with a remark, ${workflows.attendanceReviews} attendance review, ` +
+    `${workflows.rescheduleRequests} pending reschedule`
+);
 
 /* ------------------------------------------------------- read it all back */
 

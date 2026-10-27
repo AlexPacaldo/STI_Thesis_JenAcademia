@@ -18,12 +18,15 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import {
-  ADMIN, BOOKED_CLASSES, COUNTRY, DEMO_STUDENT, PASSWORD, STUDENTS, TEACHERS,
-  TIMEZONE, WEEKLY_AVAILABILITY, ageOn, daysLeftFrom,
+  ADMIN, BOOKED_CLASSES, CONTRACT_CLASS_OPTIONS, COUNTRY, DEMO_ASSIGNMENTS,
+  DEMO_BOOK_PROGRESS, DEMO_BOOKS, DEMO_CLASS_WORKFLOWS, DEMO_STUDENT,
+  PASSWORD, STUDENTS, TEACHERS, TIMEZONE, WEEKLY_AVAILABILITY, ageOn,
+  daysLeftFrom,
 } from "./demo-accounts.mjs";
 
 const TXT = "SAMPLE_ACCOUNTS.txt";
 const teacherByKey = Object.fromEntries(TEACHERS.map((t) => [t.key, t]));
+const studentByKey = Object.fromEntries(STUDENTS.map((s) => [s.key, s]));
 const pad = (s, n) => String(s).padEnd(n);
 const wrap = (text, width, indent) => {
   if (!text) return [];
@@ -124,7 +127,7 @@ const studentSections = STUDENTS.map((s) => {
     `      Learning style      ${OR(s.criteria.learningStyle)}`,
     `      Learning pace       ${OR(s.criteria.pace)}`,
     `      Preferred schedule  (none - it is a creation-time input, not stored per student)`,
-    `      Class package       ${s.totalClasses} classes, ${s.classDuration} min each, bought ${s.createdDaysAgo} days ago`,
+    `      Class package       ${s.totalClasses} classes, ${s.classesUsed ?? 0} used, ${s.totalClasses - (s.classesUsed ?? 0)} left; ${s.classDuration} min each`,
     `                           -> ${left > 0 ? `${left} days left` : "PAST its 90-day term"} (${badge})`,
     `      Assigned teacher    ${t ? `${t.firstName} ${t.lastName} (${t.email})` : "unassigned"}`,
     `      Notes`,
@@ -333,7 +336,8 @@ STEP 6b - THE STUDENT'S OWN VIEW, which is the one that matters most. Sign in as
                          (duration, total, used, left, end date) and a usage bar.
 
     Then sign in as carlos.mendoza@student.jenacademia.local and show the same
-    three screens in amber - 11 days left, with a warning notification already in
+    three screens in amber - ${daysLeftFrom(studentByKey.mendoza.createdDaysAgo)} days left,
+    with a warning notification already in
     the bell. Same three surfaces, one shared badge, so the colour cannot differ
     between them.
 
@@ -343,33 +347,35 @@ STEP 6b - THE STUDENT'S OWN VIEW, which is the one that matters most. Sign in as
     booking still requires an active package, so nothing ended is ever bookable.
 
 STEP 6c - THE EXTENSION. This is the case where a contract ran out with classes
-     still on it, and it is Danica - 6 classes paid for, none used.
+     still on it, and it is Danica - ${studentByKey.pope.totalClasses} classes paid for,
+     none used.
 
      Sign in as danica.pope@student.jenacademia.local and open the Calendar.
      Under Classes Left it says the contract ended, and offers:
 
-         "You have 6 unused classes on this contract
+         "You have ${studentByKey.pope.totalClasses} unused classes on this contract
           Your contract ended, but those classes were paid for and are still
           yours. Ask the admin to extend it and you can book them."
          [ Request an extension ]
 
      Note what is NOT there: "request a new contract". Before this, that was the
      only option offered - and approving a new contract expires the old package
-     and creates a fresh one at zero used, which would have thrown away the 6
-     classes she was asking to keep. The two asks are mutually exclusive on
-     purpose, so the one that loses the balance cannot sit next to the one that
-     does not.
+     and creates a fresh one at zero used, which would have thrown away the
+     ${studentByKey.pope.totalClasses} classes she was asking to keep. The two asks
+     are mutually exclusive on purpose, so the one that loses the balance cannot
+     sit next to the one that does not.
 
      Click it, write a line, send. Then as the admin, Contracts > Contract
      Requests, the row is labelled "Extension" and shows what she had when she
-     asked AND what is left now - 6 and 6. Approve opens a date box, defaulting
+     asked and what is left now - ${studentByKey.pope.totalClasses} and
+     ${studentByKey.pope.totalClasses}. Approve opens a date box, defaulting
      to one month out, because the amount was agreed outside this system and only
      the admin knows it.
 
      On approval, and this is the part worth pointing at:
 
          same package_id, still ONE package
-         classes_left still 6, classes_used still 0
+         classes_left still ${studentByKey.pope.totalClasses}, classes_used still 0
          status expired -> active, expires_at moved to the new date
          assigned teacher untouched
 
@@ -383,6 +389,34 @@ STEP 6c - THE EXTENSION. This is the case where a contract ran out with classes
      path branches. They cannot be handled by the same code, because the same
      code would discard the balance. No payment anywhere in this - the system
      records the new end date and nothing else.
+
+STEP 6d - TEACHING WORKFLOWS. Use the seeded teacher and student accounts:
+
+     Books & lessons
+       Admin > Books: ${DEMO_BOOKS.map((book) => book.title).join(" and ")},
+       with published lessons and teacher distribution.
+       Sign in as a student with a real LINE link and open
+       ${DEMO_BOOKS.find((book) => book.key === DEMO_BOOK_PROGRESS.book).title}.
+       Lesson 1 is complete and lesson 2 is in progress.
+
+     Assignments
+       ${DEMO_ASSIGNMENTS.map((assignment) => assignment.title).join(", ")} cover
+       pending, submitted, and graded states. Sign in as the linked account for
+       the matching student to show their view, or as the assigned teacher.
+
+     Class history, attendance & remarks
+       The completed ${DEMO_CLASS_WORKFLOWS.completed.className} includes a
+       teacher remark. ${DEMO_CLASS_WORKFLOWS.attendanceReview.className} is
+       waiting in admin review because the seed does not fabricate proof files.
+
+     Rescheduling
+       ${DEMO_CLASS_WORKFLOWS.reschedule.className} has a pending request for a
+       later date/time. The original slot stays scheduled until approved.
+
+     Profile setup is complete using generated initials avatars. Student routes
+     still require a real LINE connection; the seed never invents LINE IDs.
+     Use test LINE accounts and finish the in-app link flow before presenting
+     student-only pages.
 
 STEP 7 - Create Kyla Bautista, 16, Conversational English, Learning Goal set to
     "School Support" - only Rafael's profile touches that at all. Analyze.
@@ -426,13 +460,19 @@ ${rule}
   Unknown data is disclosed ......... Noah Garcia - no birthday on file
   Workload is respected ............. Ben Martin - 2 students, rule acts
   Contracts expire on time .......... Step 5 - 3 badge states
+  Learning resources ................ Step 6d - books, lessons, progress
+  Assignment lifecycle .............. Step 6d - pending, submitted, graded
+  Class evidence .................... Step 6d - attendance review + class remark
+  Rescheduling ...................... Step 6d - request without moving the slot
   Explainable, every time ........... Rule scores shown beside the AI's reasons
 
 ${rule}
  9. HOW TO RUN
 ${rule}
 
-  1. Wipe the database.
+  1. Reset only the disposable demo database. Keep the application schema.
+     The seeder creates the nine required courses if they are missing, but it
+     does not create tables or drop existing data. Never point it at live data.
 
   2. Seed the accounts:
 
@@ -486,7 +526,14 @@ ${rule}
      deadline is ever missing again it says so loudly rather than finishing on
      trust.
 
-     What is NOT seeded is the status. A package past its term is flipped to
+     In addition to accounts and matching scenarios, the seeder adds books,
+     published lessons, lesson progress, pending/submitted/graded assignments,
+     a completed class with a remark, a separate attendance record awaiting
+     review (with no fabricated proof), and a pending reschedule request.
+     Initials avatars satisfy profile setup. Real LINE
+     identities and video-provider credentials are never fabricated.
+
+     What is NOT seeded is the package status. A package past its term is flipped to
      "expired" by the running server's own 60-second sweep, so the expiry you
      demonstrate is the real mechanism rather than an edited value. Expect
      Danica to read "expired" and Carlos to carry the warning within a minute
@@ -574,17 +621,19 @@ const generated =
   "\n" +
   section("5. CLASS PACKAGES", [
     `  Contract term: 3 months from purchase, whichever limit runs out first.`,
+    `  Available package sizes: ${CONTRACT_CLASS_OPTIONS.join(", ")} classes.`,
     ``,
-    `  The seed never writes expires_at or status. It writes created_at, and the`,
-    `  server derives the deadline as created_at + 3 months on the next boot. So the`,
-    `  states below are produced BY THE RULE, not typed into a column.`,
+    `  The seed derives expires_at from created_at using the same +3 month rule as`,
+    `  the server, and never writes package status. The server flips an overdue`,
+    `  package to expired on its sweep, so that state is produced BY THE RULE.`,
     ``,
-    `  STUDENT              CLASSES  MIN  BOUGHT     TERM ENDS       BADGE`,
-    `  -------------------  -------  ---  ---------  --------------  --------`,
+    `  STUDENT              CLASSES  USED  LEFT  MIN  BOUGHT     TERM ENDS       BADGE`,
+    `  -------------------  -------  ----  ----  ---  ---------  --------------  --------`,
     ...STUDENTS.map((s) => {
       const left = daysLeftFrom(s.createdDaysAgo);
       const badge = left <= 0 ? "EXPIRED (red)" : left <= 14 ? "AMBER" : "green";
-      return `  ${pad(s.firstName + " " + s.lastName, 19)}  ${pad(s.totalClasses, 7)} ${pad(s.classDuration, 3)}  ` +
+      const used = s.classesUsed ?? 0;
+      return `  ${pad(s.firstName + " " + s.lastName, 19)}  ${pad(s.totalClasses, 7)} ${pad(used, 4)}  ${pad(s.totalClasses - used, 4)} ${pad(s.classDuration, 3)}  ` +
         `${pad(s.createdDaysAgo + " days ago", 9)}  ${pad(left <= 0 ? "already passed" : `in ${left} days`, 14)}  ${badge}`;
     }),
     ``,

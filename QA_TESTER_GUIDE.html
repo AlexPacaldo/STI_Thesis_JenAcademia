@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JEN Academia | QA Tester Guide</title>
+  <style>
+    :root {
+      color: #23332b;
+      font: 10pt/1.48 "Segoe UI", Arial, sans-serif;
+      --green: #245c43;
+      --green-dark: #193f30;
+      --green-soft: #eaf3ed;
+      --gold: #d3a64b;
+      --muted: #64736a;
+      --line: #d9e3dc;
+      --paper: #fff;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #edf2ee; }
+    main { max-width: 8.5in; margin: 24px auto; background: var(--paper); }
+    .page { padding: .62in .68in; }
+    .cover {
+      min-height: 10.1in;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      color: white;
+      background: radial-gradient(circle at 85% 14%, #4f8469, transparent 32%), linear-gradient(145deg, #193f30, #285e43 70%, #347252);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; font-size: 15pt; font-weight: 800; letter-spacing: .08em; }
+    .brand-mark { display: grid; place-items: center; width: 42px; height: 42px; border: 2px solid #e8c66f; border-radius: 14px; color: #f2d785; font-size: 21pt; }
+    .eyebrow { color: #a9c8b3; font-size: 9pt; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+    h1 { margin: 10px 0 12px; max-width: 540px; font-size: 42pt; line-height: 1.02; letter-spacing: -.035em; }
+    .cover-rule { width: 82px; height: 4px; margin: 24px 0; border-radius: 5px; background: var(--gold); }
+    .subtitle { max-width: 460px; color: #e0ece3; font-size: 15pt; }
+    .cover-meta { color: #d2e0d5; font-size: 9pt; }
+    .cover-stamp { display: inline-block; margin-top: 15px; padding: 8px 13px; border: 1px solid #b6cfbd; border-radius: 20px; color: white; font-size: 9pt; font-weight: 700; }
+    h2 { margin: 0 0 10px; color: var(--green-dark); font-size: 21pt; line-height: 1.15; }
+    h3 { margin: 16px 0 6px; color: var(--green); font-size: 12pt; }
+    h4 { margin: 9px 0 3px; color: var(--green-dark); font-size: 10pt; }
+    p { margin: 5px 0 9px; }
+    .intro { color: var(--muted); font-size: 10.5pt; }
+    .tag { display: inline-block; margin-bottom: 8px; padding: 4px 8px; border-radius: 20px; background: var(--green-soft); color: var(--green); font-size: 8pt; font-weight: 800; }
+    .callout, .warning, .tip { margin: 10px 0; padding: 10px 12px; border-left: 4px solid var(--green); border-radius: 5px; background: var(--green-soft); }
+    .warning { border-color: #bf7a2c; background: #fff4e6; }
+    .tip { border-color: #6a83a4; background: #eff4fb; }
+    .table { width: 100%; margin: 8px 0 14px; border-collapse: collapse; font-size: 8.5pt; }
+    .table th { background: var(--green); color: white; text-align: left; }
+    .table th, .table td { padding: 6px 7px; border: 1px solid var(--line); vertical-align: top; }
+    .table tbody tr:nth-child(even) { background: #f7faf8; }
+    .accounts { font-size: 8.2pt; }
+    .accounts td:first-child { white-space: nowrap; font-weight: 700; }
+    .steps { padding-left: 20px; }
+    .steps li { padding-left: 3px; margin: 4px 0; }
+    .checklist { padding-left: 19px; list-style: square; }
+    .checklist li { margin: 4px 0; }
+    .scenario { margin: 11px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; break-inside: avoid; }
+    .scenario h3 { margin-top: 0; }
+    .label { color: var(--muted); font-size: 8pt; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+    .small { color: var(--muted); font-size: 8.3pt; }
+    code { padding: 1px 4px; border-radius: 3px; background: #eff3f0; font-family: Consolas, monospace; font-size: .92em; }
+    .footer { margin-top: 18px; padding-top: 7px; border-top: 1px solid var(--line); color: var(--muted); font-size: 8pt; }
+    @page { size: letter; margin: .52in .58in .56in; }
+    @media print {
+      html, body { background: white; }
+      main { max-width: none; margin: 0; }
+      .page { padding: 0; }
+      .cover { min-height: 9.85in; margin: -.52in -.58in -.56in; padding: .7in .72in; break-after: page; page-break-after: always; }
+      .new-page { break-before: page; page-break-before: always; }
+      h2, h3, h4 { break-after: avoid; }
+      .scenario, tr { break-inside: avoid; }
+      .table { font-size: 8pt; }
+      .accounts { font-size: 7.7pt; }
+      a { color: inherit; text-decoration: none; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <section class="page cover">
+    <div class="brand"><span class="brand-mark">J</span> JEN ACADEMIA</div>
+    <div>
+      <p class="eyebrow">Practical QA field guide</p>
+      <h1>Website<br>Tester Guide</h1>
+      <div class="cover-rule"></div>
+      <p class="subtitle">A role-based walkthrough for checking the student, teacher, and administrator experience.</p>
+    </div>
+    <div>
+      <p class="cover-meta">Demo environment · Sample accounts · Test scenarios · Defect reporting<br>Prepared October 2026</p>
+      <span class="cover-stamp">For authorized QA and thesis demonstration use</span>
+    </div>
+  </section>
+
+  <section class="page">
+    <span class="tag">01 · Start safely</span>
+    <h2>Purpose and test setup</h2>
+    <p class="intro">Use this guide to validate the user-visible workflows in JEN Academia. Test only on the QA/demo deployment that the project owner has approved. Page names or button labels may vary slightly by screen size.</p>
+    <div class="warning"><b>Demo credentials:</b> the accounts and shared password below are dummy credentials for the seeded demo only. Never use them on a public or production site, and never enter real student information during testing.</div>
+    <h3>Before you begin</h3>
+    <ol class="steps">
+      <li>Get the approved QA site address and confirm that it is not production. Do not infer the correct host from the sample email domain.</li>
+      <li>Use a current desktop browser. Record the browser and operating system if reporting an issue.</li>
+      <li>Sign in with one role at a time. Use a separate private/incognito window or sign out when switching between test users.</li>
+      <li>Check that the demo dataset is present before following data-dependent scenarios. A scenario may be unavailable if the sandbox has been reset or edited.</li>
+      <li>Use only test images and text. Do not upload sensitive files, real recordings, or real personal information.</li>
+    </ol>
+    <div class="callout"><b>No database reset required:</b> run tests against the already-prepared QA data. Do not wipe, reseed, or edit the database unless the project owner has explicitly approved it and confirmed the target is disposable.</div>
+    <h3>Sign-in and role check</h3>
+    <p>Use the role option shown at the sign-in entry point (<b>Student / Teacher</b> or <b>Admin</b>), then enter the account email and shared password. Confirm the displayed name, role-specific Home page, and navigation menu before testing.</p>
+    <div class="tip"><b>First-time setup differs by role:</b> the seeded accounts may already have completed setup. To test a truly new setup, have the owner create a dedicated QA-only account and provide a fresh setup link; do not reset an existing demo account just to reach onboarding.</div>
+  </section>
+
+  <section class="page new-page">
+    <span class="tag">02 · Sample credentials</span>
+    <h2>Demo accounts</h2>
+    <p>All sample accounts use the password <code>JEN2026!</code>. Emails use the local demo domains and are not intended for public email delivery.</p>
+    <table class="table accounts">
+      <thead><tr><th>Role</th><th>Name</th><th>Sign-in email</th><th>Password</th></tr></thead>
+      <tbody>
+        <tr><td>Administrator</td><td>Jennifer Santos</td><td>admin@jenacademia.local</td><td>JEN2026!</td></tr>
+        <tr><td>Teacher</td><td>Maia Cruz</td><td>maia.cruz@jenacademia.local</td><td>JEN2026!</td></tr>
+        <tr><td>Teacher</td><td>Rafael Santos</td><td>rafael.santos@jenacademia.local</td><td>JEN2026!</td></tr>
+        <tr><td>Teacher</td><td>Gina Dela Cruz</td><td>gina.delacruz@jenacademia.local</td><td>JEN2026!</td></tr>
+        <tr><td>Teacher</td><td>Ben Martin</td><td>ben.martin@jenacademia.local</td><td>JEN2026!</td></tr>
+        <tr><td>Teacher</td><td>Clara Reyes</td><td>clara.reyes@jenacademia.local</td><td>JEN2026!</td></tr>
+        <tr><td>Teacher</td><td>Dario Lim</td><td>dario.lim@jenacademia.local</td><td>JEN2026!</td></tr>
+        <tr><td>Student</td><td>Beatrice Alvarez</td><td>beatrice.alvarez@student.jenacademia.local</td><td>JEN2026!</td></tr>
+        <tr><td>Student</td><td>Carlos Mendoza</td><td>carlos.mendoza@student.jenacademia.local</td><td>JEN2026!</td></tr>
+        <tr><td>Student</td><td>Danica Pope</td><td>danica.pope@student.jenacademia.local</td><td>JEN2026!</td></tr>
+        <tr><td>Student</td><td>Evan Torres</td><td>evan.torres@student.jenacademia.local</td><td>JEN2026!</td></tr>
+        <tr><td>Student</td><td>Noah Garcia</td><td>noah.garcia@student.jenacademia.local</td><td>JEN2026!</td></tr>
+      </tbody>
+    </table>
+    <div class="warning"><b>Student LINE limitation:</b> demo data does not fabricate LINE identities. Student accounts must be linked to a real LINE account through the school's configured LINE integration before student-only pages are accessible. Coordinate with the project owner and use an authorized test LINE account. Do not use another person's LINE account.</div>
+    <h3>Useful demo coverage</h3>
+    <ul class="checklist">
+      <li>Teachers have varied courses, teaching profiles, and student assignments; Maia Cruz's profile intentionally indicates that she does not teach children.</li>
+      <li>Student packages use the supported sizes of 10, 15, or 20 classes and include different remaining/expiry states.</li>
+      <li>The seeded sample includes courses, books and lessons, student lesson progress, assignment states, class history, and a pending reschedule example.</li>
+      <li>Some fixtures are deliberately incomplete or pending to support realistic tests. An unlinked student LINE account and pending attendance review are intentional—not automatically defects.</li>
+    </ul>
+  </section>
+
+  <section class="page new-page">
+    <span class="tag">03 · Student scenarios</span>
+    <h2>Student / learner test checklist</h2>
+    <p class="intro">Use a student account that has an authorized LINE link. If no test student is linked, record that prerequisite as blocked rather than treating the access gate as a failure.</p>
+    <article class="scenario">
+      <h3>ST-01 · Student access and onboarding</h3>
+      <p><span class="label">Steps</span> Sign in as a student with an incomplete profile or disconnected LINE account. Follow the setup prompt, upload a test profile picture if asked, confirm the name and time zone, then connect LINE using the authorized test setup.</p>
+      <p><span class="label">Expected</span> Student setup requires LINE before it can finish. After completion, the student reaches Home. If LINE is later disconnected, the app requests reconnection before protected student pages are used.</p>
+    </article>
+    <article class="scenario">
+      <h3>ST-02 · Book a class</h3>
+      <p><span class="label">Steps</span> Open Calendar → Book a class. Select an available date and time, check the teacher/course details, submit, and revisit Calendar.</p>
+      <p><span class="label">Expected</span> The booking is shown in the schedule. A slot that is not available or conflicts with an existing class cannot be booked. Do not use an actual class slot unless the owner has designated it for testing.</p>
+    </article>
+    <article class="scenario">
+      <h3>ST-03 · Request a reschedule</h3>
+      <p><span class="label">Steps</span> Select an upcoming class that has not started, request a free alternative time, provide a reason of at least five characters, and submit. Check notifications and the class entry.</p>
+      <p><span class="label">Expected</span> The request is pending and the original time remains active until the other participant approves it. It cannot be made or approved after the teacher starts the class. There is no separate advance-notice cutoff configured by this rule.</p>
+    </article>
+    <article class="scenario">
+      <h3>ST-04 · Contract and class balance</h3>
+      <p><span class="label">Steps</span> Review the displayed package and remaining classes. If using a dedicated test student, open a new contract request and inspect the class-count options and required course/preferences. If eligible, inspect the extension request flow.</p>
+      <p><span class="label">Expected</span> New contract options are 10, 15, or 20 classes. An extension is a request for administrator review, not an automatic change. Avoid submitting duplicate requests unless testing revision behavior.</p>
+    </article>
+    <article class="scenario">
+      <h3>ST-05 · Learning materials and assignments</h3>
+      <p><span class="label">Steps</span> Open an available book and lesson. Review saved reading progress, mark a lesson complete where appropriate, then open an assignment, submit a test response, and review its status.</p>
+      <p><span class="label">Expected</span> Only assigned materials appear; lesson progress and assignment submission status update without exposing another student's work.</p>
+    </article>
+  </section>
+
+  <section class="page new-page">
+    <span class="tag">04 · Teacher scenarios</span>
+    <h2>Teacher test checklist</h2>
+    <article class="scenario">
+      <h3>TE-01 · Staff first-time setup</h3>
+      <p><span class="label">Steps</span> Use a dedicated fresh QA teacher account. Follow setup, add a test profile picture, review the name and time zone, and continue.</p>
+      <p><span class="label">Expected</span> A profile picture is required for first-time setup. Phone verification and LINE linking are not required for teacher setup. The account proceeds to its teacher Home page.</p>
+    </article>
+    <article class="scenario">
+      <h3>TE-02 · Profile, students, and permissions</h3>
+      <p><span class="label">Steps</span> Open Account and My students. Review the teaching profile, experience, specialization, course, and assigned learners. Compare with the seeded fixture reference only if needed.</p>
+      <p><span class="label">Expected</span> The profile fields that exist for the account display correctly. The teacher sees assigned students and does not gain access to unrelated student records.</p>
+    </article>
+    <article class="scenario">
+      <h3>TE-03 · Class and reschedule workflow</h3>
+      <p><span class="label">Steps</span> Open an upcoming test class, inspect its details, then review the pending reschedule request if available. Approve or reject only within the sandbox; when rejecting, enter a reason of at least five characters.</p>
+      <p><span class="label">Expected</span> The class schedule reflects an approval; a rejection preserves the original schedule and communicates the reason. Once the class has started, the request can no longer be decided.</p>
+    </article>
+    <article class="scenario">
+      <h3>TE-04 · Class completion</h3>
+      <p><span class="label">Steps</span> Use a dedicated test class only. Review consent, join the meeting, capture a non-sensitive test recording if the owner approved it, add a complete class summary and learner remark, then complete/verify the class.</p>
+      <p><span class="label">Expected</span> Required recording upload and written details are accepted; the completed class appears in history. Recordings are temporary and deleted after seven days. Do not record real people or conduct an unapproved recording test.</p>
+    </article>
+    <article class="scenario">
+      <h3>TE-05 · Assignments, reviews, and books</h3>
+      <p><span class="label">Steps</span> Create an assignment for a test student, submit it from the student account, then review/grade it as the teacher. Check contract reviews and My books for the expected student/course material.</p>
+      <p><span class="label">Expected</span> Each role sees the correct task state and permitted materials; teachers can read assigned books and monitor progress but do not manage the shared library.</p>
+    </article>
+  </section>
+
+  <section class="page new-page">
+    <span class="tag">05 · Administrator scenarios</span>
+    <h2>Administrator test checklist</h2>
+    <article class="scenario">
+      <h3>AD-01 · Staff first-time setup and role routing</h3>
+      <p><span class="label">Steps</span> Use a dedicated fresh QA administrator account and complete setup with a test profile picture. Navigate through the dashboard areas available to that account.</p>
+      <p><span class="label">Expected</span> Setup does not require phone verification or LINE. Admin Home and admin-only navigation are shown. Super-admin-only actions appear only when permitted.</p>
+    </article>
+    <article class="scenario">
+      <h3>AD-02 · Account and contract management</h3>
+      <p><span class="label">Steps</span> Find a test account in Account Management, review the profile and package, and use only owner-approved changes. Inspect pending contract requests and their detail.</p>
+      <p><span class="label">Expected</span> Account and request details match the selected student; completed account setup removes invite resend/copy actions and the email is read-only. Package sizes available in forms are 10, 15, and 20.</p>
+    </article>
+    <article class="scenario">
+      <h3>AD-03 · Requests and calendar visibility</h3>
+      <p><span class="label">Steps</span> Review Calendar and the Requests area for the test classes and pending requests.</p>
+      <p><span class="label">Expected</span> Admin can inspect request status and schedule information, but cannot approve or reject participant reschedule requests.</p>
+    </article>
+    <article class="scenario">
+      <h3>AD-04 · Books, lessons, and access distribution</h3>
+      <p><span class="label">Steps</span> In Books / Lessons, create a test book and lesson, distribute it to a test teacher, verify access as the teacher/student, then archive and restore the test book if those actions are in scope.</p>
+      <p><span class="label">Expected</span> Admin owns the shared library; teachers and students see materials only where access is granted. Archiving hides a book while preserving restore capability.</p>
+    </article>
+    <article class="scenario">
+      <h3>AD-05 · Reviews and attendance verification</h3>
+      <p><span class="label">Steps</span> Inspect Contract reviews and Verifications using the seeded examples or dedicated test classes.</p>
+      <p><span class="label">Expected</span> Submitted reviews and class evidence show their actual status. A pending review remains pending until evidence is checked; do not mark a class verified without the required evidence.</p>
+    </article>
+    <div class="callout"><b>Cleanup:</b> remove or archive only records created specifically for QA and only when authorized. Never hard-delete seeded data or modify account roles, passwords, assignments, classes, or contracts without the owner's approval.</div>
+  </section>
+
+  <section class="page new-page">
+    <span class="tag">06 · Report results</span>
+    <h2>Recording and reporting defects</h2>
+    <h3>For every test</h3>
+    <ul class="checklist">
+      <li>Mark each scenario <b>Pass</b>, <b>Fail</b>, or <b>Blocked</b>. Explain blocked prerequisites, such as no authorized test LINE link or no available test class.</li>
+      <li>Record the test date/time and time zone, browser/version, device/OS, role, and the specific demo account name (do not include its password in a bug report).</li>
+      <li>For a failure, include the exact page, clear reproduction steps, expected result, actual result, and whether it happens every time.</li>
+      <li>Attach a screenshot or short screen capture when useful. Crop or blur passwords, linking codes, email content, personal data, and unrelated accounts.</li>
+      <li>Do not report expected safeguards as defects: student LINE gating, role-based menus, pending reschedule approval, unavailable slots, and pending evidence review are intentional behavior.</li>
+    </ul>
+    <h3>Suggested severity</h3>
+    <table class="table">
+      <thead><tr><th>Level</th><th>Use when…</th></tr></thead>
+      <tbody>
+        <tr><td><b>Critical</b></td><td>Core service is unavailable, data is lost/corrupted, or an account can access another user's sensitive information.</td></tr>
+        <tr><td><b>High</b></td><td>A major workflow is blocked for a role and there is no reasonable workaround.</td></tr>
+        <tr><td><b>Medium</b></td><td>A feature is incorrect or unreliable but a workaround exists, or important information is confusing.</td></tr>
+        <tr><td><b>Low</b></td><td>Minor visual, wording, or alignment issue with no material workflow impact.</td></tr>
+      </tbody>
+    </table>
+    <div class="scenario">
+      <h3>Defect report template</h3>
+      <p><b>Title:</b> [Role] concise description</p>
+      <p><b>Environment:</b> QA URL, browser/version, device/OS</p>
+      <p><b>Account:</b> role and sample account name (never the password)</p>
+      <p><b>Preconditions:</b> relevant account/data state</p>
+      <p><b>Steps to reproduce:</b> numbered actions</p>
+      <p><b>Expected:</b> what should happen</p>
+      <p><b>Actual:</b> what happened, including any visible error</p>
+      <p><b>Frequency / severity:</b> always, intermittent, or once; proposed severity and reason</p>
+      <p><b>Evidence:</b> sanitized screenshot or recording, if safe</p>
+    </div>
+    <p class="small">If the result differs from this guide, check the currently deployed build and ask the project owner whether the workflow has intentionally changed before filing a defect.</p>
+    <div class="footer">JEN Academia · QA Tester Guide · Demo credentials are for authorized sandbox testing only</div>
+  </section>
+</main>
+</body>
+</html>

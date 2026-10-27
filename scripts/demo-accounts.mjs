@@ -28,11 +28,13 @@ export const ADMIN = {
   contact: "+63917 555 0001",
 };
 
-/** Every course the catalogue must contain. Looked up, never inserted. */
+/** The course catalogue entries the demo requires; created if missing. */
 export const ALL_COURSES = [
   "Business English", "Job Interview", "Online English", "News", "TOEIC",
   "IELTS", "OPIc", "Conversational English", "Travel English",
 ];
+
+export const CONTRACT_CLASS_OPTIONS = [10, 15, 20];
 
 /** The student you create live during the demo. Never seeded - creating her IS the demo. */
 export const DEMO_STUDENT = {
@@ -215,7 +217,8 @@ export const STUDENTS = [
     course: "IELTS",
     level: "intermediate-mid",
     teacher: "delacruz",
-    totalClasses: 12,
+    totalClasses: 15,
+    classesUsed: 1,
     classDuration: 50,
     createdDaysAgo: 10,
     notes: "Needs a band 6.5. Understands grammar well but freezes under exam conditions.",
@@ -230,7 +233,8 @@ export const STUDENTS = [
     course: "Conversational English",
     level: "intermediate-low",
     teacher: "martin",
-    totalClasses: 8,
+    totalClasses: 10,
+    classesUsed: 0,
     classDuration: 50,
     // 81 days old -> 9 days left. The amber badge, and the notification this
     // student would already have received.
@@ -247,7 +251,8 @@ export const STUDENTS = [
     course: "TOEIC",
     level: "advanced",
     teacher: "delacruz",
-    totalClasses: 6,
+    totalClasses: 10,
+    classesUsed: 0,
     classDuration: 50,
     // Past the 90-day term. The server flips this to expired on its next sweep,
     // which is the honest demonstration rather than a hand-edited status.
@@ -265,6 +270,7 @@ export const STUDENTS = [
     level: "intermediate-mid",
     teacher: "martin",
     totalClasses: 10,
+    classesUsed: 0,
     classDuration: 50,
     // Martin's second student: he sits exactly on the 2-student limit.
     createdDaysAgo: 4,
@@ -283,6 +289,7 @@ export const STUDENTS = [
     level: "intermediate-low",
     teacher: "cruz",
     totalClasses: 10,
+    classesUsed: 0,
     classDuration: 50,
     createdDaysAgo: 5,
     notes: "Travelling next month. Wants to handle airport and hotel situations confidently.",
@@ -361,6 +368,134 @@ export const BOOKED_CLASSES = [
   },
 ];
 
+export const DEMO_BOOKS = [
+  {
+    key: "conversation",
+    title: "Confident Conversations",
+    description: "Practical speaking lessons for everyday conversations.",
+    author: "JEN Academia",
+    course: "Conversational English",
+    teachers: ["santos", "martin"],
+    lessons: [
+      {
+        number: 1,
+        title: "Starting a Conversation",
+        content: "Practice greetings, introductions, and friendly follow-up questions.",
+      },
+      {
+        number: 2,
+        title: "Talking About Your Day",
+        content: "Use past-tense verbs and sequencing words to tell a clear short story.",
+      },
+      {
+        number: 3,
+        title: "Sharing an Opinion",
+        content: "State an opinion, give a reason, and invite another person to respond.",
+      },
+    ],
+  },
+  {
+    key: "ielts",
+    title: "IELTS Speaking Practice",
+    description: "Structured prompts and strategies for confident IELTS speaking.",
+    author: "JEN Academia",
+    course: "IELTS",
+    teachers: ["delacruz"],
+    lessons: [
+      {
+        number: 1,
+        title: "Part 1: Clear, Complete Answers",
+        content: "Answer familiar questions directly, then add a specific supporting detail.",
+      },
+      {
+        number: 2,
+        title: "Part 2: Organizing a Long Turn",
+        content: "Plan a short response with a clear beginning, supporting details, and conclusion.",
+      },
+    ],
+  },
+];
+
+export const DEMO_BOOK_PROGRESS = {
+  student: "mendoza",
+  book: "conversation",
+  lessonProgress: [
+    { lessonNumber: 1, percentage: 100, completed: true, minutes: 18 },
+    { lessonNumber: 2, percentage: 45, completed: false, minutes: 9 },
+  ],
+};
+
+export const DEMO_ASSIGNMENTS = [
+  {
+    key: "pending",
+    teacher: "martin",
+    student: "mendoza",
+    course: "Conversational English",
+    title: "Meeting Introductions",
+    instructions: "Write a short introduction you could use in a work meeting.",
+    dueDaysFromNow: 5,
+    status: "pending",
+  },
+  {
+    key: "submitted",
+    teacher: "delacruz",
+    student: "alvarez",
+    course: "IELTS",
+    title: "Listening Reflection",
+    instructions: "Describe one strategy you used to follow the listening passage.",
+    dueDaysFromNow: -1,
+    status: "submitted",
+    submission: "I focused on key words and checked the speaker's opinion before choosing my answer.",
+  },
+  {
+    key: "graded",
+    teacher: "delacruz",
+    student: "pope",
+    course: "TOEIC",
+    title: "Reading Practice Review",
+    instructions: "Summarize your approach to the reading practice questions.",
+    dueDaysFromNow: -3,
+    status: "graded",
+    submission: "I skimmed each passage first, then returned to the questions for specific details.",
+    grade: 88,
+    feedback: "Good use of skimming. Review the inference questions and support each answer with evidence.",
+  },
+];
+
+export const DEMO_CLASS_WORKFLOWS = {
+  completed: {
+    teacher: "delacruz",
+    student: "alvarez",
+    className: "IELTS Progress Review",
+    daysFromNow: -7,
+    start: "10:00",
+    end: "10:50",
+    remark: "Beatrice organized her answers clearly and supported them with relevant examples.",
+    rating: 5,
+  },
+  attendanceReview: {
+    teacher: "martin",
+    student: "mendoza",
+    className: "Conversation Attendance Review",
+    daysFromNow: -2,
+    start: "14:00",
+    end: "14:50",
+    studentJoined: "14:03",
+    summary: "The class ended and is waiting for admin review; no evidence files were seeded.",
+  },
+  reschedule: {
+    teacher: "martin",
+    student: "mendoza",
+    className: "Conversation Reschedule Demo",
+    daysFromNow: 7,
+    start: "15:00",
+    end: "15:50",
+    requestedDaysFromNow: 10,
+    requestedTime: "16:00",
+    reason: "I have a work meeting at the original time. Could we move this class?",
+  },
+};
+
 /** Days left remaining on the 90-day term for a package of a given age. */
 export const daysLeftFrom = (createdDaysAgo) => 90 - createdDaysAgo;
 
@@ -402,6 +537,19 @@ export function validateDemoAccounts() {
     if (s.teacher && !teacherKeys.has(s.teacher)) {
       problems.push(`student "${s.key}" is assigned to unknown teacher "${s.teacher}"`);
     }
+    if (
+      !Number.isInteger(s.classesUsed ?? 0) ||
+      (s.classesUsed ?? 0) < 0 ||
+      (s.classesUsed ?? 0) > s.totalClasses
+    ) {
+      problems.push(`student "${s.key}" has an invalid used-class count`);
+    }
+    if (!CONTRACT_CLASS_OPTIONS.includes(s.totalClasses)) {
+      problems.push(
+        `student "${s.key}" has unsupported contract size ${s.totalClasses}; ` +
+          `allowed: ${CONTRACT_CLASS_OPTIONS.join(", ")}`
+      );
+    }
   }
 
   for (const slot of WEEKLY_AVAILABILITY) {
@@ -419,6 +567,44 @@ export function validateDemoAccounts() {
     // confusion is exactly how the original bug stayed invisible for so long.
     if (!studentKeys.has(booked.student)) {
       problems.push(`booked class has unknown student "${booked.student}"`);
+    }
+  }
+
+  for (const book of DEMO_BOOKS) {
+    if (!ALL_COURSES.includes(book.course)) {
+      problems.push(`demo book "${book.key}" references unknown course "${book.course}"`);
+    }
+    for (const key of book.teachers) {
+      if (!teacherKeys.has(key)) problems.push(`demo book "${book.key}" has unknown teacher "${key}"`);
+    }
+    if (!book.lessons.length) problems.push(`demo book "${book.key}" has no lessons`);
+  }
+
+  if (!studentKeys.has(DEMO_BOOK_PROGRESS.student)) {
+    problems.push(`book progress references unknown student "${DEMO_BOOK_PROGRESS.student}"`);
+  }
+  if (!DEMO_BOOKS.some((book) => book.key === DEMO_BOOK_PROGRESS.book)) {
+    problems.push(`book progress references unknown book "${DEMO_BOOK_PROGRESS.book}"`);
+  }
+
+  for (const assignment of DEMO_ASSIGNMENTS) {
+    if (!teacherKeys.has(assignment.teacher)) {
+      problems.push(`assignment "${assignment.key}" has unknown teacher "${assignment.teacher}"`);
+    }
+    if (!studentKeys.has(assignment.student)) {
+      problems.push(`assignment "${assignment.key}" has unknown student "${assignment.student}"`);
+    }
+    if (!ALL_COURSES.includes(assignment.course)) {
+      problems.push(`assignment "${assignment.key}" references unknown course "${assignment.course}"`);
+    }
+  }
+
+  for (const workflow of Object.values(DEMO_CLASS_WORKFLOWS)) {
+    if (!teacherKeys.has(workflow.teacher)) {
+      problems.push(`class workflow "${workflow.className}" has unknown teacher "${workflow.teacher}"`);
+    }
+    if (!studentKeys.has(workflow.student)) {
+      problems.push(`class workflow "${workflow.className}" has unknown student "${workflow.student}"`);
     }
   }
 
