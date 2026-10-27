@@ -213,6 +213,24 @@ function App() {
         }
       }
 
+      async function checkRequiredLineSetup() {
+        if (role !== "student" || path === "/account" || !currentUserId) return;
+        try {
+          const response = await apiFetch(`${API_BASE_URL}/api/users/${currentUserId}/line`);
+          if (!response.ok) {
+            navigate("/account", { replace: true });
+            return;
+          }
+          const data = await response.json();
+          if (!data?.linked) {
+            navigate("/account", { replace: true });
+          }
+        } catch (error) {
+          console.warn("Could not check required LINE setup:", error);
+          navigate("/account", { replace: true });
+        }
+      }
+
       // Closing evaluations are required. When a teacher or student still has
       // one pending, every page sends them back to the review screen until
       // their side is submitted. The review page itself is exempt, otherwise
@@ -235,9 +253,12 @@ function App() {
       }
 
       checkAccountStatus();
+      checkRequiredLineSetup();
       checkRequiredContractReview();
       const accountStatusTimer = window.setInterval(checkAccountStatus, ACCOUNT_STATUS_CHECK_MS);
+      const requiredLineTimer = window.setInterval(checkRequiredLineSetup, ACCOUNT_STATUS_CHECK_MS);
       window.addEventListener("focus", checkAccountStatus);
+      window.addEventListener("focus", checkRequiredLineSetup);
 
       const stayLoggedIn = isStayLoggedIn(user);
       if (!stayLoggedIn) {
@@ -255,7 +276,9 @@ function App() {
 
         return () => {
           window.clearInterval(accountStatusTimer);
+          window.clearInterval(requiredLineTimer);
           window.removeEventListener("focus", checkAccountStatus);
+          window.removeEventListener("focus", checkRequiredLineSetup);
           ACTIVITY_EVENTS.forEach((eventName) =>
             window.removeEventListener(eventName, resetIdleTimer)
           );
@@ -267,7 +290,9 @@ function App() {
 
       return () => {
         window.clearInterval(accountStatusTimer);
+        window.clearInterval(requiredLineTimer);
         window.removeEventListener("focus", checkAccountStatus);
+        window.removeEventListener("focus", checkRequiredLineSetup);
       };
     }
 

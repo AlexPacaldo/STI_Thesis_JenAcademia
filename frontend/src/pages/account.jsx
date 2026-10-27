@@ -227,7 +227,7 @@ export default function Account() {
   // to the finished Account page, so they must not open over the wizard.
   const firstSetupActive =
     Boolean(user) &&
-    (isProfileIncomplete || firstSetupFinished) &&
+    (isProfileIncomplete || firstSetupFinished || (isStudent && !lineState.loading && !lineState.linked)) &&
     ["student", "teacher", "admin"].includes(user.role);
   const editDialogOpen = !firstSetupActive && (profileEditing || passwordEditing);
   // Kept by identity: the LINE card reports on every status change, and a new
@@ -241,10 +241,7 @@ export default function Account() {
         : next
     );
   }, []);
-  // A school that has not finished its own LINE setup must not trap a person
-  // in onboarding forever, so "not usable" counts as permission to move on.
-  // LINE never gates teachers or admins; they don't use reminders.
-  const lineReady = lineApplies ? lineState.linked || (!lineState.loading && !lineState.usable) : true;
+  const lineReady = lineApplies ? lineState.linked : true;
   // The contract summary the student sees on their own page.
   //
   // Two limits, not one: classes and time. Classes can be plentiful while the
@@ -396,6 +393,37 @@ export default function Account() {
   }, [navigate, storedUser]);
 
   useEffect(() => {
+    if (!user?.id || user.role !== "student") return undefined;
+    let ignore = false;
+    setLineState({ loading: true, linked: false, usable: false });
+
+    axios.get(`${API}/api/users/${user.id}/line`)
+      .then((response) => {
+        if (ignore) return;
+        const linked = Boolean(response.data?.linked);
+        setLineState({
+          loading: false,
+          linked,
+          usable: Boolean(response.data?.configured && response.data?.webhookConfigured),
+        });
+        if (!linked && user.profileCompleted) {
+          setFirstSetupStep(user.profileImageUrl ? 1 : 0);
+          setFirstSetupFinished(false);
+        }
+      })
+      .catch((error) => {
+        if (ignore) return;
+        console.error("Could not check the student's LINE setup:", error);
+        setLineState({ loading: false, linked: false, usable: false });
+        setFirstSetupFinished(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [user?.id, user?.role, user?.profileCompleted, user?.profileImageUrl]);
+
+  useEffect(() => {
     return () => {
       if (cropModal?.src) URL.revokeObjectURL(cropModal.src);
     };
@@ -521,7 +549,12 @@ export default function Account() {
       notify("Profile updated successfully.", "success");
 
       if (updated.profileCompleted && isProfileIncomplete) {
-        setFirstSetupFinished(true);
+        if (isStudent && !lineState.linked) {
+          setFirstSetupStep(1);
+          setFirstSetupFinished(false);
+        } else {
+          setFirstSetupFinished(true);
+        }
       }
     } catch (err) {
       if (err?.response?.status === 401) setDetailsPassword("");
@@ -610,7 +643,7 @@ export default function Account() {
     // !! LINE reminders are student-only. A teacher or admin can save their
     // !! details without ever linking LINE, so don't send them back to a step
     // !! that doesn't exist for them.
-    if (isProfileIncomplete && lineApplies && lineState.usable && !lineState.linked) {
+    if (lineApplies && !lineState.linked) {
       setFirstSetupStep(1);
       notify("Connect LINE first so we can send your class reminders.", "error");
       return;
@@ -695,7 +728,12 @@ export default function Account() {
       closeCropModal();
       if (isProfileIncomplete) setFirstSetupStep(1);
       if (nextUser.profileCompleted && isProfileIncomplete) {
-        setFirstSetupFinished(true);
+        if (isStudent && !lineState.linked) {
+          setFirstSetupFinished(false);
+          setFirstSetupStep(1);
+        } else {
+          setFirstSetupFinished(true);
+        }
       }
     } catch (err) {
       notify(err?.response?.data?.message || "Could not upload profile picture.", "error");
@@ -746,7 +784,7 @@ export default function Account() {
     const totalSteps = isStudent ? 3 : 2;
     let lineNextLabel = "Next";
     if (lineState.loading) lineNextLabel = "Checking…";
-    else if (lineState.usable && !lineState.linked) lineNextLabel = "Connect LINE first";
+    else if (!lineState.linked) lineNextLabel = "Connect LINE first";
 
     if (firstSetupFinished) {
       return (
@@ -1630,6 +1668,17 @@ export default function Account() {
         <section className={styles.emptyState}>
           <h1>Account</h1>
           <p>You are not logged in.</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (isStudent && lineState.loading) {
+    return (
+      <main className={styles.pageShell}>
+        <section className={styles.emptyState} role="status">
+          <h1>Getting your account ready</h1>
+          <p>Checking your LINE connection…</p>
         </section>
       </main>
     );

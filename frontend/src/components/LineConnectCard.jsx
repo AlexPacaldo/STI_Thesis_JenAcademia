@@ -205,15 +205,17 @@ export default function LineConnectCard({
 
       {!status.loading && !status.configured ? (
         <p className={styles.notice}>
-          LINE is not ready yet. Your teacher will finish setting it up. You can keep
-          going and connect it later.
+          {required
+            ? "LINE is not ready yet. Please ask the school administrator to finish setting it up. You can continue once it is ready."
+            : "LINE is not ready yet. Your teacher will finish setting it up. You can keep going and connect it later."}
         </p>
       ) : null}
 
       {!status.loading && status.configured && !status.webhookConfigured ? (
         <p className={styles.notice}>
-          LINE is almost ready. The school still has one setting to finish. You can keep
-          going and connect it later.
+          {required
+            ? "LINE is almost ready. Please ask the school administrator to finish setting it up. You can continue once it is ready."
+            : "LINE is almost ready. The school still has one setting to finish. You can keep going and connect it later."}
         </p>
       ) : null}
 
