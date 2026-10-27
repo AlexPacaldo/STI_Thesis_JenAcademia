@@ -1302,6 +1302,29 @@ label.checkboxOption > input[type='checkbox']:disabled {
   color: var(--muted);
 }
 
+/* Phone number with the country calling code on the left. The select keeps
+   the input's own styling, but only as wide as the code it shows, so the
+   number itself still gets the rest of the row. */
+.phoneField {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+
+.phoneField > .phoneDial {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 96px;
+  padding-right: 10px;
+}
+
+.phoneField > .phoneNumber {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+}
+
 .proActions {
   display: flex;
   gap: 10px;

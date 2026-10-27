@@ -353,7 +353,7 @@ export const ACCOUNT = {
   birthday: "Birthday",
   country: "Country",
   phone: "Phone number",
-  phoneCodeNote: "Changing this sends a six-digit code to the new number. Philippine numbers only.",
+  phoneCodeNote: "Changing this sends a six-digit code to the new number. Text verification is available for Philippine numbers only.",
   phoneCodeTitle: "Check your phone",
   phoneCodeBody: (phone) =>
     `We sent a six-digit code to ${phone}. Type it below to save your new number.`,

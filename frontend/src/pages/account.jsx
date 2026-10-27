@@ -57,6 +57,151 @@ const COUNTRY_TIMEZONES = {
 };
 const TIMEZONE_OPTIONS = getTimezoneOptions();
 
+/**
+ * Calling codes shown beside the phone number.
+ *
+ * !! One entry per code, not per country: Canada and the United States share
+ * !! +1, so two options with the same value would make the select jump back to
+ * !! the first one after a choice. The countries field keeps the profile's own
+ * !! country separate from the number's country.
+ */
+const PHONE_DIAL_OPTIONS = [
+  { dial: "+63", label: "PH +63", countries: ["Philippines"] },
+  { dial: "+1", label: "CA/US +1", countries: ["Canada", "United States"] },
+  { dial: "+44", label: "GB +44", countries: ["United Kingdom"] },
+  { dial: "+61", label: "AU +61", countries: ["Australia"] },
+  { dial: "+86", label: "CN +86", countries: ["China"] },
+  { dial: "+91", label: "IN +91", countries: ["India"] },
+  { dial: "+62", label: "ID +62", countries: ["Indonesia"] },
+  { dial: "+81", label: "JP +81", countries: ["Japan"] },
+  { dial: "+60", label: "MY +60", countries: ["Malaysia"] },
+  { dial: "+65", label: "SG +65", countries: ["Singapore"] },
+  { dial: "+82", label: "KR +82", countries: ["South Korea"] },
+  { dial: "+886", label: "TW +886", countries: ["Taiwan"] },
+  { dial: "+66", label: "TH +66", countries: ["Thailand"] },
+  { dial: "+971", label: "AE +971", countries: ["United Arab Emirates"] },
+  { dial: "+84", label: "VN +84", countries: ["Vietnam"] },
+  { dial: "+685", label: "WS +685", countries: ["Samoa"] },
+];
+
+function dialForCountry(country) {
+  const option = PHONE_DIAL_OPTIONS.find((entry) => entry.countries.includes(country));
+  return option?.dial || "+63";
+}
+
+/**
+ * Split a stored number into the code shown in the select and the part the
+ * person edits.
+ *
+ * !! A stored +63 number may have been typed as 0917..., +63917..., or with
+ * !! spaces and brackets. The select must show the same +63 for all of them,
+ * !! and the input must show only the digits after it. An unknown code keeps
+ * !! its own prefix in the select so saving does not silently change it.
+ */
+function splitPhoneNumber(value, fallbackDial = "+63") {
+  const text = String(value || "").trim();
+  if (!text) return { dial: fallbackDial, local: "" };
+
+  const compact = text.replace(/[\s().-]/g, "");
+
+  if (compact.startsWith("+")) {
+    const option = PHONE_DIAL_OPTIONS.find((entry) => compact.startsWith(entry.dial));
+    if (!option) return { dial: "+", local: compact.slice(1) };
+
+    const start = text.indexOf(option.dial) + option.dial.length;
+    return {
+      dial: option.dial,
+      local: text.slice(start).replace(/^[\s().-]+/, ""),
+    };
+  }
+
+  if (/^09\d{9}$/.test(compact)) return { dial: "+63", local: compact.slice(1) };
+  if (/^63\d{10}$/.test(compact)) return { dial: "+63", local: compact.slice(2) };
+  return { dial: fallbackDial, local: text };
+}
+
+/**
+ * Put the chosen code back in front of the local part.
+ *
+ * A leading zero is a trunk prefix, not part of the number. Without removing
+ * it, typing 0917... next to +63 would save +630917..., which no phone can
+ * dial.
+ */
+function joinPhoneNumber(dial, local) {
+  const cleaned = String(local || "")
+    .replace(/[^\d\s().-]/g, "")
+    .replace(/^[\s().-]+/, "");
+  const compact = cleaned.replace(/[\s().-]/g, "");
+  const withoutTrunk =
+    dial !== "+" && compact.startsWith("0")
+      ? cleaned.replace(/^([\s().-]*)0/, "$1")
+      : cleaned;
+
+  return `${dial}${withoutTrunk}`;
+}
+
+function PhoneNumberField({
+  value,
+  onChange,
+  country,
+  inputClassName = "",
+  placeholder = "917 123 4567",
+  required = true,
+  id,
+  ariaLabel = "Phone number",
+}) {
+  const { dial, local } = splitPhoneNumber(value, dialForCountry(country));
+  const classes = [inputClassName, styles.phoneNumber].filter(Boolean).join(" ");
+  const selectClasses = [inputClassName, styles.phoneDial].filter(Boolean).join(" ");
+
+  function handleLocalChange(event) {
+    const next = event.target.value;
+
+    // A pasted international number should replace the prefix, not become
+    // "+63+63917..." glued to the code already in the select.
+    if (next.trim().startsWith("+")) {
+      const parsed = splitPhoneNumber(next, dial);
+      onChange(joinPhoneNumber(parsed.dial, parsed.local));
+      return;
+    }
+
+    onChange(joinPhoneNumber(dial, next));
+  }
+
+  return (
+    <div className={styles.phoneField}>
+      <select
+        className={selectClasses}
+        aria-label="Country calling code"
+        value={dial}
+        onChange={(event) => onChange(joinPhoneNumber(event.target.value, local))}
+      >
+        {!PHONE_DIAL_OPTIONS.some((option) => option.dial === dial) && (
+          <option value={dial}>{dial}</option>
+        )}
+        {PHONE_DIAL_OPTIONS.map((option) => (
+          <option key={option.dial} value={option.dial}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <input
+        id={id}
+        className={classes}
+        name="contact"
+        type="tel"
+        inputMode="tel"
+        autoComplete="tel"
+        aria-label={ariaLabel}
+        value={local}
+        onChange={handleLocalChange}
+        placeholder={placeholder}
+        required={required}
+      />
+    </div>
+  );
+}
+
 
 function mapUser(u = {}) {
   return {
@@ -315,7 +460,7 @@ export default function Account() {
   const age = calculateAge(form.birthDate);
   const completionItems = useMemo(() => ([
     { label: "Profile picture", complete: Boolean(user?.profileImageUrl) },
-    { label: "Contact number", complete: Boolean(String(form.contact || "").trim()) },
+    { label: "Contact number", complete: looksLikePhoneNumber(form.contact) },
   ]), [form.contact, user?.profileImageUrl]);
   const cropPreviewStyle = useMemo(() => {
     if (!cropImageSize.width || !cropImageSize.height) return {};
@@ -935,15 +1080,10 @@ export default function Account() {
             </label>
             <label>
               <span>Phone number</span>
-              <input
-                name="contact"
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
+              <PhoneNumberField
                 value={form.contact}
-                onChange={onChange}
-                placeholder="0917 123 4567"
-                required
+                onChange={(contact) => setForm((current) => ({ ...current, contact }))}
+                country={form.country}
               />
               <small>Use the number your family or school can reach.</small>
             </label>
@@ -1107,7 +1247,7 @@ export default function Account() {
               </li>
               <li className={kid.kidNoticeItem}>
                 <span className={kid.kidNoticeTick} aria-hidden="true">
-                  {String(form.contact || "").trim() ? "✓" : "•"}
+                  {looksLikePhoneNumber(form.contact) ? "✓" : "•"}
                 </span>
                 {ACCOUNT.needPhone}
               </li>
@@ -1263,16 +1403,11 @@ export default function Account() {
 
               <label className={kid.kidField}>
                 <span className={kid.kidFieldLabel}>{ACCOUNT.phone}</span>
-                <input
-                  className={kid.kidInput}
-                  name="contact"
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
+                <PhoneNumberField
                   value={form.contact}
-                  onChange={onChange}
-                  placeholder="0917 123 4567"
-                  required
+                  onChange={(contact) => setForm((current) => ({ ...current, contact }))}
+                  country={form.country}
+                  inputClassName={kid.kidInput}
                 />
                 <span className={kid.kidFieldNote}>{ACCOUNT.phoneCodeNote}</span>
               </label>
@@ -1665,20 +1800,16 @@ export default function Account() {
               <div className={styles.proRow}>
                 <label className={styles.proField}>
                   <span className={styles.proLabel}>Contact number</span>
-                  <input
-                    className={styles.proInput}
-                    name="contact"
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel"
+                  <PhoneNumberField
                     value={form.contact}
-                    onChange={onChange}
-                    placeholder="0917 123 4567"
-                    required
+                    onChange={(contact) => setForm((current) => ({ ...current, contact }))}
+                    country={form.country}
+                    inputClassName={styles.proInput}
+                    ariaLabel="Contact number"
                   />
                   <span className={styles.proFieldNote}>
-                    Changing this sends a six-digit code to the new number. Philippine numbers
-                    only.
+                    Changing this sends a six-digit code to the new number. Text
+                    verification is available for Philippine numbers only.
                   </span>
                 </label>
                 <label className={styles.proField}>
