@@ -189,8 +189,10 @@ export default function Account() {
   const [isProfileIncomplete, setIsProfileIncomplete] = useState(false);
   const [firstSetupStep, setFirstSetupStep] = useState(0);
   const [firstSetupFinished, setFirstSetupFinished] = useState(false);
-  // The wizard cannot leave the LINE step until the link exists (or until the
-  // school has not finished its own LINE setup). The card reports both facts.
+  // LINE reminders are a student-only feature. Teachers and admins don't use
+  // them, so LINE never gates their onboarding or their Account page.
+  const isStudent = user?.role === "student";
+  const lineApplies = isStudent;
   const [lineState, setLineState] = useState({ loading: true, linked: false, usable: false });
   const [form, setForm] = useState({
     firstName: "",
@@ -241,7 +243,8 @@ export default function Account() {
   }, []);
   // A school that has not finished its own LINE setup must not trap a person
   // in onboarding forever, so "not usable" counts as permission to move on.
-  const lineReady = lineState.linked || (!lineState.loading && !lineState.usable);
+  // LINE never gates teachers or admins; they don't use reminders.
+  const lineReady = lineApplies ? lineState.linked || (!lineState.loading && !lineState.usable) : true;
   // The contract summary the student sees on their own page.
   //
   // Two limits, not one: classes and time. Classes can be plentiful while the
@@ -601,10 +604,10 @@ export default function Account() {
       return;
     }
 
-    // !! The first sign-in asks for LINE before the details. Reaching the form
-    // !! without the link would skip a required step, so send them back to it
-    // !! instead of saving a profile that cannot receive reminders.
-    if (isProfileIncomplete && lineState.usable && !lineState.linked) {
+    // !! LINE reminders are student-only. A teacher or admin can save their
+    // !! details without ever linking LINE, so don't send them back to a step
+    // !! that doesn't exist for them.
+    if (isProfileIncomplete && lineApplies && lineState.usable && !lineState.linked) {
       setFirstSetupStep(1);
       notify("Connect LINE first so we can send your class reminders.", "error");
       return;
@@ -733,6 +736,9 @@ export default function Account() {
   function renderFirstProfileSetup() {
     const dashboardPath = user.role === "teacher" ? "/TeacherDashboard" : "/StudentDashboard";
     const firstName = form.firstName || "friend";
+    // Teachers and admins don't use LINE reminders, so their first sign-in is
+    // two steps (picture, details) instead of three (picture, LINE, details).
+    const totalSteps = isStudent ? 3 : 2;
     let lineNextLabel = "Next";
     if (lineState.loading) lineNextLabel = "Checking…";
     else if (lineState.usable && !lineState.linked) lineNextLabel = "Connect LINE first";
@@ -758,11 +764,11 @@ export default function Account() {
 
     return (
       <section className={styles.firstSetupCard} aria-labelledby="first-setup-title">
-        <div className={styles.firstSetupProgress} aria-label={`Step ${firstSetupStep + 1} of 3`}>
+        <div className={styles.firstSetupProgress} aria-label={`Step ${firstSetupStep + 1} of ${totalSteps}`}>
           <span className={firstSetupStep === 0 ? styles.firstSetupCurrent : styles.firstSetupDone}>
             {firstSetupStep > 0 ? "✓" : "1"}
           </span>
-          <i />
+          {totalSteps > 1 && <i />}
           <span
             className={
               firstSetupStep === 1
@@ -774,8 +780,12 @@ export default function Account() {
           >
             {firstSetupStep > 1 ? "✓" : "2"}
           </span>
-          <i />
-          <span className={firstSetupStep === 2 ? styles.firstSetupCurrent : ""}>3</span>
+          {isStudent && (
+            <>
+              <i />
+              <span className={firstSetupStep === 2 ? styles.firstSetupCurrent : ""}>3</span>
+            </>
+          )}
         </div>
         <p className={styles.firstSetupStep}>Let’s get your account ready</p>
         <h1 id="first-setup-title">Hi, {firstName}!</h1>
@@ -818,7 +828,7 @@ export default function Account() {
             </button>
             {pictureUploading && <p role="status">Saving your picture...</p>}
           </div>
-        ) : firstSetupStep === 1 ? (
+        ) : isStudent && firstSetupStep === 1 ? (
           <div className={styles.firstSetupContent}>
             <span className={styles.firstSetupIcon} aria-hidden="true">💬</span>
             <h2>Connect LINE</h2>
@@ -885,7 +895,7 @@ export default function Account() {
               <small>We need it to save your details safely.</small>
             </label>
             <div className={styles.firstSetupActions}>
-              <button type="button" className={styles.firstSetupSecondary} onClick={() => setFirstSetupStep(1)}>
+              <button type="button" className={styles.firstSetupSecondary} onClick={() => setFirstSetupStep(isStudent ? 1 : 0)}>
                 Back
               </button>
               <button type="submit" className={styles.firstSetupPrimary} disabled={saving}>
@@ -1568,9 +1578,6 @@ export default function Account() {
             Your password is not shown to anyone, including the admin.
           </p>
         </section>
-
-        {/* LINE reminders for staff too — teachers get reschedule and class alerts. */}
-        <LineConnectCard userId={user.id} />
 
         {/* The facts about the account itself, and the way out. */}
         <section className={styles.proCard}>
