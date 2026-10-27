@@ -34,7 +34,11 @@ import {
   LEARNING_GOAL_TO_SPECIALIZATION,
 } from "./teacherMatching.js";
 import { IDEAL_STUDENT_PACE_VALUES, TEACHING_STYLE_VALUES } from "./teacherResumeParser.js";
-import { isGeminiConfigured, requestGeminiJson } from "./geminiClient.js";
+import {
+  isGeminiConfigured,
+  MATCH_REQUEST_TIMEOUT_MS,
+  requestGeminiJson,
+} from "./geminiClient.js";
 
 /**
  * What the model may suggest, per criteria field.
@@ -52,8 +56,6 @@ export const INSIGHT_FIELDS = {
 
 const MAX_INSIGHT_TAGS_PER_FIELD = 3;
 const MAX_NOTES_CHARS = 2000;
-const REQUEST_TIMEOUT_MS = 20_000;
-
 /** Labels for the toast and the panel, so the admin sees words not slugs. */
 const FIELD_LABELS = {
   learningGoal: "learning goal",
@@ -183,7 +185,7 @@ export async function deriveMatchInsights({ trialNotes = "", criteria = {} }) {
 
     const response = await requestGeminiJson({
       payload,
-      timeoutMs: REQUEST_TIMEOUT_MS,
+      timeoutMs: MATCH_REQUEST_TIMEOUT_MS,
       timeoutMessage: "The AI took too long to read the notes.",
       label: "Gemini match insights",
     });

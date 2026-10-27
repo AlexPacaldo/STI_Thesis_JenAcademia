@@ -15,6 +15,7 @@
  */
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+export const MATCH_REQUEST_TIMEOUT_MS = 120_000;
 
 // Google's docs write the model both bare (gemini-2.5-flash) and prefixed
 // (models/gemini-2.5-flash), and this value is interpolated straight into the
