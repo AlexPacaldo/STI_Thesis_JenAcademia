@@ -365,6 +365,9 @@ export default function Account() {
       setProfileEditing(true);
       setPasswordEditing(false);
       setFirstSetupStep(refreshed.profileImageUrl ? 1 : 0);
+    } else {
+      setProfileEditing(false);
+      setPasswordEditing(false);
     }
     writeStoredUser(toStoredUser(refreshed));
     window.dispatchEvent(new CustomEvent("userProfileUpdated", { detail: refreshed }));
@@ -1780,7 +1783,7 @@ export default function Account() {
         )}
 
         {/* Change my details opens here so the card behind it stays read-only. */}
-        {profileEditing && (
+        {editDialogOpen && profileEditing && (
           <div className={styles.modalBackdrop} onClick={cancelProfileEdit}>
             <section className={styles.editModal} onClick={(e) => e.stopPropagation()}>
               <div className={styles.modalHeader}>
@@ -1793,7 +1796,7 @@ export default function Account() {
         )}
 
         {/* Change my password opens here so the card behind it stays read-only. */}
-        {passwordEditing && (
+        {editDialogOpen && passwordEditing && (
           <div className={styles.modalBackdrop} onClick={cancelPasswordEdit}>
             <section className={styles.editModal} onClick={(e) => e.stopPropagation()}>
               <div className={styles.modalHeader}>
