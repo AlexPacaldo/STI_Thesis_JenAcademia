@@ -181,6 +181,7 @@ export default function Account() {
   const navigate = useNavigate();
   const { notify } = useNotification() || {};
   const fileInputRef = useRef(null);
+  const lineSetupRequiredRef = useRef(false);
   const cropImageRef = useRef(null);
   const cameraVideoRef = useRef(null);
   const dragRef = useRef({ active: false, startX: 0, startY: 0, baseX: 0, baseY: 0 });
@@ -242,7 +243,8 @@ export default function Account() {
         ? current
         : next
     );
-    if (isStudent && next.linked) {
+    if (isStudent && next.linked && lineSetupRequiredRef.current) {
+      lineSetupRequiredRef.current = false;
       if (isProfileIncomplete) {
         setFirstSetupStep(2);
       } else {
@@ -416,6 +418,7 @@ export default function Account() {
           linked,
           usable: Boolean(response.data?.configured && response.data?.webhookConfigured),
         });
+        lineSetupRequiredRef.current = !linked;
         if (!linked && user.profileCompleted) {
           setFirstSetupStep(user.profileImageUrl ? 1 : 0);
           setFirstSetupFinished(false);
@@ -1571,13 +1574,15 @@ export default function Account() {
               <div className={styles.proStat}>
                 <span className={styles.proStatLabel}>Experience</span>
                 <span className={styles.proStatValue}>
-                  {details.experience_years ? `${details.experience_years} years` : "—"}
+                  {details.experience_years == null || details.experience_years === ""
+                    ? "—"
+                    : `${details.experience_years} ${Number(details.experience_years) === 1 ? "year" : "years"}`}
                 </span>
               </div>
               <div className={styles.proStat}>
                 <span className={styles.proStatLabel}>Specialization</span>
                 <span className={styles.proStatValue}>
-                  {details.specialization || "—"}
+                  {String(details.specialization || "").trim() || "—"}
                 </span>
               </div>
             </div>

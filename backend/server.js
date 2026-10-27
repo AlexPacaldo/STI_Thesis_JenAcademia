@@ -5239,18 +5239,22 @@ app.get("/api/users/:id", requireSession, async (req, res) => {
       );
       roleDetails = decryptFields(studentRows[0] || {}, ["trial_notes"]);
     } else if (u.role === "teacher") {
+      const [teacherProfileRows] = await pool.query(
+        `SELECT bio, specialization, experience_years, hourly_rate, teaches_children
+         FROM teacher_profiles
+         WHERE user_id = ?
+         LIMIT 1`,
+        [req.params.id]
+      );
       const [teacherRows] = await pool.query(
-        `SELECT tp.bio, tp.specialization, tp.experience_years, tp.hourly_rate, tp.teaches_children,
-                COUNT(DISTINCT student.user_id) AS active_students,
+        `SELECT COUNT(DISTINCT student.user_id) AS active_students,
                 GROUP_CONCAT(DISTINCT c.course_name ORDER BY c.course_name SEPARATOR ', ') AS courses
          FROM users u
-         LEFT JOIN teacher_profiles tp ON tp.user_id = u.user_id
          LEFT JOIN student_profiles sp ON sp.assigned_teacher_id = u.user_id
          LEFT JOIN users student ON student.user_id = sp.user_id AND student.status = 'active' AND student.profile_completed = TRUE
          LEFT JOIN teacher_courses tc ON tc.teacher_id = u.user_id
          LEFT JOIN courses c ON c.course_id = tc.course_id
          WHERE u.user_id = ?
-         GROUP BY tp.bio, tp.specialization, tp.experience_years, tp.hourly_rate, tp.teaches_children
          LIMIT 1`,
         [req.params.id]
       );
@@ -5261,6 +5265,7 @@ app.get("/api/users/:id", requireSession, async (req, res) => {
         [req.params.id]
       );
       roleDetails = {
+        ...(teacherProfileRows[0] || {}),
         ...(teacherRows[0] || {}),
         upcoming_classes: classRows[0]?.upcoming_classes || 0,
       };
