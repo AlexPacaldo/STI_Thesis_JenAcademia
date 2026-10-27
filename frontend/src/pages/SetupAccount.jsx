@@ -132,7 +132,7 @@ export default function SetupAccount() {
                   Let’s make your {roleName} account ready. First, we’ll make a secret password.
                 </p>
                 <div className={styles.nextNote}>
-                  After you sign in, we’ll help you add your picture and contact details. Then we’ll show you around.
+                  After you sign in, we’ll help you add your picture. Then we’ll show you around.
                 </div>
                 <button type="button" className={styles.primaryButton} onClick={() => setStep(1)}>
                   Let’s go

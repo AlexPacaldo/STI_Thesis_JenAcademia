@@ -352,17 +352,6 @@ export const ACCOUNT = {
   yourName: "Your name",
   birthday: "Birthday",
   country: "Country",
-  phone: "Phone number",
-  phoneCodeNote: "Changing this sends a six-digit code to the new number.",
-  phoneCodeTitle: "Check your phone",
-  phoneCodeBody: (phone) =>
-    `We sent a six-digit code to ${phone}. Type it below to save your new number.`,
-  phoneCodeExpires: "The code lasts 10 minutes. It can be used once.",
-  phoneCodeVerify: "Verify and save",
-  phoneCodeChecking: "Checking...",
-  phoneCodeResend: "Send a new code",
-  phoneCodeSending: "Sending...",
-  phoneCodeCancel: "Cancel",
   timeZone: "Time zone",
   email: "Email",
   emailLocked: "Your email is how you sign in, so it can't be changed here. Ask JEN Academia if it needs to change.",
@@ -373,9 +362,8 @@ export const ACCOUNT = {
   confirmPassword: "Type the new password again",
   notSet: "Not set yet",
   finishProfile: "Finish your profile",
-  finishProfileHelp: "Add your picture and your phone number to see your classes.",
+  finishProfileHelp: "Add your picture to see your classes.",
   needPicture: "Your picture",
-  needPhone: "Your phone number",
   done: "Done",
 };
 

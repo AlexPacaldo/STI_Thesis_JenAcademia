@@ -1,5 +1,5 @@
 import axios from "axios";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "../assets/account.module.css";
 import kid from "../assets/studentKid.module.css";
@@ -57,362 +57,12 @@ const COUNTRY_TIMEZONES = {
 };
 const TIMEZONE_OPTIONS = getTimezoneOptions();
 
-/**
- * Calling codes shown beside the phone number.
- *
- * !! Canada and the United States share +1, so they share one row. Two rows
- * !! with the same value would make a native select jump back to the first
- * !! one; the flags array keeps both visible without lying about the code.
- * !! The profile's own country stays a separate field.
- */
-const PHONE_DIAL_OPTIONS = [
-  { dial: "+63", name: "Philippines", flags: ["ph"], countries: ["Philippines"] },
-  { dial: "+1", name: "Canada / United States", flags: ["ca", "us"], countries: ["Canada", "United States"] },
-  { dial: "+44", name: "United Kingdom", flags: ["gb"], countries: ["United Kingdom"] },
-  { dial: "+61", name: "Australia", flags: ["au"], countries: ["Australia"] },
-  { dial: "+86", name: "China", flags: ["cn"], countries: ["China"] },
-  { dial: "+91", name: "India", flags: ["in"], countries: ["India"] },
-  { dial: "+62", name: "Indonesia", flags: ["id"], countries: ["Indonesia"] },
-  { dial: "+81", name: "Japan", flags: ["jp"], countries: ["Japan"] },
-  { dial: "+60", name: "Malaysia", flags: ["my"], countries: ["Malaysia"] },
-  { dial: "+65", name: "Singapore", flags: ["sg"], countries: ["Singapore"] },
-  { dial: "+82", name: "South Korea", flags: ["kr"], countries: ["South Korea"] },
-  { dial: "+886", name: "Taiwan", flags: ["tw"], countries: ["Taiwan"] },
-  { dial: "+66", name: "Thailand", flags: ["th"], countries: ["Thailand"] },
-  { dial: "+971", name: "United Arab Emirates", flags: ["ae"], countries: ["United Arab Emirates"] },
-  { dial: "+84", name: "Vietnam", flags: ["vn"], countries: ["Vietnam"] },
-  { dial: "+685", name: "Samoa", flags: ["ws"], countries: ["Samoa"] },
-];
-
-/**
- * An example number in each country's own shape. The placeholder changes with
- * the code so a +44 field does not ask for a Philippine mobile number.
- */
-const PHONE_PLACEHOLDERS = {
-  "+63": "917 123 4567",
-  "+1": "415 555 2671",
-  "+44": "7911 123456",
-  "+61": "412 345 678",
-  "+86": "138 0013 8000",
-  "+91": "98765 43210",
-  "+62": "812 3456 7890",
-  "+81": "90 1234 5678",
-  "+60": "12 345 6789",
-  "+65": "8123 4567",
-  "+82": "10 1234 5678",
-  "+886": "912 345 678",
-  "+66": "81 234 5678",
-  "+971": "50 123 4567",
-  "+84": "91 234 5678",
-  "+685": "72 12345",
-};
-
-function flagUrl(code) {
-  return `https://flagcdn.com/24x18/${code}.png`;
-}
-
-function flagUrl2x(code) {
-  return `https://flagcdn.com/48x36/${code}.png`;
-}
-
-function dialForCountry(country) {
-  const option = PHONE_DIAL_OPTIONS.find((entry) => entry.countries.includes(country));
-  return option?.dial || "+63";
-}
-
-/**
- * Split a stored number into the code shown in the select and the part the
- * person edits.
- *
- * !! A stored +63 number may have been typed as 0917..., +63917..., or with
- * !! spaces and brackets. The select must show the same +63 for all of them,
- * !! and the input must show only the digits after it. An unknown code keeps
- * !! its own prefix in the select so saving does not silently change it.
- */
-function splitPhoneNumber(value, fallbackDial = "+63") {
-  const text = String(value || "").trim();
-  if (!text) return { dial: fallbackDial, local: "" };
-
-  const compact = text.replace(/[\s().-]/g, "");
-
-  if (compact.startsWith("+")) {
-    const option = PHONE_DIAL_OPTIONS.find((entry) => compact.startsWith(entry.dial));
-    if (!option) return { dial: "+", local: compact.slice(1) };
-
-    const start = text.indexOf(option.dial) + option.dial.length;
-    return {
-      dial: option.dial,
-      local: text.slice(start).replace(/^[\s().-]+/, ""),
-    };
-  }
-
-  if (/^09\d{9}$/.test(compact)) return { dial: "+63", local: compact.slice(1) };
-  if (/^63\d{10}$/.test(compact)) return { dial: "+63", local: compact.slice(2) };
-  return { dial: fallbackDial, local: text };
-}
-
-/**
- * Put the chosen code back in front of the local part.
- *
- * A leading zero is a trunk prefix, not part of the number. Without removing
- * it, typing 0917... next to +63 would save +630917..., which no phone can
- * dial.
- */
-function joinPhoneNumber(dial, local) {
-  const cleaned = String(local || "")
-    .replace(/[^\d\s().-]/g, "")
-    .replace(/^[\s().-]+/, "");
-  const compact = cleaned.replace(/[\s().-]/g, "");
-  const withoutTrunk =
-    dial !== "+" && compact.startsWith("0")
-      ? cleaned.replace(/^([\s().-]*)0/, "$1")
-      : cleaned;
-
-  return `${dial}${withoutTrunk}`;
-}
-
-function PhoneNumberField({
-  value,
-  onChange,
-  country,
-  inputClassName = "",
-  required = true,
-  id,
-  ariaLabel = "Phone number",
-}) {
-  const { dial, local } = splitPhoneNumber(value, dialForCountry(country));
-  const placeholder = PHONE_PLACEHOLDERS[dial] || "Phone number";
-  const classes = [inputClassName, styles.phoneNumber].filter(Boolean).join(" ");
-  const dialClasses = [inputClassName, styles.phoneDial].filter(Boolean).join(" ");
-  const selected = PHONE_DIAL_OPTIONS.find((option) => option.dial === dial) || null;
-  const listId = useId();
-  const wrapRef = useRef(null);
-  const buttonRef = useRef(null);
-  const inputRef = useRef(null);
-  const listRef = useRef(null);
-  const [open, setOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
-
-  function openList() {
-    const index = PHONE_DIAL_OPTIONS.findIndex((option) => option.dial === dial);
-    setActiveIndex(index >= 0 ? index : 0);
-    setOpen(true);
-  }
-
-  function choose(option) {
-    setOpen(false);
-    onChange(joinPhoneNumber(option.dial, local));
-    buttonRef.current?.focus();
-  }
-
-  // A click anywhere else, or Escape, closes the list. Without this the list
-  // stays open over the rest of the form after a person moves on.
-  useEffect(() => {
-    if (!open) return undefined;
-
-    function handlePointerDown(event) {
-      if (!wrapRef.current?.contains(event.target)) setOpen(false);
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [open]);
-
-  useEffect(() => {
-    if (open) listRef.current?.focus();
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    listRef.current?.querySelector(`[data-index="${activeIndex}"]`)?.scrollIntoView({
-      block: "nearest",
-    });
-  }, [open, activeIndex]);
-
-  function handleDialKeyDown(event) {
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      openList();
-      return;
-    }
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      if (open) setOpen(false);
-      else openList();
-    }
-  }
-
-  function handleListKeyDown(event) {
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setActiveIndex((index) => Math.min(index + 1, PHONE_DIAL_OPTIONS.length - 1));
-      return;
-    }
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setActiveIndex((index) => Math.max(index - 1, 0));
-      return;
-    }
-    if (event.key === "Home") {
-      event.preventDefault();
-      setActiveIndex(0);
-      return;
-    }
-    if (event.key === "End") {
-      event.preventDefault();
-      setActiveIndex(PHONE_DIAL_OPTIONS.length - 1);
-      return;
-    }
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      choose(PHONE_DIAL_OPTIONS[activeIndex]);
-      return;
-    }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      setOpen(false);
-      buttonRef.current?.focus();
-      return;
-    }
-    if (event.key === "Tab") {
-      // The listbox is removed when it closes, so send focus somewhere that
-      // still exists instead of letting it fall back to the page body.
-      event.preventDefault();
-      setOpen(false);
-      if (event.shiftKey) buttonRef.current?.focus();
-      else inputRef.current?.focus();
-    }
-  }
-
-  function handleLocalChange(event) {
-    const next = event.target.value;
-
-    // A pasted international number should replace the prefix, not become
-    // "+63+63917..." glued to the code already in the picker.
-    if (next.trim().startsWith("+")) {
-      const parsed = splitPhoneNumber(next, dial);
-      onChange(joinPhoneNumber(parsed.dial, parsed.local));
-      return;
-    }
-
-    onChange(joinPhoneNumber(dial, next));
-  }
-
-  return (
-    <div ref={wrapRef} className={styles.phoneField}>
-      <div className={styles.phoneRow}>
-        <button
-          ref={buttonRef}
-          type="button"
-          className={dialClasses}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-controls={listId}
-          aria-label={selected ? `Country calling code: ${selected.name} ${selected.dial}` : "Choose a country calling code"}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            if (open) setOpen(false);
-            else openList();
-          }}
-          onKeyDown={handleDialKeyDown}
-        >
-          <span className={styles.phoneFlags}>
-            {selected ? (
-              selected.flags.map((code) => (
-                <img
-                  key={code}
-                  className={styles.phoneFlag}
-                  src={flagUrl(code)}
-                  srcSet={`${flagUrl2x(code)} 2x`}
-                  alt=""
-                  width="24"
-                  height="18"
-                />
-              ))
-            ) : null}
-          </span>
-          <span className={styles.phoneDialText}>{dial}</span>
-          <span className={styles.phoneCaret} aria-hidden="true" />
-        </button>
-        <input
-          ref={inputRef}
-          id={id}
-          className={classes}
-          name="contact"
-          type="tel"
-          inputMode="tel"
-          autoComplete="tel"
-          aria-label={ariaLabel}
-          value={local}
-          onChange={handleLocalChange}
-          placeholder={placeholder}
-          required={required}
-        />
-      </div>
-
-      {open ? (
-        <ul
-          ref={listRef}
-          id={listId}
-          className={styles.phoneOptions}
-          role="listbox"
-          aria-label="Country calling codes"
-          tabIndex={-1}
-          aria-activedescendant={`${listId}-${activeIndex}`}
-          onKeyDown={handleListKeyDown}
-        >
-          {PHONE_DIAL_OPTIONS.map((option, index) => {
-            const isSelected = option.dial === dial;
-            const isActive = index === activeIndex;
-            return (
-              <li
-                key={option.dial}
-                id={`${listId}-${index}`}
-                data-index={index}
-                role="option"
-                aria-selected={isSelected}
-                className={`${styles.phoneOption} ${isActive ? styles.phoneOptionActive : ""}`}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  choose(option);
-                }}
-                onMouseEnter={() => setActiveIndex(index)}
-              >
-                <span className={styles.phoneFlags}>
-                  {option.flags.map((code) => (
-                    <img
-                      key={code}
-                      className={styles.phoneFlag}
-                      src={flagUrl(code)}
-                      srcSet={`${flagUrl2x(code)} 2x`}
-                      alt=""
-                      width="24"
-                      height="18"
-                    />
-                  ))}
-                </span>
-                <span className={styles.phoneOptionName}>{option.name}</span>
-                <span className={styles.phoneOptionDial}>{option.dial}</span>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-    </div>
-  );
-}
-
-
 function mapUser(u = {}) {
   return {
     id: u.id ?? u.user_id ?? null,
     firstName: u.firstName ?? u.first_name ?? "",
     lastName: u.lastName ?? u.last_name ?? "",
     email: u.email ?? "",
-    contact: u.contact ?? u.contact_number ?? "",
     country: u.country ?? "",
     birthDate: u.birthDate ?? u.birth_date ?? "",
     timezone: u.timezone ?? u.time_zone ?? "Asia/Manila",
@@ -448,7 +98,6 @@ function formFromUser(user) {
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
-    contact: user.contact,
     country: user.country,
     birthDate: normalizeDateInput(user.birthDate),
     timezone: user.timezone,
@@ -500,34 +149,6 @@ function calculateAge(birthDate) {
 }
 
 /**
- * A quick "this could be a phone number" check, before asking the server.
- *
- * !! The server owns the real rule (backend/phoneNumber.js). This is the same
- * !! shape of it so the form can say what is wrong without a round trip, and
- * !! it is deliberately not stricter - a number the server would accept must
- * !! never be blocked here.
- */
-function looksLikePhoneNumber(value) {
-  const compact = String(value || "").replace(/[\s().-]/g, "");
-  if (!/^\+?\d{6,15}$/.test(compact)) return false;
-  return !/^\+?(\d)\1+$/.test(compact);
-}
-
-/**
- * Compare two ways of writing the same number.
- *
- * !! The server normalises a Philippine mobile to +63XXXXXXXXXX. Typing the
- * !! same digits as 09XXXXXXXXX is not a change, and should not trigger a text
- * !! message that costs the school credits.
- */
-function canonicalPhone(value) {
-  const compact = String(value || "").replace(/[\s().-]/g, "");
-  if (/^09\d{9}$/.test(compact)) return `+63${compact.slice(1)}`;
-  if (/^63\d{10}$/.test(compact)) return `+${compact}`;
-  return compact;
-}
-
-/**
  * "2003-10-11" -> "11 October 2003".
  *
  * !! A birthday is not a date range and not a database value. It is a day
@@ -572,7 +193,6 @@ export default function Account() {
     firstName: "",
     lastName: "",
     email: "",
-    contact: "",
     country: "",
     birthDate: "",
     timezone: "Asia/Manila",
@@ -583,7 +203,6 @@ export default function Account() {
   const [pictureUploading, setPictureUploading] = useState(false);
   const [pwd, setPwd] = useState({ current: "", next: "", confirm: "" });
   const [detailsPassword, setDetailsPassword] = useState("");
-  const [phoneChallenge, setPhoneChallenge] = useState(null);
   const [pwdSaving, setPwdSaving] = useState(false);
   const [cropModal, setCropModal] = useState(null);
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
@@ -663,8 +282,7 @@ export default function Account() {
   const age = calculateAge(form.birthDate);
   const completionItems = useMemo(() => ([
     { label: "Profile picture", complete: Boolean(user?.profileImageUrl) },
-    { label: "Contact number", complete: looksLikePhoneNumber(form.contact) },
-  ]), [form.contact, user?.profileImageUrl]);
+  ]), [user?.profileImageUrl]);
   const cropPreviewStyle = useMemo(() => {
     if (!cropImageSize.width || !cropImageSize.height) return {};
     const baseScale = Math.max(CROP_SIZE / cropImageSize.width, CROP_SIZE / cropImageSize.height);
@@ -822,7 +440,7 @@ export default function Account() {
       type: "save-profile",
       title: isProfileIncomplete ? "Save your details?" : "Save profile changes?",
       message: isProfileIncomplete
-        ? "Check your phone number and time zone, then save."
+        ? "Check your time zone, then save."
         : "Are you sure you want to save the profile changes?",
       confirmLabel: isProfileIncomplete ? "Save my details" : "Save Changes",
     });
@@ -846,13 +464,12 @@ export default function Account() {
     });
   }
 
-  async function saveProfileConfirmed(overrides = {}) {
+  async function saveProfileConfirmed() {
     setSaving(true);
     try {
       // !! Email is not sent. The server refuses to write it from this route,
       // !! and sending it anyway would suggest the form still owns it.
-      const payload = { ...form, ...overrides };
-      const { email: _lockedEmail, ...editable } = payload;
+      const { email: _lockedEmail, ...editable } = form;
       await axios.put(`${API}/api/users/${user.id}`, {
         ...editable,
         currentPassword: detailsPassword,
@@ -870,124 +487,6 @@ export default function Account() {
       notify(err?.response?.data?.message || "Could not update profile.", "error");
     } finally {
       setSaving(false);
-    }
-  }
-
-  function closePhoneChallenge() {
-    setPhoneChallenge((current) => (current?.verifying ? current : null));
-  }
-
-  async function startPhoneVerification() {
-    const phone = canonicalPhone(form.contact);
-    if (!/^\+63\d{10}$/.test(phone)) {
-      notify("We can only text Philippine mobile numbers right now. Please use a +63 number.", "error");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const res = await axios.post(`${API}/api/users/${user.id}/phone/start`, {
-        phone,
-        currentPassword: detailsPassword,
-      });
-      setPhoneChallenge({
-        phone: res.data?.phone || phone,
-        code: "",
-        error: "",
-        verifying: false,
-        resending: false,
-      });
-    } catch (err) {
-      if (err?.response?.status === 401) setDetailsPassword("");
-      notify(
-        err?.response?.data?.message || "Could not send the code. Try again in a moment.",
-        "error"
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function resendPhoneCode() {
-    if (!phoneChallenge) return;
-    setPhoneChallenge((current) =>
-      current ? { ...current, resending: true, error: "" } : current
-    );
-    try {
-      const res = await axios.post(`${API}/api/users/${user.id}/phone/start`, {
-        phone: phoneChallenge.phone,
-        currentPassword: detailsPassword,
-      });
-      setPhoneChallenge((current) =>
-        current
-          ? {
-              ...current,
-              phone: res.data?.phone || current.phone,
-              code: "",
-              resending: false,
-              error: "",
-            }
-          : current
-      );
-      notify("A new code was sent.", "success");
-    } catch (err) {
-      if (err?.response?.status === 401) setDetailsPassword("");
-      setPhoneChallenge((current) =>
-        current
-          ? {
-              ...current,
-              resending: false,
-              error:
-                err?.response?.data?.message ||
-                "Could not send a new code. Try again in a moment.",
-            }
-          : current
-      );
-    }
-  }
-
-  async function confirmPhoneCode(e) {
-    e?.preventDefault();
-    if (!phoneChallenge) return;
-
-    const code = phoneChallenge.code.replace(/\D/g, "");
-    if (code.length !== 6) {
-      setPhoneChallenge((current) =>
-        current ? { ...current, error: "Enter the six-digit code from the text message." } : current
-      );
-      return;
-    }
-
-    setPhoneChallenge((current) =>
-      current ? { ...current, verifying: true, error: "" } : current
-    );
-    try {
-      const res = await axios.post(`${API}/api/users/${user.id}/phone/verify`, {
-        phone: phoneChallenge.phone,
-        code,
-      });
-      const verifiedPhone = res.data?.phone || phoneChallenge.phone;
-
-      // The number is saved by the verify route. The rest of the form still
-      // needs the ordinary save, and it is told the verified number so the
-      // server's "is this a change?" check sees the same value the database
-      // now holds.
-      setPhoneChallenge(null);
-      setForm((current) => ({ ...current, contact: verifiedPhone }));
-      await saveProfileConfirmed({ contact: verifiedPhone });
-    } catch (err) {
-      if (err?.response?.status === 401) setDetailsPassword("");
-      setPhoneChallenge((current) =>
-        current
-          ? {
-              ...current,
-              verifying: false,
-              error:
-                err?.response?.data?.message ||
-                "Could not verify that code. Try again in a moment.",
-            }
-          : current
-      );
     }
   }
 
@@ -1072,20 +571,6 @@ export default function Account() {
     // !! for the person filling the form in, not for security.
     if (!detailsPassword.trim()) {
       notify("Enter your password to save your details.", "error");
-      return;
-    }
-    if (!looksLikePhoneNumber(form.contact)) {
-      notify("Enter a real phone number, for example 0917 123 4567.", "error");
-      return;
-    }
-
-    // A changed number cannot be saved by the ordinary form. It needs a code
-    // texted to the new number first; the confirmation dialog would be a
-    // promise the server is going to refuse.
-    const phoneChanged =
-      Boolean(user?.contact) && canonicalPhone(form.contact) !== canonicalPhone(user.contact);
-    if (phoneChanged) {
-      await startPhoneVerification();
       return;
     }
 
@@ -1282,16 +767,6 @@ export default function Account() {
               <input name="lastName" value={form.lastName} onChange={onChange} required />
             </label>
             <label>
-              <span>Phone number</span>
-              <PhoneNumberField
-                value={form.contact}
-                onChange={(contact) => setForm((current) => ({ ...current, contact }))}
-                country={form.country}
-                inputClassName={styles.firstSetupPhoneControl}
-              />
-              <small>Use the number your family or school can reach.</small>
-            </label>
-            <label>
               <span>Time zone</span>
               <select name="timezone" value={form.timezone} onChange={onChange} required>
                 {form.timezone && !TIMEZONE_OPTIONS.includes(form.timezone) && (
@@ -1427,7 +902,6 @@ export default function Account() {
       { label: ACCOUNT.yourName, value: fullName },
       { label: ACCOUNT.birthday, value: birthday },
       { label: ACCOUNT.country, value: form.country },
-      { label: ACCOUNT.phone, value: form.contact },
       {
         label: ACCOUNT.timeZone,
         value: form.timezone ? formatTimezoneLabel(form.timezone) : "",
@@ -1448,12 +922,6 @@ export default function Account() {
                   {user?.profileImageUrl ? "✓" : "•"}
                 </span>
                 {ACCOUNT.needPicture}
-              </li>
-              <li className={kid.kidNoticeItem}>
-                <span className={kid.kidNoticeTick} aria-hidden="true">
-                  {looksLikePhoneNumber(form.contact) ? "✓" : "•"}
-                </span>
-                {ACCOUNT.needPhone}
               </li>
             </ul>
           </section>
@@ -1604,17 +1072,6 @@ export default function Account() {
                   />
                 </label>
               </div>
-
-              <label className={kid.kidField}>
-                <span className={kid.kidFieldLabel}>{ACCOUNT.phone}</span>
-                <PhoneNumberField
-                  value={form.contact}
-                  onChange={(contact) => setForm((current) => ({ ...current, contact }))}
-                  country={form.country}
-                  inputClassName={kid.kidInput}
-                />
-                <span className={kid.kidFieldNote}>{ACCOUNT.phoneCodeNote}</span>
-              </label>
 
               <label className={kid.kidField}>
                 <span className={kid.kidFieldLabel}>{ACCOUNT.timeZone}</span>
@@ -1779,7 +1236,6 @@ export default function Account() {
       { label: "Country", value: form.country },
       { label: "Birthday", value: formatBirthday(form.birthDate) },
       { label: "Age", value: age === null ? "" : `${age} years old` },
-      { label: "Contact number", value: form.contact },
       { label: "Time zone", value: form.timezone ? formatTimezoneLabel(form.timezone) : "" },
     ].filter((fact) => fact.value);
 
@@ -2001,31 +1457,16 @@ export default function Account() {
                 </label>
               </div>
 
-              <div className={styles.proRow}>
-                <label className={styles.proField}>
-                  <span className={styles.proLabel}>Contact number</span>
-                  <PhoneNumberField
-                    value={form.contact}
-                    onChange={(contact) => setForm((current) => ({ ...current, contact }))}
-                    country={form.country}
-                    inputClassName={styles.proInput}
-                    ariaLabel="Contact number"
-                  />
-                  <span className={styles.proFieldNote}>
-                    Changing this sends a six-digit code to the new number.
-                  </span>
-                </label>
-                <label className={styles.proField}>
-                  <span className={styles.proLabel}>Time zone</span>
-                  <input
-                    className={styles.proInput}
-                    name="timezone"
-                    value={form.timezone}
-                    onChange={onChange}
-                    required
-                  />
-                </label>
-              </div>
+              <label className={styles.proField}>
+                <span className={styles.proLabel}>Time zone</span>
+                <input
+                  className={styles.proInput}
+                  name="timezone"
+                  value={form.timezone}
+                  onChange={onChange}
+                  required
+                />
+              </label>
 
               <div className={styles.proActions}>
                 <button
@@ -2184,7 +1625,7 @@ export default function Account() {
               <section className={styles.notice}>
                 <div>
                   <strong>Complete your profile</strong>
-                  <span>Upload a profile picture and add your contact number to access your dashboard.</span>
+                  <span>Upload a profile picture to access your dashboard.</span>
                 </div>
                 <ul className={styles.requirementList}>
                   {completionItems.map((item) => (
@@ -2274,69 +1715,6 @@ export default function Account() {
                   {confirmAction.confirmLabel}
                 </button>
               </div>
-            </section>
-          </div>
-        )}
-        {phoneChallenge && (
-          <div className={styles.modalBackdrop} onClick={closePhoneChallenge}>
-            <section className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
-              <h2>{ACCOUNT.phoneCodeTitle}</h2>
-              <p className={styles.confirmBody}>{ACCOUNT.phoneCodeBody(phoneChallenge.phone)}</p>
-              <form onSubmit={confirmPhoneCode}>
-                <input
-                  className={styles.codeInput}
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  value={phoneChallenge.code}
-                  onChange={(e) => {
-                    const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
-                    setPhoneChallenge((current) =>
-                      current ? { ...current, code: digits, error: "" } : current
-                    );
-                  }}
-                  placeholder="000000"
-                  aria-label="Six-digit verification code"
-                  autoFocus
-                  disabled={phoneChallenge.verifying}
-                />
-                {phoneChallenge.error && (
-                  <p className={styles.codeError} role="alert">
-                    {phoneChallenge.error}
-                  </p>
-                )}
-                <p className={styles.codeMeta}>{ACCOUNT.phoneCodeExpires}</p>
-                <div className={styles.confirmActions}>
-                  <button
-                    type="button"
-                    className={styles.textBtn}
-                    onClick={closePhoneChallenge}
-                    disabled={phoneChallenge.verifying}
-                  >
-                    {ACCOUNT.phoneCodeCancel}
-                  </button>
-                  <button
-                    type="submit"
-                    className={styles.primaryBtn}
-                    disabled={phoneChallenge.verifying || phoneChallenge.code.length !== 6}
-                  >
-                    {phoneChallenge.verifying
-                      ? ACCOUNT.phoneCodeChecking
-                      : ACCOUNT.phoneCodeVerify}
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  className={styles.resendBtn}
-                  onClick={resendPhoneCode}
-                  disabled={phoneChallenge.verifying || phoneChallenge.resending}
-                >
-                  {phoneChallenge.resending
-                    ? ACCOUNT.phoneCodeSending
-                    : ACCOUNT.phoneCodeResend}
-                </button>
-              </form>
             </section>
           </div>
         )}

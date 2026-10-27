@@ -3003,7 +3003,6 @@ async function refreshProfileCompletion(userId) {
      SET profile_completed = (
        first_name IS NOT NULL AND TRIM(first_name) <> ''
        AND last_name IS NOT NULL AND TRIM(last_name) <> ''
-       AND contact_number IS NOT NULL AND TRIM(contact_number) <> ''
        AND timezone IS NOT NULL AND TRIM(timezone) <> ''
        AND profile_image_url IS NOT NULL AND TRIM(profile_image_url) <> ''
      )
@@ -3018,7 +3017,6 @@ async function refreshAllProfileCompletion() {
      SET profile_completed = (
        first_name IS NOT NULL AND TRIM(first_name) <> ''
        AND last_name IS NOT NULL AND TRIM(last_name) <> ''
-       AND contact_number IS NOT NULL AND TRIM(contact_number) <> ''
        AND timezone IS NOT NULL AND TRIM(timezone) <> ''
        AND profile_image_url IS NOT NULL AND TRIM(profile_image_url) <> ''
      )`
@@ -5322,7 +5320,7 @@ app.put("/api/users/:id", requireSession, limitDetailConfirmations, async (req, 
     // !! session that can rewrite it can take the account over: change the
     // !! email, then use "forgot password". It is changed by an admin, with
     // !! the account holder identified out of band - not from a form.
-    const { firstName, lastName, contact, country, birthDate, timezone, currentPassword } = req.body;
+    const { firstName, lastName, country, birthDate, timezone, currentPassword } = req.body;
     const normalizedBirthDate = birthDate ? String(birthDate).slice(0, 10) : null;
     const normalizedCountry = String(country || "").trim();
     const resolvedTimezone = normalizeTimezone(timezone, timezoneFromCountry(normalizedCountry));
@@ -5332,15 +5330,10 @@ app.put("/api/users/:id", requireSession, limitDetailConfirmations, async (req, 
     }
 
     // Validate required fields for profile completion
-    if (!firstName || !lastName || !contact || !resolvedTimezone) {
+    if (!firstName || !lastName || !resolvedTimezone) {
       return res.status(400).json({
-        message: "First name, last name, contact, and timezone are required to complete your profile"
+        message: "First name, last name, and timezone are required to complete your profile"
       });
-    }
-
-    const phone = normalizePhoneNumber(contact);
-    if (!phone.ok) {
-      return res.status(400).json({ message: phone.message });
     }
 
     // The password is the proof that the person at the keyboard is the account
@@ -5350,33 +5343,16 @@ app.put("/api/users/:id", requireSession, limitDetailConfirmations, async (req, 
       return res.status(passwordCheck.status).json({ message: passwordCheck.message });
     }
 
-    // !! A phone number is not changed by this route. It is the one detail a
-    // !! password alone cannot prove the user owns, because the number is not
-    // !! tied to the account until a code sent to it is typed back. The
-    // !! verification routes below write the number; this route refuses a
-    // !! change so a caller cannot skip them by sending the same JSON.
-    const [currentRows] = await pool.query(
-      "SELECT contact_number FROM users WHERE user_id = ? LIMIT 1",
-      [req.params.id]
-    );
-    const storedContact = decryptNullableText(currentRows[0]?.contact_number) || "";
-    const storedNormalized = normalizePhoneNumber(storedContact);
-    const storedPhone = storedNormalized.ok ? storedNormalized.value : String(storedContact).trim();
-    if (storedPhone && storedPhone !== phone.value) {
-      return res.status(409).json({
-        code: "PHONE_VERIFICATION_REQUIRED",
-        message: "Verify your new phone number before saving it.",
-      });
-    }
-
+    // !! No phone number is written here. Reminders go through LINE, which
+    // !! addresses people by their LINE user id, not by a number; contact_number
+    // !! is kept read-only so the numbers already on file are not lost.
     await pool.query(
       `UPDATE users
-       SET first_name = ?, last_name = ?, contact_number = ?, country = ?, birth_date = ?, timezone = ?
+       SET first_name = ?, last_name = ?, country = ?, birth_date = ?, timezone = ?
        WHERE user_id = ?`,
       [
         firstName,
         lastName,
-        encryptNullableText(phone.value),
         normalizedCountry || null,
         encryptNullableText(normalizedBirthDate),
         resolvedTimezone,
