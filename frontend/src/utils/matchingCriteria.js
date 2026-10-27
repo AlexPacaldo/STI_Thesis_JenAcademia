@@ -233,25 +233,55 @@ export const WEEKDAY_CHOICES = [
   ["5", "Fri"], ["6", "Sat"], ["0", "Sun"],
 ];
 
-export const createEmptyPreferredSchedule = () => ({ days: [], start: "", end: "" });
+export const PREFERRED_PERIODS = [
+  { value: "morning", label: "Morning", start: "06:00", end: "12:00" },
+  { value: "afternoon", label: "Afternoon", start: "12:00", end: "17:00" },
+  { value: "evening", label: "Evening", start: "17:00", end: "24:00" },
+];
+
+export const createEmptyPreferredSchedule = () => ({ days: [], period: "" });
 
 /**
- * Is this a complete preference?
- *
- * All three parts or nothing. A preference with days but no end time would filter
- * candidates against an open-ended window, which is not a narrower set of
- * teachers - it is a different and meaningless one.
+ * Turn a preferred part of day into a range that can fit a class of the chosen
+ * duration. Backend matching checks whether any such slot is free.
+ */
+export const preferredScheduleForDuration = (schedule, duration) => {
+  const minutes = Number(duration);
+  const period = PREFERRED_PERIODS.find((option) => option.value === schedule?.period);
+  if (!period) {
+    return schedule?.start && schedule?.end ? { ...schedule, duration: null } : { ...schedule };
+  }
+  if (![25, 50].includes(minutes)) {
+    return { ...schedule, start: "", end: "", duration: null };
+  }
+  return {
+    ...schedule,
+    start: period.start,
+    end: period.end,
+    duration: minutes,
+  };
+};
+
+/**
+ * Is this a complete preference? Also supports stored legacy time ranges.
  */
 export const hasPreferredSchedule = (schedule) =>
-  Boolean(schedule && schedule.days?.length && schedule.start && schedule.end);
+  Boolean(
+    schedule &&
+    schedule.days?.length &&
+    (schedule.period || (schedule.start && schedule.end))
+  );
 
-/** "Mon, Sat 18:00-20:00", or "" when incomplete. */
-export const describePreferredSchedule = (schedule) => {
+/** "Mon, Sat - Morning", or "" when incomplete. */
+export const describePreferredSchedule = (schedule, duration) => {
   if (!hasPreferredSchedule(schedule)) return "";
   const days = (schedule.days || [])
     .map((day) => WEEKDAY_CHOICES.find((choice) => choice[0] === String(day))?.[1] || day)
     .join(", ");
-  return `${days} ${schedule.start}-${schedule.end}`;
+  const period = PREFERRED_PERIODS.find((option) => option.value === schedule.period);
+  if (period) return `${days} - ${period.label}`;
+  const selectedSchedule = duration == null ? schedule : preferredScheduleForDuration(schedule, duration);
+  return `${days} ${selectedSchedule.start}-${selectedSchedule.end}`;
 };
 
 /**
@@ -260,12 +290,17 @@ export const describePreferredSchedule = (schedule) => {
  * Trimmed and filtered here rather than at each call site, so "the student did
  * not say" is decided in exactly one place.
  */
-export const toPreferredSchedulePayload = (schedule) => {
-  if (!hasPreferredSchedule(schedule)) return null;
+export const toPreferredSchedulePayload = (schedule, duration) => {
+  const selectedSchedule = duration == null
+    ? schedule
+    : preferredScheduleForDuration(schedule, duration);
+  if (!hasPreferredSchedule(selectedSchedule)) return null;
   return {
-    days: schedule.days.map((day) => String(day)),
-    start: String(schedule.start).trim(),
-    end: String(schedule.end).trim(),
+    days: selectedSchedule.days.map((day) => String(day)),
+    ...(schedule.period ? { period: String(schedule.period) } : {}),
+    start: String(selectedSchedule.start).trim(),
+    end: String(selectedSchedule.end).trim(),
+    ...(selectedSchedule.duration ? { duration: selectedSchedule.duration } : {}),
   };
 };
 

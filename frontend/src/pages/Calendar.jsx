@@ -52,11 +52,13 @@ import { readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
 import { formatProficiencyLevel } from "../utils/proficiencyLevels.js";
 import {
   WEEKDAY_CHOICES,
+  PREFERRED_PERIODS,
   createEmptyCriteria,
   createEmptyPreferredSchedule,
   criteriaWithCustom,
   filterOptionsForCourses,
   hasPreferredSchedule,
+  preferredScheduleForDuration,
   pruneSelectionToCourses,
   STUDENT_CRITERIA_DISPLAY_OPTIONS,
   toCriteriaSlug,
@@ -1353,16 +1355,13 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     if (!mergedContractCriteria.learningStyle.length) missing.push("a learning style");
     if (!mergedContractCriteria.pace.length) missing.push("a learning pace");
     const hasAnyPreferredSchedule =
-      contractPreferredSchedule.days.length > 0 ||
-      contractPreferredSchedule.start ||
-      contractPreferredSchedule.end;
-    if (hasAnyPreferredSchedule && !hasPreferredSchedule(contractPreferredSchedule)) {
-      missing.push("at least one available day and both availability times");
-    } else if (
-      hasPreferredSchedule(contractPreferredSchedule) &&
-      contractPreferredSchedule.start >= contractPreferredSchedule.end
-    ) {
-      missing.push("an end time later than the start time");
+      contractPreferredSchedule.days.length > 0 || contractPreferredSchedule.period;
+    const durationSchedule = preferredScheduleForDuration(
+      contractPreferredSchedule,
+      contractClassDuration
+    );
+    if (hasAnyPreferredSchedule && !hasPreferredSchedule(durationSchedule)) {
+      missing.push("at least one available day and a time of day");
     }
     return missing;
   };
@@ -1395,6 +1394,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     setPreviewingMatch(false);
   }, [
     contractCourseId,
+    contractClassDuration,
     contractAiCriteria,
     contractCriteriaOther,
     contractPreferredSchedule,
@@ -1418,7 +1418,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
         student_id: localUserId,
         course_id: contractCourseId,
         criteria: mergedContractCriteria,
-        preferred_schedule: toPreferredSchedulePayload(contractPreferredSchedule),
+        preferred_schedule: toPreferredSchedulePayload(contractPreferredSchedule, contractClassDuration),
       });
       if (requestId === matchPreviewRequestId.current) {
         setMatchPreview(res.data);
@@ -5226,7 +5226,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         // null, not a half-filled object, when incomplete. The server treats
         // both the same way - no preference - but sending null means the columns
         // are cleared on an edit rather than retaining a stale answer.
-        preferred_schedule: toPreferredSchedulePayload(contractPreferredSchedule),
+        preferred_schedule: toPreferredSchedulePayload(contractPreferredSchedule, contractClassDuration),
       });
 
       // The server says whether this was a first ask or a change to one, and
@@ -8299,33 +8299,42 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                           })}
                                         </div>
 
-                                        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                                          <label style={{ fontSize: "1rem", fontWeight: 700, color: "#1e3828" }}>{NEW_PLAN_WINDOW.from}</label>
-                                          <input
-                                            type="time"
-                                            aria-label={NEW_PLAN_WINDOW.from}
-                                            value={contractPreferredSchedule.start}
-                                            onChange={(e) =>
-                                              setContractPreferredSchedule((prev) => ({ ...prev, start: e.target.value }))
-                                            }
-                                            style={{ minHeight: 48, padding: "10px 12px", border: "2px solid #cbd5cd", borderRadius: 14, fontFamily: "inherit", fontSize: "1rem" }}
-                                          />
-                                          <label style={{ fontSize: "1rem", fontWeight: 700, color: "#1e3828" }}>{NEW_PLAN_WINDOW.to}</label>
-                                          <input
-                                            type="time"
-                                            aria-label={NEW_PLAN_WINDOW.to}
-                                            value={contractPreferredSchedule.end}
-                                            onChange={(e) =>
-                                              setContractPreferredSchedule((prev) => ({ ...prev, end: e.target.value }))
-                                            }
-                                            style={{ minHeight: 48, padding: "10px 12px", border: "2px solid #cbd5cd", borderRadius: 14, fontFamily: "inherit", fontSize: "1rem" }}
-                                          />
+                                        <div role="group" aria-label="Preferred time of day" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                                          {PREFERRED_PERIODS.map(({ value, label }) => {
+                                            const active = contractPreferredSchedule.period === value;
+                                            return (
+                                              <button
+                                                key={value}
+                                                type="button"
+                                                aria-pressed={active}
+                                                onClick={() =>
+                                                  setContractPreferredSchedule((prev) => ({
+                                                    ...prev,
+                                                    period: active ? "" : value,
+                                                  }))
+                                                }
+                                                style={{
+                                                  minHeight: 48,
+                                                  padding: "10px 16px",
+                                                  borderRadius: "999px",
+                                                  border: `2px solid ${active ? "#2f7a3d" : "#cbd5cd"}`,
+                                                  background: active ? "#e8f5e9" : "#fff",
+                                                  color: "#1e3828",
+                                                  cursor: "pointer",
+                                                  fontSize: "1rem",
+                                                  fontWeight: 800,
+                                                }}
+                                              >
+                                                {label}
+                                              </button>
+                                            );
+                                          })}
                                         </div>
 
-                                        {contractPreferredSchedule.days.length > 0 &&
-                                        !hasPreferredSchedule(contractPreferredSchedule) && (
+                                        {(contractPreferredSchedule.days.length > 0 || contractPreferredSchedule.period) &&
+                                        !hasPreferredSchedule(preferredScheduleForDuration(contractPreferredSchedule, contractClassDuration)) && (
                                           <p style={{ margin: "8px 0 0", fontSize: "1rem", color: "#7a5210" }}>
-                                            {NEW_PLAN_WINDOW.fromToHelp}
+                                            {NEW_PLAN_WINDOW.classStartHelp}
                                           </p>
                                         )}
                                       </div>

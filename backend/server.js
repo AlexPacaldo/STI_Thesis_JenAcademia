@@ -3577,16 +3577,45 @@ function isoDateFromToday(offsetDays) {
 }
 
 /**
- * The student's preferred slot, or null when they did not give one.
+ * The student's preferred time of day or legacy exact slot, or null when they
+ * did not give one. Broad periods retain class duration so matching can look for
+ * any free class-length slot inside that period.
  *
  * Null is the important part: without it the matcher behaves exactly as it did
  * before availability existed - no queries, no flags, no UI line.
  */
 function normalizePreferredSchedule(raw) {
   const days = Array.isArray(raw?.days) ? raw.days.filter((d) => d !== null && d !== "") : [];
+  if (!days.length) return null;
   const start = String(raw?.start ?? "").trim();
   const end = String(raw?.end ?? "").trim();
+  const periods = {
+    morning: { start: "06:00", end: "12:00" },
+    afternoon: { start: "12:00", end: "17:00" },
+    evening: { start: "17:00", end: "24:00" },
+  };
+  const period = periods[String(raw?.period || "").trim().toLowerCase()];
+  if (period) {
+    return {
+      days,
+      ...period,
+      period: String(raw.period).trim().toLowerCase(),
+      duration: normalizeClassDuration(raw.duration),
+    };
+  }
   if (!days.length || !start || !end) return null;
+  const inferredPeriod = Object.entries(periods).find(
+    ([, range]) => range.start === start && range.end === end
+  );
+  if (inferredPeriod && raw?.duration) {
+    return {
+      days,
+      start,
+      end,
+      period: inferredPeriod[0],
+      duration: normalizeClassDuration(raw.duration),
+    };
+  }
   return { days, start, end };
 }
 
@@ -3615,6 +3644,7 @@ function preferredScheduleFromRow(row) {
     days,
     start: row.preferred_start || "",
     end: row.preferred_end || "",
+    duration: row.class_duration,
   });
 }
 
@@ -3760,7 +3790,7 @@ async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNo
         scored: scoreWith(baseCriteria),
         availability,
         preferredLabel: preference
-          ? `${preference.days.join(", ")} ${preference.start}-${preference.end}`
+          ? `${preference.days.join(", ")} ${preference.period || `${preference.start}-${preference.end}`}`
           : "",
       }).catch(() => ({ ok: false, reason: "unavailable" }))
     : Promise.resolve({ ok: false, reason: "not-requested" });
@@ -6867,7 +6897,10 @@ app.post("/api/student/contract-requests", requireSession, requireBodyIdentity("
     // When the student can attend, if they said. Optional in every part: a
     // partial answer is treated as no answer rather than half a preference that
     // would filter candidates against an unspecified end time.
-    const preferredSchedule = normalizePreferredSchedule(preferred_schedule);
+    const preferredSchedule = normalizePreferredSchedule({
+      ...preferred_schedule,
+      duration: parsedDuration,
+    });
     const preferredDays = preferredSchedule ? preferredSchedule.days.join(",") : null;
     const preferredStart = preferredSchedule ? preferredSchedule.start : null;
     const preferredEnd = preferredSchedule ? preferredSchedule.end : null;

@@ -596,7 +596,7 @@ export function preferTeachesChildren(ranked, studentIsChild = false) {
  * Availability is stored per DATE in teacher_availability (available_date,
  * status, start_time/end_time, break_start/break_end), not as a repeating
  * weekly pattern - the same shape the Calendar already reads. So a preference of
- * "Tuesdays and Thursdays, 18:00-19:00" is resolved by looking ahead over real
+ * "Tuesdays and Thursdays, morning" is resolved by looking ahead over real
  * dates that fall on those weekdays and asking whether any of them works. No
  * second availability system, and no migration.
  *
@@ -668,10 +668,20 @@ function overlaps(aStart, aEnd, bStart, bEnd) {
  * @param {string} input.end       preferred window end
  * @returns {{evaluated: boolean, available: boolean|null, matchingDates: string[], reason: string}}
  */
-export function evaluateAvailability({ rows = [], bookings = [], dates = [], days = [], start = null, end = null }) {
+export function evaluateAvailability({
+  rows = [],
+  bookings = [],
+  dates = [],
+  days = [],
+  start = null,
+  end = null,
+  duration = null,
+}) {
   const wanted = normalizePreferredDays(days);
   const startMin = toMinutes(start);
   const endMin = toMinutes(end);
+  const classDuration = Number(duration);
+  const hasDuration = Number.isInteger(classDuration) && classDuration > 0;
 
   // No preference, or an incomplete one: nothing to check, and the caller must
   // behave exactly as it did before this feature existed.
@@ -706,6 +716,36 @@ export function evaluateAvailability({ rows = [], bookings = [], dates = [], day
     const slotStart = toMinutes(row.start_time);
     const slotEnd = toMinutes(row.end_time);
     // Unset times mean the whole day, which is how the Calendar treats them.
+    if (hasDuration) {
+      const earliestStart = Math.max(startMin, slotStart ?? 0);
+      const latestStart = Math.min(endMin - classDuration, (slotEnd ?? 24 * 60) - classDuration);
+      if (latestStart < earliestStart) {
+        reasons.add("their available hours do not fit a class of that duration");
+        continue;
+      }
+
+      const busyIntervals = [
+        [toMinutes(row.break_start), toMinutes(row.break_end)],
+        ...bookings
+          .filter((booking) => String(booking.date || "").slice(0, 10) === date)
+          .map((booking) => [toMinutes(booking.start_time), toMinutes(booking.end_time)]),
+      ].filter(([busyStart, busyEnd]) => busyStart !== null && busyEnd !== null);
+      let candidateStart = earliestStart;
+      while (candidateStart <= latestStart) {
+        const conflict = busyIntervals.find(([busyStart, busyEnd]) =>
+          overlaps(candidateStart, candidateStart + classDuration, busyStart, busyEnd)
+        );
+        if (!conflict) break;
+        candidateStart = Math.max(candidateStart + 1, conflict[1]);
+      }
+      if (candidateStart <= latestStart) {
+        matchingDates.push(date);
+        continue;
+      }
+      reasons.add("they have no unbooked class slot during that time of day");
+      continue;
+    }
+
     const coversWindow =
       (slotStart === null && slotEnd === null) ||
       (slotStart !== null && slotEnd !== null && startMin >= slotStart && endMin <= slotEnd);

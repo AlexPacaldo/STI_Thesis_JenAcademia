@@ -23,10 +23,12 @@ import {
   TEACHER_CRITERIA_HINTS,
   TEACHER_CRITERIA_OPTIONS,
   WEEKDAY_CHOICES,
+  PREFERRED_PERIODS,
   createEmptyPreferredSchedule,
   criteriaWithCustom,
   describePreferredSchedule,
   hasPreferredSchedule,
+  preferredScheduleForDuration,
   toCriteriaSlug,
   toggleValue,
 } from "../utils/matchingCriteria.js";
@@ -1079,7 +1081,10 @@ export default function AdminDashboard() {
         password: "student",
         aiCriteria: studentCriteriaWithCustom(payloadSource.aiCriteria),
       };
-      const response = await axios.post(`${API}/api/admin/users`, payload); // creates student
+      const response = await axios.post(`${API}/api/admin/users`, {
+        ...payload,
+        preferredSchedule: preferredScheduleForDuration(payload.preferredSchedule, payload.classDuration),
+      }); // creates student
       if (response.data?.inviteEmailSent) {
         notify("Student created and setup invite sent to their email.", "success");
       } else {
@@ -1433,7 +1438,7 @@ export default function AdminDashboard() {
         courseName: courses.find((course) => String(course.course_id) === String(sForm.courseId))?.course_name || "",
         proficiencyLevel: computedLevel?.level || "",
         teacherId: sForm.teacherId,
-        preferredSchedule: sForm.preferredSchedule,
+        preferredSchedule: preferredScheduleForDuration(sForm.preferredSchedule, sForm.classDuration),
         // Plain text, and only used to decide whether the student is a child. The
         // server decides what counts, so the cutoff lives in one place.
         studentBirthDate: sForm.birthDate || "",
@@ -2226,7 +2231,14 @@ export default function AdminDashboard() {
       notify("Please score all 5 level evaluation criteria.", "error");
       return;
     }
-    const teacherFit = await checkTeacherFit(sForm.teacherId, sForm.preferredSchedule, sForm.birthDate);
+    const preferredSchedule = preferredScheduleForDuration(sForm.preferredSchedule, sForm.classDuration);
+    const hasAnyPreferredSchedule =
+      sForm.preferredSchedule.days.length > 0 || sForm.preferredSchedule.period;
+    if (hasAnyPreferredSchedule && !hasPreferredSchedule(preferredSchedule)) {
+      notify("Choose at least one day and a time of day.", "error");
+      return;
+    }
+    const teacherFit = await checkTeacherFit(sForm.teacherId, preferredSchedule, sForm.birthDate);
     const warnings = [];
     if (teacherFit?.childAgeConflict) {
       warnings.push(
@@ -2240,7 +2252,7 @@ export default function AdminDashboard() {
     }
     if (teacherFit?.availabilityEvaluated && teacherFit.available === false) {
       warnings.push(
-        `Not available at the preferred time (${describePreferredSchedule(sForm.preferredSchedule)})${
+        `Not available at the preferred time (${describePreferredSchedule(sForm.preferredSchedule, sForm.classDuration)})${
           teacherFit.availabilityReason ? ` - ${teacherFit.availabilityReason}` : ""
         }. Check the schedule.`
       );
@@ -2253,7 +2265,7 @@ export default function AdminDashboard() {
       confirmLabel: "Create Student",
       tone: "primary",
       warnings,
-      payload: { ...sForm },
+      payload: { ...sForm, preferredSchedule },
     });
   }
 
@@ -3379,11 +3391,11 @@ export default function AdminDashboard() {
                 </div>
                 <div>
                   <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>
-                    Preferred Class Schedule <span style={{ fontWeight: "400", color: "#666" }}>(optional)</span>
+                    Preferred Class Time <span style={{ fontWeight: "400", color: "#666" }}>(optional)</span>
                   </label>
                   <p style={{ margin: "0 0 8px 0", fontSize: "0.85em", color: "#666", lineHeight: "1.5" }}>
-                    Teachers set their own availability, so this lets the match prefer someone who can
-                    actually take the class. Leave it blank to match on teaching fit alone.
+                    Choose days and a time of day. We check whether a class of the selected duration can fit
+                    within the teacher’s availability. Leave it blank to match on teaching fit alone.
                   </p>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px" }}>
                     {WEEKDAY_CHOICES.map(([value, label]) => {
@@ -3417,31 +3429,38 @@ export default function AdminDashboard() {
                       );
                     })}
                   </div>
-                  <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-                    <label style={{ fontSize: "0.85em", color: "#555" }}>From</label>
-                    <input
-                      type="time"
-                      value={sForm.preferredSchedule.start}
-                      onChange={(e) => {
-                        setSForm({
-                          ...sForm,
-                          preferredSchedule: { ...sForm.preferredSchedule, start: e.target.value },
-                        });
-                        setAiRecommendation(null);
-                      }}
-                    />
-                    <label style={{ fontSize: "0.85em", color: "#555" }}>To</label>
-                    <input
-                      type="time"
-                      value={sForm.preferredSchedule.end}
-                      onChange={(e) => {
-                        setSForm({
-                          ...sForm,
-                          preferredSchedule: { ...sForm.preferredSchedule, end: e.target.value },
-                        });
-                        setAiRecommendation(null);
-                      }}
-                    />
+                  <div role="group" aria-label="Preferred time of day" style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                    {PREFERRED_PERIODS.map(({ value, label }) => {
+                      const active = sForm.preferredSchedule.period === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => {
+                            setSForm({
+                              ...sForm,
+                              preferredSchedule: {
+                                ...sForm.preferredSchedule,
+                                period: active ? "" : value,
+                              },
+                            });
+                            setAiRecommendation(null);
+                          }}
+                          style={{
+                            padding: "7px 14px",
+                            borderRadius: "999px",
+                            border: `1px solid ${active ? "#26423b" : "#d0d0d0"}`,
+                            background: active ? "#26423b" : "#fff",
+                            color: active ? "#fff" : "#333",
+                            cursor: "pointer",
+                            fontSize: "0.9em",
+                          }}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 <div>
@@ -3615,7 +3634,7 @@ export default function AdminDashboard() {
                           }}
                         >
                           {aiRecommendation.availabilityConflict
-                            ? `Not available at the preferred time (${describePreferredSchedule(sForm.preferredSchedule)})${
+                            ? `Not available at the preferred time (${describePreferredSchedule(sForm.preferredSchedule, sForm.classDuration)})${
                                 aiRecommendation.availabilityReason
                                   ? ` - ${aiRecommendation.availabilityReason}`
                                   : ""
@@ -3752,7 +3771,10 @@ export default function AdminDashboard() {
                     <label style={{ display: "block", fontWeight: "600", marginBottom: "6px", color: "#333" }}>Class Duration</label>
                     <select
                       value={sForm.classDuration}
-                      onChange={(e)=>setSForm({...sForm, classDuration:e.target.value})}
+                      onChange={(e) => {
+                        setSForm({ ...sForm, classDuration: e.target.value });
+                        setAiRecommendation(null);
+                      }}
                       style={{
                         width: "100%",
                         padding: "10px",
