@@ -2,6 +2,7 @@ import axios from "axios";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import styles from "../assets/lineConnect.module.css";
 import { API_BASE_URL } from "../utils/api.js";
+import { OpenLineArt, SendCodeArt, TickArt, WaitingArt } from "./LineStepArt.jsx";
 import { useNotification } from "./NotificationContainer.jsx";
 
 const API = API_BASE_URL;
@@ -218,7 +219,9 @@ export default function LineConnectCard({
 
       {!status.loading && status.configured && status.linked ? (
         <div className={styles.success}>
-          <span className={styles.successIcon} aria-hidden="true">🎉</span>
+          <figure className={styles.successArt}>
+            <TickArt />
+          </figure>
           <p className={styles.successTitle}>You are connected!</p>
           <p className={styles.successBody}>
             <strong>{status.displayName || "Your LINE account"}</strong>
@@ -290,16 +293,31 @@ export default function LineConnectCard({
           <div className={styles.start}>
             <ol className={styles.previewSteps}>
               <li>
-                <span className={styles.previewNumber} aria-hidden="true">1</span>
-                Open LINE
+                <span className={styles.previewArt}>
+                  <OpenLineArt />
+                </span>
+                <span className={styles.previewText}>
+                  <span className={styles.previewNumber} aria-hidden="true">1</span>
+                  Open LINE
+                </span>
               </li>
               <li>
-                <span className={styles.previewNumber} aria-hidden="true">2</span>
-                Send us the secret number
+                <span className={styles.previewArt}>
+                  <SendCodeArt />
+                </span>
+                <span className={styles.previewText}>
+                  <span className={styles.previewNumber} aria-hidden="true">2</span>
+                  Send us the secret number
+                </span>
               </li>
               <li>
-                <span className={styles.previewNumber} aria-hidden="true">3</span>
-                Wait for the green tick ✅
+                <span className={styles.previewArt}>
+                  <WaitingArt />
+                </span>
+                <span className={styles.previewText}>
+                  <span className={styles.previewNumber} aria-hidden="true">3</span>
+                  Wait for the green tick ✅
+                </span>
               </li>
             </ol>
             <button
@@ -314,9 +332,14 @@ export default function LineConnectCard({
         ) : (
           <div className={styles.guide} aria-live="polite">
             <div className={styles.step}>
-              <span className={styles.stepNumber} aria-hidden="true">1</span>
-              <div className={styles.stepBody}>
+              <div className={styles.stepHead}>
+                <span className={styles.stepNumber} aria-hidden="true">1</span>
                 <p className={styles.stepTitle}>Open LINE</p>
+              </div>
+              <figure className={styles.stepArt}>
+                <OpenLineArt />
+              </figure>
+              <div className={styles.stepBody}>
                 <p className={styles.stepText}>
                   Add <strong>{botName}</strong> as a friend.
                 </p>
@@ -339,9 +362,14 @@ export default function LineConnectCard({
             </div>
 
             <div className={styles.step}>
-              <span className={styles.stepNumber} aria-hidden="true">2</span>
-              <div className={styles.stepBody}>
+              <div className={styles.stepHead}>
+                <span className={styles.stepNumber} aria-hidden="true">2</span>
                 <p className={styles.stepTitle}>Type this secret number</p>
+              </div>
+              <figure className={styles.stepArt}>
+                <SendCodeArt code={code} />
+              </figure>
+              <div className={styles.stepBody}>
                 <div className={styles.code}>{code}</div>
                 <button
                   type="button"
@@ -360,9 +388,14 @@ export default function LineConnectCard({
             </div>
 
             <div className={styles.step}>
-              <span className={styles.stepNumber} aria-hidden="true">3</span>
-              <div className={styles.stepBody}>
+              <div className={styles.stepHead}>
+                <span className={styles.stepNumber} aria-hidden="true">3</span>
                 <p className={styles.stepTitle}>Wait for the green tick</p>
+              </div>
+              <figure className={styles.stepArt}>
+                <WaitingArt />
+              </figure>
+              <div className={styles.stepBody}>
                 <p className={styles.stepText}>
                   We check by ourselves. This card changes when it works.
                 </p>

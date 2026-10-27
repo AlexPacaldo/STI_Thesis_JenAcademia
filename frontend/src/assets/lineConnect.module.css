@@ -102,9 +102,16 @@
   text-align: center;
 }
 
-.successIcon {
-  font-size: 2.6rem;
-  line-height: 1;
+.successArt {
+  width: min(100%, 200px);
+  margin: 0;
+  animation: artPop 0.5s cubic-bezier(0.22, 1.1, 0.36, 1.05) both;
+}
+
+.successArt svg {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .successTitle {
@@ -211,7 +218,7 @@
   display: grid;
   justify-items: center;
   gap: 8px;
-  padding: 14px 8px;
+  padding: 12px 8px 14px;
   border: 1px solid rgba(38, 66, 59, 0.1);
   border-radius: 18px;
   background: #f8fbf9;
@@ -220,6 +227,38 @@
   font-weight: 750;
   line-height: 1.3;
   text-align: center;
+}
+
+.previewArt {
+  display: block;
+  width: 100%;
+  max-width: 150px;
+  padding: 6px;
+  border-radius: 14px;
+  background: linear-gradient(160deg, #eef8e9 0%, #f8fbf9 78%);
+  animation: artPop 0.45s ease-out both;
+}
+
+.previewArt svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Each picture arrives a beat after the one before it, the same way the
+   steps are meant to be done. */
+.previewSteps li:nth-child(2) .previewArt {
+  animation-delay: 0.08s;
+}
+
+.previewSteps li:nth-child(3) .previewArt {
+  animation-delay: 0.16s;
+}
+
+.previewText {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
 }
 
 .previewNumber {
@@ -242,13 +281,48 @@
 }
 
 .step {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  grid-template-areas:
+    "head head"
+    "art body";
+  align-items: start;
+  gap: 12px 16px;
   padding: 16px;
   border: 1px solid rgba(38, 66, 59, 0.12);
   border-radius: 20px;
   background: #fbfdfa;
+}
+
+.stepHead {
+  grid-area: head;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stepArt {
+  grid-area: art;
+  width: 100%;
+  margin: 0;
+  padding: 8px;
+  border-radius: 16px;
+  background: linear-gradient(160deg, #eef8e9 0%, #ffffff 80%);
+  animation: artPop 0.45s ease-out both;
+}
+
+.stepArt svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.step:nth-of-type(2) .stepArt {
+  animation-delay: 0.08s;
+}
+
+.step:nth-of-type(3) .stepArt {
+  animation-delay: 0.16s;
 }
 
 .stepNumber {
@@ -266,7 +340,7 @@
 }
 
 .stepBody {
-  flex: 1 1 auto;
+  grid-area: body;
   min-width: 0;
   display: grid;
   gap: 10px;
@@ -429,15 +503,36 @@
     grid-template-columns: 1fr;
   }
 
+  /* On a phone the pictures stay beside their sentence, so the list still
+     reads as three quick things instead of three tall cards. */
   .previewSteps li {
-    grid-template-columns: 34px 1fr;
+    grid-template-columns: 118px minmax(0, 1fr);
     align-items: center;
     justify-items: start;
     text-align: left;
   }
 
+  .previewArt {
+    max-width: none;
+  }
+
+  .previewText {
+    justify-items: start;
+    gap: 8px;
+  }
+
   .step {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "head"
+      "art"
+      "body";
     padding: 14px;
+  }
+
+  .stepArt {
+    width: min(100%, 260px);
+    justify-self: center;
   }
 
   .stepNumber {
@@ -466,5 +561,29 @@
     padding: 12px 8px;
     font-size: 1.45rem;
     letter-spacing: 0.22em;
+  }
+}
+
+/* ----------------------------------------------------------- the movement */
+
+/* A small rise, not a bounce: this appears inside a form a child is reading,
+   and anything livelier pulls attention away from the instruction. */
+@keyframes artPop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .previewArt,
+  .stepArt,
+  .successArt {
+    animation: none;
   }
 }
