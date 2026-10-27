@@ -221,6 +221,13 @@ export default function Account() {
   }, []);
 
   const details = user?.roleDetails || {};
+  // The first sign-in renders its own inline forms. The dialogs below belong
+  // to the finished Account page, so they must not open over the wizard.
+  const firstSetupActive =
+    Boolean(user) &&
+    (isProfileIncomplete || firstSetupFinished) &&
+    ["student", "teacher"].includes(user.role);
+  const editDialogOpen = !firstSetupActive && (profileEditing || passwordEditing);
   // Kept by identity: the LINE card reports on every status change, and a new
   // object each time would re-render the wizard a few times per poll.
   const handleLineState = useCallback((next) => {
@@ -387,6 +394,17 @@ export default function Account() {
       if (cropModal?.src) URL.revokeObjectURL(cropModal.src);
     };
   }, [cropModal?.src]);
+
+  // A dialog over a page that can still scroll under it feels broken on a
+  // phone: the backdrop stays still while the card behind it slides away.
+  useEffect(() => {
+    if (!editDialogOpen) return undefined;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [editDialogOpen]);
 
   useEffect(() => {
     if (!cameraOpen) return undefined;
@@ -948,6 +966,236 @@ export default function Account() {
   }
 
   /**
+   * The two account dialogs share their fields with the old inline forms.
+   *
+   * !! They are functions, not components, so they read the same form state
+   * !! and the same save handlers as the rest of the page. Splitting the state
+   * !! out would mean two copies of the validation, and the password rule
+   * !! already lives in one place on purpose.
+   */
+  function renderDetailsForm() {
+    const isStudent = user?.role === "student";
+    const formClass = isStudent ? kid.kidForm : styles.proForm;
+    const rowClass = isStudent ? kid.kidRow : styles.proRow;
+    const fieldClass = isStudent ? kid.kidField : styles.proField;
+    const labelClass = isStudent ? kid.kidFieldLabel : styles.proLabel;
+    const inputClass = isStudent ? kid.kidInput : styles.proInput;
+    const noteClass = isStudent ? kid.kidFieldNote : styles.proFieldNote;
+    const primaryClass = isStudent ? kid.kidPrimaryBtn : styles.proBtn;
+    const ghostClass = isStudent ? kid.kidGhostBtn : styles.proBtnGhost;
+
+    return (
+      <form onSubmit={saveProfile} className={styles.editForm}>
+        <div className={`${styles.editFormBody} ${formClass}`}>
+          <div className={rowClass}>
+            <label className={fieldClass}>
+              <span className={labelClass}>{ACCOUNT.firstName}</span>
+              <input
+                className={inputClass}
+                name="firstName"
+                value={form.firstName}
+                onChange={onChange}
+                required
+              />
+            </label>
+            <label className={fieldClass}>
+              <span className={labelClass}>{ACCOUNT.lastName}</span>
+              <input
+                className={inputClass}
+                name="lastName"
+                value={form.lastName}
+                onChange={onChange}
+                required
+              />
+            </label>
+          </div>
+
+          <label className={fieldClass}>
+            <span className={labelClass}>{ACCOUNT.email}</span>
+            <input className={inputClass} value={form.email} readOnly disabled />
+            <span className={noteClass}>
+              {isStudent
+                ? ACCOUNT.emailLocked
+                : "Your email is how you sign in and receive password resets, so it can't be changed here. An administrator can update it."}
+            </span>
+          </label>
+
+          <div className={rowClass}>
+            <label className={fieldClass}>
+              <span className={labelClass}>{ACCOUNT.country}</span>
+              <select
+                className={inputClass}
+                name="country"
+                value={form.country}
+                onChange={onChange}
+              >
+                <option value="">{isStudent ? "-" : "Select country"}</option>
+                {COUNTRY_OPTIONS.map((country) => (
+                  <option key={country} value={country}>{country}</option>
+                ))}
+              </select>
+            </label>
+            <label className={fieldClass}>
+              <span className={labelClass}>{ACCOUNT.birthday}</span>
+              <input
+                className={inputClass}
+                type="date"
+                name="birthDate"
+                value={form.birthDate}
+                onChange={onChange}
+              />
+            </label>
+          </div>
+
+          {isStudent ? (
+            <label className={fieldClass}>
+              <span className={labelClass}>{ACCOUNT.timeZone}</span>
+              <div className={styles.timezoneControl}>
+                <select
+                  className={inputClass}
+                  name="timezone"
+                  value={form.timezone}
+                  onChange={onChange}
+                  required
+                >
+                  <option value="">-</option>
+                  {form.timezone && !TIMEZONE_OPTIONS.includes(form.timezone) && (
+                    <option value={form.timezone}>{formatTimezoneLabel(form.timezone)}</option>
+                  )}
+                  {TIMEZONE_OPTIONS.map((timezone) => (
+                    <option key={timezone} value={timezone}>{formatTimezoneLabel(timezone)}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className={styles.detectBtn}
+                  onClick={autoDetectTimezone}
+                >
+                  Auto Detect
+                </button>
+              </div>
+            </label>
+          ) : (
+            <label className={fieldClass}>
+              <span className={labelClass}>{ACCOUNT.timeZone}</span>
+              <input
+                className={inputClass}
+                name="timezone"
+                value={form.timezone}
+                onChange={onChange}
+                required
+              />
+            </label>
+          )}
+
+          <label className={fieldClass}>
+            <span className={labelClass}>
+              {isStudent ? ACCOUNT.passwordLabel : "Current password"}
+            </span>
+            <input
+              className={inputClass}
+              type="password"
+              value={detailsPassword}
+              onChange={(e) => setDetailsPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+            <span className={noteClass}>
+              {isStudent ? ACCOUNT.passwordToSave : "Required to save changes."}
+            </span>
+          </label>
+        </div>
+
+        <div className={styles.editFormActions}>
+          <button type="button" className={ghostClass} onClick={cancelProfileEdit}>
+            {ACCOUNT.cancel}
+          </button>
+          <button type="submit" className={primaryClass} disabled={saving}>
+            {saving
+              ? (isStudent ? ACCOUNT.savingDetails : "Saving...")
+              : (isStudent ? ACCOUNT.saveDetails : "Save changes")}
+          </button>
+        </div>
+      </form>
+    );
+  }
+
+  function renderPasswordForm() {
+    const isStudent = user?.role === "student";
+    const formClass = isStudent ? kid.kidForm : styles.proForm;
+    const rowClass = isStudent ? kid.kidRow : styles.proRow;
+    const fieldClass = isStudent ? kid.kidField : styles.proField;
+    const labelClass = isStudent ? kid.kidFieldLabel : styles.proLabel;
+    const inputClass = isStudent ? kid.kidInput : styles.proInput;
+    const noteClass = isStudent ? kid.kidFieldNote : styles.proFieldNote;
+    const primaryClass = isStudent ? kid.kidPrimaryBtn : styles.proBtn;
+    const ghostClass = isStudent ? kid.kidGhostBtn : styles.proBtnGhost;
+
+    return (
+      <form onSubmit={changePassword} className={styles.editForm}>
+        <div className={`${styles.editFormBody} ${formClass}`}>
+          <label className={fieldClass}>
+            <span className={labelClass}>
+              {isStudent ? ACCOUNT.currentPassword : "Current password"}
+            </span>
+            <input
+              className={inputClass}
+              type="password"
+              value={pwd.current}
+              onChange={(e) => setPwd((p) => ({ ...p, current: e.target.value }))}
+              autoComplete="current-password"
+              required
+            />
+          </label>
+
+          <div className={rowClass}>
+            <label className={fieldClass}>
+              <span className={labelClass}>{ACCOUNT.newPassword}</span>
+              <input
+                className={inputClass}
+                type="password"
+                value={pwd.next}
+                onChange={(e) => setPwd((p) => ({ ...p, next: e.target.value }))}
+                autoComplete="new-password"
+                required
+              />
+            </label>
+            <label className={fieldClass}>
+              <span className={labelClass}>
+                {isStudent ? ACCOUNT.confirmPassword : "Confirm new password"}
+              </span>
+              <input
+                className={inputClass}
+                type="password"
+                value={pwd.confirm}
+                onChange={(e) => setPwd((p) => ({ ...p, confirm: e.target.value }))}
+                autoComplete="new-password"
+                required
+              />
+            </label>
+          </div>
+
+          <p className={noteClass}>
+            Make it at least 8 characters. A sentence you can remember is safer
+            than one short word.
+          </p>
+        </div>
+
+        <div className={styles.editFormActions}>
+          <button type="button" className={ghostClass} onClick={cancelPasswordEdit}>
+            {ACCOUNT.cancel}
+          </button>
+          <button type="submit" className={primaryClass} disabled={pwdSaving}>
+            {pwdSaving
+              ? (isStudent ? ACCOUNT.savingPassword : "Updating...")
+              : (isStudent ? ACCOUNT.savePassword : "Update password")}
+          </button>
+        </div>
+      </form>
+    );
+  }
+
+  /**
    * The student's own account page.
    *
    * !! This was the admin's screen with the admin's words on it: "Profile
@@ -1088,199 +1336,31 @@ export default function Account() {
             ) : null}
           </div>
 
-          {profileEditing ? (
-            <form onSubmit={saveProfile} className={kid.kidForm}>
-              <div className={kid.kidRow}>
-                <label className={kid.kidField}>
-                  <span className={kid.kidFieldLabel}>{ACCOUNT.firstName}</span>
-                  <input
-                    className={kid.kidInput}
-                    name="firstName"
-                    value={form.firstName}
-                    onChange={onChange}
-                    required
-                  />
-                </label>
-                <label className={kid.kidField}>
-                  <span className={kid.kidFieldLabel}>{ACCOUNT.lastName}</span>
-                  <input
-                    className={kid.kidInput}
-                    name="lastName"
-                    value={form.lastName}
-                    onChange={onChange}
-                    required
-                  />
-                </label>
+          <div className={kid.kidList}>
+            {details_rows.map((row) => (
+              <div key={row.label} className={kid.kidListRow}>
+                <span className={kid.kidListLabel}>{row.label}</span>
+                <span className={kid.kidListValue}>{row.value}</span>
               </div>
-
-              <label className={kid.kidField}>
-                <span className={kid.kidFieldLabel}>{ACCOUNT.email}</span>
-                <input
-                  className={kid.kidInput}
-                  value={form.email}
-                  readOnly
-                  disabled
-                />
-                <span className={kid.kidFieldNote}>{ACCOUNT.emailLocked}</span>
-              </label>
-
-              <div className={kid.kidRow}>
-                <label className={kid.kidField}>
-                  <span className={kid.kidFieldLabel}>{ACCOUNT.country}</span>
-                  <select
-                    className={kid.kidInput}
-                    name="country"
-                    value={form.country}
-                    onChange={onChange}
-                  >
-                    <option value="">-</option>
-                    {COUNTRY_OPTIONS.map((country) => (
-                      <option key={country} value={country}>{country}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className={kid.kidField}>
-                  <span className={kid.kidFieldLabel}>{ACCOUNT.birthday}</span>
-                  <input
-                    className={kid.kidInput}
-                    type="date"
-                    name="birthDate"
-                    value={form.birthDate}
-                    onChange={onChange}
-                  />
-                </label>
-              </div>
-
-              <label className={kid.kidField}>
-                <span className={kid.kidFieldLabel}>{ACCOUNT.timeZone}</span>
-                <div className={styles.timezoneControl}>
-                  <select
-                    className={kid.kidInput}
-                    name="timezone"
-                    value={form.timezone}
-                    onChange={onChange}
-                    required
-                  >
-                    <option value="">-</option>
-                    {form.timezone && !TIMEZONE_OPTIONS.includes(form.timezone) && (
-                      <option value={form.timezone}>{formatTimezoneLabel(form.timezone)}</option>
-                    )}
-                    {TIMEZONE_OPTIONS.map((timezone) => (
-                      <option key={timezone} value={timezone}>{formatTimezoneLabel(timezone)}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className={styles.detectBtn}
-                    onClick={autoDetectTimezone}
-                  >
-                    Auto Detect
-                  </button>
-                </div>
-              </label>
-
-              <label className={kid.kidField}>
-                <span className={kid.kidFieldLabel}>{ACCOUNT.passwordLabel}</span>
-                <input
-                  className={kid.kidInput}
-                  type="password"
-                  value={detailsPassword}
-                  onChange={(e) => setDetailsPassword(e.target.value)}
-                  autoComplete="current-password"
-                  required
-                />
-                <span className={kid.kidFieldNote}>{ACCOUNT.passwordToSave}</span>
-              </label>
-
-              <div className={kid.kidActions}>
-                <button
-                  type="button"
-                  className={kid.kidGhostBtn}
-                  onClick={cancelProfileEdit}
-                >
-                  {ACCOUNT.cancel}
-                </button>
-                <button className={kid.kidPrimaryBtn} disabled={saving}>
-                  {saving ? ACCOUNT.savingDetails : ACCOUNT.saveDetails}
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div className={kid.kidList}>
-              {details_rows.map((row) => (
-                <div key={row.label} className={kid.kidListRow}>
-                  <span className={kid.kidListLabel}>{row.label}</span>
-                  <span className={kid.kidListValue}>{row.value}</span>
-                </div>
-              ))}
-            </div>
-          )}
+            ))}
+          </div>
         </section>
 
         {/* The password. */}
         <section className={kid.kidCard}>
           <div className={kid.kidCardHead}>
             <h2 className={kid.kidCardTitle}>{ACCOUNT.yourPassword}</h2>
-            {!passwordEditing ? (
-              <button
-                type="button"
-                className={kid.kidGhostBtn}
-                onClick={() => setPasswordEditing(true)}
-              >
-                {ACCOUNT.changePassword}
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className={kid.kidGhostBtn}
+              onClick={() => setPasswordEditing(true)}
+            >
+              {ACCOUNT.changePassword}
+            </button>
           </div>
-
-          {passwordEditing ? (
-            <form onSubmit={changePassword} className={kid.kidForm}>
-              <label className={kid.kidField}>
-                <span className={kid.kidFieldLabel}>{ACCOUNT.currentPassword}</span>
-                <input
-                  className={kid.kidInput}
-                  type="password"
-                  value={pwd.current}
-                  onChange={(e) => setPwd((p) => ({ ...p, current: e.target.value }))}
-                  required
-                />
-              </label>
-              <div className={kid.kidRow}>
-                <label className={kid.kidField}>
-                  <span className={kid.kidFieldLabel}>{ACCOUNT.newPassword}</span>
-                  <input
-                    className={kid.kidInput}
-                    type="password"
-                    value={pwd.next}
-                    onChange={(e) => setPwd((p) => ({ ...p, next: e.target.value }))}
-                    required
-                  />
-                </label>
-                <label className={kid.kidField}>
-                  <span className={kid.kidFieldLabel}>{ACCOUNT.confirmPassword}</span>
-                  <input
-                    className={kid.kidInput}
-                    type="password"
-                    value={pwd.confirm}
-                    onChange={(e) => setPwd((p) => ({ ...p, confirm: e.target.value }))}
-                    required
-                  />
-                </label>
-              </div>
-
-              <div className={kid.kidActions}>
-                <button
-                  type="button"
-                  className={kid.kidGhostBtn}
-                  onClick={cancelPasswordEdit}
-                >
-                  {ACCOUNT.cancel}
-                </button>
-                <button className={kid.kidPrimaryBtn} disabled={pwdSaving}>
-                  {pwdSaving ? ACCOUNT.savingPassword : ACCOUNT.savePassword}
-                </button>
-              </div>
-            </form>
-          ) : null}
+          <p className={kid.kidFieldNote}>
+            Change it in the box that opens.
+          </p>
         </section>
 
         {/* LINE reminders. Optional, but the fastest way to hear about a class. */}
@@ -1460,106 +1540,7 @@ export default function Account() {
             ) : null}
           </div>
 
-          {profileEditing ? (
-            <form onSubmit={saveProfile} className={styles.proForm}>
-              <div className={styles.proRow}>
-                <label className={styles.proField}>
-                  <span className={styles.proLabel}>First name</span>
-                  <input
-                    className={styles.proInput}
-                    name="firstName"
-                    value={form.firstName}
-                    onChange={onChange}
-                    required
-                  />
-                </label>
-                <label className={styles.proField}>
-                  <span className={styles.proLabel}>Last name</span>
-                  <input
-                    className={styles.proInput}
-                    name="lastName"
-                    value={form.lastName}
-                    onChange={onChange}
-                    required
-                  />
-                </label>
-              </div>
-
-              <div className={styles.proRow}>
-                <label className={styles.proField}>
-                  <span className={styles.proLabel}>Email</span>
-                  <input className={styles.proInput} value={form.email} readOnly disabled />
-                  <span className={styles.proFieldNote}>
-                    Your email is how you sign in and receive password resets, so it can't be changed
-                    here. An administrator can update it.
-                  </span>
-                </label>
-                <label className={styles.proField}>
-                  <span className={styles.proLabel}>Current password</span>
-                  <input
-                    className={styles.proInput}
-                    type="password"
-                    value={detailsPassword}
-                    onChange={(e) => setDetailsPassword(e.target.value)}
-                    autoComplete="current-password"
-                    required
-                  />
-                  <span className={styles.proFieldNote}>Required to save changes.</span>
-                </label>
-              </div>
-
-              <div className={styles.proRow}>
-                <label className={styles.proField}>
-                  <span className={styles.proLabel}>Country</span>
-                  <select
-                    className={styles.proInput}
-                    name="country"
-                    value={form.country}
-                    onChange={onChange}
-                  >
-                    <option value="">Select country</option>
-                    {COUNTRY_OPTIONS.map((country) => (
-                      <option key={country} value={country}>{country}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className={styles.proField}>
-                  <span className={styles.proLabel}>Birthday</span>
-                  <input
-                    className={styles.proInput}
-                    type="date"
-                    name="birthDate"
-                    value={form.birthDate}
-                    onChange={onChange}
-                  />
-                </label>
-              </div>
-
-              <label className={styles.proField}>
-                <span className={styles.proLabel}>Time zone</span>
-                <input
-                  className={styles.proInput}
-                  name="timezone"
-                  value={form.timezone}
-                  onChange={onChange}
-                  required
-                />
-              </label>
-
-              <div className={styles.proActions}>
-                <button
-                  type="button"
-                  className={styles.proBtnGhost}
-                  onClick={cancelProfileEdit}
-                >
-                  Cancel
-                </button>
-                <button className={styles.proBtn} disabled={saving}>
-                  {saving ? "Saving..." : "Save changes"}
-                </button>
-              </div>
-            </form>
-          ) : (
+          {profileEditing ? null : (
             <div className={styles.proFacts}>
               {facts.map((fact) => (
                 <div key={fact.label} className={styles.proFact}>
@@ -1575,71 +1556,17 @@ export default function Account() {
         <section className={styles.proCard}>
           <div className={styles.proCardHead}>
             <h2 className={styles.proCardTitle}>Security</h2>
-            {!passwordEditing ? (
-              <button
-                type="button"
-                className={styles.proBtnGhost}
-                onClick={() => setPasswordEditing(true)}
-              >
-                Change password
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className={styles.proBtnGhost}
+              onClick={() => setPasswordEditing(true)}
+            >
+              Change password
+            </button>
           </div>
-
-          {passwordEditing ? (
-            <form onSubmit={changePassword} className={styles.proForm}>
-              <div className={styles.proRow}>
-                <label className={styles.proField}>
-                  <span className={styles.proLabel}>Current password</span>
-                  <input
-                    className={styles.proInput}
-                    type="password"
-                    value={pwd.current}
-                    onChange={(e) => setPwd((p) => ({ ...p, current: e.target.value }))}
-                    required
-                  />
-                </label>
-                <label className={styles.proField}>
-                  <span className={styles.proLabel}>New password</span>
-                  <input
-                    className={styles.proInput}
-                    type="password"
-                    value={pwd.next}
-                    onChange={(e) => setPwd((p) => ({ ...p, next: e.target.value }))}
-                    required
-                  />
-                </label>
-              </div>
-
-              <label className={styles.proField}>
-                <span className={styles.proLabel}>Confirm new password</span>
-                <input
-                  className={styles.proInput}
-                  type="password"
-                  value={pwd.confirm}
-                  onChange={(e) => setPwd((p) => ({ ...p, confirm: e.target.value }))}
-                  required
-                />
-              </label>
-
-              <div className={styles.proActions}>
-                <button
-                  type="button"
-                  className={styles.proBtnGhost}
-                  onClick={cancelPasswordEdit}
-                >
-                  Cancel
-                </button>
-                <button className={styles.proBtn} disabled={pwdSaving}>
-                  {pwdSaving ? "Updating..." : "Update password"}
-                </button>
-              </div>
-            </form>
-          ) : (
-            <p className={styles.proFactValue}>
-              Your password is not shown to anyone, including the admin.
-            </p>
-          )}
+          <p className={styles.proFactValue}>
+            Your password is not shown to anyone, including the admin.
+          </p>
         </section>
 
         {/* LINE reminders for staff too — teachers get reschedule and class alerts. */}
@@ -1833,6 +1760,32 @@ export default function Account() {
                   fallback={<img src={pfp} alt={`${fullName} profile preview`} />}
                 />
               </div>
+            </section>
+          </div>
+        )}
+
+        {/* Change my details opens here so the card behind it stays read-only. */}
+        {profileEditing && (
+          <div className={styles.modalBackdrop} onClick={cancelProfileEdit}>
+            <section className={styles.editModal} onClick={(e) => e.stopPropagation()}>
+              <div className={styles.modalHeader}>
+                <h2>{user?.role === "student" ? ACCOUNT.changeDetails : "Edit details"}</h2>
+                <button type="button" className={styles.closeBtn} onClick={cancelProfileEdit}>x</button>
+              </div>
+              {renderDetailsForm()}
+            </section>
+          </div>
+        )}
+
+        {/* Change my password opens here so the card behind it stays read-only. */}
+        {passwordEditing && (
+          <div className={styles.modalBackdrop} onClick={cancelPasswordEdit}>
+            <section className={styles.editModal} onClick={(e) => e.stopPropagation()}>
+              <div className={styles.modalHeader}>
+                <h2>{user?.role === "student" ? ACCOUNT.changePassword : "Change password"}</h2>
+                <button type="button" className={styles.closeBtn} onClick={cancelPasswordEdit}>x</button>
+              </div>
+              {renderPasswordForm()}
             </section>
           </div>
         )}

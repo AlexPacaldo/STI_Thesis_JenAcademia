@@ -938,6 +938,51 @@
   font-size: 18px;
 }
 
+/* Edit dialogs (details / password). These share the backdrop and scaling
+   of the picture modals but sit taller so a full form fits. */
+.editModal {
+  width: min(520px, 100%);
+  overflow: hidden;
+  border-radius: 24px;
+  background: var(--surface, #fff);
+  border: 1px solid rgba(38, 66, 59, 0.12);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
+  animation: scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.editModal .modalHeader {
+  padding-bottom: 0;
+  border-bottom: 1px solid rgba(38, 66, 59, 0.1);
+}
+
+.editForm {
+  margin: 0;
+}
+
+.editFormBody {
+  padding: 20px 24px 14px;
+  overflow-y: auto;
+  max-height: 80vh;
+}
+
+.editFormBody .kidField,
+.editFormBody .proField {
+  min-width: 0;
+}
+
+.editFormBody .kidRow,
+.editFormBody .proRow {
+  min-width: 0;
+}
+
+.editFormActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 10px 24px 20px;
+  border-top: 1px solid rgba(38, 66, 59, 0.1);
+}
+
 .emptyState {
   max-width: 520px;
   margin: 80px auto;
