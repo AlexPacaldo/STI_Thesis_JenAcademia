@@ -1,5 +1,5 @@
 import axios from "axios";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "../assets/account.module.css";
 import kid from "../assets/studentKid.module.css";
@@ -60,29 +60,37 @@ const TIMEZONE_OPTIONS = getTimezoneOptions();
 /**
  * Calling codes shown beside the phone number.
  *
- * !! One entry per code, not per country: Canada and the United States share
- * !! +1, so two options with the same value would make the select jump back to
- * !! the first one after a choice. The countries field keeps the profile's own
- * !! country separate from the number's country.
+ * !! Canada and the United States share +1, so they share one row. Two rows
+ * !! with the same value would make a native select jump back to the first
+ * !! one; the flags array keeps both visible without lying about the code.
+ * !! The profile's own country stays a separate field.
  */
 const PHONE_DIAL_OPTIONS = [
-  { dial: "+63", label: "PH +63", countries: ["Philippines"] },
-  { dial: "+1", label: "CA/US +1", countries: ["Canada", "United States"] },
-  { dial: "+44", label: "GB +44", countries: ["United Kingdom"] },
-  { dial: "+61", label: "AU +61", countries: ["Australia"] },
-  { dial: "+86", label: "CN +86", countries: ["China"] },
-  { dial: "+91", label: "IN +91", countries: ["India"] },
-  { dial: "+62", label: "ID +62", countries: ["Indonesia"] },
-  { dial: "+81", label: "JP +81", countries: ["Japan"] },
-  { dial: "+60", label: "MY +60", countries: ["Malaysia"] },
-  { dial: "+65", label: "SG +65", countries: ["Singapore"] },
-  { dial: "+82", label: "KR +82", countries: ["South Korea"] },
-  { dial: "+886", label: "TW +886", countries: ["Taiwan"] },
-  { dial: "+66", label: "TH +66", countries: ["Thailand"] },
-  { dial: "+971", label: "AE +971", countries: ["United Arab Emirates"] },
-  { dial: "+84", label: "VN +84", countries: ["Vietnam"] },
-  { dial: "+685", label: "WS +685", countries: ["Samoa"] },
+  { dial: "+63", name: "Philippines", flags: ["ph"], countries: ["Philippines"] },
+  { dial: "+1", name: "Canada / United States", flags: ["ca", "us"], countries: ["Canada", "United States"] },
+  { dial: "+44", name: "United Kingdom", flags: ["gb"], countries: ["United Kingdom"] },
+  { dial: "+61", name: "Australia", flags: ["au"], countries: ["Australia"] },
+  { dial: "+86", name: "China", flags: ["cn"], countries: ["China"] },
+  { dial: "+91", name: "India", flags: ["in"], countries: ["India"] },
+  { dial: "+62", name: "Indonesia", flags: ["id"], countries: ["Indonesia"] },
+  { dial: "+81", name: "Japan", flags: ["jp"], countries: ["Japan"] },
+  { dial: "+60", name: "Malaysia", flags: ["my"], countries: ["Malaysia"] },
+  { dial: "+65", name: "Singapore", flags: ["sg"], countries: ["Singapore"] },
+  { dial: "+82", name: "South Korea", flags: ["kr"], countries: ["South Korea"] },
+  { dial: "+886", name: "Taiwan", flags: ["tw"], countries: ["Taiwan"] },
+  { dial: "+66", name: "Thailand", flags: ["th"], countries: ["Thailand"] },
+  { dial: "+971", name: "United Arab Emirates", flags: ["ae"], countries: ["United Arab Emirates"] },
+  { dial: "+84", name: "Vietnam", flags: ["vn"], countries: ["Vietnam"] },
+  { dial: "+685", name: "Samoa", flags: ["ws"], countries: ["Samoa"] },
 ];
+
+function flagUrl(code) {
+  return `https://flagcdn.com/24x18/${code}.png`;
+}
+
+function flagUrl2x(code) {
+  return `https://flagcdn.com/48x36/${code}.png`;
+}
 
 function dialForCountry(country) {
   const option = PHONE_DIAL_OPTIONS.find((entry) => entry.countries.includes(country));
@@ -152,13 +160,112 @@ function PhoneNumberField({
 }) {
   const { dial, local } = splitPhoneNumber(value, dialForCountry(country));
   const classes = [inputClassName, styles.phoneNumber].filter(Boolean).join(" ");
-  const selectClasses = [inputClassName, styles.phoneDial].filter(Boolean).join(" ");
+  const dialClasses = [inputClassName, styles.phoneDial].filter(Boolean).join(" ");
+  const selected = PHONE_DIAL_OPTIONS.find((option) => option.dial === dial) || null;
+  const listId = useId();
+  const wrapRef = useRef(null);
+  const buttonRef = useRef(null);
+  const inputRef = useRef(null);
+  const listRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  function openList() {
+    const index = PHONE_DIAL_OPTIONS.findIndex((option) => option.dial === dial);
+    setActiveIndex(index >= 0 ? index : 0);
+    setOpen(true);
+  }
+
+  function choose(option) {
+    setOpen(false);
+    onChange(joinPhoneNumber(option.dial, local));
+    buttonRef.current?.focus();
+  }
+
+  // A click anywhere else, or Escape, closes the list. Without this the list
+  // stays open over the rest of the form after a person moves on.
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function handlePointerDown(event) {
+      if (!wrapRef.current?.contains(event.target)) setOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) listRef.current?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    listRef.current?.querySelector(`[data-index="${activeIndex}"]`)?.scrollIntoView({
+      block: "nearest",
+    });
+  }, [open, activeIndex]);
+
+  function handleDialKeyDown(event) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      openList();
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (open) setOpen(false);
+      else openList();
+    }
+  }
+
+  function handleListKeyDown(event) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveIndex((index) => Math.min(index + 1, PHONE_DIAL_OPTIONS.length - 1));
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((index) => Math.max(index - 1, 0));
+      return;
+    }
+    if (event.key === "Home") {
+      event.preventDefault();
+      setActiveIndex(0);
+      return;
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      setActiveIndex(PHONE_DIAL_OPTIONS.length - 1);
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      choose(PHONE_DIAL_OPTIONS[activeIndex]);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setOpen(false);
+      buttonRef.current?.focus();
+      return;
+    }
+    if (event.key === "Tab") {
+      // The listbox is removed when it closes, so send focus somewhere that
+      // still exists instead of letting it fall back to the page body.
+      event.preventDefault();
+      setOpen(false);
+      if (event.shiftKey) buttonRef.current?.focus();
+      else inputRef.current?.focus();
+    }
+  }
 
   function handleLocalChange(event) {
     const next = event.target.value;
 
     // A pasted international number should replace the prefix, not become
-    // "+63+63917..." glued to the code already in the select.
+    // "+63+63917..." glued to the code already in the picker.
     if (next.trim().startsWith("+")) {
       const parsed = splitPhoneNumber(next, dial);
       onChange(joinPhoneNumber(parsed.dial, parsed.local));
@@ -169,35 +276,108 @@ function PhoneNumberField({
   }
 
   return (
-    <div className={styles.phoneField}>
-      <select
-        className={selectClasses}
-        aria-label="Country calling code"
-        value={dial}
-        onChange={(event) => onChange(joinPhoneNumber(event.target.value, local))}
-      >
-        {!PHONE_DIAL_OPTIONS.some((option) => option.dial === dial) && (
-          <option value={dial}>{dial}</option>
-        )}
-        {PHONE_DIAL_OPTIONS.map((option) => (
-          <option key={option.dial} value={option.dial}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <input
-        id={id}
-        className={classes}
-        name="contact"
-        type="tel"
-        inputMode="tel"
-        autoComplete="tel"
-        aria-label={ariaLabel}
-        value={local}
-        onChange={handleLocalChange}
-        placeholder={placeholder}
-        required={required}
-      />
+    <div ref={wrapRef} className={styles.phoneField}>
+      <div className={styles.phoneRow}>
+        <button
+          ref={buttonRef}
+          type="button"
+          className={dialClasses}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-label={selected ? `Country calling code: ${selected.name} ${selected.dial}` : "Choose a country calling code"}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (open) setOpen(false);
+            else openList();
+          }}
+          onKeyDown={handleDialKeyDown}
+        >
+          <span className={styles.phoneFlags}>
+            {selected ? (
+              selected.flags.map((code) => (
+                <img
+                  key={code}
+                  className={styles.phoneFlag}
+                  src={flagUrl(code)}
+                  srcSet={`${flagUrl2x(code)} 2x`}
+                  alt=""
+                  width="24"
+                  height="18"
+                />
+              ))
+            ) : null}
+          </span>
+          <span className={styles.phoneDialText}>{dial}</span>
+          <span className={styles.phoneCaret} aria-hidden="true" />
+        </button>
+        <input
+          ref={inputRef}
+          id={id}
+          className={classes}
+          name="contact"
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          aria-label={ariaLabel}
+          value={local}
+          onChange={handleLocalChange}
+          placeholder={placeholder}
+          required={required}
+        />
+      </div>
+
+      {open ? (
+        <ul
+          ref={listRef}
+          id={listId}
+          className={styles.phoneOptions}
+          role="listbox"
+          aria-label="Country calling codes"
+          tabIndex={-1}
+          aria-activedescendant={`${listId}-${activeIndex}`}
+          onKeyDown={handleListKeyDown}
+        >
+          {PHONE_DIAL_OPTIONS.map((option, index) => {
+            const isSelected = option.dial === dial;
+            const isActive = index === activeIndex;
+            return (
+              <li
+                key={option.dial}
+                id={`${listId}-${index}`}
+                data-index={index}
+                role="option"
+                aria-selected={isSelected}
+                className={`${styles.phoneOption} ${isActive ? styles.phoneOptionActive : ""}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  choose(option);
+                }}
+                onMouseEnter={() => setActiveIndex(index)}
+              >
+                <span className={styles.phoneFlags}>
+                  {option.flags.map((code) => (
+                    <img
+                      key={code}
+                      className={styles.phoneFlag}
+                      src={flagUrl(code)}
+                      srcSet={`${flagUrl2x(code)} 2x`}
+                      alt=""
+                      width="24"
+                      height="18"
+                    />
+                  ))}
+                </span>
+                <span className={styles.phoneOptionName}>{option.name}</span>
+                <span className={styles.phoneOptionDial}>{option.dial}</span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -1084,6 +1264,7 @@ export default function Account() {
                 value={form.contact}
                 onChange={(contact) => setForm((current) => ({ ...current, contact }))}
                 country={form.country}
+                inputClassName={styles.firstSetupPhoneControl}
               />
               <small>Use the number your family or school can reach.</small>
             </label>
