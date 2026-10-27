@@ -84,6 +84,29 @@ const PHONE_DIAL_OPTIONS = [
   { dial: "+685", name: "Samoa", flags: ["ws"], countries: ["Samoa"] },
 ];
 
+/**
+ * An example number in each country's own shape. The placeholder changes with
+ * the code so a +44 field does not ask for a Philippine mobile number.
+ */
+const PHONE_PLACEHOLDERS = {
+  "+63": "917 123 4567",
+  "+1": "415 555 2671",
+  "+44": "7911 123456",
+  "+61": "412 345 678",
+  "+86": "138 0013 8000",
+  "+91": "98765 43210",
+  "+62": "812 3456 7890",
+  "+81": "90 1234 5678",
+  "+60": "12 345 6789",
+  "+65": "8123 4567",
+  "+82": "10 1234 5678",
+  "+886": "912 345 678",
+  "+66": "81 234 5678",
+  "+971": "50 123 4567",
+  "+84": "91 234 5678",
+  "+685": "72 12345",
+};
+
 function flagUrl(code) {
   return `https://flagcdn.com/24x18/${code}.png`;
 }
@@ -153,12 +176,12 @@ function PhoneNumberField({
   onChange,
   country,
   inputClassName = "",
-  placeholder = "917 123 4567",
   required = true,
   id,
   ariaLabel = "Phone number",
 }) {
   const { dial, local } = splitPhoneNumber(value, dialForCountry(country));
+  const placeholder = PHONE_PLACEHOLDERS[dial] || "Phone number";
   const classes = [inputClassName, styles.phoneNumber].filter(Boolean).join(" ");
   const dialClasses = [inputClassName, styles.phoneDial].filter(Boolean).join(" ");
   const selected = PHONE_DIAL_OPTIONS.find((option) => option.dial === dial) || null;
@@ -1989,8 +2012,7 @@ export default function Account() {
                     ariaLabel="Contact number"
                   />
                   <span className={styles.proFieldNote}>
-                    Changing this sends a six-digit code to the new number. Text
-                    verification is available for Philippine numbers only.
+                    Changing this sends a six-digit code to the new number.
                   </span>
                 </label>
                 <label className={styles.proField}>
