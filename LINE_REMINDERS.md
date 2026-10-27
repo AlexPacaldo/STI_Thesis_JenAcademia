@@ -108,12 +108,21 @@ the admin needs to finish setup.
 
 ## How a student links LINE
 
-1. Sign in and open **Account**.
-2. Find the **LINE reminders** card and press **Connect LINE**.
-3. A six-digit code appears. It expires after 10 minutes and works once.
-4. Press the add-friend link (or search the Basic ID) in LINE, then send the
-   six-digit code to the chat.
-5. The card notices the link within about five seconds and shows **Connected**.
+A new account links LINE during its first sign-in. The setup wizard is three
+steps — picture, LINE, details — and the LINE step will not let the account
+continue until the link exists (unless the school itself has not finished the
+LINE configuration yet).
+
+1. Sign in. The wizard shows **Connect LINE** as its own step.
+2. Press **Show my secret number**. A six-digit code appears. It expires after
+   10 minutes and works once.
+3. Follow the three numbered cards: open LINE and add the school's Official
+   Account, send the six-digit code to that chat, then wait for the green tick.
+4. The card notices the link within a few seconds and shows **Connected**.
+5. Press **Next** and finish the details step.
+
+The same three-step guide is on **Account** for anyone who connected later or
+needs to reconnect.
 
 The code is stored only as an HMAC hash. The plain code is never written to the
 database, so a database dump cannot be replayed to hijack an account. Codes are

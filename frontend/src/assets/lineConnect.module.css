@@ -1,57 +1,83 @@
-/* Account-page card for linking a LINE account.
-   Matches the green/white card treatment used across the account page. */
+/* The LINE guide, in the same soft green and white as the account cards.
+   Big numbers, short sentences, and one action per card: this is read by a
+   child on a phone as often as by an adult. */
 
 .card {
   display: grid;
-  gap: 14px;
-  padding: 18px;
-  border: 1px solid rgba(38, 66, 59, 0.1);
+  gap: 16px;
+  width: 100%;
+  padding: 20px;
+  border: 2px solid rgba(38, 66, 59, 0.1);
   border-radius: 24px;
   background: #fff;
   box-shadow:
-    6px 6px 16px rgba(18, 34, 30, 0.16),
+    6px 6px 16px rgba(18, 34, 30, 0.14),
     -4px -4px 12px rgba(255, 255, 255, 0.72);
   color: var(--text, #13251f);
+}
+
+/* On the first sign-in the link cannot be skipped, so the card says so with
+   its border instead of a red warning. */
+.requiredCard {
+  border-color: rgba(47, 122, 61, 0.4);
+  background: linear-gradient(180deg, #f7fcf4 0%, #ffffff 45%);
 }
 
 .head {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 12px;
+}
+
+.headIcon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
+  background: #eaf7e4;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.headText {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .title {
   margin: 0;
   color: var(--text, #13251f);
-  font-size: 18px;
-  font-weight: 800;
+  font-size: 1.25rem;
+  font-weight: 850;
+  line-height: 1.2;
 }
 
 .subtitle {
   max-width: 56ch;
   margin: 4px 0 0;
   color: var(--text-mid, #26423b);
-  font-size: 13px;
+  font-size: 0.95rem;
   line-height: 1.5;
 }
 
 .connectedBadge {
   flex: 0 0 auto;
-  padding: 4px 12px;
+  padding: 6px 12px;
   border: 1px solid rgba(31, 157, 99, 0.28);
   border-radius: 999px;
   background: #ecfdf3;
   color: #166534;
-  font-size: 12px;
+  font-size: 0.8rem;
   font-weight: 800;
-  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .muted {
   margin: 0;
   color: var(--muted, #5e7268);
-  font-size: 12px;
+  font-size: 0.85rem;
   line-height: 1.5;
 }
 
@@ -62,36 +88,56 @@
   border-radius: 16px;
   background: #f8fbf9;
   color: var(--text-mid, #26423b);
-  font-size: 13px;
+  font-size: 0.95rem;
   line-height: 1.5;
 }
 
-.linkedBody,
-.linkBody,
-.codeBody {
+/* ---------------------------------------------------------------- success */
+
+.success {
   display: grid;
-  gap: 12px;
+  justify-items: center;
+  gap: 8px;
+  padding: 8px 0 0;
+  text-align: center;
 }
 
-.linkedLine {
+.successIcon {
+  font-size: 2.6rem;
+  line-height: 1;
+}
+
+.successTitle {
   margin: 0;
-  color: var(--text, #13251f);
-  font-size: 14px;
+  color: #1e3828;
+  font-size: 1.35rem;
+  font-weight: 850;
 }
 
-.linkedLine strong {
-  font-weight: 800;
+.successBody {
+  max-width: 44ch;
+  margin: 0;
+  color: var(--text-mid, #26423b);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.successBody strong {
+  color: #1e3828;
 }
 
 .toggleRow {
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  margin-top: 6px;
   padding: 12px 14px;
   border: 1px solid rgba(38, 66, 59, 0.1);
   border-radius: 16px;
   background: #f8fbf9;
+  text-align: left;
   cursor: pointer;
 }
 
@@ -99,14 +145,14 @@
   display: block;
   margin-bottom: 2px;
   color: var(--text, #13251f);
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 0.95rem;
+  font-weight: 800;
 }
 
 .checkbox {
   flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   accent-color: var(--brand-green, #2f7a3d);
   cursor: pointer;
 }
@@ -117,6 +163,7 @@
 }
 
 .confirmRow {
+  width: 100%;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -127,8 +174,9 @@
   border-radius: 16px;
   background: #fff7f6;
   color: #8a3e2e;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: left;
 }
 
 .actions {
@@ -143,33 +191,189 @@
   justify-content: flex-start;
 }
 
-.primaryButton,
-.ghostButton,
-.dangerButton {
-  min-height: 36px;
-  padding: 8px 16px;
+/* ------------------------------------------------------------- the start */
+
+.start {
+  display: grid;
+  gap: 16px;
+}
+
+.previewSteps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.previewSteps li {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 14px 8px;
+  border: 1px solid rgba(38, 66, 59, 0.1);
   border-radius: 18px;
+  background: #f8fbf9;
+  color: var(--text-mid, #26423b);
+  font-size: 0.85rem;
+  font-weight: 750;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.previewNumber {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #2f7a3d;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 850;
+}
+
+/* -------------------------------------------------------------- the guide */
+
+.guide {
+  display: grid;
+  gap: 14px;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(38, 66, 59, 0.12);
+  border-radius: 20px;
+  background: #fbfdfa;
+}
+
+.stepNumber {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #2f7a3d;
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.stepBody {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.stepTitle {
+  margin: 0;
+  color: #1e3828;
+  font-size: 1.1rem;
+  font-weight: 850;
+}
+
+.stepText {
+  margin: 0;
+  color: #40584a;
+  font-size: 0.98rem;
+  line-height: 1.5;
+}
+
+.stepHint {
+  margin: 0;
+  color: #6b7d72;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.code {
+  width: 100%;
+  padding: 14px 16px;
+  border: 2px dashed rgba(47, 122, 61, 0.45);
+  border-radius: 18px;
+  background: #f2f9f3;
+  color: #1e3828;
+  font-size: clamp(1.7rem, 6vw, 2.3rem);
+  font-weight: 900;
+  letter-spacing: 0.35em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  user-select: all;
+}
+
+/* ------------------------------------------------------------- the buttons */
+
+.bigButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 54px;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 16px;
+  background: #1e3828;
+  color: #fff;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 1.02rem;
+  font-weight: 850;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.2s ease, filter 0.2s ease;
+}
+
+.bigButton:hover:not(:disabled) {
+  background: #2f7a3d;
+}
+
+.bigButton:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.copyButton {
+  min-height: 42px;
+  padding: 8px 16px;
+  border: 2px solid #cfe3c6;
+  border-radius: 14px;
+  background: #fff;
+  color: #2f6b39;
+  font-family: inherit;
+  font-size: 0.95rem;
   font-weight: 800;
   cursor: pointer;
-  transition: filter 0.2s ease, background 0.2s ease, border-color 0.2s ease;
 }
 
-.primaryButton {
-  border: 1px solid var(--brand-green, #2f7a3d);
-  background: var(--brand-green, #2f7a3d);
-  color: #fff;
+.copyButton:hover {
+  background: #f1f9ed;
 }
 
-.primaryButton:hover:not(:disabled) {
-  filter: brightness(1.06);
+.ghostButton,
+.dangerButton,
+.retryButton {
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 14px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
 .ghostButton {
-  border: 1px solid rgba(38, 66, 59, 0.16);
+  border: 2px solid #d6e2d4;
   background: #fff;
-  color: var(--brand-forest, #1e3828);
+  color: #315e3b;
 }
 
 .ghostButton:hover:not(:disabled) {
@@ -186,88 +390,81 @@
   filter: brightness(1.06);
 }
 
-.primaryButton:disabled,
+.retryButton {
+  border: 1px solid #e3a9a3;
+  background: #fff;
+  color: #8a3e2e;
+}
+
 .ghostButton:disabled,
-.dangerButton:disabled {
+.dangerButton:disabled,
+.copyButton:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
-.stepTitle {
-  margin: 0;
-  color: var(--text, #13251f);
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.code {
-  padding: 14px 16px;
-  border: 1px dashed rgba(47, 122, 61, 0.4);
-  border-radius: 16px;
-  background: #f2f9f3;
-  color: var(--brand-forest, #1e3828);
-  font-size: clamp(1.6rem, 5vw, 2.1rem);
-  font-weight: 900;
-  letter-spacing: 0.4em;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  user-select: all;
-}
-
-.steps {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-  padding-left: 20px;
-  color: var(--text-mid, #26423b);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.steps strong {
-  color: var(--text, #13251f);
-}
-
-.link {
-  color: var(--brand-green, #2f7a3d);
-  font-weight: 800;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.link:hover {
-  color: var(--brand-forest, #1e3828);
-}
+/* --------------------------------------------------------------- the error */
 
 .error {
-  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   padding: 10px 14px;
   border: 1px solid #f2b8b5;
   border-radius: 14px;
   background: #fff7f6;
   color: #8a3e2e;
-  font-size: 13px;
+  font-size: 0.9rem;
   line-height: 1.5;
 }
 
 @media (max-width: 560px) {
   .head {
-    flex-direction: column;
+    flex-wrap: wrap;
   }
 
-  .toggleRow {
-    align-items: flex-start;
+  .previewSteps {
+    grid-template-columns: 1fr;
+  }
+
+  .previewSteps li {
+    grid-template-columns: 34px 1fr;
+    align-items: center;
+    justify-items: start;
+    text-align: left;
+  }
+
+  .step {
+    padding: 14px;
+  }
+
+  .stepNumber {
+    width: 36px;
+    height: 36px;
+    font-size: 1.1rem;
   }
 
   .actions {
     justify-content: stretch;
   }
 
-  .primaryButton,
-  .ghostButton,
-  .dangerButton {
+  .actions > button {
     flex: 1 1 auto;
+  }
+
+  .toggleRow {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 380px) {
+  /* Six digits plus wide letter-spacing do not fit a small phone beside the
+     step number. The number is the one thing that must never be cut off. */
+  .code {
+    padding: 12px 8px;
+    font-size: 1.45rem;
+    letter-spacing: 0.22em;
   }
 }

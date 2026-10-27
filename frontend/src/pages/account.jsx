@@ -1,5 +1,5 @@
 import axios from "axios";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "../assets/account.module.css";
 import kid from "../assets/studentKid.module.css";
@@ -189,6 +189,9 @@ export default function Account() {
   const [isProfileIncomplete, setIsProfileIncomplete] = useState(false);
   const [firstSetupStep, setFirstSetupStep] = useState(0);
   const [firstSetupFinished, setFirstSetupFinished] = useState(false);
+  // The wizard cannot leave the LINE step until the link exists (or until the
+  // school has not finished its own LINE setup). The card reports both facts.
+  const [lineState, setLineState] = useState({ loading: true, linked: false, usable: false });
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -218,6 +221,20 @@ export default function Account() {
   }, []);
 
   const details = user?.roleDetails || {};
+  // Kept by identity: the LINE card reports on every status change, and a new
+  // object each time would re-render the wizard a few times per poll.
+  const handleLineState = useCallback((next) => {
+    setLineState((current) =>
+      current.loading === next.loading &&
+      current.linked === next.linked &&
+      current.usable === next.usable
+        ? current
+        : next
+    );
+  }, []);
+  // A school that has not finished its own LINE setup must not trap a person
+  // in onboarding forever, so "not usable" counts as permission to move on.
+  const lineReady = lineState.linked || (!lineState.loading && !lineState.usable);
   // The contract summary the student sees on their own page.
   //
   // Two limits, not one: classes and time. Classes can be plentiful while the
@@ -566,6 +583,15 @@ export default function Account() {
       return;
     }
 
+    // !! The first sign-in asks for LINE before the details. Reaching the form
+    // !! without the link would skip a required step, so send them back to it
+    // !! instead of saving a profile that cannot receive reminders.
+    if (isProfileIncomplete && lineState.usable && !lineState.linked) {
+      setFirstSetupStep(1);
+      notify("Connect LINE first so we can send your class reminders.", "error");
+      return;
+    }
+
     // !! The password is checked here so the confirm dialog is not opened for
     // !! a save that cannot succeed. The server checks it again; this copy is
     // !! for the person filling the form in, not for security.
@@ -689,6 +715,9 @@ export default function Account() {
   function renderFirstProfileSetup() {
     const dashboardPath = user.role === "teacher" ? "/TeacherDashboard" : "/StudentDashboard";
     const firstName = form.firstName || "friend";
+    let lineNextLabel = "Next";
+    if (lineState.loading) lineNextLabel = "Checking…";
+    else if (lineState.usable && !lineState.linked) lineNextLabel = "Connect LINE first";
 
     if (firstSetupFinished) {
       return (
@@ -696,7 +725,12 @@ export default function Account() {
           <span className={styles.firstSetupIcon} aria-hidden="true">🎉</span>
           <p className={styles.firstSetupStep}>All done!</p>
           <h1 id="first-setup-ready">You’re ready, {firstName}!</h1>
-          <p>Your account is ready. Let’s go to Home and take a little tour.</p>
+          <p>
+            {lineState.linked
+              ? "Your account is ready, and LINE is connected. "
+              : "Your account is ready. "}
+            Let’s go to Home and take a little tour.
+          </p>
           <button type="button" className={styles.firstSetupPrimary} onClick={() => navigate(dashboardPath)}>
             Go to Home
           </button>
@@ -706,12 +740,24 @@ export default function Account() {
 
     return (
       <section className={styles.firstSetupCard} aria-labelledby="first-setup-title">
-        <div className={styles.firstSetupProgress} aria-label={`Step ${firstSetupStep + 1} of 2`}>
+        <div className={styles.firstSetupProgress} aria-label={`Step ${firstSetupStep + 1} of 3`}>
           <span className={firstSetupStep === 0 ? styles.firstSetupCurrent : styles.firstSetupDone}>
             {firstSetupStep > 0 ? "✓" : "1"}
           </span>
           <i />
-          <span className={firstSetupStep === 1 ? styles.firstSetupCurrent : ""}>2</span>
+          <span
+            className={
+              firstSetupStep === 1
+                ? styles.firstSetupCurrent
+                : firstSetupStep > 1
+                  ? styles.firstSetupDone
+                  : ""
+            }
+          >
+            {firstSetupStep > 1 ? "✓" : "2"}
+          </span>
+          <i />
+          <span className={firstSetupStep === 2 ? styles.firstSetupCurrent : ""}>3</span>
         </div>
         <p className={styles.firstSetupStep}>Let’s get your account ready</p>
         <h1 id="first-setup-title">Hi, {firstName}!</h1>
@@ -754,6 +800,38 @@ export default function Account() {
             </button>
             {pictureUploading && <p role="status">Saving your picture...</p>}
           </div>
+        ) : firstSetupStep === 1 ? (
+          <div className={styles.firstSetupContent}>
+            <span className={styles.firstSetupIcon} aria-hidden="true">💬</span>
+            <h2>Connect LINE</h2>
+            <p>
+              This is how we send your class reminders. Do the three steps, then
+              press Next.
+            </p>
+            <LineConnectCard
+              userId={user.id}
+              required
+              showHeader={false}
+              onStateChange={handleLineState}
+            />
+            <div className={styles.firstSetupActions}>
+              <button
+                type="button"
+                className={styles.firstSetupSecondary}
+                onClick={() => setFirstSetupStep(0)}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className={styles.firstSetupPrimary}
+                onClick={() => setFirstSetupStep(2)}
+                disabled={!lineReady}
+              >
+                {lineNextLabel}
+              </button>
+            </div>
+          </div>
         ) : (
           <form className={styles.firstSetupForm} onSubmit={saveProfile}>
             <span className={styles.firstSetupIcon} aria-hidden="true">🧑‍🎓</span>
@@ -789,7 +867,7 @@ export default function Account() {
               <small>We need it to save your details safely.</small>
             </label>
             <div className={styles.firstSetupActions}>
-              <button type="button" className={styles.firstSetupSecondary} onClick={() => setFirstSetupStep(0)}>
+              <button type="button" className={styles.firstSetupSecondary} onClick={() => setFirstSetupStep(1)}>
                 Back
               </button>
               <button type="submit" className={styles.firstSetupPrimary} disabled={saving}>
