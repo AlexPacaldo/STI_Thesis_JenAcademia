@@ -781,7 +781,9 @@ export default function Account() {
         ? "/TeacherDashboard"
         : "/StudentDashboard";
     const firstName = form.firstName || (isStudent ? "friend" : "there");
-    const totalSteps = isStudent ? 3 : 2;
+    const lineOnlySetup = isStudent && !isProfileIncomplete;
+    const totalSteps = lineOnlySetup ? 1 : isStudent ? 3 : 2;
+    const progressStep = lineOnlySetup ? 0 : firstSetupStep;
     let lineNextLabel = "Next";
     if (lineState.loading) lineNextLabel = "Checking…";
     else if (!lineState.linked) lineNextLabel = "Connect LINE first";
@@ -809,31 +811,41 @@ export default function Account() {
 
     return (
       <section className={styles.firstSetupCard} aria-labelledby="first-setup-title">
-        <div className={styles.firstSetupProgress} aria-label={`Step ${firstSetupStep + 1} of ${totalSteps}`}>
-          <span className={firstSetupStep === 0 ? styles.firstSetupCurrent : styles.firstSetupDone}>
-            {firstSetupStep > 0 ? "✓" : "1"}
-          </span>
-          {totalSteps > 1 && <i />}
-          <span
-            className={
-              firstSetupStep === 1
-                ? styles.firstSetupCurrent
-                : firstSetupStep > 1
-                  ? styles.firstSetupDone
-                  : ""
-            }
-          >
-            {firstSetupStep > 1 ? "✓" : "2"}
-          </span>
-          {isStudent && (
-            <>
-              <i />
-              <span className={firstSetupStep === 2 ? styles.firstSetupCurrent : ""}>3</span>
-            </>
-          )}
-        </div>
-        <p className={styles.firstSetupStep}>Let’s get your account ready</p>
-        <h1 id="first-setup-title">Hi, {firstName}!</h1>
+        {lineOnlySetup ? (
+          <div className={styles.firstSetupProgress} aria-label="Step 1 of 1">
+            <span className={styles.firstSetupCurrent}>1</span>
+          </div>
+        ) : (
+          <div className={styles.firstSetupProgress} aria-label={`Step ${progressStep + 1} of ${totalSteps}`}>
+            <span className={progressStep === 0 ? styles.firstSetupCurrent : styles.firstSetupDone}>
+              {progressStep > 0 ? "✓" : "1"}
+            </span>
+            {totalSteps > 1 && <i />}
+            <span
+              className={
+                progressStep === 1
+                  ? styles.firstSetupCurrent
+                  : progressStep > 1
+                    ? styles.firstSetupDone
+                    : ""
+              }
+            >
+              {progressStep > 1 ? "✓" : "2"}
+            </span>
+            {isStudent && (
+              <>
+                <i />
+                <span className={progressStep === 2 ? styles.firstSetupCurrent : ""}>3</span>
+              </>
+            )}
+          </div>
+        )}
+        <p className={styles.firstSetupStep}>
+          {lineOnlySetup ? "One last step" : "Let’s get your account ready"}
+        </p>
+        <h1 id="first-setup-title">
+          {lineOnlySetup ? `Let’s connect LINE, ${firstName}!` : `Hi, ${firstName}!`}
+        </h1>
 
         {firstSetupStep === 0 ? (
           <div className={styles.firstSetupContent}>
@@ -880,8 +892,7 @@ export default function Account() {
             <span className={styles.firstSetupIcon} aria-hidden="true">💬</span>
             <h2>Connect LINE</h2>
             <p>
-              This is how we send your class reminders. Do the three steps, then
-              press Next.
+              Follow the pictures. Ask a grown-up to help if you need it.
             </p>
             <LineConnectCard
               userId={user.id}
@@ -890,20 +901,28 @@ export default function Account() {
               onStateChange={handleLineState}
             />
             <div className={styles.firstSetupActions}>
-              <button
-                type="button"
-                className={styles.firstSetupSecondary}
-                onClick={() => setFirstSetupStep(0)}
-              >
-                Back
-              </button>
+              {!lineOnlySetup && (
+                <button
+                  type="button"
+                  className={styles.firstSetupSecondary}
+                  onClick={() => setFirstSetupStep(0)}
+                >
+                  Back
+                </button>
+              )}
               <button
                 type="button"
                 className={styles.firstSetupPrimary}
-                onClick={() => setFirstSetupStep(2)}
+                onClick={() => {
+                  if (isProfileIncomplete) {
+                    setFirstSetupStep(2);
+                  } else {
+                    setFirstSetupFinished(true);
+                  }
+                }}
                 disabled={!lineReady}
               >
-                {lineNextLabel}
+                {lineState.linked && !isProfileIncomplete ? "Finish setup" : lineNextLabel}
               </button>
             </div>
           </div>
@@ -1687,7 +1706,7 @@ export default function Account() {
   return (
     <main className={styles.pageShell}>
       <div className={styles.accountPage}>
-        {(isProfileIncomplete || firstSetupFinished) && ["student", "teacher", "admin"].includes(user.role) ? (
+        {firstSetupActive ? (
           renderFirstProfileSetup()
         ) : user.role === "student" ? (
           renderStudentAccount()

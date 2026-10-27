@@ -206,7 +206,7 @@ export default function LineConnectCard({
       {!status.loading && !status.configured ? (
         <p className={styles.notice}>
           {required
-            ? "LINE is not ready yet. Please ask the school administrator to finish setting it up. You can continue once it is ready."
+            ? "LINE is not ready yet. Please ask your teacher to help. You can finish setup when it is ready."
             : "LINE is not ready yet. Your teacher will finish setting it up. You can keep going and connect it later."}
         </p>
       ) : null}
@@ -214,7 +214,7 @@ export default function LineConnectCard({
       {!status.loading && status.configured && !status.webhookConfigured ? (
         <p className={styles.notice}>
           {required
-            ? "LINE is almost ready. Please ask the school administrator to finish setting it up. You can continue once it is ready."
+            ? "LINE needs one more setting. Please ask your teacher to help, then come back here."
             : "LINE is almost ready. The school still has one setting to finish. You can keep going and connect it later."}
         </p>
       ) : null}
@@ -300,7 +300,7 @@ export default function LineConnectCard({
                 </span>
                 <span className={styles.previewText}>
                   <span className={styles.previewNumber} aria-hidden="true">1</span>
-                  Open LINE
+                  Get your number
                 </span>
               </li>
               <li>
@@ -309,7 +309,7 @@ export default function LineConnectCard({
                 </span>
                 <span className={styles.previewText}>
                   <span className={styles.previewNumber} aria-hidden="true">2</span>
-                  Send us the secret number
+                  Open LINE and send it
                 </span>
               </li>
               <li>
@@ -318,7 +318,7 @@ export default function LineConnectCard({
                 </span>
                 <span className={styles.previewText}>
                   <span className={styles.previewNumber} aria-hidden="true">3</span>
-                  Wait for the green tick ✅
+                  Come back and wait
                 </span>
               </li>
             </ol>
@@ -328,7 +328,7 @@ export default function LineConnectCard({
               onClick={connect}
               disabled={busy}
             >
-              {busy ? "Getting your number…" : "Show my secret number 🔢"}
+              {busy ? "Getting your number…" : "Get my number"}
             </button>
           </div>
         ) : (
@@ -336,7 +336,7 @@ export default function LineConnectCard({
             <div className={styles.step}>
               <div className={styles.stepHead}>
                 <span className={styles.stepNumber} aria-hidden="true">1</span>
-                <p className={styles.stepTitle}>Open LINE</p>
+                <p className={styles.stepTitle}>1. Open LINE</p>
               </div>
               <figure className={styles.stepArt}>
                 <OpenLineArt />
@@ -352,7 +352,7 @@ export default function LineConnectCard({
                     target="_blank"
                     rel="noreferrer"
                   >
-                    Open LINE
+                    Open {botName} in LINE
                   </a>
                 ) : null}
                 {status.basicId ? (
@@ -366,7 +366,7 @@ export default function LineConnectCard({
             <div className={styles.step}>
               <div className={styles.stepHead}>
                 <span className={styles.stepNumber} aria-hidden="true">2</span>
-                <p className={styles.stepTitle}>Type this secret number</p>
+                <p className={styles.stepTitle}>2. Send this number</p>
               </div>
               <figure className={styles.stepArt}>
                 <SendCodeArt code={code} />
@@ -381,7 +381,7 @@ export default function LineConnectCard({
                   {copied ? "Copied! ✅" : "Copy the number"}
                 </button>
                 <p className={styles.stepHint}>
-                  Send it in the chat with {botName}.
+                  Tap the chat with {botName}. Paste the number, then tap Send.
                 </p>
                 {expires ? (
                   <p className={styles.stepHint}>It works until {expires}.</p>
@@ -392,14 +392,14 @@ export default function LineConnectCard({
             <div className={styles.step}>
               <div className={styles.stepHead}>
                 <span className={styles.stepNumber} aria-hidden="true">3</span>
-                <p className={styles.stepTitle}>Wait for the green tick</p>
+                <p className={styles.stepTitle}>3. Come back here</p>
               </div>
               <figure className={styles.stepArt}>
                 <WaitingArt />
               </figure>
               <div className={styles.stepBody}>
                 <p className={styles.stepText}>
-                  We check by ourselves. This card changes when it works.
+                  Come back to this page. We will check for you and show a green tick.
                 </p>
                 <button
                   type="button"
@@ -407,7 +407,7 @@ export default function LineConnectCard({
                   onClick={refresh}
                   disabled={busy}
                 >
-                  Check again
+                  Check now
                 </button>
               </div>
             </div>

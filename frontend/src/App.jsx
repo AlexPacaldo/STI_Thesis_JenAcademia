@@ -35,6 +35,7 @@ function App() {
   // footer visibility will be computed after hideHeaderPaths
   const idleTimerRef = useRef(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [lineGate, setLineGate] = useState(null);
 
   function isAuthenticated(user) {
     return Boolean(user && (user.id || user.user_id || user.userId));
@@ -188,6 +189,12 @@ function App() {
         return;
       }
 
+      if (role === "student" && currentUserId) {
+        setLineGate((current) => current?.userId === currentUserId
+          ? current
+          : { userId: currentUserId, status: "checking" });
+      }
+
       async function checkAccountStatus() {
         if (!currentUserId) return;
         try {
@@ -214,20 +221,31 @@ function App() {
       }
 
       async function checkRequiredLineSetup() {
-        if (role !== "student" || path === "/account" || !currentUserId) return;
+        if (role !== "student" || !currentUserId) return;
         try {
           const response = await apiFetch(`${API_BASE_URL}/api/users/${currentUserId}/line`);
           if (!response.ok) {
-            navigate("/account", { replace: true });
+            setLineGate({ userId: currentUserId, status: "required" });
+            if (path !== "/account") navigate("/account", { replace: true });
             return;
           }
           const data = await response.json();
-          if (!data?.linked) {
+          const setupRequired = !data?.linked;
+          setLineGate((current) => ({
+            userId: currentUserId,
+            status: setupRequired || (
+              path === "/account" &&
+              current?.userId === currentUserId &&
+              current.status === "required"
+            ) ? "required" : "ready",
+          }));
+          if (setupRequired && path !== "/account") {
             navigate("/account", { replace: true });
           }
         } catch (error) {
           console.warn("Could not check required LINE setup:", error);
-          navigate("/account", { replace: true });
+          setLineGate({ userId: currentUserId, status: "required" });
+          if (path !== "/account") navigate("/account", { replace: true });
         }
       }
 
@@ -304,17 +322,47 @@ function App() {
   }, [location.pathname, location.search]);
 
   const hideHeaderPaths = ["/", "/login", "/setup-account", "/forgot-password", "/reset-password"];
+  const currentUser = readStoredUser();
+  const currentRole = getRole(currentUser);
+  const currentUserId = getUserId(currentUser);
+  const currentPath = location.pathname.toLowerCase();
+  const lineGateMatchesCurrentUser = lineGate?.userId === currentUserId;
+  const studentLineGatePending =
+    currentRole === "student" &&
+    (!lineGateMatchesCurrentUser || lineGate.status === "checking") &&
+    !isSetupAccountPath(currentPath);
+  const studentLineSetupRequired =
+    currentRole === "student" &&
+    lineGateMatchesCurrentUser &&
+    (lineGate.status === "required" || (
+      currentPath === "/account" && !isProfileComplete(currentUser)
+    ));
+  const studentLineSetupRedirecting =
+    studentLineSetupRequired && currentPath !== "/account";
   const shouldShowHeader = !hideHeaderPaths.some((publicPath) => {
-    const normalizedPath = location.pathname.toLowerCase();
-    return publicPath === "/" ? normalizedPath === "/" : normalizedPath === publicPath || normalizedPath.startsWith(`${publicPath}/`);
-  });
-  const isAccountPage = location.pathname === "/account";
-  const isAccountPageNewUser = isAccountPage && !isProfileComplete(readStoredUser());
+    return publicPath === "/" ? currentPath === "/" : currentPath === publicPath || currentPath.startsWith(`${publicPath}/`);
+  }) && !studentLineSetupRequired;
+  const isAccountPage = currentPath === "/account";
+  const isAccountPageNewUser = isAccountPage && !isProfileComplete(currentUser);
   const shouldShowSidebar = shouldShowHeader && !isAccountPageNewUser;
-  const isTeacherTheme = getRole(readStoredUser()) === "teacher";
+  const isTeacherTheme = currentRole === "teacher";
   const isAdminPage = getRole(readStoredUser()) === "admin" && !isAccountPage;
   const showFooter = location.pathname === "/" && !isAuthenticated(readStoredUser());
-  const isFullBleedPath = location.pathname === "/" || location.pathname === "/login" || location.pathname.toLowerCase().startsWith("/setup-account/") || location.pathname.toLowerCase().startsWith("/forgot-password") || location.pathname.toLowerCase().startsWith("/reset-password/");
+  const isFullBleedPath = location.pathname === "/" || location.pathname === "/login" || currentPath.startsWith("/setup-account/") || currentPath.startsWith("/forgot-password") || currentPath.startsWith("/reset-password/") || studentLineSetupRequired;
+
+  if (studentLineGatePending || studentLineSetupRedirecting) {
+    return (
+      <main className="line-setup-gate" role="status">
+        <span aria-hidden="true">💬</span>
+        <h1>{studentLineSetupRedirecting ? "Let’s set up LINE first!" : "Getting your account ready…"}</h1>
+        <p>
+          {studentLineSetupRedirecting
+            ? "We’ll take you to the next step now."
+            : "Please wait a moment."}
+        </p>
+      </main>
+    );
+  }
 
   return (
     <>

@@ -347,6 +347,36 @@ a      { color: inherit; }
   border: 0;
 }
 
+.line-setup-gate {
+  display: grid;
+  min-height: 100vh;
+  align-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 24px;
+  background: #f5faf2;
+  color: #1e3828;
+  text-align: center;
+}
+
+.line-setup-gate > span {
+  font-size: 3rem;
+}
+
+.line-setup-gate h1,
+.line-setup-gate p {
+  margin: 0;
+}
+
+.line-setup-gate h1 {
+  font-size: clamp(1.5rem, 5vw, 2rem);
+}
+
+.line-setup-gate p {
+  color: #526354;
+  font-size: 1.05rem;
+}
+
 /* ============================================================
    GLOBAL BUTTON SYSTEM
    ============================================================ */
