@@ -228,7 +228,7 @@ export default function Account() {
   const firstSetupActive =
     Boolean(user) &&
     (isProfileIncomplete || firstSetupFinished) &&
-    ["student", "teacher"].includes(user.role);
+    ["student", "teacher", "admin"].includes(user.role);
   const editDialogOpen = !firstSetupActive && (profileEditing || passwordEditing);
   // Kept by identity: the LINE card reports on every status change, and a new
   // object each time would re-render the wizard a few times per poll.
@@ -734,10 +734,12 @@ export default function Account() {
   }
 
   function renderFirstProfileSetup() {
-    const dashboardPath = user.role === "teacher" ? "/TeacherDashboard" : "/StudentDashboard";
-    const firstName = form.firstName || "friend";
-    // Teachers and admins don't use LINE reminders, so their first sign-in is
-    // two steps (picture, details) instead of three (picture, LINE, details).
+    const dashboardPath = user.role === "admin"
+      ? "/AdminDashboard"
+      : user.role === "teacher"
+        ? "/TeacherDashboard"
+        : "/StudentDashboard";
+    const firstName = form.firstName || (isStudent ? "friend" : "there");
     const totalSteps = isStudent ? 3 : 2;
     let lineNextLabel = "Next";
     if (lineState.loading) lineNextLabel = "Checking…";
@@ -750,10 +752,12 @@ export default function Account() {
           <p className={styles.firstSetupStep}>All done!</p>
           <h1 id="first-setup-ready">You’re ready, {firstName}!</h1>
           <p>
-            {lineState.linked
+            {isStudent && lineState.linked
               ? "Your account is ready, and LINE is connected. "
               : "Your account is ready. "}
-            Let’s go to Home and take a little tour.
+            {isStudent
+              ? "Let’s go to Home and take a little tour."
+              : "You can head to your dashboard whenever you’re ready."}
           </p>
           <button type="button" className={styles.firstSetupPrimary} onClick={() => navigate(dashboardPath)}>
             Go to Home
@@ -795,9 +799,11 @@ export default function Account() {
             <span className={styles.firstSetupIcon} aria-hidden="true">📸</span>
             <h2>First, add your picture</h2>
             <p>
-              {user.role === "teacher"
-                ? "Choose a picture so your students and team know it’s you."
-                : "Choose a picture so your teacher and classmates know it’s you."}
+              {isStudent
+                ? "Choose a picture so your teacher and classmates know it’s you."
+                : user.role === "teacher"
+                  ? "Choose a picture so your students and team know it’s you. Your name and time zone are the only other profile details we need."
+                  : "Choose a picture so your school team can recognize you. Your name and time zone are the only other profile details we need."}
             </p>
             {user.profileImageUrl && (
               <AuthenticatedImage
@@ -862,8 +868,10 @@ export default function Account() {
           </div>
         ) : (
           <form className={styles.firstSetupForm} onSubmit={saveProfile}>
-            <span className={styles.firstSetupIcon} aria-hidden="true">🧑‍🎓</span>
-            <h2>Now, check your details</h2>
+            <span className={styles.firstSetupIcon} aria-hidden="true">
+              {isStudent ? "🧑‍🎓" : user.role === "teacher" ? "📚" : "🏫"}
+            </span>
+            <h2>Now, check your name and time zone</h2>
             <label>
               <span>Your first name</span>
               <input name="firstName" value={form.firstName} onChange={onChange} required />
@@ -1627,7 +1635,7 @@ export default function Account() {
   return (
     <main className={styles.pageShell}>
       <div className={styles.accountPage}>
-        {(isProfileIncomplete || firstSetupFinished) && ["student", "teacher"].includes(user.role) ? (
+        {(isProfileIncomplete || firstSetupFinished) && ["student", "teacher", "admin"].includes(user.role) ? (
           renderFirstProfileSetup()
         ) : user.role === "student" ? (
           renderStudentAccount()
