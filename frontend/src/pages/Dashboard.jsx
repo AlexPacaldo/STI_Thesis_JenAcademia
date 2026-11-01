@@ -6,6 +6,7 @@ import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { openSseStream } from "../utils/sseClient.js";
 import FirstStepsGuide from "../components/FirstStepsGuide.jsx";
+import { convertDateTime, formatDateInTimezone, getStoredUserTimezone, normalizeDateKey } from "../utils/timezone.js";
 
 const API = API_BASE_URL;
 
@@ -69,9 +70,14 @@ export default function Dashboard({ mode }) {
       setError("");
 
       try {
+        const timezone = getStoredUserTimezone();
+        const todayKey = formatDateInTimezone(new Date(), timezone);
         let dashboard = {};
         try {
-          const dashboardRes = await axios.get(`${API}/api/dashboard/${isTeacher ? "teacher" : "student"}/${currentUserId}`);
+          const dashboardRes = await axios.get(
+            `${API}/api/dashboard/${isTeacher ? "teacher" : "student"}/${currentUserId}`,
+            { params: { scheduled_date: todayKey } }
+          );
           dashboard = dashboardRes.data || {};
         } catch (dashboardErr) {
           console.warn("Fast dashboard endpoint unavailable; using legacy dashboard requests.", dashboardErr);
@@ -86,7 +92,7 @@ export default function Dashboard({ mode }) {
           if (isTeacher) {
             const [classesRes, studentsRes, assignmentsRes, submissionsRes, booksRes, coursesRes] = await Promise.all([
               safeGet(`${API}/api/calendar/classes-by-date`, {
-                params: { teacher_id: currentUserId },
+                params: { teacher_id: currentUserId, scheduled_date: todayKey },
               }),
               safeGet(`${API}/api/teacher/${currentUserId}/students`),
               safeGet(`${API}/api/teacher/${currentUserId}/assignments`),
@@ -108,7 +114,7 @@ export default function Dashboard({ mode }) {
               assignmentsRes, remarksRes] =
               await Promise.all([
                 safeGet(`${API}/api/calendar/classes-by-date`, {
-                  params: { student_id: currentUserId },
+                  params: { student_id: currentUserId, scheduled_date: todayKey },
                 }),
                 safeGet(`${API}/api/books`, { params: { student_id: currentUserId } }),
                 safeGet(`${API}/api/lesson-progress`, { params: { student_id: currentUserId } }),
@@ -138,10 +144,24 @@ export default function Dashboard({ mode }) {
           }
         }
 
+        const classesToday = (dashboard.classes || []).filter((cls) => {
+          const scheduledDate = normalizeDateKey(cls.scheduled_date);
+          if (!scheduledDate) return false;
+          if (!cls.start_time) return scheduledDate === todayKey;
+
+          const viewerDate = convertDateTime(
+            cls.scheduled_date,
+            cls.start_time,
+            cls.teacher_timezone || timezone,
+            timezone
+          ).date;
+          return viewerDate === todayKey;
+        });
+
         if (isTeacher) {
           if (ignore) return;
           setTeacherData({
-            classesToday: (dashboard.classes || []).map((cls) => ({
+            classesToday: classesToday.map((cls) => ({
               id: cls.class_id || cls.id,
               student: cls.student_name
                 ? `${cls.student_name} ${cls.student_last_name || ""}`.trim()
@@ -156,7 +176,7 @@ export default function Dashboard({ mode }) {
         } else {
           if (ignore) return;
           setStudentData({
-            classesToday: (dashboard.classes || []).map((cls) => ({
+            classesToday: classesToday.map((cls) => ({
               id: cls.class_id || cls.id,
               title: cls.class_name || cls.className || cls.subject || "Class",
               teacher: cls.teacher_name ? `${cls.teacher_name} ${cls.teacher_last_name || ""}`.trim() : cls.teacherName || "Teacher",
@@ -310,7 +330,7 @@ export default function Dashboard({ mode }) {
                 return classes.map((cls) => (
                   <Link
                     key={cls.id}
-                    to="/Calendar"
+                    to={`/Calendar?date=${formatDateInTimezone(new Date(), getStoredUserTimezone())}&classId=${encodeURIComponent(cls.id)}`}
                     className={styles.classCard}
                   >
                     <div className={styles.classInfo}>

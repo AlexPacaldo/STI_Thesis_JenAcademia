@@ -1542,7 +1542,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     ? (classesCache[selectedDate] || []).filter(cls => cls.verification_status !== "incomplete")
     : [];
   const selectedClass = selectedClassId
-    ? (selectedClasses.find(cls => cls.id === selectedClassId)
+    ? (selectedClasses.find(cls => String(cls.id ?? cls.class_id) === String(selectedClassId))
       // Also the list on the student's home screen. Those rows are not in the
       // month cache - the month is a window, and "my next class" is not -
       // so without this the card on the home screen opens nothing.
@@ -2537,10 +2537,29 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     if (!initialDateApplied.current) {
       const dateFromState = location.state?.selectedDate || location.state?.date || searchParams.get("date");
       const normalizedDate = dateFromState ? normalizeDate(dateFromState) : null;
+      const classIdFromUrl = searchParams.get("classId");
 
       if (normalizedDate) {
         setSelectedDate(normalizedDate);
-        setSelectedClassId(null);
+        setSelectedClassId(classIdFromUrl);
+      } else if (classIdFromUrl) {
+        axios
+          .get(`${API}/api/calendar/classes/${encodeURIComponent(classIdFromUrl)}/classroom`)
+          .then(response => {
+            const classDate = normalizeDate(response.data?.class?.scheduled_date);
+            if (!classDate) {
+              throw new Error("The booked class did not include a scheduled date.");
+            }
+            setSelectedDate(classDate);
+            setSelectedClassId(classIdFromUrl);
+          })
+          .catch(error => {
+            console.error("Error opening booked class from notification:", error);
+            notify?.(
+              error.response?.data?.message || "Unable to open this booked class. Please try again.",
+              "error"
+            );
+          });
       }
 
       initialDateApplied.current = true;
@@ -2550,7 +2569,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     if (selectedDate) {
       loadClassesForDate(selectedDate);
     }
-  }, [selectedDate, localRole, localUserId, teacherId, studentId, searchParams, calendarRefreshToken]);
+  }, [selectedDate, localRole, localUserId, teacherId, studentId, searchParams, calendarRefreshToken, notify]);
 
   useEffect(() => {
     if (selectedDate) {
@@ -4446,11 +4465,13 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   const simpleTeacherClasses = useMemo(() => {
     if (!isTeacherOrAdmin) return [];
 
+    const visibleMonthPrefix = `${year}-${String(month + 1).padStart(2, "0")}-`;
     const rows = [];
     Object.entries(classesCache).forEach(([dateKey, classes]) => {
       (classes || []).forEach((cls) => {
         if (cls.verification_status === "incomplete") return;
         const viewerDate = normalizeDate(cls.scheduled_date || dateKey);
+        if (!viewerDate.startsWith(visibleMonthPrefix)) return;
         const start = humanTime(cls.start_time || cls.time || "");
         const end = humanTime(getEndTime(cls.start_time || cls.time, cls.duration, cls.end_time) || "");
 
@@ -4476,7 +4497,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     });
 
     return rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-  }, [classesCache, isTeacherOrAdmin, localRole, viewerTodayKey]);
+  }, [classesCache, isTeacherOrAdmin, localRole, month, viewerTodayKey, year]);
 
   // The days a teacher can set availability for, in the month the picker is on.
   const availabilityPickerDays = useMemo(

@@ -912,12 +912,14 @@ export default function AdminDashboard() {
         formData.append("description", bookDraft.description || "");
         formData.append("admin_id", String(adminId));
 
+        // Course and teacher assignment are create-only; edits use their own
+        // endpoints so they cannot accidentally overwrite either field.
         if (bookModal === "create") {
           formData.append("course_id", String(bookDraft.courseId));
           formData.append("teacher_ids", JSON.stringify(bookDraft.teacherIds));
-        } else if (bookDraft.coverFile) {
-          // Course and teacher list are deliberately left out of the edit form:
-          // those have their own endpoints, so a stray field can't blank them.
+        }
+
+        if (bookDraft.coverFile) {
           formData.append("cover", bookDraft.coverFile, bookDraft.coverFile.name);
         }
 
@@ -5237,6 +5239,9 @@ export default function AdminDashboard() {
               <div className={styles.bookGrid}>
                 {filteredBooks.map((book) => {
                   const isArchived = book.status === "archived";
+                  const isDistributed = String(book.teacher_ids || "")
+                    .split(",")
+                    .some((teacherId) => teacherId.trim());
                   const bookTeachers = teachersForBook(book);
                   const isBusy = bookBusyId === book.book_id;
 
@@ -5264,7 +5269,16 @@ export default function AdminDashboard() {
                           {book.lesson_count || 0}{" "}
                           {book.lesson_count === 1 ? "lesson" : "lessons"}
                         </span>
-                        {isArchived && <span className={styles.bookArchivedBadge}>Archived</span>}
+                        {(isDistributed || isArchived) && (
+                          <div className={styles.bookStatusBadges}>
+                            {isDistributed && (
+                              <span className={styles.bookDistributedBadge}>Distributed</span>
+                            )}
+                            {isArchived && (
+                              <span className={styles.bookArchivedBadge}>Archived</span>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       <div className={styles.bookCardBody}>

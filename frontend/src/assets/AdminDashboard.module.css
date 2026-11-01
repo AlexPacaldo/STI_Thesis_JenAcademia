@@ -228,10 +228,28 @@
   backdrop-filter: blur(3px);
 }
 
-.bookArchivedBadge {
+.bookStatusBadges {
   position: absolute;
-  right: 9px;
   top: 9px;
+  right: 9px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+}
+
+.bookDistributedBadge {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(31, 111, 63, 0.94);
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.bookArchivedBadge {
   padding: 3px 9px;
   border-radius: 999px;
   background: rgba(138, 62, 46, 0.9);

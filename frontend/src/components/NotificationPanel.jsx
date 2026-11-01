@@ -204,11 +204,16 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
   const getNotificationTargetUrl = (notification) => {
     const actionUrl = notification.action_url || notification.actionUrl;
     const relatedId = notification.related_id ?? notification.relatedId;
+    const relatedType = notification.related_type ?? notification.relatedType;
     const currentUser = readStoredUser() || {};
     const role = currentUser.role;
 
     if (actionUrl && typeof actionUrl === "string" && actionUrl.trim()) {
       return actionUrl;
+    }
+
+    if (relatedType === "class" && relatedId && (role === "teacher" || role === "student")) {
+      return `/Calendar?classId=${encodeURIComponent(relatedId)}`;
     }
 
     if (notification.type === "assignment" && relatedId) {
