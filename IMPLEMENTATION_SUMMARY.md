@@ -106,6 +106,11 @@ Implemented a complete notification and approval system for reschedule requests 
    - Admin can still view all details but cannot modify status
    - Keeps ability to filter requests by status
 
+### 7. **Added Requester Status Tracking** ([MyRescheduleRequests.jsx](frontend/src/components/MyRescheduleRequests.jsx))
+   - Shows requests the signed-in user submitted, with Pending, Approved, or Declined status
+   - Displays the requested date and time in the user's timezone
+   - Refreshes after submission, when the page becomes visible, and every 30 seconds
+
 ---
 
 ## User Experience Flow
@@ -119,7 +124,8 @@ Implemented a complete notification and approval system for reschedule requests 
    - New time picker (validates availability)
    - Reason field
 5. Submits request → notification sent to counterparty
-6. Gets success message
+6. Gets a success message and sees the request as Pending in the calendar
+7. Can refresh the request list to see when it is approved or declined
 
 ### Teacher/Student Receiving Request:
 1. Sees notification bell with count in header
@@ -158,6 +164,7 @@ Implemented a complete notification and approval system for reschedule requests 
 | POST | `/api/calendar/reschedule-request` | Create reschedule request (+ auto notification) |
 | GET | `/api/calendar/booked-dates/:user_id` | Get user's booked dates/times |
 | GET | `/api/calendar/my-reschedule-requests/:user_id` | Get pending requests user can approve/reject |
+| GET | `/api/calendar/my-submitted-reschedule-requests/:user_id` | Get the user's submitted requests and statuses |
 | POST | `/api/calendar/reschedule-requests/:id/approve` | Approve request (user) |
 | POST | `/api/calendar/reschedule-requests/:id/reject` | Reject request (user) |
 | GET | `/api/admin/reschedule-requests` | View all requests (admin, read-only) |

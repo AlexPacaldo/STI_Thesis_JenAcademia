@@ -44,6 +44,7 @@ import {
 } from "../utils/classTime.js";
 import StudentBookingWizard from "../components/StudentBookingWizard.jsx";
 import CalendarModuleGuide from "../components/CalendarModuleGuide.jsx";
+import MyRescheduleRequests from "../components/MyRescheduleRequests.jsx";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
@@ -1192,6 +1193,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [requestTime, setRequestTime] = useState("");
   const [requestReason, setRequestReason] = useState("");
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+  const [rescheduleRequestsRefreshToken, setRescheduleRequestsRefreshToken] = useState(0);
   const [requestConfirmOpen, setRequestConfirmOpen] = useState(false);
   const [isMarkingClassDone, setIsMarkingClassDone] = useState(false);
   const [classEntryConfirmOpen, setClassEntryConfirmOpen] = useState(false);
@@ -3684,7 +3686,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         reason: requestReason,
       });
       
-      notify("Sent. Your teacher will say yes or no.", "success");
+      setRescheduleRequestsRefreshToken((value) => value + 1);
+      notify("Your reschedule request is pending while you wait for a response.", "success");
       setRequestConfirmOpen(false);
       setRequestMode(false);
       setRequestDate("");
@@ -6298,6 +6301,14 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
               </button>
             </div>
           </div>
+        )}
+
+        {(localRole === "student" || localRole === "teacher") && localUserId && (
+          <MyRescheduleRequests
+            userId={localUserId}
+            viewerTimezone={viewerTimezone}
+            refreshToken={rescheduleRequestsRefreshToken}
+          />
         )}
 
         <div

@@ -10528,6 +10528,36 @@ app.get("/api/calendar/my-reschedule-requests/:user_id", requireSession, async (
   }
 });
 
+// Get the reschedule requests the user submitted, including their latest status.
+app.get("/api/calendar/my-submitted-reschedule-requests/:user_id", requireSession, async (req, res) => {
+  try {
+    if (!sessionMayActFor(req, req.params.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
+
+    const [requests] = await pool.query(
+      `SELECT rr.request_id, rr.status,
+              DATE_FORMAT(rr.requested_date, '%Y-%m-%d') AS requested_date,
+              TIME_FORMAT(rr.requested_time, '%H:%i:%s') AS requested_time,
+              rr.requested_at, rr.resolved_at, rr.decline_reason,
+              c.class_name,
+              tea.timezone AS teacher_timezone
+       FROM reschedule_requests rr
+       JOIN classes c ON rr.class_id = c.class_id
+       LEFT JOIN users tea ON c.teacher_id = tea.user_id
+       WHERE rr.requested_by_id = ?
+       ORDER BY rr.requested_at DESC, rr.request_id DESC
+       LIMIT 20`,
+      [req.params.user_id]
+    );
+
+    res.json({ requests: decryptRows(requests, ["decline_reason"]) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching your reschedule requests" });
+  }
+});
+
 // Approve a reschedule request (from user, not just admin)
 app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async (req, res) => {
   try {
