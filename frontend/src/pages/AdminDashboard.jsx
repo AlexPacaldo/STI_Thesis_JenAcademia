@@ -2121,18 +2121,21 @@ export default function AdminDashboard() {
   const requestStatusToneClass = (status) => {
     if (status === "approved") return styles.verifyToneSuccess;
     if (status === "declined") return styles.verifyToneDanger;
+    if (status === "cancelled") return styles.verifyToneNeutral;
     return styles.verifyToneWarn;
   };
   const requestStatusMeta = (status) => ({
     pending: { label: "Waiting", icon: "⏳" },
     approved: { label: "Approved", icon: "✅" },
     declined: { label: "Declined", icon: "🚫" },
+    cancelled: { label: "Cancelled", icon: "↩️" },
   }[status] || { label: status || "Waiting", icon: "⏳" });
   const requestQuickFilters = [
     { key: "all", label: "All requests", icon: "🗂️", tone: styles.verifyToneNeutral },
     { key: "pending", label: "Waiting", icon: "⏳", tone: styles.verifyToneWarn },
     { key: "approved", label: "Approved", icon: "✅", tone: styles.verifyToneSuccess },
     { key: "declined", label: "Declined", icon: "🚫", tone: styles.verifyToneDanger },
+    { key: "cancelled", label: "Cancelled", icon: "↩️", tone: styles.verifyToneNeutral },
   ].map((filter) => ({
     ...filter,
     count: filter.key === "all"

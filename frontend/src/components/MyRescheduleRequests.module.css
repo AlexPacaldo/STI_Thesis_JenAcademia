@@ -1,11 +1,105 @@
-.panel {
+.triggerWrap {
+  display: flex;
+  justify-content: flex-end;
   width: min(100%, 1120px);
-  margin: 0 auto var(--space-4);
-  padding: var(--space-5);
+  margin: 0 auto var(--space-3);
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--neu-shadow-sm);
+  color: var(--primary);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.trigger:hover {
+  transform: translateY(-1px);
+  border-color: var(--brand-green);
+  box-shadow: var(--neu-shadow-md);
+}
+
+.trigger:focus-visible,
+.refreshButton:focus-visible,
+.closeButton:focus-visible {
+  outline: 3px solid var(--brand-lime);
+  outline-offset: 3px;
+}
+
+.triggerIcon {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-soft);
+  color: var(--brand-green);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.triggerBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font-size: 0.76rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.pending {
+  border-color: rgba(209, 138, 16, 0.28);
+  background: var(--pill-warn);
+  color: var(--text-warn);
+}
+
+.triggerResolved {
+  border-color: var(--border);
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+
+.backdrop {
+  position: fixed;
+  z-index: 2000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(19, 29, 26, 0.52);
+  backdrop-filter: blur(3px);
+  animation: backdropIn 160ms ease-out;
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 680px);
+  max-height: min(86vh, 760px);
+  overflow: hidden;
+  padding: clamp(18px, 4vw, 28px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
-  box-shadow: var(--neu-shadow-sm);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.24);
+  animation: modalIn 180ms ease-out;
 }
 
 .heading {
@@ -13,7 +107,8 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
-  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
 }
 
 .eyebrow {
@@ -39,10 +134,18 @@
   line-height: 1.5;
 }
 
-.refreshButton {
+.headingActions {
+  display: flex;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.refreshButton,
+.closeButton {
+  display: grid;
   min-height: 40px;
-  padding: 8px 14px;
+  place-items: center;
   border: 1px solid var(--border-mid);
   border-radius: var(--radius-md);
   background: var(--surface);
@@ -53,7 +156,12 @@
   cursor: pointer;
 }
 
-.refreshButton:hover:not(:disabled) {
+.refreshButton {
+  padding: 8px 14px;
+}
+
+.refreshButton:hover:not(:disabled),
+.closeButton:hover {
   border-color: var(--brand-green);
   background: var(--surface-soft);
 }
@@ -63,10 +171,20 @@
   opacity: 0.65;
 }
 
+.closeButton {
+  width: 40px;
+  padding: 0;
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
 .list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: var(--space-3);
+  min-height: 0;
+  margin: var(--space-4) -4px 0 0;
+  padding: 0 4px 2px 0;
+  overflow-y: auto;
 }
 
 .card {
@@ -104,12 +222,6 @@
   font-weight: 800;
 }
 
-.pending {
-  border-color: rgba(209, 138, 16, 0.28);
-  background: var(--pill-warn);
-  color: var(--text-warn);
-}
-
 .approved {
   border-color: rgba(53, 128, 83, 0.24);
   background: var(--pill-success);
@@ -120,6 +232,12 @@
   border-color: rgba(168, 58, 52, 0.2);
   background: var(--pill-danger);
   color: var(--text-danger);
+}
+
+.cancelled {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--muted);
 }
 
 .unknown {
@@ -162,12 +280,117 @@
   color: var(--text-danger);
 }
 
+.requestActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+
+.requestAction,
+.confirmButton,
+.keepButton {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--primary);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.requestAction:hover:not(:disabled),
+.keepButton:hover:not(:disabled) {
+  border-color: var(--brand-green);
+  background: var(--surface);
+}
+
+.requestAction:disabled,
+.confirmButton:disabled,
+.keepButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.confirmActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.confirmButton {
+  border-color: rgba(168, 58, 52, 0.24);
+  background: var(--pill-danger);
+  color: var(--text-danger);
+}
+
+.confirmButton:hover:not(:disabled) {
+  border-color: var(--text-danger);
+}
+
+.keepButton {
+  background: transparent;
+}
+
+@keyframes backdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 @media (max-width: 520px) {
-  .panel {
-    padding: var(--space-4);
+  .triggerWrap {
+    justify-content: center;
+  }
+
+  .trigger {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .backdrop {
+    padding: 12px;
+  }
+
+  .modal {
+    max-height: 90vh;
+    padding: 18px;
   }
 
   .heading {
-    flex-direction: column;
+    gap: 12px;
+  }
+
+  .heading h2 {
+    font-size: 1.05rem;
+  }
+
+  .headingActions {
+    gap: 6px;
+  }
+
+  .refreshButton {
+    padding: 7px 9px;
+    font-size: 0.8rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trigger,
+  .backdrop,
+  .modal {
+    animation: none;
+    transition: none;
   }
 }

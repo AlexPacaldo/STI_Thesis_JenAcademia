@@ -107,9 +107,10 @@ Implemented a complete notification and approval system for reschedule requests 
    - Keeps ability to filter requests by status
 
 ### 7. **Added Requester Status Tracking** ([MyRescheduleRequests.jsx](frontend/src/components/MyRescheduleRequests.jsx))
-   - Shows requests the signed-in user submitted, with Pending, Approved, or Declined status
+   - Shows requests the signed-in user submitted, with Pending, Approved, Declined, or Cancelled status
    - Displays the requested date and time in the user's timezone
    - Refreshes after submission, when the page becomes visible, and every 30 seconds
+   - Lets the requester cancel pending requests or remove resolved requests from their history
 
 ---
 
@@ -125,7 +126,7 @@ Implemented a complete notification and approval system for reschedule requests 
    - Reason field
 5. Submits request → notification sent to counterparty
 6. Gets a success message and sees the request as Pending in the calendar
-7. Can refresh the request list to see when it is approved or declined
+7. Can cancel the request while it is pending, then remove it from history after it is resolved
 
 ### Teacher/Student Receiving Request:
 1. Sees notification bell with count in header
@@ -165,6 +166,8 @@ Implemented a complete notification and approval system for reschedule requests 
 | GET | `/api/calendar/booked-dates/:user_id` | Get user's booked dates/times |
 | GET | `/api/calendar/my-reschedule-requests/:user_id` | Get pending requests user can approve/reject |
 | GET | `/api/calendar/my-submitted-reschedule-requests/:user_id` | Get the user's submitted requests and statuses |
+| POST | `/api/calendar/reschedule-requests/:id/cancel` | Cancel the requester's pending request |
+| DELETE | `/api/calendar/my-submitted-reschedule-requests/:user_id/:request_id` | Remove a resolved request from the requester's history |
 | POST | `/api/calendar/reschedule-requests/:id/approve` | Approve request (user) |
 | POST | `/api/calendar/reschedule-requests/:id/reject` | Reject request (user) |
 | GET | `/api/admin/reschedule-requests` | View all requests (admin, read-only) |

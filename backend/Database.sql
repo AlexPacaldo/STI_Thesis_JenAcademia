@@ -515,7 +515,7 @@ CREATE TABLE `reschedule_requests` (
   `requested_date` date NOT NULL,
   `requested_time` time NOT NULL,
   `reason` text,
-  `status` enum('pending','approved','declined') DEFAULT 'pending',
+  `status` enum('pending','approved','declined','cancelled') DEFAULT 'pending',
   `decline_reason` text,
   `requested_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `resolved_at` timestamp NULL DEFAULT NULL,

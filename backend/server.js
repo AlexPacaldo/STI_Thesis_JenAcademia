@@ -2410,7 +2410,7 @@ async function ensureRescheduleRequestDeclineReasonColumn() {
         requested_date DATE NOT NULL,
         requested_time TIME NOT NULL,
         reason TEXT DEFAULT NULL,
-        status ENUM('pending','approved','declined') DEFAULT 'pending',
+        status ENUM('pending','approved','declined','cancelled') DEFAULT 'pending',
         decline_reason TEXT DEFAULT NULL,
         requested_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
         resolved_at TIMESTAMP NULL DEFAULT NULL,
@@ -2427,6 +2427,11 @@ async function ensureRescheduleRequestDeclineReasonColumn() {
   if (!(await columnExists("reschedule_requests", "decline_reason"))) {
     await pool.query("ALTER TABLE reschedule_requests ADD COLUMN decline_reason TEXT DEFAULT NULL AFTER status");
   }
+
+  await pool.query(
+    `ALTER TABLE reschedule_requests
+     MODIFY COLUMN status ENUM('pending','approved','declined','cancelled') DEFAULT 'pending'`
+  );
 }
 
 async function ensureLessonProgressTable() {
@@ -10558,6 +10563,111 @@ app.get("/api/calendar/my-submitted-reschedule-requests/:user_id", requireSessio
   }
 });
 
+// Cancel a pending request submitted by the signed-in user.
+app.post("/api/calendar/reschedule-requests/:id/cancel", requireSession, async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const userId = req.body?.user_id;
+    if (!userId || String(req.session?.userId) !== String(userId)) {
+      await connection.rollback();
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
+
+    const [requestRows] = await connection.query(
+      `SELECT rr.status, c.teacher_id, c.student_id, c.class_name
+         FROM reschedule_requests rr
+         JOIN classes c ON rr.class_id = c.class_id
+        WHERE rr.request_id = ? AND rr.requested_by_id = ?
+        FOR UPDATE`,
+      [req.params.id, userId]
+    );
+    if (!requestRows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: "Reschedule request not found" });
+    }
+    if (requestRows[0].status !== "pending") {
+      await connection.rollback();
+      return res.status(409).json({ message: "This request is no longer pending and cannot be cancelled." });
+    }
+
+    await connection.query(
+      `UPDATE reschedule_requests
+          SET status = 'cancelled', resolved_at = NOW()
+        WHERE request_id = ? AND status = 'pending'`,
+      [req.params.id]
+    );
+
+    const request = requestRows[0];
+    const recipientId = String(request.teacher_id) === String(userId)
+      ? request.student_id
+      : request.teacher_id;
+    const notificationTitle = encryptNullableText("Reschedule Cancelled");
+    const notificationMessage = encryptNullableText(
+      `The reschedule request for "${request.class_name}" was cancelled by the requester.`
+    );
+    const [updatedNotification] = await connection.query(
+      `UPDATE notifications
+          SET title = ?, message = ?, is_read = 0
+        WHERE user_id = ? AND type = 'reschedule'
+          AND related_type = 'reschedule_request' AND related_id = ?`,
+      [notificationTitle, notificationMessage, recipientId, req.params.id]
+    );
+
+    if (!updatedNotification.affectedRows) {
+      await connection.query(
+        `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [recipientId, "reschedule", notificationTitle, notificationMessage, req.params.id, "reschedule_request"]
+      );
+    }
+
+    await connection.commit();
+    res.json({ message: "Reschedule request cancelled" });
+  } catch (err) {
+    console.error(err);
+    try {
+      await connection.rollback();
+    } catch (rollbackError) {
+      console.error("Error rolling back reschedule cancellation:", rollbackError);
+    }
+    res.status(500).json({ message: "Error cancelling reschedule request" });
+  } finally {
+    connection.release();
+  }
+});
+
+// Remove a resolved request from the requester's history.
+app.delete("/api/calendar/my-submitted-reschedule-requests/:user_id/:request_id", requireSession, async (req, res) => {
+  try {
+    if (String(req.session?.userId) !== String(req.params.user_id)) {
+      return res.status(403).json({ message: "You can only act on your own account." });
+    }
+
+    const [result] = await pool.query(
+      `DELETE FROM reschedule_requests
+        WHERE request_id = ? AND requested_by_id = ? AND status <> 'pending'`,
+      [req.params.request_id, req.params.user_id]
+    );
+    if (!result.affectedRows) {
+      const [existing] = await pool.query(
+        `SELECT status FROM reschedule_requests
+          WHERE request_id = ? AND requested_by_id = ?`,
+        [req.params.request_id, req.params.user_id]
+      );
+      if (!existing.length) {
+        return res.status(404).json({ message: "Reschedule request not found" });
+      }
+      return res.status(409).json({ message: "Pending requests cannot be removed. Cancel the request first." });
+    }
+
+    res.json({ message: "Resolved reschedule request removed" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error removing reschedule request" });
+  }
+});
+
 // Approve a reschedule request (from user, not just admin)
 app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async (req, res) => {
   try {
@@ -10581,6 +10691,9 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
 
     if (!authCheck.length) {
       return res.status(403).json({ message: "Not authorized" });
+    }
+    if (authCheck[0].status !== "pending") {
+      return res.status(409).json({ message: "This request is no longer pending." });
     }
 
     // Get reschedule request details
@@ -10698,10 +10811,15 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
 
     // Update reschedule request status
     const resolvedAt = new Date();
-    await pool.query(
-      `UPDATE reschedule_requests SET status = ?, resolved_at = ? WHERE request_id = ?`,
+    const [resolutionResult] = await pool.query(
+      `UPDATE reschedule_requests
+          SET status = ?, resolved_at = ?
+        WHERE request_id = ? AND status = 'pending'`,
       ["approved", resolvedAt, id]
     );
+    if (!resolutionResult.affectedRows) {
+      return res.status(409).json({ message: "This request is no longer pending." });
+    }
 
     // Update class with new date and time
     await pool.query(
@@ -10827,12 +10945,20 @@ app.post("/api/calendar/reschedule-requests/:id/reject", requireSession, async (
     if (!authCheck.length) {
       return res.status(403).json({ message: "Not authorized" });
     }
+    if (authCheck[0].status !== "pending") {
+      return res.status(409).json({ message: "This request is no longer pending." });
+    }
 
     const resolvedAt = new Date();
-    await pool.query(
-      `UPDATE reschedule_requests SET status = ?, resolved_at = ?, decline_reason = ? WHERE request_id = ?`,
+    const [resolutionResult] = await pool.query(
+      `UPDATE reschedule_requests
+          SET status = ?, resolved_at = ?, decline_reason = ?
+        WHERE request_id = ? AND status = 'pending'`,
       ["declined", resolvedAt, encryptNullableText(declineReason), id]
     );
+    if (!resolutionResult.affectedRows) {
+      return res.status(409).json({ message: "This request is no longer pending." });
+    }
 
     // Get the requester info for notification
     const [requesterInfo] = await pool.query(
