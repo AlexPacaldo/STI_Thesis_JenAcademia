@@ -2620,6 +2620,19 @@ async function ensureUserPasswordChangedColumn() {
   }
 }
 
+async function ensureUserGuideProgressColumns() {
+  if (!(await columnExists("users", "first_steps_guide_completed"))) {
+    await pool.query(
+      "ALTER TABLE users ADD COLUMN first_steps_guide_completed TINYINT(1) NOT NULL DEFAULT 0 AFTER password_changed"
+    );
+  }
+  if (!(await columnExists("users", "calendar_guide_completed"))) {
+    await pool.query(
+      "ALTER TABLE users ADD COLUMN calendar_guide_completed TINYINT(1) NOT NULL DEFAULT 0 AFTER first_steps_guide_completed"
+    );
+  }
+}
+
 async function ensureAccountSetupInvitesTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS account_setup_invites (
@@ -3372,6 +3385,7 @@ const SCHEMA_STEPS = [
   ["student course progress table", ensureStudentCourseProgressTable],
   ["user profile image column", ensureUserProfileImageColumn],
   ["user password changed column", ensureUserPasswordChangedColumn],
+  ["user guide progress columns", ensureUserGuideProgressColumns],
   ["account setup invites table", ensureAccountSetupInvitesTable],
   ["password reset tokens table", ensurePasswordResetTokensTable],
   ["phone verification challenges table", ensurePhoneVerificationChallengesTable],
@@ -5177,6 +5191,66 @@ app.post("/api/account-setup/:token", async (req, res) => {
 
 
 //ACCOUNT
+app.get("/api/me/guide-progress", requireSession, async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT first_steps_guide_completed, calendar_guide_completed
+       FROM users WHERE user_id = ? LIMIT 1`,
+      [req.session.userId]
+    );
+    if (!rows.length) return res.status(404).json({ message: "User not found" });
+    return res.json({
+      progress: {
+        firstStepsCompleted: Boolean(rows[0].first_steps_guide_completed),
+        calendarCompleted: Boolean(rows[0].calendar_guide_completed),
+      },
+    });
+  } catch (error) {
+    console.error("GET /api/me/guide-progress error:", error);
+    return res.status(500).json({ message: "Could not load guide progress" });
+  }
+});
+
+app.patch("/api/me/guide-progress", requireSession, async (req, res) => {
+  const allowedFields = {
+    firstStepsCompleted: "first_steps_guide_completed",
+    calendarCompleted: "calendar_guide_completed",
+  };
+  const updates = Object.entries(allowedFields)
+    .filter(([key]) => Object.prototype.hasOwnProperty.call(req.body || {}, key));
+
+  if (
+    updates.length === 0 ||
+    updates.some(([key]) => typeof req.body[key] !== "boolean")
+  ) {
+    return res.status(400).json({ message: "Provide valid guide completion values" });
+  }
+
+  try {
+    const assignments = updates.map(([key]) => `${allowedFields[key]} = ?`).join(", ");
+    const values = updates.map(([key]) => req.body[key] ? 1 : 0);
+    await pool.query(
+      `UPDATE users SET ${assignments} WHERE user_id = ?`,
+      [...values, req.session.userId]
+    );
+    const [rows] = await pool.query(
+      `SELECT first_steps_guide_completed, calendar_guide_completed
+       FROM users WHERE user_id = ? LIMIT 1`,
+      [req.session.userId]
+    );
+    if (!rows.length) return res.status(404).json({ message: "User not found" });
+    return res.json({
+      progress: {
+        firstStepsCompleted: Boolean(rows[0].first_steps_guide_completed),
+        calendarCompleted: Boolean(rows[0].calendar_guide_completed),
+      },
+    });
+  } catch (error) {
+    console.error("PATCH /api/me/guide-progress error:", error);
+    return res.status(500).json({ message: "Could not save guide progress" });
+  }
+});
+
 app.get("/api/users/:id", requireSession, async (req, res) => {
   try {
     if (!sessionMayActFor(req, req.params.id)) {

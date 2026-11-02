@@ -865,6 +865,8 @@ CREATE TABLE `users` (
   `status` enum('active','suspended','archived') NOT NULL DEFAULT 'active',
   `profile_completed` tinyint(1) DEFAULT '0',
   `password_changed` tinyint(1) DEFAULT '0',
+  `first_steps_guide_completed` tinyint(1) NOT NULL DEFAULT '0',
+  `calendar_guide_completed` tinyint(1) NOT NULL DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `line_user_id` varchar(64) DEFAULT NULL,

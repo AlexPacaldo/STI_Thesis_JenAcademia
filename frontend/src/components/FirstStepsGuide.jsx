@@ -5,6 +5,11 @@ import { readStoredUser } from "../utils/sessionUser.js";
 import ModalPortal from "../utils/ModalPortal.jsx";
 import GuidePreview, { ExampleSituation } from "./GuidePreview.jsx";
 import { getGuideSteps } from "./firstStepsGuideSteps.js";
+import {
+  hasLocalGuideCompletion,
+  readGuideCompletion,
+  saveGuideCompletion,
+} from "../utils/guideProgress.js";
 
 const FOCUSABLE =
   'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -34,11 +39,9 @@ export default function FirstStepsGuide() {
   const isLastStep = stepIndex === steps.length - 1;
 
   const finishGuide = useCallback(() => {
-    try {
-      localStorage.setItem(storageKey, "done");
-    } catch (error) {
-      console.warn("Could not remember that the welcome guide was seen:", error);
-    }
+    void saveGuideCompletion("firstSteps", storageKey).catch((error) => {
+      console.warn("Could not save that the welcome guide was seen:", error);
+    });
     restoreFocusRef.current = true;
     setGuideCompleted(true);
     setOpen(false);
@@ -46,15 +49,23 @@ export default function FirstStepsGuide() {
   }, [storageKey]);
 
   useEffect(() => {
-    try {
-      const completed = localStorage.getItem(storageKey) === "done";
+    let active = true;
+    setGuideCompleted(null);
+    setOpen(false);
+    readGuideCompletion("firstSteps", storageKey).then((completed) => {
+      if (!active) return;
       setGuideCompleted(completed);
       setOpen(!completed);
-    } catch (error) {
+    }).catch((error) => {
+      if (!active) return;
       console.warn("Could not check whether the welcome guide was seen:", error);
-      setGuideCompleted(false);
-      setOpen(true);
-    }
+      const completed = hasLocalGuideCompletion(storageKey);
+      setGuideCompleted(completed);
+      setOpen(!completed);
+    });
+    return () => {
+      active = false;
+    };
   }, [storageKey]);
 
   useEffect(() => {

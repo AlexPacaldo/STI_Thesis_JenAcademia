@@ -1,6 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "../assets/calendarModuleGuide.module.css";
 import ModalPortal from "../utils/ModalPortal.jsx";
+import {
+  hasLocalGuideCompletion,
+  readGuideCompletion,
+  saveGuideCompletion,
+} from "../utils/guideProgress.js";
 
 const STUDENT_STEPS = [
   {
@@ -86,16 +91,26 @@ export default function CalendarModuleGuide({ role, userId, isReady }) {
   const storageKey = `jenacademia.calendar-guide.v1:${role}:${userId || "account"}`;
   const [open, setOpen] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
+  const interactedDuringLoad = useRef(false);
   const step = steps[stepIndex];
 
   useEffect(() => {
     if (!isReady || !["student", "teacher"].includes(role)) return;
-    try {
-      setOpen(localStorage.getItem(storageKey) !== "done");
-    } catch (error) {
+    let active = true;
+    interactedDuringLoad.current = false;
+    setOpen(false);
+    readGuideCompletion("calendar", storageKey).then((completed) => {
+      if (active && !interactedDuringLoad.current) setOpen(!completed);
+    }).catch((error) => {
+      if (!active) return;
       console.warn("Could not check whether the Calendar guide was seen:", error);
-      setOpen(true);
-    }
+      if (!interactedDuringLoad.current) {
+        setOpen(!hasLocalGuideCompletion(storageKey));
+      }
+    });
+    return () => {
+      active = false;
+    };
   }, [isReady, role, storageKey]);
 
   useEffect(() => {
@@ -108,16 +123,16 @@ export default function CalendarModuleGuide({ role, userId, isReady }) {
   }, [open]);
 
   function finish() {
-    try {
-      localStorage.setItem(storageKey, "done");
-    } catch (error) {
-      console.warn("Could not remember that the Calendar guide was seen:", error);
-    }
+    interactedDuringLoad.current = true;
+    void saveGuideCompletion("calendar", storageKey).catch((error) => {
+      console.warn("Could not save that the Calendar guide was seen:", error);
+    });
     setOpen(false);
     setStepIndex(0);
   }
 
   function replay() {
+    interactedDuringLoad.current = true;
     setStepIndex(0);
     setOpen(true);
   }
