@@ -959,6 +959,21 @@
     padding: 12px 12px 28px;
   }
 
+  .rightCardFill {
+    height: auto;
+    max-height: none;
+  }
+
+  .rightCardFill .rightContent,
+  .submissionsPanel,
+  .submissionList {
+    flex: 0 1 auto;
+  }
+
+  .submissionList {
+    overflow: visible;
+  }
+
   .Center {
     border-radius: 20px;
     gap: 20px;
@@ -998,8 +1013,25 @@
   }
 
   .submissionRow {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
     align-items: stretch;
+    gap: 12px;
+  }
+
+  .submissionSummary {
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .submissionSummaryText {
+    flex-basis: auto;
+    width: 100%;
+  }
+
+  .submissionMeta {
+    flex-wrap: wrap;
+    line-height: 1.45;
   }
 
   .submissionRow > div:first-child > strong,
@@ -1015,6 +1047,9 @@
   }
 
   .submissionDetail {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 0;
     padding: 12px;
   }
 

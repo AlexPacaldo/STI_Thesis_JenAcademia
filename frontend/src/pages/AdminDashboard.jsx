@@ -1809,10 +1809,30 @@ export default function AdminDashboard() {
    * this system, so nothing here decides it - it just means the date box is not
    * empty and the admin is editing a value rather than composing one.
    */
+  function localDateKey(d = new Date()) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
   function defaultExtensionDate() {
     const d = new Date();
     d.setMonth(d.getMonth() + 1);
-    return d.toISOString().slice(0, 10);
+    return localDateKey(d);
+  }
+
+  function describeExtensionDuration(date) {
+    if (!date) return "Choose an end date to see how long the unused classes will remain available.";
+    const [year, month, day] = date.split("-").map(Number);
+    const endDate = Date.UTC(year, month - 1, day);
+    const today = new Date();
+    const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+    const days = Math.round((endDate - todayUtc) / 86_400_000);
+
+    if (!Number.isFinite(days)) return "Choose a valid end date.";
+    if (days < 0) return "Choose an end date in the future.";
+    return `Unused classes will remain available for ${days} day${days === 1 ? "" : "s"} from today.`;
   }
 
   async function approveExtensionRequest() {
@@ -5460,9 +5480,13 @@ export default function AdminDashboard() {
                       type="date"
                       value={extensionApproval.date}
                       onChange={(e) => setExtensionApproval({ ...extensionApproval, date: e.target.value })}
-                      min={new Date().toISOString().slice(0, 10)}
+                      min={localDateKey()}
                     />
                   </label>
+
+                  <p className={styles.fieldHint} aria-live="polite">
+                    {describeExtensionDuration(extensionApproval.date)}
+                  </p>
 
                   <p className={styles.fieldHint}>
                     Payment is handled outside this system. Recording the new date
