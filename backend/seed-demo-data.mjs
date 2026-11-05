@@ -38,17 +38,22 @@
 
 import bcrypt from "bcryptjs";
 import mysql from "mysql2/promise";
+import { createHash } from "node:crypto";
 import { DB_PASSWORD, describeDbConfig } from "./dbConfig.js";
 // Reused rather than reimplemented, so "09:30" means the same thing here as it
 // does in the matching code that compares availability against these slots.
 import { toMinutes } from "./teacherMatching.js";
 import { CONTRACT_TERM_MONTHS } from "./contractTerms.js";
-import {
+const isBetaSeed = process.env.JEN_ACADEMIA_SEED_PROFILE === "beta";
+const seedData = await import(
+  isBetaSeed ? "../scripts/beta-accounts.mjs" : "../scripts/demo-accounts.mjs"
+);
+const {
   ADMIN, ALL_COURSES, BOOKED_CLASSES, COUNTRY, DEMO_ASSIGNMENTS,
   DEMO_BOOK_PROGRESS, DEMO_BOOKS, DEMO_CLASS_WORKFLOWS, PASSWORD, STUDENTS,
   TEACHERS, TIMEZONE, WEEKLY_AVAILABILITY, aiBio, criteriaNotes,
   daysLeftFrom, validateDemoAccounts,
-} from "../scripts/demo-accounts.mjs";
+} = seedData;
 
 // The app loads backend/.env. Load it the same way so one set of credentials
 // works for both.
@@ -202,6 +207,10 @@ async function upsertUser({
 }) {
   const hash = await bcrypt.hash(password, 10);
   const profileImageUrl = demoAvatar(firstName, lastName, role);
+  const lineUserId = isBetaSeed
+    ? `U${createHash("sha256").update(`jen-academia-beta:${email}`).digest("hex").slice(0, 32)}`
+    : null;
+  const lineDisplayName = isBetaSeed ? `Beta test ${firstName} ${lastName}` : null;
   const [existing] = await db.execute(
     "SELECT user_id FROM users WHERE email = ? LIMIT 1", [email]
   );
@@ -212,18 +221,32 @@ async function upsertUser({
           SET first_name = ?, last_name = ?, role = ?, country = ?,
               birth_date = ?, contact_number = ?, profile_image_url = ?,
               profile_completed = TRUE,
-              status = 'active', password_hash = ?, timezone = ?
+              status = 'active', password_hash = ?, timezone = ?,
+              line_user_id = IF(?, ?, line_user_id),
+              line_display_name = IF(?, ?, line_display_name),
+              line_linked_at = IF(?, COALESCE(line_linked_at, CURRENT_TIMESTAMP), line_linked_at),
+              line_link_code_hash = IF(?, NULL, line_link_code_hash),
+              line_link_code_expires_at = IF(?, NULL, line_link_code_expires_at),
+              line_reminders_enabled = IF(?, FALSE, line_reminders_enabled)
         WHERE user_id = ?`,
-      [firstName, lastName, role, country, birthDate, contact, profileImageUrl, hash, TIMEZONE, id]
+      [
+        firstName, lastName, role, country, birthDate, contact, profileImageUrl, hash, TIMEZONE,
+        isBetaSeed, lineUserId, isBetaSeed, lineDisplayName, isBetaSeed, isBetaSeed, isBetaSeed,
+        isBetaSeed, id,
+      ]
     );
     return id;
   }
   const [ins] = await db.execute(
     `INSERT INTO users
        (email, password_hash, first_name, last_name, contact_number, country,
-        birth_date, profile_image_url, timezone, role, status, profile_completed, password_changed)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', TRUE, TRUE)`,
-    [email, hash, firstName, lastName, contact, country, birthDate, profileImageUrl, TIMEZONE, role]
+        birth_date, profile_image_url, timezone, role, status, profile_completed, password_changed,
+        line_user_id, line_display_name, line_linked_at, line_reminders_enabled)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', TRUE, TRUE, ?, ?, IF(?, CURRENT_TIMESTAMP, NULL), ?)`,
+    [
+      email, hash, firstName, lastName, contact, country, birthDate, profileImageUrl, TIMEZONE, role,
+      lineUserId, lineDisplayName, isBetaSeed, isBetaSeed ? 0 : 1,
+    ]
   );
   return ins.insertId;
 }
@@ -1019,7 +1042,14 @@ const C = await courseIds(ALL_COURSES);
 const pick = (...names) => names.map((n) => C[n]);
 const byKey = {};
 
-console.log("\nSeeding demo accounts. Password for every account:", PASSWORD, "\n");
+console.log(
+  `\nSeeding ${isBetaSeed ? "beta" : "demo"} accounts. Password for every account:`,
+  PASSWORD,
+  "\n"
+);
+if (isBetaSeed) {
+  console.log("LINE links use synthetic beta IDs; LINE reminders are disabled for these accounts.\n");
+}
 
 byKey.admin = await upsertUser(ADMIN);
 console.log(`  admin      ${ADMIN.email}`);
@@ -1104,6 +1134,32 @@ console.log(
 );
 
 /* ------------------------------------------------------- read it all back */
+
+if (isBetaSeed) {
+  const seededEmails = [ADMIN.email, ...TEACHERS, ...STUDENTS].map((account) => account.email);
+  const [setupRows] = await db.execute(
+    `SELECT email, profile_completed, password_changed, line_user_id, line_linked_at,
+            line_reminders_enabled
+       FROM users
+      WHERE email IN (${seededEmails.map(() => "?").join(", ")})`,
+    seededEmails
+  );
+  const incompleteSetup = setupRows.filter(
+    (row) =>
+      !Number(row.profile_completed) ||
+      !Number(row.password_changed) ||
+      !row.line_user_id ||
+      !row.line_linked_at ||
+      Number(row.line_reminders_enabled)
+  );
+  if (setupRows.length !== seededEmails.length || incompleteSetup.length) {
+    throw new Error(
+      `Beta account setup verification failed: ${setupRows.length}/${seededEmails.length} accounts found; ` +
+        `${incompleteSetup.length} account(s) are not setup-complete with LINE reminders disabled.`
+    );
+  }
+  console.log(`  account setup  verified for all ${setupRows.length} accounts; LINE reminders disabled`);
+}
 
 // The seeder used to finish on trust. It now checks the deadline it just wrote,
 // because a blank Expires column on the Contracts tab looks identical to a
