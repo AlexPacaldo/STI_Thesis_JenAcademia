@@ -33,8 +33,8 @@ export function unchangedBooking(row, member) {
 export function groupExpiry(now, starts) {
   return new Date(Math.min(now + 24 * 60 * 60_000, ...starts.map(start => start - 15 * 60_000)));
 }
-export function intervalsConflict(start, end, busyStart, busyEnd, buffer = 10 * 60_000) {
-  return start < busyEnd + buffer && end > busyStart - buffer;
+export function intervalsConflict(start, end, busyStart, busyEnd) {
+  return start < busyEnd && end > busyStart;
 }
 
 // Invalidate a pending proposal when any original booking changes or starts.
@@ -160,7 +160,7 @@ export function createGroupClassService({ pool, instant, encrypt, meetingLink, b
     if (!available || available.status !== "available" || !available.start_time || !available.end_time) return false;
     if (start < moment(date, available.start_time, timezone) || end > moment(date, available.end_time, timezone)) return false;
     if (available.break_start && available.break_end && intervalsConflict(start, end,
-      moment(date, available.break_start, timezone), moment(date, available.break_end, timezone), 0)) return false;
+      moment(date, available.break_start, timezone), moment(date, available.break_end, timezone))) return false;
     return !context.busy.some(busy => {
       const busyStart = moment(busy.scheduled_date, busy.start_time, busy.teacher_timezone);
       return intervalsConflict(start, end, busyStart, busyStart + id(busy.duration) * 60_000);

@@ -6,11 +6,11 @@ export function candidateSlotMinutes(start, end, duration, occupiedRanges = []) 
     candidates.add(minute);
   }
   for (const range of occupiedRanges) {
-    candidates.add(range.end + 10);
-    candidates.add(range.start - 10 - duration);
+    candidates.add(range.end);
+    candidates.add(range.start - duration);
   }
   return [...candidates].filter(minute => minute >= start && minute + duration <= end
-    && !occupiedRanges.some(range => minute < range.end + 10 && minute + duration > range.start - 10))
+    && !occupiedRanges.some(range => minute < range.end && minute + duration > range.start))
     .sort((a, b) => a - b);
 }
 

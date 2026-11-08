@@ -115,7 +115,6 @@ const fmtDate = (d) => {
 const parse24HourTime = (timeStr) => normalizeTime(timeStr);
 const CLASS_DURATION_OPTIONS = [25, 50];
 const DEFAULT_CLASS_DURATION = 50;
-const CLASS_BREAK_BUFFER_MINUTES = 10;
 const SCHEDULE_WINDOW_MONTHS = 3;
 
 /**
@@ -155,8 +154,6 @@ const formatScheduleDate = (dateKey) => {
 };
 
 const rangesOverlap = (startA, endA, startB, endB) => startA < endB && endA > startB;
-const rangesOverlapWithClassBuffer = (startA, endA, startB, endB) =>
-  rangesOverlap(startA, endA, startB - CLASS_BREAK_BUFFER_MINUTES, endB + CLASS_BREAK_BUFFER_MINUTES);
 const getCandidateSlotMinutes = candidateSlotMinutes;
 
 const getClassRange = (classObj) => {
@@ -2491,7 +2488,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     availabilityRanges.forEach(({ start, end }) => {
       getCandidateSlotMinutes(start, end, duration, occupiedRanges).forEach((minute) => {
         const slotEnd = minute + duration;
-        const conflictsWithClass = occupiedRanges.some(range => rangesOverlapWithClassBuffer(minute, slotEnd, range.start, range.end));
+        const conflictsWithClass = occupiedRanges.some(range => rangesOverlap(minute, slotEnd, range.start, range.end));
         if (!conflictsWithClass) {
           finalSlotsInTeacherTimezone.push(minutesToTime(minute));
         }
@@ -2930,7 +2927,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
     return classes.some(cls => {
       const range = getClassRange(cls);
-      return range && rangesOverlapWithClassBuffer(requestedStart, requestedEnd, range.start, range.end);
+      return range && rangesOverlap(requestedStart, requestedEnd, range.start, range.end);
     });
   };
 
@@ -2964,7 +2961,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     return classesOnDate.some(cls => {
       if (cls.id === selectedClass.id || cls.teacher_id !== selectedClass.teacher_id) return false;
       const range = getClassRange(cls);
-      return range && rangesOverlapWithClassBuffer(requestedStart, requestedEnd, range.start, range.end);
+      return range && rangesOverlap(requestedStart, requestedEnd, range.start, range.end);
     });
   };
 
@@ -2977,7 +2974,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     return counterpartyBookedDates.some(bd => {
       if (normalizeDate(bd.scheduled_date) !== normalizedDate) return false;
       const range = getClassRange(bd);
-      return range && rangesOverlapWithClassBuffer(requestedStart, requestedEnd, range.start, range.end);
+      return range && rangesOverlap(requestedStart, requestedEnd, range.start, range.end);
     });
   };
 
@@ -4815,7 +4812,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       const slotStart = timeToMinutes(slot.time);
       const slotEnd = slotStart == null ? null : slotStart + studentClassDuration;
       return nextStart != null && nextEnd != null && slotStart != null && slotEnd != null
-        && rangesOverlapWithClassBuffer(nextStart, nextEnd, slotStart, slotEnd);
+        && rangesOverlap(nextStart, nextEnd, slotStart, slotEnd);
     });
   };
   const studentSlotOverlapsClassList = (classes, time) => {
@@ -4825,7 +4822,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
     return (classes || []).some((cls) => {
       const range = getClassRange(cls);
-      return range && rangesOverlapWithClassBuffer(requestedStart, requestedEnd, range.start, range.end);
+      return range && rangesOverlap(requestedStart, requestedEnd, range.start, range.end);
     });
   };
   const getAvailabilitySlotsForRecord = (record, duration = studentClassDuration, occupiedClasses = []) => {
@@ -4856,7 +4853,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     ranges.forEach(({ start, end }) => {
       getCandidateSlotMinutes(start, end, duration, occupiedRanges).forEach((minute) => {
         const slotEnd = minute + duration;
-        if (occupiedRanges.some(range => rangesOverlapWithClassBuffer(minute, slotEnd, range.start, range.end))) return;
+        if (occupiedRanges.some(range => rangesOverlap(minute, slotEnd, range.start, range.end))) return;
         const converted = convertDateTime(sourceDate, minutesToTime(minute), teacherTimezone, viewerTimezone);
         const convertedDate = normalizeDate(converted.date);
         const convertedTime = normalizeTime(converted.time);
@@ -5567,7 +5564,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         const slotEnd = slotStart == null ? null : slotStart + studentClassDuration;
         return !bookedClasses.some(({ requestedStart, requestedEnd }) => (
           requestedStart != null && requestedEnd != null && slotStart != null && slotEnd != null
-          && rangesOverlapWithClassBuffer(slotStart, slotEnd, requestedStart, requestedEnd)
+          && rangesOverlap(slotStart, slotEnd, requestedStart, requestedEnd)
         ));
       }));
       setClassesCache(prev => {

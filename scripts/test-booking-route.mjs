@@ -80,13 +80,13 @@ reset(); assert.equal((await book("16:40")).code, 400);
 reset({ status: "unavailable" }); assert.equal((await book("12:00")).code, 400);
 reset({ start_time: null }); assert.equal((await book("12:00")).code, 400);
 reset(); classes = [{ class_id: 90, start_time: "12:00", duration: 25 }];
-assert.equal((await book("12:30")).code, 409); // Five-minute gap is too short.
-assert.equal((await book("12:35")).code, 201);
+assert.equal((await book("12:20")).code, 409); // The requested lesson overlaps.
+assert.equal((await book("12:25")).code, 201); // It starts as soon as the existing lesson ends.
 reset();
 const simultaneous = await Promise.all([book("12:00", 2), book("12:10", 3)]);
 assert.deepEqual(simultaneous.map(result => result.code).sort(), [201, 409]);
 assert.equal(inserted, 1);
-console.log("Booking route rejects breaks, blocked hours, short buffers, and simultaneous overlapping requests.");
+console.log("Booking route rejects breaks, blocked hours, overlapping and simultaneous requests.");
 
 const accessStart = source.indexOf("async function sessionMayReadTeacherAvailability(");
 const accessEnd = source.indexOf("function requireTeacherAvailabilityScope(", accessStart);

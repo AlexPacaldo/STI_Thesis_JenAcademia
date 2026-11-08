@@ -1746,7 +1746,6 @@ function timeToMinutes(value) {
 
 const ALLOWED_CLASS_DURATIONS = new Set([25, 50]);
 const DEFAULT_CLASS_DURATION = 50;
-const CLASS_BREAK_BUFFER_MINUTES = 10;
 const SCHEDULE_WINDOW_MONTHS = 3;
 
 function normalizeClassDuration(value) {
@@ -1774,10 +1773,6 @@ function getRangeMinutes(startTime, durationMinutes) {
 
 function rangesOverlap(aStart, aEnd, bStart, bEnd) {
   return aStart < bEnd && aEnd > bStart;
-}
-
-function rangesOverlapWithClassBuffer(aStart, aEnd, bStart, bEnd) {
-  return rangesOverlap(aStart, aEnd, bStart - CLASS_BREAK_BUFFER_MINUTES, bEnd + CLASS_BREAK_BUFFER_MINUTES);
 }
 
 function addMonthsClamped(date, months) {
@@ -1810,7 +1805,7 @@ function hasClassConflict(rows, start, end, excludeClassId = null) {
 
     const interval = getClassInterval(row.start_time, row.duration, row.end_time);
     if (!interval) return false;
-    return rangesOverlapWithClassBuffer(start, end, interval.start, interval.end);
+    return rangesOverlap(start, end, interval.start, interval.end);
   });
 }
 
@@ -10594,7 +10589,7 @@ app.post("/api/calendar/reschedule-request", requireSession, requireBodyIdentity
     );
 
     if (hasClassConflict(teacherConflictRows, requestedRange.start, requestedRange.end, class_id)) {
-      return res.status(409).json({ message: `This time slot overlaps with another booked class or its ${CLASS_BREAK_BUFFER_MINUTES}-minute teacher break.` });
+      return res.status(409).json({ message: "This time slot overlaps with another booked class." });
     }
 
     // Determine recipient: if student requested, notify teacher; if teacher requested, notify student
@@ -11027,7 +11022,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
     if (hasClassConflict(conflictRows, requestedRange.start, requestedRange.end, class_id)
       || groupClassSchemaReady && await groupHoldConflict(connection, { teacherId: classInfo.teacher_id, studentId: classInfo.student_id,
         date: requested_date_key, start: requested_time_key, duration: classDuration, instant: zonedWallClockToInstant })) {
-      return res.status(409).json({ message: `That time overlaps with another booked class or its ${CLASS_BREAK_BUFFER_MINUTES}-minute teacher break.` });
+      return res.status(409).json({ message: "That time overlaps with another booked class." });
     }
 
     const newEndTime = minutesToTimeKey(requestedRange.end);

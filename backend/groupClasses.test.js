@@ -159,7 +159,8 @@ test("availability, breaks, unrelated bookings and full lesson duration constrai
   await assert.rejects(f.service.create(f.teacher, { ...f.body, start_time: "12:50" }), /conflicts/);
   const options = await f.service.options(f.teacher, [10, 20], f.body.scheduled_date, "13:00");
   assert.equal(options.times.length, 3); assert(!options.times.includes("13:00"));
-  assert(options.times.every(time => time <= "12:25" || time >= "13:35"));
+  assert(options.times.includes("12:30")); // The proposal may start when the teacher's break ends.
+  assert(!options.times.includes("12:50")); // The 13:00 class still occupies its actual interval.
 });
 
 test("simultaneous approvals convert once; pending proposals cannot be duplicated", async () => {
@@ -199,8 +200,8 @@ test("pair validation rejects different durations, students, teachers and starte
   }
   const now = Date.now();
   assert.equal(groupExpiry(now, [now + 60 * 60_000]).getTime(), now + 45 * 60_000);
-  assert(intervalsConflict(100, 200, 200, 300, 10));
-  assert(!intervalsConflict(100, 200, 210, 300, 10));
+  assert(!intervalsConflict(100, 200, 200, 300));
+  assert(intervalsConflict(100, 200, 199, 300));
 });
 
 test("an existing group moves only after both students approve another proposal", async () => {

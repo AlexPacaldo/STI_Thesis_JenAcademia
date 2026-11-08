@@ -23,15 +23,13 @@ for (const duration of [25, 50]) {
   for (const start of slots) {
     assert(start >= 480 && start + duration <= 1020);
     for (const busy of occupied) {
-      assert(start >= busy.end + 10 || start + duration <= busy.start - 10);
+      assert(start >= busy.end || start + duration <= busy.start);
     }
   }
-  assert(slots.includes(695)); // Required buffer after the booked class.
-  assert(!slots.includes(690));
+  assert(slots.includes(685)); // A new class may start as soon as the prior one ends.
 }
 assert(candidateSlotMinutes(480, 900, 25).includes(660)); // 11 AM is independent of duration.
 assert(!candidateSlotMinutes(480, 500, 25).length);
 const afterEightOClockClass = candidateSlotMinutes(480, 1380, 25, [{ start: 1200, end: 1225 }]);
-assert(!afterEightOClockClass.includes(1230)); // 8:30 PM is only five minutes after the class ends.
-assert(afterEightOClockClass.includes(1235)); // The full ten-minute teacher buffer has elapsed.
-console.log("Booking time ranking, break boundaries, full duration, and class buffer checks passed.");
+assert(afterEightOClockClass.includes(1230)); // 8:30 PM is now allowed after an 8:00-8:25 PM class.
+console.log("Booking time ranking, break boundaries, full duration, and back-to-back class checks passed.");
