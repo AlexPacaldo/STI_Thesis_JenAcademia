@@ -30,10 +30,11 @@ export default function Login() {
     e.preventDefault();
 
     try {
+      const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const res = await fetch(`${API_BASE_URL}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, timezone: detectedTimezone }),
       });
 
       const data = await res.json();

@@ -4801,6 +4801,18 @@ app.post("/api/login", limitLoginAttempts, async (req, res) => {
       });
     }
 
+    const detectedTimezone = normalizeTimezone(
+      req.body?.timezone,
+      timezoneFromCountry(user.country)
+    );
+    if (detectedTimezone !== user.timezone) {
+      await pool.query(
+        "UPDATE users SET timezone = ? WHERE user_id = ?",
+        [detectedTimezone, user.user_id]
+      );
+      user.timezone = detectedTimezone;
+    }
+
     // Success — fetch assigned teacher for students and return a trimmed user object
     let assignedTeacherId = null;
     if (user.role === "student") {
