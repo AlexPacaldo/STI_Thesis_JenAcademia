@@ -8043,6 +8043,42 @@ const groupClassService = createGroupClassService({
 });
 registerGroupClassRoutes(app, { requireSession, service: groupClassService, available: () => groupClassSchemaReady });
 
+// Return only the time ranges needed to check booking availability.
+app.get("/api/calendar/teacher-booking-conflicts", requireSession, async (req, res) => {
+  try {
+    const { scheduled_date, teacher_id } = req.query;
+    const date = String(scheduled_date || "");
+    const parsedDate = new Date(`${date}T00:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsedDate.getTime())
+      || parsedDate.toISOString().slice(0, 10) !== date || !/^\d+$/.test(String(teacher_id || ""))) {
+      return res.status(400).json({ message: "A valid teacher and date are required." });
+    }
+    if (!(await sessionMayReadTeacherAvailability(req, teacher_id))) {
+      return res.status(403).json({ message: "You can only check booking times for your assigned teacher." });
+    }
+
+    const [classes] = await pool.query(
+      `SELECT c.class_id, c.teacher_id,
+              DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
+              TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time,
+              TIME_FORMAT(c.end_time, '%H:%i:%s') AS end_time,
+              c.duration, tea.timezone AS teacher_timezone
+       FROM classes c
+       JOIN users tea ON tea.user_id = c.teacher_id
+       WHERE c.teacher_id = ? AND c.scheduled_date = ? AND c.status = 'scheduled'
+       ORDER BY c.start_time, c.class_id`,
+      [teacher_id, date]
+    );
+    const holds = groupClassSchemaReady
+      ? await groupProposalHolds(pool, { teacherId: teacher_id, date })
+      : [];
+    res.json({ classes: [...classes, ...holds] });
+  } catch (err) {
+    console.error("GET /api/calendar/teacher-booking-conflicts error:", err);
+    res.status(500).json({ message: "Unable to check the teacher's current class schedule." });
+  }
+});
+
 // Get all classes for a specific date
 app.get("/api/calendar/classes-by-date", requireSession, requireQueryScope("student_id", "teacher_id"), async (req, res) => {
   try {

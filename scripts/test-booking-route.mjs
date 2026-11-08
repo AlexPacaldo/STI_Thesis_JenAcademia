@@ -87,3 +87,51 @@ const simultaneous = await Promise.all([book("12:00", 2), book("12:10", 3)]);
 assert.deepEqual(simultaneous.map(result => result.code).sort(), [201, 409]);
 assert.equal(inserted, 1);
 console.log("Booking route rejects breaks, blocked hours, short buffers, and simultaneous overlapping requests.");
+
+const accessStart = source.indexOf("async function sessionMayReadTeacherAvailability(");
+const accessEnd = source.indexOf("function requireTeacherAvailabilityScope(", accessStart);
+const conflictsStart = source.indexOf('app.get("/api/calendar/teacher-booking-conflicts"');
+const conflictsEnd = source.indexOf('\napp.get("/api/calendar/classes-by-date"', conflictsStart);
+assert(accessStart >= 0 && accessEnd > accessStart && conflictsStart >= 0 && conflictsEnd > conflictsStart);
+let conflictsHandler;
+let assignedTeacherId = 1;
+let conflictQueryCount = 0;
+const conflictsPool = {
+  async query(sql, params) {
+    if (sql.includes("FROM student_profiles")) return [[{ assigned_teacher_id: assignedTeacherId }]];
+    conflictQueryCount++;
+    assert.match(sql, /SELECT c\.class_id, c\.teacher_id/);
+    assert.doesNotMatch(sql, /student_name|student_email|profile_image|first_name|last_name/i);
+    assert.equal(params[0], "1");
+    assert.equal(params[1], "2026-11-09");
+    return [[{ class_id: 90, teacher_id: 1, scheduled_date: "2026-11-09", start_time: "20:00:00",
+      end_time: "20:25:00", duration: 25, teacher_timezone: "Asia/Manila" }]];
+  },
+};
+vm.runInNewContext(source.slice(accessStart, accessEnd) + source.slice(conflictsStart, conflictsEnd), {
+  app: { get: (_path, ...callbacks) => { conflictsHandler = callbacks.at(-1); } },
+  requireSession() {}, pool: conflictsPool, groupClassSchemaReady: true,
+  groupProposalHolds: async (_db, options) => {
+    assert.equal(options.teacherId, "1");
+    assert.equal(options.date, "2026-11-09");
+    return [{ class_id: "group-hold-1", is_group_hold: true, scheduled_date: "2026-11-09", start_time: "21:00" }];
+  },
+  console,
+});
+async function getConflicts(session, query) {
+  const result = { code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
+  await conflictsHandler({ session, query }, result);
+  return result;
+}
+const visibleConflicts = await getConflicts({ userId: 2, role: "student" }, { teacher_id: "1", scheduled_date: "2026-11-09" });
+assert.equal(visibleConflicts.code, 200);
+assert.equal(visibleConflicts.body.classes.map(row => row.start_time).join(","), "20:00:00,21:00");
+assert.equal(JSON.stringify(visibleConflicts.body).includes("student"), false);
+assert.equal(conflictQueryCount, 1);
+assignedTeacherId = 9;
+const privateSchedule = await getConflicts({ userId: 2, role: "student" }, { teacher_id: "1", scheduled_date: "2026-11-09" });
+assert.equal(privateSchedule.code, 403);
+assert.equal(conflictQueryCount, 1);
+const invalidDate = await getConflicts({ userId: 2, role: "student" }, { teacher_id: "1", scheduled_date: "2026-02-30" });
+assert.equal(invalidDate.code, 400);
+console.log("Assigned students can check minimal teacher booking conflicts; unrelated schedules remain private.");

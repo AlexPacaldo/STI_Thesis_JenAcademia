@@ -2337,16 +2337,14 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
   const loadTeacherClassesForDate = (dateStr, tId, force = false) => {
     const dateKey = normalizeDate(dateStr);
-    if (!dateKey || !tId || (!force && teacherClassesCache[dateKey])) return Promise.resolve();
+    if (!dateKey || !tId || (!force && teacherClassesCache[dateKey] !== undefined)) return Promise.resolve();
 
     return Promise.all(
       nearbyDateKeys(dateKey).map(sourceDate =>
-        axios
-          .get(`${API}/api/calendar/classes-by-date`, {
-            params: { scheduled_date: sourceDate, teacher_id: tId, include_reserved: true }
-          })
-          .then(r => r.data?.classes || [])
-          .catch(() => [])
+        axios.get(
+          `${API}/api/calendar/${localRole === "student" ? "teacher-booking-conflicts" : "classes-by-date"}`,
+          { params: { scheduled_date: sourceDate, teacher_id: tId, include_reserved: true } }
+        ).then(r => r.data?.classes || [])
       )
     )
       .then(results => {
@@ -2357,9 +2355,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
           .filter(cls => normalizeDate(cls.scheduled_date) === dateKey)
           .forEach(cls => byId.set(String(cls.id || cls.class_id), cls));
         setTeacherClassesCache(prev => ({ ...prev, [dateKey]: Array.from(byId.values()) }));
+        setStudentBookingError(current => current === BOOKING.cannotLookUp ? "" : current);
       })
-      .catch(() => {
-        setTeacherClassesCache(prev => ({ ...prev, [dateKey]: [] }));
+      .catch(error => {
+        console.error("Unable to load teacher classes for booking:", error);
+        setTeacherClassesCache(prev => ({ ...prev, [dateKey]: null }));
+        setStudentBookingError(BOOKING.cannotLookUp);
       });
   };
 
@@ -2369,17 +2370,19 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
     const entries = await Promise.all(uniqueDateKeys.map(async (dateKey) => {
       if (teacherClassesCache[dateKey] !== undefined) {
+        if (teacherClassesCache[dateKey] === null) {
+          throw new Error(BOOKING.cannotLookUp);
+        }
         return [dateKey, teacherClassesCache[dateKey]];
       }
 
       const results = await Promise.all(
         nearbyDateKeys(dateKey).map(sourceDate =>
           axios
-            .get(`${API}/api/calendar/classes-by-date`, {
-              params: { scheduled_date: sourceDate, teacher_id: tId, include_reserved: true }
+            .get(`${API}/api/calendar/teacher-booking-conflicts`, {
+              params: { scheduled_date: sourceDate, teacher_id: tId }
             })
             .then(r => r.data?.classes || [])
-            .catch(() => [])
         )
       );
 
@@ -2432,6 +2435,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     const dateKey = normalizeDate(dateStr);
     if (!dateKey || !tId) {
       setAvailableTimeSlots([]);
+      return;
+    }
+
+    if (localRole === "student" && teacherClassesCache[dateKey] === null) {
+      setAvailableTimeSlots([]);
+      setStudentBookingError(BOOKING.cannotLookUp);
       return;
     }
     

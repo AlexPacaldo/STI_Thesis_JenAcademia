@@ -31,4 +31,7 @@ for (const duration of [25, 50]) {
 }
 assert(candidateSlotMinutes(480, 900, 25).includes(660)); // 11 AM is independent of duration.
 assert(!candidateSlotMinutes(480, 500, 25).length);
+const afterEightOClockClass = candidateSlotMinutes(480, 1380, 25, [{ start: 1200, end: 1225 }]);
+assert(!afterEightOClockClass.includes(1230)); // 8:30 PM is only five minutes after the class ends.
+assert(afterEightOClockClass.includes(1235)); // The full ten-minute teacher buffer has elapsed.
 console.log("Booking time ranking, break boundaries, full duration, and class buffer checks passed.");
