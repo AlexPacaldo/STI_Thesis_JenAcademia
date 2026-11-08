@@ -1,0 +1,29 @@
+.manager { margin: 12px 0 20px; color: var(--text, #203c2d); }
+.toolbar, .row, .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.toolbar { justify-content: space-between; }
+.row { justify-content: space-between; }
+.manager button, .dialog button { min-height: 44px; padding: 10px 16px; border: 1px solid #ccd8cf; border-radius: 12px; background: white; color: #203c2d; font: inherit; font-weight: 700; cursor: pointer; }
+.manager button:disabled, .dialog button:disabled { opacity: .55; cursor: not-allowed; }
+.manager button:focus-visible, .dialog button:focus-visible, .dialog input:focus-visible, .dialog select:focus-visible, .invitations summary:focus-visible { outline: 3px solid #79a847; outline-offset: 3px; }
+.manager .primary, .dialog .primary { background: #287b38; color: white; border-color: #287b38; }
+.manager .propose { border-color: #287b38; }
+.invitations { flex: 1; min-width: min(100%, 260px); }
+.invitations summary { cursor: pointer; font-weight: 700; padding: 12px 0; }
+.invitation, .groupInfo { padding: 16px; border: 1px solid #dce4de; border-radius: 14px; background: #fff; margin-top: 12px; }
+.invitation p, .groupInfo p, .dialog p { line-height: 1.55; }
+.badge { background: #eaf3df; padding: 5px 10px; border-radius: 20px; font-size: .8rem; font-weight: 700; }
+.muted { color: #607269; font-size: .9rem; }
+.message { padding: 12px 16px; background: #eaf3df; border-radius: 12px; }
+.overlay { position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center; padding: 20px; background: rgba(15, 35, 24, .5); }
+.dialog { box-sizing: border-box; width: min(100%, 720px); max-height: 90dvh; overflow-y: auto; background: #fff; color: #203c2d; border-radius: 22px; padding: 28px; box-shadow: 0 20px 60px #142e2633; }
+.dialog h2 { font-size: 1.4rem; margin: 0; }
+.form, .form label { display: grid; gap: 10px; }
+.form { gap: 16px; margin: 20px 0; }
+.form label { font-weight: 700; min-width: 0; }
+.form input, .form select { box-sizing: border-box; min-width: 0; width: 100%; min-height: 48px; border: 1px solid #ccd8cf; border-radius: 12px; padding: 10px; font: inherit; background: white; color: #203c2d; }
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.options { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 10px; margin: 16px 0; }
+.options button { display: grid; gap: 6px; }
+.options button[aria-pressed="true"], .actions button[aria-pressed="true"] { border-color: #287b38; background: #eaf3df; }
+.error { color: #9d3326; background: #fff0eb; border-radius: 10px; padding: 12px; }
+@media (max-width: 520px) { .fields { grid-template-columns: 1fr; } .dialog { padding: 20px; } .overlay { padding: 10px; } }

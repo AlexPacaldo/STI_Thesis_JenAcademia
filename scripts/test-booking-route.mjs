@@ -56,6 +56,7 @@ const pool = {
 };
 vm.runInNewContext(source.slice(helperStart, helperEnd) + source.slice(routeStart, routeEnd), {
   app: { post: (_path, ...callbacks) => { handler = callbacks.at(-1); } },
+  groupClassSchemaReady: true, groupHoldConflict: async () => false, zonedWallClockToInstant: () => {},
   pool, requireSession() {}, requireClassBookingScope: () => () => {},
   timeToMinutes, normalizeTimeKey: normalizeTime, pad: value => String(value).padStart(2, "0"),
   autoMarkPastClassesAsNoShow: async () => {},

@@ -1,3 +1,5 @@
+import { startGroupParticipants, shareGroupEvidence, groupRecordingConsentReady, endGroupParticipants } from "./groupClassAttendance.js";
+import { createGroupClassService, ensureGroupClassSchema, registerGroupClassRoutes, groupProposalHolds, groupHoldConflict } from "./groupClasses.js";
 // server.js (ESM)
 import bcrypt from "bcryptjs";
 import cors from "cors";
@@ -1901,6 +1903,9 @@ async function deleteLocalProfileImage(imageUrl) {
 async function deleteLocalClassProofImage(imageUrl) {
   if (!imageUrl || !String(imageUrl).startsWith("/uploads/class-proofs/")) return;
 
+  const [references] = await pool.query(`SELECT COUNT(*) AS count FROM class_attendance_logs
+    WHERE start_proof_url = ? OR proof_url = ?`, [imageUrl, imageUrl]);
+  if (Number(references[0]?.count) > 0) return;
   const fileName = path.basename(decodeURIComponent(String(imageUrl)));
   const filePath = path.resolve(classProofUploadDir, fileName);
   const proofDir = path.resolve(classProofUploadDir);
@@ -1937,6 +1942,9 @@ async function deleteLocalClassRecording(recordingUrl) {
 
 async function deleteClassRecording(recordingUrl) {
   if (!recordingUrl) return;
+  const [references] = await pool.query(`SELECT COUNT(*) AS count FROM class_attendance_logs
+    WHERE recording_url = ? AND (recording_expires_at IS NULL OR recording_expires_at > NOW())`, [recordingUrl]);
+  if (Number(references[0]?.count) > 0) return;
   if (String(recordingUrl).startsWith("http")) {
     await deleteRecordingFromDrive(recordingUrl);
   } else {
@@ -2023,8 +2031,10 @@ function formatMeetingDateTime(date, time) {
   return dt.toISOString();
 }
 
-const classSelectFields = `
+let groupClassSchemaReady = false;
+let classSelectFields = `
   c.class_id,
+  c.group_session_id,
   c.class_name,
   c.teacher_id,
   c.student_id,
@@ -3381,6 +3391,18 @@ const SCHEMA_STEPS = [
   ["book teachers table", ensureBookTeachersTable],
   ["lesson progress table", ensureLessonProgressTable],
   ["class attendance logs table", ensureClassAttendanceLogsTable],
+  ["group class proposals and sessions", async () => {
+    try {
+      await ensureGroupClassSchema(pool, columnExists);
+      groupClassSchemaReady = true;
+      classSelectFields = classSelectFields.replace("NULL AS group_session_id", "c.group_session_id");
+    } catch (error) {
+      // Keep individual scheduling operational if this additive migration fails.
+      groupClassSchemaReady = false;
+      classSelectFields = classSelectFields.replace("c.group_session_id", "NULL AS group_session_id");
+      throw error;
+    }
+  }],
   ["contract reviews table", ensureContractReviewsTable],
   ["student course progress table", ensureStudentCourseProgressTable],
   ["user profile image column", ensureUserProfileImageColumn],
@@ -8015,6 +8037,12 @@ app.post("/api/calendar/teacher-availability", requireSession, requireBodyIdenti
   }
 });
 
+const groupClassService = createGroupClassService({
+  pool, instant: zonedWallClockToInstant, encrypt: encryptNullableText,
+  meetingLink: generateJitsiMeetingLink, broadcast: broadcastCalendarChange,
+});
+registerGroupClassRoutes(app, { requireSession, service: groupClassService, available: () => groupClassSchemaReady });
+
 // Get all classes for a specific date
 app.get("/api/calendar/classes-by-date", requireSession, requireQueryScope("student_id", "teacher_id"), async (req, res) => {
   try {
@@ -8071,7 +8099,9 @@ app.get("/api/calendar/classes-by-date", requireSession, requireQueryScope("stud
     query += ` ORDER BY c.start_time ASC, c.class_id ASC`;
 
     const [rows] = await pool.query(query, params);
-    res.json({ classes: decryptRows(rows, ["class_link", "class_summary"]) });
+    const holds = req.query.include_reserved === 'true' && groupClassSchemaReady
+      ? await groupProposalHolds(pool, { teacherId: teacher_id, studentId: student_id, date: scheduled_date }) : [];
+    res.json({ classes: [...decryptRows(rows, ["class_link", "class_summary"]), ...holds] });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching classes" });
@@ -8155,7 +8185,10 @@ app.get("/api/calendar/classes-by-month", requireSession, requireQueryScope("stu
     query += ` ORDER BY c.scheduled_date ASC, c.start_time ASC, c.class_id ASC`;
 
     const [rows] = await pool.query(query, params);
-    const classesByDate = decryptRows(rows, ["class_link", "class_summary"]).reduce((acc, row) => {
+    const holds = req.query.include_reserved === 'true' && groupClassSchemaReady
+      ? (await groupProposalHolds(pool, { teacherId: teacher_id, studentId: student_id }))
+          .filter(hold => hold.scheduled_date >= startDate && hold.scheduled_date <= endDate) : [];
+    const classesByDate = [...decryptRows(rows, ["class_link", "class_summary"]), ...holds].reduce((acc, row) => {
       const dateKey = row.scheduled_date instanceof Date
         ? row.scheduled_date.toISOString().slice(0, 10)
         : String(row.scheduled_date).slice(0, 10);
@@ -8379,7 +8412,13 @@ app.get("/api/calendar/classes/:class_id/classroom", requireSession, requireClas
 });
 
 app.post("/api/calendar/classes/:class_id/start", requireSession, requireClassAccess(), async (req, res) => {
+  const connection = await pool.getConnection();
+  let committed = false;
   try {
+    await connection.beginTransaction();
+    if (!sessionMayActFor(req, req.body?.teacher_id)) {
+      return res.status(403).json({ message: "Only the assigned teacher can manage class evidence." });
+    }
     const { class_id } = req.params;
     const { teacher_id, recording_consent, evidence_mode } = req.body;
     if (!["recording", "screenshots"].includes(evidence_mode)) {
@@ -8390,7 +8429,11 @@ app.post("/api/calendar/classes/:class_id/start", requireSession, requireClassAc
       return res.status(400).json({ message: "Missing class_id or teacher_id" });
     }
 
-    const [classRows] = await pool.query(
+    const [bookingRows] = await connection.query("SELECT teacher_id, student_id FROM classes WHERE class_id = ?", [class_id]);
+    if (!bookingRows.length) return res.status(404).json({ message: "Class not found" });
+    await connection.query("SELECT user_id FROM users WHERE user_id IN (?) ORDER BY user_id FOR UPDATE",
+      [[bookingRows[0].teacher_id, bookingRows[0].student_id].sort((a, b) => Number(a) - Number(b))]);
+    const [classRows] = await connection.query(
       `SELECT c.class_id, c.teacher_id, c.student_id, c.status
        FROM classes c
        JOIN users stu ON c.student_id = stu.user_id
@@ -8398,7 +8441,7 @@ app.post("/api/calendar/classes/:class_id/start", requireSession, requireClassAc
        JOIN users tea ON c.teacher_id = tea.user_id
         AND tea.status = 'active' AND tea.profile_completed = TRUE
        WHERE c.class_id = ?
-       LIMIT 1`,
+       LIMIT 1 FOR UPDATE`,
       [class_id]
     );
 
@@ -8415,7 +8458,9 @@ app.post("/api/calendar/classes/:class_id/start", requireSession, requireClassAc
       return res.status(400).json({ message: "Only scheduled classes can be started" });
     }
 
-    if (await markClassNoShowIfAttendanceGraceExpired(pool, classInfo.class_id)) {
+    if (await markClassNoShowIfAttendanceGraceExpired(connection, classInfo.class_id)) {
+      await connection.commit();
+      committed = true;
       broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-no-show", {
         class_id: classInfo.class_id,
         status: "no-show",
@@ -8427,7 +8472,7 @@ app.post("/api/calendar/classes/:class_id/start", requireSession, requireClassAc
       return res.status(400).json({ message: "Recording consent is required before joining this class" });
     }
 
-    await pool.query(
+    await connection.query(
       `INSERT INTO class_attendance_logs (class_id, teacher_id, student_id, evidence_mode, teacher_started_at, teacher_recording_consent_at, verification_status)
        VALUES (?, ?, ?, ?, NOW(), NOW(), 'in_progress')
        ON DUPLICATE KEY UPDATE
@@ -8442,7 +8487,11 @@ app.post("/api/calendar/classes/:class_id/start", requireSession, requireClassAc
       [classInfo.class_id, classInfo.teacher_id, classInfo.student_id, evidence_mode]
     );
 
-    const verification = await getClassVerification(pool, class_id);
+    const groupPeers = groupClassSchemaReady ? await startGroupParticipants(connection, class_id, evidence_mode) : [];
+    await connection.commit();
+    committed = true;
+    broadcastCalendarChange(groupPeers.flatMap(peer => [peer.teacher_id, peer.student_id]), "class-verification-changed");
+    const verification = await getClassVerification(connection, class_id);
     broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-verification-changed", {
       class_id: classInfo.class_id,
       verification_status: verification?.verification_status || "in_progress",
@@ -8451,6 +8500,9 @@ app.post("/api/calendar/classes/:class_id/start", requireSession, requireClassAc
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error starting class session" });
+  } finally {
+    if (!committed) await connection.rollback();
+    connection.release();
   }
 });
 
@@ -8458,6 +8510,9 @@ app.post("/api/calendar/classes/:class_id/join", requireSession, requireClassAcc
   try {
     const { class_id } = req.params;
     const { student_id, recording_consent } = req.body;
+    if (!sessionMayActFor(req, student_id)) {
+      return res.status(403).json({ message: "Students must confirm their own attendance and recording consent." });
+    }
 
     if (!class_id || !student_id) {
       return res.status(400).json({ message: "Missing class_id or student_id" });
@@ -8550,6 +8605,9 @@ app.post("/api/calendar/classes/:class_id/recording", requireSession, requireCla
   });
 }, async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.body?.teacher_id)) {
+      return res.status(403).json({ message: "Only the assigned teacher can manage class evidence." });
+    }
     const { class_id } = req.params;
     const { teacher_id } = req.body || {};
 
@@ -8647,6 +8705,8 @@ app.post("/api/calendar/classes/:class_id/recording", requireSession, requireCla
         recordingSeconds,
       ]
     );
+
+    if (groupClassSchemaReady) await shareGroupEvidence(pool, class_id, ["recording_url", "recording_mime_type", "recording_size_bytes", "recording_uploaded_at", "recording_expires_at", "recording_duration_seconds"]);
 
     if (existingRows[0]?.recording_url && existingRows[0].recording_url !== recordingUrl) {
       await deleteClassRecording(existingRows[0].recording_url);
@@ -8831,30 +8891,44 @@ app.get("/api/calendar/classes/:class_id/recording-link", requireSession, requir
 
 app.post("/api/calendar/classes/:class_id/recording-start", requireSession, requireClassAccess(), async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.body?.teacher_id)) {
+      return res.status(403).json({ message: "Only the assigned teacher can manage class evidence." });
+    }
+    if (groupClassSchemaReady && !await groupRecordingConsentReady(pool, req.params.class_id)) {
+      return res.status(409).json({ message: "Both group students must join and consent before recording starts." });
+    }
     const [result] = await pool.query(`UPDATE class_attendance_logs cal JOIN classes c ON c.class_id = cal.class_id
       SET cal.recording_started_at = NOW(), cal.evidence_mode = COALESCE(cal.evidence_mode, 'recording')
       WHERE cal.class_id = ? AND c.teacher_id = ? AND c.status = 'scheduled'
       AND cal.teacher_started_at IS NOT NULL AND cal.teacher_ended_at IS NULL
       AND (cal.evidence_mode IS NULL OR cal.evidence_mode = 'recording')`, [req.params.class_id, req.body.teacher_id]);
     if (!result.affectedRows) return res.status(400).json({ message: "Recording is unavailable for this class." });
+    if (groupClassSchemaReady) await shareGroupEvidence(pool, req.params.class_id, ["recording_started_at"]);
     res.json({ ok: true });
   } catch (error) { res.status(500).json({ message: "Unable to start recording." }); }
 });
 
 app.post("/api/calendar/classes/:class_id/start-proof", classProofUpload.single("proof_image"), requireSession, requireClassAccess(), async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.body?.teacher_id)) {
+      return res.status(403).json({ message: "Only the assigned teacher can manage class evidence." });
+    }
     const log = await getClassVerification(pool, req.params.class_id);
     if (!req.file || !log || String(log.teacher_id) !== String(req.body.teacher_id) || !log.student_joined_at || log.teacher_ended_at || log.evidence_mode !== 'screenshots' || log.start_proof_url) {
       if (req.file) await deleteLocalClassProofImage(`/uploads/class-proofs/${req.file.filename}`);
       return res.status(400).json({ message: "Start screenshot requires screenshot mode, confirmed student attendance, and no previous start screenshot." });
     }
     await pool.query("UPDATE class_attendance_logs SET start_proof_url = ?, start_proof_uploaded_at = NOW() WHERE class_id = ?", [`/uploads/class-proofs/${req.file.filename}`, req.params.class_id]);
+    if (groupClassSchemaReady) await shareGroupEvidence(pool, req.params.class_id, ["start_proof_url", "start_proof_uploaded_at"]);
     res.json({ verification: await getClassVerification(pool, req.params.class_id) });
   } catch (error) { res.status(500).json({ message: "Unable to upload start screenshot." }); }
 });
 
 app.delete("/api/calendar/classes/:class_id/start-proof", requireSession, requireClassAccess(), async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.body?.teacher_id)) {
+      return res.status(403).json({ message: "Only the assigned teacher can manage class evidence." });
+    }
     const log = await getClassVerification(pool, req.params.class_id);
     if (!log || String(log.teacher_id) !== String(req.body.teacher_id) || log.teacher_ended_at || log.evidence_mode !== 'screenshots' || !log.start_proof_url) {
       return res.status(400).json({ message: "Start screenshot cannot be removed for this class." });
@@ -8865,6 +8939,7 @@ app.delete("/api/calendar/classes/:class_id/start-proof", requireSession, requir
       "UPDATE class_attendance_logs SET start_proof_url = NULL, start_proof_uploaded_at = NULL WHERE class_id = ?",
       [req.params.class_id]
     );
+    if (groupClassSchemaReady) await shareGroupEvidence(pool, req.params.class_id, ["start_proof_url", "start_proof_uploaded_at"]);
     await deleteLocalClassProofImage(oldProofUrl);
 
     const verification = await getClassVerification(pool, req.params.class_id);
@@ -8876,6 +8951,9 @@ app.delete("/api/calendar/classes/:class_id/start-proof", requireSession, requir
 
 app.post("/api/calendar/classes/:class_id/end", classProofUpload.single("proof_image"), requireSession, requireClassAccess(), async (req, res) => {
   try {
+    if (!sessionMayActFor(req, req.body?.teacher_id)) {
+      return res.status(403).json({ message: "Only the assigned teacher can manage class evidence." });
+    }
     const { class_id } = req.params;
     const { teacher_id, summary, review_reason } = req.body;
     const requestedReview = String(review_reason || "").trim();
@@ -8970,6 +9048,11 @@ app.post("/api/calendar/classes/:class_id/end", classProofUpload.single("proof_i
       ]
     );
 
+    const groupPeers = groupClassSchemaReady ? await endGroupParticipants(pool, class_id, {
+      getVerification: getClassVerification, requiredMinutes: getRequiredClassMinutes,
+      encrypt: encryptNullableText, evidenceAccepted: validEvidence,
+    }) : [];
+    broadcastCalendarChange(groupPeers.flatMap(peer => [peer.teacher_id, peer.student_id]), "class-verification-changed");
     const verification = await getClassVerification(pool, class_id);
     broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-verification-changed", {
       class_id: classInfo.class_id,
@@ -9575,7 +9658,9 @@ app.post("/api/calendar/class", requireSession, requireClassBookingScope(), asyn
       [scheduled_date, teacher_id, student_id]
     );
 
-    if (hasClassConflict(conflictRows, classRange.start, classRange.end)) {
+    if (hasClassConflict(conflictRows, classRange.start, classRange.end)
+      || groupClassSchemaReady && await groupHoldConflict(connection, { teacherId: teacher_id, studentId: student_id,
+        date: scheduled_date, start: start_time, duration: classDuration, instant: zonedWallClockToInstant })) {
       await connection.rollback();
       return res.status(409).json({ message: "That time is no longer available. Please choose another available time." });
     }
@@ -10413,6 +10498,9 @@ app.post("/api/calendar/reschedule-request", requireSession, requireBodyIdentity
     }
 
     const classData = classRows[0];
+    if (classData.group_session_id) {
+      return res.status(409).json({ message: "Ask your teacher to propose a new group time. Both students must approve it." });
+    }
 
     // A class the teacher has already started is not one that can be moved, so
     // neither side can ask for a reschedule for it any more.
@@ -10813,6 +10901,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
     const [classData] = await connection.query(
       `SELECT c.teacher_id,
               c.student_id,
+              ${groupClassSchemaReady ? "c.group_session_id" : "NULL AS group_session_id"},
               DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
               c.start_time,
               c.end_time,
@@ -10833,6 +10922,9 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
     }
 
     const classInfo = classData[0];
+    if (classInfo.group_session_id) {
+      return res.status(409).json({ message: "Group class changes require a new proposal and approval from both students." });
+    }
 
     // The class has already been held, so moving it now would rewrite a class
     // that already happened. The request stays pending and the other side can
@@ -10896,7 +10988,9 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
       [class_id, requested_date, classInfo.teacher_id, classInfo.student_id]
     );
 
-    if (hasClassConflict(conflictRows, requestedRange.start, requestedRange.end, class_id)) {
+    if (hasClassConflict(conflictRows, requestedRange.start, requestedRange.end, class_id)
+      || groupClassSchemaReady && await groupHoldConflict(connection, { teacherId: classInfo.teacher_id, studentId: classInfo.student_id,
+        date: requested_date_key, start: requested_time_key, duration: classDuration, instant: zonedWallClockToInstant })) {
       return res.status(409).json({ message: `That time overlaps with another booked class or its ${CLASS_BREAK_BUFFER_MINUTES}-minute teacher break.` });
     }
 

@@ -1,3 +1,5 @@
+import GroupClassManager from "../components/GroupClassManager.jsx";
+import { groupClassesForDisplay } from "../utils/groupClasses.js";
 import { availableRanges, candidateSlotMinutes } from "../utils/bookingTimes.js";
 import { openSseStream } from "../utils/sseClient.js";
 import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
@@ -1527,7 +1529,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   // Keep reserved classes in the cache for overlap checks, but hide incomplete
   // sessions from the active class list.
   const selectedClasses = selectedDate
-    ? (classesCache[selectedDate] || []).filter(cls => cls.verification_status !== "incomplete")
+    ? (classesCache[selectedDate] || []).filter(cls => !cls.is_group_hold && cls.verification_status !== "incomplete")
     : [];
   const selectedClass = selectedClassId
     ? (selectedClasses.find(cls => String(cls.id ?? cls.class_id) === String(selectedClassId))
@@ -1582,7 +1584,7 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   // A class the teacher has already started is not one that can be moved, so
   // the reschedule request is closed for the teacher and the student alike.
   const canShowRescheduleAction =
-    !selectedClassStarted && !selectedClassEnded && !isAdmin && !requestMode;
+    !selectedClassStarted && !selectedClassEnded && !isAdmin && !requestMode && !selectedClass?.group_session_id;
   const showRescheduleClosedNotice = selectedClassStarted && !selectedClassEnded && !isAdmin;
   const shouldRemindStartScreenshot =
     localRole === "teacher" &&
@@ -1845,7 +1847,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       triggerCalendarRefresh();
     };
 
-    ["class-booked", "class-rescheduled", "availability-changed", "class-completed", "class-no-show", "contract-request-updated"].forEach(eventName => {
+    ["class-booked", "class-rescheduled", "availability-changed", "class-completed", "class-no-show", "contract-request-updated", "group-proposal-changed"].forEach(eventName => {
       stream.addEventListener(
         eventName,
         eventName === "contract-request-updated" ? handleContractRequestUpdated : handleCalendarChange
@@ -1856,7 +1858,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     stream.onerror = () => {};
 
     return () => {
-      ["class-booked", "class-rescheduled", "availability-changed", "class-completed", "class-no-show", "contract-request-updated"].forEach(eventName => {
+      ["class-booked", "class-rescheduled", "availability-changed", "class-completed", "class-no-show", "contract-request-updated", "group-proposal-changed"].forEach(eventName => {
         stream.removeEventListener(
           eventName,
           eventName === "contract-request-updated" ? handleContractRequestUpdated : handleCalendarChange
@@ -2249,7 +2251,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   return {
     ...c,
     id: c.id || c.class_id,
-    className: c.className || c.class_name || c.name,
+    className: c.group_session_id ? `Group class - ${c.class_name || c.className || c.name}` : c.className || c.class_name || c.name,
     studentName: studentFullName || c.studentName || c.student_name,
     studentFullName: studentFullName || c.studentFullName || c.studentName || c.student_name,
     studentEmail: c.studentEmail || c.student_email,
@@ -4451,7 +4453,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     const visibleMonthPrefix = `${year}-${String(month + 1).padStart(2, "0")}-`;
     const rows = [];
     Object.entries(classesCache).forEach(([dateKey, classes]) => {
-      (classes || []).forEach((cls) => {
+      groupClassesForDisplay(classes || []).forEach((cls) => {
         if (cls.verification_status === "incomplete") return;
         const viewerDate = normalizeDate(cls.scheduled_date || dateKey);
         if (!viewerDate.startsWith(visibleMonthPrefix)) return;
@@ -6291,6 +6293,21 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
           />
         )}
 
+        {(localRole === "teacher" || localRole === "student") && localUserId && (
+          <GroupClassManager
+            userId={localUserId}
+            role={localRole}
+            viewerTimezone={viewerTimezone}
+            selectedClass={selectedClass}
+            selectedStarted={selectedClassStarted}
+            peers={selectedClass?.group_session_id ? selectedClasses.filter(cls => cls.group_session_id === selectedClass.group_session_id) : []}
+            refreshToken={calendarRefreshToken}
+            onUpdated={() => { setSelectedClassId(null); triggerCalendarRefresh(); }}
+            onReservationsChanged={triggerCalendarRefresh}
+            onSelectParticipant={setSelectedClassId}
+          />
+        )}
+
         <div
           className={
             isSimpleStudentView || (isTeacherOrAdmin && calendarView === "list")
@@ -6798,7 +6815,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                   </div>
                   <div className={styles.slotList}>
                     {selectedClasses && selectedClasses.length > 0 ? (
-                      selectedClasses.map((cls, idx) => (
+                      groupClassesForDisplay(selectedClasses).map((cls, idx) => (
                         <button
                           key={idx}
                           type="button"
@@ -7458,7 +7475,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     </div>
                     <div className={styles.slotList}>
                       {selectedClasses && selectedClasses.length > 0 ? (
-                        selectedClasses.map((cls, idx) => (
+                        groupClassesForDisplay(selectedClasses).map((cls, idx) => (
                           <button
                             key={idx}
                             type="button"
