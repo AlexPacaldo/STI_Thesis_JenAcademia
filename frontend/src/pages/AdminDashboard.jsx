@@ -1567,23 +1567,33 @@ export default function AdminDashboard() {
       notify("Please enter the student's email.", "error");
       return;
     }
+    if (nextEmail.toLowerCase() === String(studentAccountModal.email || "").trim().toLowerCase()) {
+      notify("Enter a different email address; this matches the account's current address.", "info");
+      return;
+    }
 
     setStudentAccountActionLoading("email");
     try {
       const response = await axios.put(`${API}/api/admin/users/${studentAccountModal.user_id}/email`, {
         email: nextEmail,
       });
-      if (!response.data?.emailUpdated) {
+      const result = response.data || {};
+      if (result.emailUpdated === false) {
         notify("That is already the account's email address.", "info");
-      } else if (!response.data?.setupInviteRequired) {
+      } else if (result.emailUpdated === true && !result.setupInviteRequired) {
         notify("Email updated. The user will need the new address for future sign-ins and password resets.", "success");
-      } else {
+      } else if (result.emailUpdated === true && result.inviteEmailSent) {
+        notify("Email updated and new setup invite sent.", "success");
+      } else if (result.emailUpdated === true) {
+        notify("Email updated. Invite was prepared, but email was not sent. Check email settings.", "warning");
+      } else if (/email updated/i.test(String(result.message || ""))) {
+        const inviteNotSent = /not sent/i.test(String(result.message));
         notify(
-          response.data?.inviteEmailSent
-            ? "Email updated and new setup invite sent."
-            : "Email updated. Invite was prepared, but email was not sent. Check email settings.",
-          response.data?.inviteEmailSent ? "success" : "warning"
+          result.message,
+          inviteNotSent ? "warning" : "success"
         );
+      } else {
+        notify("The server response did not confirm the email change. Reload the account to verify its current address.", "warning");
       }
       await loadUsers();
       await refreshStudentAccount(studentAccountModal.user_id);
@@ -4999,7 +5009,7 @@ export default function AdminDashboard() {
                       type="button"
                       className={styles.approve}
                       onClick={saveStudentEmail}
-                      disabled={Boolean(studentAccountActionLoading) || studentEmailDraft.trim() === studentAccountModal.email}
+                      disabled={Boolean(studentAccountActionLoading) || studentEmailDraft.trim().toLowerCase() === String(studentAccountModal.email || "").trim().toLowerCase()}
                     >
                       {studentAccountActionLoading === "email" ? "Saving..." : "Save email"}
                     </button>
