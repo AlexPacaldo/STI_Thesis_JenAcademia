@@ -1,3 +1,4 @@
+import { availableRanges, candidateSlotMinutes } from "../utils/bookingTimes.js";
 import { openSseStream } from "../utils/sseClient.js";
 import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
 import { describeExtensionEligibility } from "../utils/contractExpiry.js";
@@ -43,6 +44,7 @@ import {
   timeToMinutes,
 } from "../utils/classTime.js";
 import StudentBookingWizard from "../components/StudentBookingWizard.jsx";
+import RescheduleTimePicker from "../components/RescheduleTimePicker.jsx";
 import CalendarModuleGuide from "../components/CalendarModuleGuide.jsx";
 import MyRescheduleRequests from "../components/MyRescheduleRequests.jsx";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
@@ -111,7 +113,6 @@ const fmtDate = (d) => {
 const parse24HourTime = (timeStr) => normalizeTime(timeStr);
 const CLASS_DURATION_OPTIONS = [25, 50];
 const DEFAULT_CLASS_DURATION = 50;
-const SLOT_STEP_MINUTES = 25;
 const CLASS_BREAK_BUFFER_MINUTES = 10;
 const SCHEDULE_WINDOW_MONTHS = 3;
 
@@ -154,21 +155,7 @@ const formatScheduleDate = (dateKey) => {
 const rangesOverlap = (startA, endA, startB, endB) => startA < endB && endA > startB;
 const rangesOverlapWithClassBuffer = (startA, endA, startB, endB) =>
   rangesOverlap(startA, endA, startB - CLASS_BREAK_BUFFER_MINUTES, endB + CLASS_BREAK_BUFFER_MINUTES);
-const getCandidateSlotMinutes = (start, end, duration, occupiedRanges = []) => {
-  const candidates = new Set();
-  for (let minute = start; minute + duration <= end; minute += SLOT_STEP_MINUTES) {
-    candidates.add(minute);
-  }
-  occupiedRanges.forEach((range) => {
-    const afterClass = range.end + CLASS_BREAK_BUFFER_MINUTES;
-    const beforeClass = range.start - CLASS_BREAK_BUFFER_MINUTES - duration;
-    if (afterClass + duration <= end) candidates.add(afterClass);
-    if (beforeClass >= start) candidates.add(beforeClass);
-  });
-  return Array.from(candidates)
-    .filter((minute) => minute >= start && minute + duration <= end)
-    .sort((a, b) => a - b);
-};
+const getCandidateSlotMinutes = candidateSlotMinutes;
 
 const getClassRange = (classObj) => {
   const start = timeToMinutes(classObj?.start_time || classObj?.startTime || classObj?.time);
@@ -2293,6 +2280,17 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   };
 };
 
+  // Candidate slots use the teacher's clock; cached classes use the viewer's.
+  const classRangeForAvailability = (cls, sourceDate, sourceTimezone) => {
+    const range = getClassRange(cls);
+    if (!range) return null;
+    const start = convertDateTime(normalizeDate(cls.scheduled_date), minutesToTime(range.start), viewerTimezone, sourceTimezone);
+    const dayOffset = (Date.parse(start.date) - Date.parse(sourceDate)) / 86400000;
+    const minute = timeToMinutes(start.time);
+    if (!Number.isFinite(dayOffset) || minute == null) return null;
+    return { start: minute + dayOffset * 1440, end: minute + dayOffset * 1440 + range.end - range.start };
+  };
+
   const buildClassQueryParams = (scheduledDate) => {
     const params = { scheduled_date: scheduledDate };
 
@@ -2443,7 +2441,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return;
     }
     
-    const classes = teacherClassesCache[dateKey] !== undefined ? teacherClassesCache[dateKey] : (classesCache[dateKey] || []);
+    const classes = [...(teacherClassesCache[dateKey] || []), ...(classesCache[dateKey] || [])];
     const teacherAvailabilityRecord = teacherAvailabilityList.find(
       record => normalizeDate(record.available_date) === dateKey && record.status === "available"
     ) || (teacherAvailabilityRecordForDate && teacherAvailabilityRecordForDate.status === "available" ? teacherAvailabilityRecordForDate : null);
@@ -2470,19 +2468,14 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     const breakEnd = teacherAvailabilityRecord.source_break_end || teacherAvailabilityRecord.break_end
       ? timeToMinutes(teacherAvailabilityRecord.source_break_end || teacherAvailabilityRecord.break_end)
       : null;
+    const teacherTimezone = teacherAvailabilityRecord.source_timezone || teacherAvailabilityRecord.teacher_timezone || DEFAULT_TIMEZONE;
+    const sourceDate = teacherAvailabilityRecord.source_available_date || dateKey;
     const occupiedRanges = classes
       .filter(cls => cls?.id !== excludeClassId && (Number(cls.teacher_id) === Number(tId) || Number(cls.student_id) === Number(localUserId)))
-      .map(getClassRange)
+      .map(cls => classRangeForAvailability(cls, sourceDate, teacherTimezone))
       .filter(Boolean);
 
-    const availabilityRanges = [];
-    const hasValidBreak = breakStart != null && breakEnd != null && breakStart < breakEnd;
-    if (hasValidBreak && breakStart > availabilityStart && breakEnd < availabilityEnd) {
-      availabilityRanges.push({ start: availabilityStart, end: breakStart });
-      availabilityRanges.push({ start: breakEnd, end: availabilityEnd });
-    } else {
-      availabilityRanges.push({ start: availabilityStart, end: availabilityEnd });
-    }
+    const availabilityRanges = availableRanges(availabilityStart, availabilityEnd, breakStart, breakEnd);
 
     const finalSlotsInTeacherTimezone = [];
     availabilityRanges.forEach(({ start, end }) => {
@@ -2495,7 +2488,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       });
     });
 
-    const teacherTimezone = teacherAvailabilityRecord?.source_timezone || teacherAvailabilityRecord?.teacher_timezone || DEFAULT_TIMEZONE;
     const currentViewerDate = formatDateInTimezone(new Date(), viewerTimezone);
     const currentViewerTime = formatTimeInTimezone(new Date(), viewerTimezone);
     const currentViewerMinutes = timeToMinutes(currentViewerTime);
@@ -2921,7 +2913,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   };
 
   const isTeacherDateTimeBooked = (dateStr, timeStr) => {
-    const classes = teacherClassesCache[dateStr] || [];
+    const classes = [...(teacherClassesCache[dateStr] || []), ...(classesCache[dateStr] || [])];
     const requestedStart = timeToMinutes(timeStr);
     const requestedEnd = requestedStart == null ? null : requestedStart + studentClassDuration;
     if (requestedStart == null || requestedEnd == null) return false;
@@ -4850,18 +4842,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     const breakEnd = record.source_break_end || record.break_end
       ? timeToMinutes(record.source_break_end || record.break_end)
       : null;
-    const ranges = [];
-    if (breakStart != null && breakEnd != null && breakStart < breakEnd && breakStart > availabilityStart && breakEnd < availabilityEnd) {
-      ranges.push({ start: availabilityStart, end: breakStart });
-      ranges.push({ start: breakEnd, end: availabilityEnd });
-    } else {
-      ranges.push({ start: availabilityStart, end: availabilityEnd });
-    }
+    const ranges = availableRanges(availabilityStart, availabilityEnd, breakStart, breakEnd);
 
     const teacherTimezone = record.source_timezone || record.teacher_timezone || DEFAULT_TIMEZONE;
     const sourceDate = record.source_available_date || dateKey;
     const occupiedRanges = (occupiedClasses || [])
-      .map(getClassRange)
+      .map(cls => classRangeForAvailability(cls, sourceDate, teacherTimezone))
       .filter(Boolean);
     const currentViewerDate = formatDateInTimezone(new Date(), viewerTimezone);
     const currentViewerTime = formatTimeInTimezone(new Date(), viewerTimezone);
@@ -5539,6 +5525,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
             setStudentPackage(response.data.package);
           }
         } catch (slotError) {
+          if (slotError?.response?.status === 409) {
+            loadClassesForDate(slot.date, true);
+            loadTeacherClassesForDate(slot.date, assignedTeacherId, true);
+            setStudentBookingSelections([]);
+            setStudentBookingTime("");
+          }
           failedBookings.push({
             slot,
             message: slotError?.response?.data?.message || slotError?.message || "Unable to book this slot.",
@@ -6746,40 +6738,24 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         )}
                       </div>
                       <div>
-                        <label className={cal.formLabel}>New Time *</label>
-                        {requestDate && getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? (
-                          <div className={cal.warnBox}>You are unavailable on this date.</div>
-                        ) : rescheduleTimeSlots.length > 0 ? (
-                          <div className={cal.slotGrid}>
-                            {rescheduleTimeSlots.map(time => {
-                              const isSelected = requestTime === time;
-                              return (
-                                <button
-                                  key={time}
-                                  type="button"
-                                  onClick={() => {
-                                    setRequestTime(time);
-                                    setRequestError("");
-                                    if (requestDate && isRescheduleToSameDateTime(requestDate, time)) {
-                                      setRequestError("Cannot reschedule to the same date and time. Please choose a different time.");
-                                    } else if (requestDate && isTimeBookedForReschedule(requestDate, time)) {
-                                      setRequestError(getBookedSlotErrorMessage());
-                                    } else if (requestDate && isTimeConflictingWithTeacherBreak(requestDate, time)) {
-                                      setRequestError("This time conflicts with your break. Please choose another time.");
-                                    } else if (requestDate && isTimeOutsideTeacherAvailability(requestDate, time)) {
-                                      setRequestError("This time is outside your availability window. Please choose another time.");
-                                    }
-                                  }}
-                                  className={`${cal.slotBtn} ${isSelected ? cal.slotBtnSelected : ""}`}
-                                >
-                                  {humanTime(time)}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className={cal.infoBox}>No available slots found for this date. Choose another day.</div>
-                        )}
+                        <RescheduleTimePicker
+                          key={`${selectedClass.id}|${requestDate}`}
+                          date={requestDate}
+                          times={rescheduleTimeSlots}
+                          selectedTime={requestTime}
+                          duration={selectedClassDuration}
+                          timezone={viewerTimezone}
+                          loading={Boolean(requestDate && classesCache[requestDate] === undefined)}
+                          onPick={time => {
+                            if (!isRescheduleTimeSlotBookable(requestDate, time)) {
+                              setRequestTime("");
+                              setRequestError("That time is no longer available. Please choose another time.");
+                              return;
+                            }
+                            setRequestTime(time);
+                            setRequestError("");
+                          }}
+                        />
                         {requestError && (
                           <div className={cal.fieldError}>
                             ✕ {requestError}
@@ -7432,44 +7408,24 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         )}
                       </div>
                       <div style={{ marginBottom: 10 }}>
-                        <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 4, color: "#333" }}>{CLASS_INFO.newTime}</label>
-                        {requestDate && getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? (
-                          <div style={{ padding: 12, background: "#fff3e0", borderRadius: 8, color: "#b65f00" }}>
-                            Your teacher is busy on this day.
-                          </div>
-                        ) : rescheduleTimeSlots.length > 0 ? (
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
-                            {rescheduleTimeSlots.map(time => {
-                              const isSelected = requestTime === time;
-                              return (
-                                <button
-                                  key={time}
-                                  type="button"
-                                  onClick={() => {
-                                    setRequestTime(time);
-                                    setRequestError("");
-                                    if (requestDate && isRescheduleToSameDateTime(requestDate, time)) {
-                                      setRequestError("That is the same time. Please pick a different one.");
-                                    } else if (requestDate && isCounterpartyDateTimeBooked(requestDate, time)) {
-                                      setRequestError(getCounterpartyUnavailableMessage());
-                                    } else if (requestDate && isTimeConflictingWithTeacherBreak(requestDate, time)) {
-                                      setRequestError("Your teacher has a break then. Please pick another time.");
-                                    } else if (requestDate && isTimeOutsideTeacherAvailability(requestDate, time)) {
-                                      setRequestError("Your teacher is not free then. Please pick another time.");
-                                    }
-                                  }}
-                                  style={{ padding: "12px 14px", border: isSelected ? "2px solid #4CAF50" : "1px solid #d0d0d0", borderRadius: "8px", background: isSelected ? "#e8f5e9" : "#fff", color: "#111", cursor: "pointer", textAlign: "center" }}
-                                >
-                                  {humanTime(time)}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div style={{ padding: 12, background: "#f4f6f8", borderRadius: 8, color: "#555" }}>
-                            No free times on this day. Please pick another day.
-                          </div>
-                        )}
+                        <RescheduleTimePicker
+                          key={`${selectedClass.id}|${requestDate}`}
+                          date={requestDate}
+                          times={rescheduleTimeSlots}
+                          selectedTime={requestTime}
+                          duration={selectedClassDuration}
+                          timezone={viewerTimezone}
+                          loading={Boolean(requestDate && classesCache[requestDate] === undefined)}
+                          onPick={time => {
+                            if (!isRescheduleTimeSlotBookable(requestDate, time)) {
+                              setRequestTime("");
+                              setRequestError("That time is no longer available. Please choose another time.");
+                              return;
+                            }
+                            setRequestTime(time);
+                            setRequestError("");
+                          }}
+                        />
                         {requestError && (
                           <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
                             ✕ {requestError}
@@ -7563,6 +7519,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     teacherName={assignedTeacherName}
                     courseName={studentProfile?.course_name || ""}
                     classDuration={studentClassDuration}
+                    timezone={viewerTimezone}
                     hasNoClassesLeft={hasNoClassesLeft}
                     isSubmitting={isSubmittingStudentBooking}
                     error={studentBookingError}
@@ -8782,13 +8739,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                               <label className={cal.formLabel}>Start Time *</label>
                               <input
                                 type="time"
-                                step="3600"
+                                step="60"
                                 value={availabilityStartTime}
                                 onChange={e => {
                                   const time = e.target.value;
-                                  const roundedTime = time ? `${time.split(':')[0]}:00` : "";
-                                  setAvailabilityStartTime(roundedTime);
-                                  setAvailabilityError(validateAvailabilityInputs({ availabilityStartTime: roundedTime }));
+                                  setAvailabilityStartTime(time);
+                                  setAvailabilityError(validateAvailabilityInputs({ availabilityStartTime: time }));
                                 }}
                                 className={cal.formInput}
                               />
@@ -8803,13 +8759,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                               <label className={cal.formLabel}>End Time *</label>
                               <input
                                 type="time"
-                                step="3600"
+                                step="60"
                                 value={availabilityEndTime}
                                 onChange={e => {
                                   const time = e.target.value;
-                                  const roundedTime = time ? `${time.split(':')[0]}:00` : "";
-                                  setAvailabilityEndTime(roundedTime);
-                                  setAvailabilityError(validateAvailabilityInputs({ availabilityEndTime: roundedTime }));
+                                  setAvailabilityEndTime(time);
+                                  setAvailabilityError(validateAvailabilityInputs({ availabilityEndTime: time }));
                                 }}
                                 className={cal.formInput}
                               />
@@ -8841,13 +8796,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                   <label className={cal.formLabel}>Break Start</label>
                                   <input
                                     type="time"
-                                    step="3600"
+                                    step="60"
                                     value={availabilityBreakStart}
                                     onChange={e => {
                                       const time = e.target.value;
-                                      const roundedTime = time ? `${time.split(':')[0]}:00` : "";
-                                      setAvailabilityBreakStart(roundedTime);
-                                      setAvailabilityError(validateAvailabilityInputs({ availabilityBreakStart: roundedTime }));
+                                      setAvailabilityBreakStart(time);
+                                      setAvailabilityError(validateAvailabilityInputs({ availabilityBreakStart: time }));
                                     }}
                                     className={cal.formInput}
                                   />
@@ -8861,13 +8815,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                   <label className={cal.formLabel}>Break End</label>
                                   <input
                                     type="time"
-                                    step="3600"
+                                    step="60"
                                     value={availabilityBreakEnd}
                                     onChange={e => {
                                       const time = e.target.value;
-                                      const roundedTime = time ? `${time.split(':')[0]}:00` : "";
-                                      setAvailabilityBreakEnd(roundedTime);
-                                      setAvailabilityError(validateAvailabilityInputs({ availabilityBreakEnd: roundedTime }));
+                                      setAvailabilityBreakEnd(time);
+                                      setAvailabilityError(validateAvailabilityInputs({ availabilityBreakEnd: time }));
                                     }}
                                     className={cal.formInput}
                                   />

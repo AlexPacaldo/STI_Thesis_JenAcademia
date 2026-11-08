@@ -1,3 +1,4 @@
+import { rankBookingTimes } from "../utils/bookingTimes.js";
 import { Fragment, useMemo, useState } from "react";
 import { BOOKING, CONFIRM } from "../utils/studentCopy.js";
 import {
@@ -55,17 +56,6 @@ const WEEKDAY_CARDS = [
   { value: 0, label: "Sun" },
 ];
 
-/**
- * The three parts of the day a student can ask for.
- *
- * !! A native time picker asks a child to read a clock face he cannot read
- * !! yet, and it asks him to read a number he has to compare against another
- * !! number. "Morning" is one word and it cannot be got wrong. So the three
- * !! big buttons are the three parts of the day, and the "Another time"
- * !! picker is there for the student who wants something more exact.
- */
-const TIME_PARTS = ["morning", "afternoon", "evening"];
-
 /** Where the "back" button goes from each screen. */
 const PREVIOUS_STEP = {
   day: "choose",
@@ -80,6 +70,7 @@ export default function StudentBookingWizard({
   teacherName = "",
   courseName = "",
   classDuration = 50,
+  timezone = "Asia/Manila",
   hasNoClassesLeft = false,
   isSubmitting = false,
   error = "",
@@ -130,8 +121,10 @@ export default function StudentBookingWizard({
   onCancel = () => {},
 }) {
   const [step, setStep] = useState("choose");
-  const [showOtherTime, setShowOtherTime] = useState(false);
   const [finding, setFinding] = useState(false);
+  const [preferredTime, setPreferredTime] = useState("");
+  const [timeSearch, setTimeSearch] = useState(null);
+  const [resultLimit, setResultLimit] = useState(3);
 
   const weekly = applyMode === "weekly";
   const steps = weekly ? WEEKLY_STEPS : MANUAL_STEPS;
@@ -178,7 +171,6 @@ export default function StudentBookingWizard({
     }
     onApplyModeChange(mode);
     onClearError();
-    setShowOtherTime(false);
     setStep(mode === "weekly" ? "weekday" : "day");
   };
 
@@ -198,24 +190,6 @@ export default function StudentBookingWizard({
     } finally {
       setFinding(false);
     }
-  };
-
-  /**
-   * Open and close the "another time" picker.
-   *
-   * !! Whatever was chosen is cleared when the panel opens, and an exact time
-   * !! is cleared when the panel closes. A time that is on a hidden input is
-   * !! a time the student cannot see, and the screen must not quietly book
-   * !! for a choice they cannot see.
-   */
-  const toggleOtherTime = () => {
-    if (showOtherTime) {
-      if (!isPartOfDay(weeklyTime)) onWeeklyTimeChange("");
-      setShowOtherTime(false);
-      return;
-    }
-    setShowOtherTime(true);
-    onWeeklyTimeChange("");
   };
 
   /* ------------------------------------------------------------- the days */
@@ -394,30 +368,56 @@ export default function StudentBookingWizard({
       );
     }
 
+    const search = timeSearch?.date === selectedDate ? timeSearch.time : "";
+    const freeTimes = timeSlots.filter(time => !isTimeBooked(time));
+    const ranked = rankBookingTimes(freeTimes, search);
+    const visible = search ? ranked.slice(0, resultLimit) : [];
+    const exact = search && ranked.some(time => timeToMinutes(time) === timeToMinutes(search));
+
     return (
-      <div className={styles.timeGrid}>
-        {timeSlots.map((time) => {
-          const booked = isTimeBooked(time);
-          const active = picked && picked.date === selectedDate && picked.time === time;
-          return (
-            <button
-              key={time}
-              type="button"
-              onClick={() => onPickTime(selectedDate, time)}
-              disabled={booked}
-              aria-pressed={active}
-              className={`${styles.timeCard} ${active ? styles.timeCardActive : ""} ${booked ? styles.timeCardOff : ""}`}
-            >
-              <span className={styles.timeText}>{humanTime(time)}</span>
-              {" "}
-              {booked ? (
-                <span className={styles.timeTaken}>{BOOKING.taken}</span>
-              ) : (
-                <span className={styles.timeOfDay}>{describeTimeOfDay(time)}</span>
-              )}
-            </button>
-          );
-        })}
+      <div className={styles.preferredTimes}>
+        <p className={styles.timeOfDay}>{classDuration}-minute class | Times in {timezone.replaceAll("_", " ")}</p>
+        <form className={styles.preferredTimeForm} onSubmit={event => {
+          event.preventDefault();
+          setTimeSearch({ date: selectedDate, time: preferredTime });
+          setResultLimit(3);
+        }}>
+          <label htmlFor="preferred-class-time">Preferred start time</label>
+          <div className={styles.preferredTimeControls}>
+            <input id="preferred-class-time" type="time" required step="60"
+              value={preferredTime} onChange={event => setPreferredTime(event.target.value)}
+              className={styles.otherTimeInput} />
+            <button type="submit" className={styles.changeBtn}>Find times</button>
+          </div>
+        </form>
+        <p role="status" className={styles.timeOfDay}>
+          {!freeTimes.length ? "No times are available on this day. Choose another day."
+            : search ? exact ? `${humanTime(search)} is available. Choose a time below.`
+              : `${humanTime(search)} isn't available. Here are the closest available times on this day.`
+            : "Enter your preferred start time to find available times nearby."}
+        </p>
+        {picked?.date === selectedDate && !isTimeBooked(picked.time) && (
+          <p className={styles.timeOfDay}>Selected: <strong>{humanTime(picked.time)} to {humanTime(endTimeFor(picked.time))}</strong></p>
+        )}
+        {visible.length > 0 && <div className={styles.timeGrid}>
+          {visible.map(time => {
+            const active = picked && picked.date === selectedDate && picked.time === time;
+            return (
+              <button key={time} type="button" onClick={() => onPickTime(selectedDate, time)}
+                aria-pressed={Boolean(active)}
+                className={`${styles.timeCard} ${active ? styles.timeCardActive : ""}`}>
+                <span className={styles.timeText}>{humanTime(time)}</span>
+                <span className={styles.timeOfDay}>to {humanTime(endTimeFor(time))}</span>
+                <span className={styles.timeOfDay}>{search
+                  ? describeTimeDistance(search, time) : describeTimeOfDay(time)}</span>
+              </button>
+            );
+          })}
+        </div>}
+        {search && ranked.length > resultLimit && (
+          <button type="button" className={styles.otherTimeToggle}
+            onClick={() => setResultLimit(limit => limit + 3)}>Show more times</button>
+        )}
       </div>
     );
   };
@@ -444,52 +444,25 @@ export default function StudentBookingWizard({
     </div>
   );
 
-  /* ---------------------------------------------------- the time-of-day screen */
+  /* ---------------------------------------------------- the weekly time screen */
 
-  const renderWeektimeStep = () => {
-    return (
-      <>
-        <div className={styles.partGrid}>
-          {TIME_PARTS.map((part) => {
-            const active = weeklyTime === part;
-            return (
-              <button
-                key={part}
-                type="button"
-                onClick={() => {
-                  onWeeklyTimeChange(part);
-                  setShowOtherTime(false);
-                }}
-                aria-pressed={active}
-                className={`${styles.partCard} ${active ? styles.partCardActive : ""}`}
-              >
-                <span className={styles.partName}>{BOOKING[part]}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className={styles.otherTime}>
-          <button
-            type="button"
-            onClick={toggleOtherTime}
-            className={`${styles.otherTimeToggle} ${showOtherTime ? styles.otherTimeToggleActive : ""}`}
-          >
-            {BOOKING.anotherTime}
-          </button>
-          {showOtherTime && (
-            <input
-              type="time"
-              className={styles.otherTimeInput}
-              value={isPartOfDay(weeklyTime) ? "" : weeklyTime}
-              onChange={(event) => onWeeklyTimeChange(event.target.value)}
-              aria-label={BOOKING.whatTime}
-            />
-          )}
-        </div>
-      </>
-    );
-  };
+  const renderWeektimeStep = () => (
+    <div className={styles.preferredTimes}>
+      <p className={styles.timeOfDay}>{classDuration}-minute class | Times in {timezone.replaceAll("_", " ")}</p>
+      <div className={styles.preferredTimeForm}>
+        <label htmlFor="weekly-preferred-class-time">Preferred start time</label>
+        <input
+          id="weekly-preferred-class-time"
+          type="time"
+          required
+          step="60"
+          className={styles.otherTimeInput}
+          value={isPartOfDay(weeklyTime) ? "" : weeklyTime}
+          onChange={(event) => onWeeklyTimeChange(event.target.value)}
+        />
+      </div>
+    </div>
+  );
 
   /* ------------------------------------------------- the times we found screen */
 
@@ -685,8 +658,8 @@ export default function StudentBookingWizard({
     help = BOOKING.dayHelp;
     body = renderDayStep();
   } else if (step === "time") {
-    question = BOOKING.whichTime;
-    help = BOOKING.timeHelp;
+    question = "What time works for you?";
+    help = "Find a time, then select it to continue.";
     body = (
       <>
         <div className={styles.pickedDay}>
@@ -703,8 +676,8 @@ export default function StudentBookingWizard({
     help = BOOKING.daysHelp;
     body = renderWeekdayStep();
   } else if (step === "weektime") {
-    question = BOOKING.whatTime;
-    help = BOOKING.timeOfDayHelp;
+    question = "What time works for you?";
+    help = "Enter your preferred start time. We will find the closest available time on each selected day.";
     body = renderWeektimeStep();
   } else if (step === "found") {
     question = BOOKING.foundTimes(suggestions.length);
@@ -735,9 +708,10 @@ export default function StudentBookingWizard({
   const isLast = step === "check";
   const canGoNext = (() => {
     if (step === "day") return Boolean(selectedDate);
-    if (step === "time") return Boolean(picked);
+    if (step === "time") return Boolean(picked && picked.date === selectedDate && !timesLoading
+      && timeSlots.includes(picked.time) && !isTimeBooked(picked.time));
     if (step === "weekday") return weeklyWeekdays.length > 0;
-    if (step === "weektime") return Boolean(weeklyTime);
+    if (step === "weektime") return Boolean(weeklyTime && !isPartOfDay(weeklyTime));
     if (step === "found") return selections.length > 0;
     if (step === "check") return selections.length > 0 && !hasNoClassesLeft;
     return false;

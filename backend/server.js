@@ -9450,7 +9450,8 @@ app.post("/api/calendar/class", requireSession, requireClassBookingScope(), asyn
     const [participantRows] = await connection.query(
       `SELECT user_id, role, status, profile_completed
        FROM users
-       WHERE user_id IN (?, ?)`,
+       WHERE user_id IN (?, ?)
+       ORDER BY user_id FOR UPDATE`,
       [teacher_id, student_id]
     );
     const teacherReady = participantRows.some((user) =>
@@ -9532,7 +9533,7 @@ app.post("/api/calendar/class", requireSession, requireClassBookingScope(), asyn
               TIME_FORMAT(break_end, '%H:%i:%s') AS break_end
        FROM teacher_availability
        WHERE teacher_id = ? AND available_date = ?
-       LIMIT 1`,
+       LIMIT 1 FOR UPDATE`,
       [teacher_id, scheduled_date]
     );
 
@@ -9542,6 +9543,10 @@ app.post("/api/calendar/class", requireSession, requireClassBookingScope(), asyn
       return res.status(400).json({ message: "Teacher is not available on the selected date" });
     }
 
+    if (!availabilityRecord.start_time || !availabilityRecord.end_time) {
+      await connection.rollback();
+      return res.status(400).json({ message: "Teacher availability is incomplete. Please choose another day." });
+    }
     if (availabilityRecord.start_time && availabilityRecord.end_time) {
       const startMinutes = timeToMinutes(availabilityRecord.start_time);
       const endMinutes = timeToMinutes(availabilityRecord.end_time);
@@ -9565,13 +9570,14 @@ app.post("/api/calendar/class", requireSession, requireClassBookingScope(), asyn
        FROM classes
        WHERE status = 'scheduled'
          AND scheduled_date = ?
-         AND (teacher_id = ? OR student_id = ?)`,
+         AND (teacher_id = ? OR student_id = ?)
+       FOR UPDATE`,
       [scheduled_date, teacher_id, student_id]
     );
 
     if (hasClassConflict(conflictRows, classRange.start, classRange.end)) {
       await connection.rollback();
-      return res.status(409).json({ message: `That time overlaps with an existing class or its ${CLASS_BREAK_BUFFER_MINUTES}-minute teacher break.` });
+      return res.status(409).json({ message: "That time is no longer available. Please choose another available time." });
     }
 
     let classLinkToSave = class_link?.trim();
@@ -10744,7 +10750,10 @@ app.delete("/api/calendar/my-submitted-reschedule-requests/:user_id/:request_id"
 
 // Approve a reschedule request (from user, not just admin)
 app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async (req, res) => {
+  const connection = await pool.getConnection();
+  let committed = false;
   try {
+    await connection.beginTransaction();
     if (!sessionMayActFor(req, req.body?.user_id)) {
       return res.status(403).json({ message: "You can only act on your own account." });
     }
@@ -10752,8 +10761,8 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
     const { user_id } = req.body;
 
     // Verify user is authorized (teacher or student of the class)
-    const [authCheck] = await pool.query(
-      `SELECT rr.* FROM reschedule_requests rr
+    const [authCheck] = await connection.query(
+      `SELECT rr.*, c.teacher_id, c.student_id FROM reschedule_requests rr
        JOIN classes c ON rr.class_id = c.class_id
        JOIN users stu ON c.student_id = stu.user_id
         AND stu.status = 'active' AND stu.profile_completed = TRUE
@@ -10770,15 +10779,21 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
       return res.status(409).json({ message: "This request is no longer pending." });
     }
 
+    // Use the same participant locks as booking; always lock in ID order.
+    await connection.query(
+      `SELECT user_id FROM users WHERE user_id IN (?, ?) ORDER BY user_id FOR UPDATE`,
+      [authCheck[0].teacher_id, authCheck[0].student_id]
+    );
+
     // Get reschedule request details
-    const [rescheduleData] = await pool.query(
+    const [rescheduleData] = await connection.query(
       `SELECT class_id,
               requested_date,
               requested_time,
               DATE_FORMAT(requested_date, '%Y-%m-%d') AS requested_date_key,
               TIME_FORMAT(requested_time, '%H:%i:%s') AS requested_time_key
          FROM reschedule_requests
-        WHERE request_id = ?`,
+        WHERE request_id = ? FOR UPDATE`,
       [id]
     );
 
@@ -10795,7 +10810,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
     } = rescheduleData[0];
 
     // Get current class end_time to calculate duration
-    const [classData] = await pool.query(
+    const [classData] = await connection.query(
       `SELECT c.teacher_id,
               c.student_id,
               DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
@@ -10809,7 +10824,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
        JOIN users tea ON c.teacher_id = tea.user_id
         AND tea.status = 'active' AND tea.profile_completed = TRUE
        LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
-       WHERE c.class_id = ?`,
+       WHERE c.class_id = ? FOR UPDATE`,
       [class_id]
     );
 
@@ -10834,7 +10849,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
       return res.status(400).json({ message: "Invalid requested time" });
     }
 
-    const [availabilityRows] = await pool.query(
+    const [availabilityRows] = await connection.query(
       `SELECT status,
               TIME_FORMAT(start_time, '%H:%i:%s') AS start_time,
               TIME_FORMAT(end_time, '%H:%i:%s') AS end_time,
@@ -10842,7 +10857,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
               TIME_FORMAT(break_end, '%H:%i:%s') AS break_end
        FROM teacher_availability
        WHERE teacher_id = ? AND available_date = ?
-       LIMIT 1`,
+       LIMIT 1 FOR UPDATE`,
       [classInfo.teacher_id, requested_date]
     );
 
@@ -10851,6 +10866,9 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
       return res.status(400).json({ message: "Teacher is not available on the requested date" });
     }
 
+    if (!availabilityRecord.start_time || !availabilityRecord.end_time) {
+      return res.status(400).json({ message: "Teacher availability is incomplete. Please choose another day." });
+    }
     if (availabilityRecord.start_time && availabilityRecord.end_time) {
       const startMinutes = timeToMinutes(availabilityRecord.start_time);
       const endMinutes = timeToMinutes(availabilityRecord.end_time);
@@ -10867,13 +10885,14 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
       }
     }
 
-    const [conflictRows] = await pool.query(
+    const [conflictRows] = await connection.query(
       `SELECT class_id, teacher_id, student_id, start_time, end_time, duration
        FROM classes
        WHERE class_id <> ?
          AND scheduled_date = ?
          AND status = 'scheduled'
-         AND (teacher_id = ? OR student_id = ?)`,
+         AND (teacher_id = ? OR student_id = ?)
+       FOR UPDATE`,
       [class_id, requested_date, classInfo.teacher_id, classInfo.student_id]
     );
 
@@ -10885,7 +10904,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
 
     // Update reschedule request status
     const resolvedAt = new Date();
-    const [resolutionResult] = await pool.query(
+    const [resolutionResult] = await connection.query(
       `UPDATE reschedule_requests
           SET status = ?, resolved_at = ?
         WHERE request_id = ? AND status = 'pending'`,
@@ -10896,13 +10915,13 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
     }
 
     // Update class with new date and time
-    await pool.query(
+    await connection.query(
       `UPDATE classes SET scheduled_date = ?, start_time = ?, end_time = ? WHERE class_id = ?`,
       [requested_date, requested_time, newEndTime, class_id]
     );
 
     // Get the requester info for notification
-    const [requesterInfo] = await pool.query(
+    const [requesterInfo] = await connection.query(
       `SELECT rr.requested_by_id,
               c.teacher_id,
               c.student_id,
@@ -10932,7 +10951,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
       const approverName = user_id === teacher_id ? 'Teacher' : 'Student';
       const notificationMessage = `Your reschedule request for "${class_name}" has been approved for ${requested_date} at ${requested_time}`;
       
-      await pool.query(
+      await connection.query(
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [requested_by_id, "reschedule", encryptNullableText("Reschedule Approved"), encryptNullableText(notificationMessage), id, "reschedule_request"]
@@ -10940,11 +10959,14 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
       
       // Create notification for the other party (to inform them of the change)
       const otherPartyMessage = `${approverName} approved the reschedule request for "${class_name}". New date: ${requested_date} at ${requested_time}`;
-      await pool.query(
+      await connection.query(
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [otherPartyId, "reschedule", encryptNullableText("Reschedule Approved"), encryptNullableText(otherPartyMessage), id, "reschedule_request"]
       );
+
+      await connection.commit();
+      committed = true;
 
       // Only the requester needs a push: they were waiting for this answer.
       // The person who approved it already knows what they just did.
@@ -10965,6 +10987,10 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
       );
     }
 
+    if (!committed) {
+      await connection.commit();
+      committed = true;
+    }
     res.json({ 
       message: "Reschedule request approved and calendar updated",
       newDate: requested_date,
@@ -10985,6 +11011,9 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error approving request" });
+  } finally {
+    if (!committed) await connection.rollback();
+    connection.release();
   }
 });
 
@@ -13680,21 +13709,24 @@ app.get("/api/calendar/teacher-availability-record", requireSession, requireTeac
 
 // Set teacher availability with validation
 app.post("/api/calendar/set-availability", requireSession, requireBodyIdentity("teacher_id"), async (req, res) => {
+  const connection = await pool.getConnection();
+  let committed = false;
   try {
+    await connection.beginTransaction();
     const { teacher_id, available_date, status, start_time, end_time, break_start, break_end } = req.body;
 
     if (!teacher_id || !available_date || !status) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    const [teacherRows] = await pool.query(
+    const [teacherRows] = await connection.query(
       `SELECT user_id
        FROM users
        WHERE user_id = ?
          AND role = 'teacher'
          AND status = 'active'
          AND profile_completed = TRUE
-       LIMIT 1`,
+       LIMIT 1 FOR UPDATE`,
       [teacher_id]
     );
 
@@ -13776,9 +13808,9 @@ app.post("/api/calendar/set-availability", requireSession, requireBodyIdentity("
       }
 
       // Check if there's already a booked class during this time window
-      const [existingClasses] = await pool.query(
+      const [existingClasses] = await connection.query(
         `SELECT class_id, start_time, end_time FROM classes 
-         WHERE teacher_id = ? AND scheduled_date = ? AND status = 'scheduled'`,
+         WHERE teacher_id = ? AND scheduled_date = ? AND status = 'scheduled' FOR UPDATE`,
         [teacher_id, available_date]
       );
 
@@ -13786,9 +13818,9 @@ app.post("/api/calendar/set-availability", requireSession, requireBodyIdentity("
         return res.status(409).json({ message: "Cannot update availability: a student has a booked class on this day." });
       }
     } else {
-      const [existingClassesAny] = await pool.query(
+      const [existingClassesAny] = await connection.query(
         `SELECT class_id FROM classes 
-         WHERE teacher_id = ? AND scheduled_date = ? AND status = 'scheduled' LIMIT 1`,
+         WHERE teacher_id = ? AND scheduled_date = ? AND status = 'scheduled' LIMIT 1 FOR UPDATE`,
         [teacher_id, available_date]
       );
       if (existingClassesAny.length > 0) {
@@ -13797,14 +13829,14 @@ app.post("/api/calendar/set-availability", requireSession, requireBodyIdentity("
     }
 
     // Insert or update availability
-    const [result] = await pool.query(
+    const [result] = await connection.query(
       `INSERT INTO teacher_availability (teacher_id, available_date, status, start_time, end_time, break_start, break_end)
        VALUES (?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE status = ?, start_time = ?, end_time = ?, break_start = ?, break_end = ?, updated_at = CURRENT_TIMESTAMP`,
       [teacher_id, available_date, status, start_time || null, end_time || null, break_start || null, break_end || null, status, start_time || null, end_time || null, break_start || null, break_end || null]
     );
 
-    const [availabilityRows] = await pool.query(
+    const [availabilityRows] = await connection.query(
       `SELECT availability_id
        FROM teacher_availability
        WHERE teacher_id = ? AND available_date = ?
@@ -13814,7 +13846,7 @@ app.post("/api/calendar/set-availability", requireSession, requireBodyIdentity("
 
     const availabilityId = availabilityRows[0]?.availability_id || result.insertId || null;
 
-    const [notificationTeacherRows] = await pool.query(
+    const [notificationTeacherRows] = await connection.query(
       `SELECT first_name, last_name
        FROM users
        WHERE user_id = ?
@@ -13826,7 +13858,7 @@ app.post("/api/calendar/set-availability", requireSession, requireBodyIdentity("
       ? `${notificationTeacherRows[0].first_name || ""} ${notificationTeacherRows[0].last_name || ""}`.trim() || "Your teacher"
       : "Your teacher";
 
-    const [studentRows] = await pool.query(
+    const [studentRows] = await connection.query(
       `SELECT u.user_id
        FROM student_profiles sp
        JOIN users u ON u.user_id = sp.user_id
@@ -13845,7 +13877,7 @@ app.post("/api/calendar/set-availability", requireSession, requireBodyIdentity("
         ? `${teacherName} is available on ${humanDate(available_date)} from ${humanTime(start_time)} to ${humanTime(end_time)}.`
         : `${teacherName} marked ${humanDate(available_date)} as unavailable.`;
 
-      await pool.query(
+      await connection.query(
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
          VALUES ${studentRows.map(() => "(?, 'announcement', ?, ?, ?, 'teacher_availability', '/Calendar')").join(", ")}`,
         studentRows.flatMap((student) => [
@@ -13857,6 +13889,8 @@ app.post("/api/calendar/set-availability", requireSession, requireBodyIdentity("
       );
     }
 
+    await connection.commit();
+    committed = true;
     broadcastCalendarChange([teacher_id, ...studentRows.map((student) => student.user_id)], "availability-changed", {
       availability_id: availabilityId,
       teacher_id,
@@ -13872,12 +13906,18 @@ app.post("/api/calendar/set-availability", requireSession, requireBodyIdentity("
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error setting availability" });
+  } finally {
+    if (!committed) await connection.rollback();
+    connection.release();
   }
 });
 
 // Set teacher availability for selected weekdays in a visible month.
 app.post("/api/calendar/set-availability-bulk", requireSession, requireBodyIdentity("teacher_id"), async (req, res) => {
+  const connection = await pool.getConnection();
+  let committed = false;
   try {
+    await connection.beginTransaction();
     const { teacher_id, year, month, weekdays, status, start_time, end_time, break_start, break_end } = req.body;
 
     if (!teacher_id || !year || !month || !status || !Array.isArray(weekdays)) {
@@ -13901,14 +13941,14 @@ app.post("/api/calendar/set-availability-bulk", requireSession, requireBodyIdent
       return res.status(400).json({ message: "Invalid availability status" });
     }
 
-    const [teacherRows] = await pool.query(
+    const [teacherRows] = await connection.query(
       `SELECT user_id, first_name, last_name
        FROM users
        WHERE user_id = ?
          AND role = 'teacher'
          AND status = 'active'
          AND profile_completed = TRUE
-       LIMIT 1`,
+       LIMIT 1 FOR UPDATE`,
       [teacher_id]
     );
 
@@ -13983,12 +14023,12 @@ app.post("/api/calendar/set-availability-bulk", requireSession, requireBodyIdent
         }
       }
 
-      const [existingClasses] = await pool.query(
+      const [existingClasses] = await connection.query(
         `SELECT class_id FROM classes
          WHERE teacher_id = ?
            AND scheduled_date = ?
            AND status IN ('scheduled', 'completed')
-         LIMIT 1`,
+         LIMIT 1 FOR UPDATE`,
         [teacher_id, availableDate]
       );
 
@@ -13997,7 +14037,7 @@ app.post("/api/calendar/set-availability-bulk", requireSession, requireBodyIdent
         continue;
       }
 
-      await pool.query(
+      await connection.query(
         `INSERT INTO teacher_availability (teacher_id, available_date, status, start_time, end_time, break_start, break_end)
          VALUES (?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE status = ?, start_time = ?, end_time = ?, break_start = ?, break_end = ?, updated_at = CURRENT_TIMESTAMP`,
@@ -14019,7 +14059,7 @@ app.post("/api/calendar/set-availability-bulk", requireSession, requireBodyIdent
       savedDates.push(availableDate);
     }
 
-    const [studentRows] = await pool.query(
+    const [studentRows] = await connection.query(
       `SELECT u.user_id
        FROM student_profiles sp
        JOIN users u ON u.user_id = sp.user_id
@@ -14038,7 +14078,7 @@ app.post("/api/calendar/set-availability-bulk", requireSession, requireBodyIdent
         ? `${teacherName} updated availability for ${savedDates.length} date${savedDates.length === 1 ? "" : "s"} in ${monthName} ${selectedYear} from ${humanTime(start_time)} to ${humanTime(end_time)}.`
         : `${teacherName} marked ${savedDates.length} date${savedDates.length === 1 ? "" : "s"} unavailable in ${monthName} ${selectedYear}.`;
 
-      await pool.query(
+      await connection.query(
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
          VALUES ${studentRows.map(() => "(?, 'announcement', ?, ?, NULL, 'teacher_availability', '/Calendar')").join(", ")}`,
         studentRows.flatMap((student) => [
@@ -14049,6 +14089,8 @@ app.post("/api/calendar/set-availability-bulk", requireSession, requireBodyIdent
       );
     }
 
+    await connection.commit();
+    committed = true;
     broadcastCalendarChange([teacher_id, ...studentRows.map((student) => student.user_id)], "availability-changed", {
       teacher_id,
       status,
@@ -14064,14 +14106,20 @@ app.post("/api/calendar/set-availability-bulk", requireSession, requireBodyIdent
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error setting bulk availability" });
+  } finally {
+    if (!committed) await connection.rollback();
+    connection.release();
   }
 });
 
 // Delete teacher availability record
 app.delete("/api/calendar/availability/:availability_id", requireSession, requireAvailabilityOwnership(), async (req, res) => {
+  const connection = await pool.getConnection();
+  let committed = false;
   try {
+    await connection.beginTransaction();
     const { availability_id } = req.params;
-    const [availabilityRows] = await pool.query(
+    const [availabilityRows] = await connection.query(
       `SELECT teacher_id, DATE_FORMAT(available_date, '%Y-%m-%d') AS available_date
        FROM teacher_availability
        WHERE availability_id = ?
@@ -14084,11 +14132,14 @@ app.delete("/api/calendar/availability/:availability_id", requireSession, requir
     }
 
     const { teacher_id, available_date } = availabilityRows[0];
+    await connection.query(
+      `SELECT user_id FROM users WHERE user_id = ? FOR UPDATE`, [teacher_id]
+    );
 
-    const [bookedClasses] = await pool.query(
+    const [bookedClasses] = await connection.query(
       `SELECT class_id FROM classes
        WHERE teacher_id = ? AND scheduled_date = ? AND status = 'scheduled'
-       LIMIT 1`,
+       LIMIT 1 FOR UPDATE`,
       [teacher_id, available_date]
     );
 
@@ -14096,7 +14147,7 @@ app.delete("/api/calendar/availability/:availability_id", requireSession, requir
       return res.status(409).json({ message: "Cannot delete availability: a student has a booked class on this day." });
     }
 
-    const [result] = await pool.query(
+    const [result] = await connection.query(
       `DELETE FROM teacher_availability WHERE availability_id = ?`,
       [availability_id]
     );
@@ -14107,7 +14158,7 @@ app.delete("/api/calendar/availability/:availability_id", requireSession, requir
 
     if (availabilityRows.length) {
       const { teacher_id, available_date } = availabilityRows[0];
-      const [studentRows] = await pool.query(
+      const [studentRows] = await connection.query(
         `SELECT u.user_id
          FROM student_profiles sp
          JOIN users u ON u.user_id = sp.user_id
@@ -14118,6 +14169,8 @@ app.delete("/api/calendar/availability/:availability_id", requireSession, requir
         [teacher_id]
       );
 
+      await connection.commit();
+      committed = true;
       broadcastCalendarChange([teacher_id, ...studentRows.map((student) => student.user_id)], "availability-changed", {
         availability_id,
         teacher_id,
@@ -14130,6 +14183,9 @@ app.delete("/api/calendar/availability/:availability_id", requireSession, requir
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error deleting availability" });
+  } finally {
+    if (!committed) await connection.rollback();
+    connection.release();
   }
 });
 

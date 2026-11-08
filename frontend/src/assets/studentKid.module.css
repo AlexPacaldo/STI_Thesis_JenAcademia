@@ -2781,3 +2781,15 @@
     text-align: left;
   }
 }
+
+.preferredTimes {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.preferredTimes > p { margin: 0; }
+.preferredTimeForm { display: grid; gap: 8px; font-weight: 700; }
+.preferredTimeControls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.preferredTimeControls input { min-height: 48px; box-sizing: border-box; }
+.preferredTimes > button { justify-self: start; }
+.preferredTimes .timeText { font-size: clamp(1rem, 2vw, 1.35rem); }
