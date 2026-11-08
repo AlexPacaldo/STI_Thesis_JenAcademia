@@ -689,6 +689,10 @@
   animation: fadeInFast 0.18s ease-out;
 }
 
+.confirmBackdrop {
+  z-index: 1100;
+}
+
 .cropModal,
 .previewModal,
 .cameraModal {

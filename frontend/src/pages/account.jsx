@@ -1812,7 +1812,7 @@ export default function Account() {
       <ModalPortal>
         {confirmAction && (
           <div
-            className={styles.modalBackdrop}
+            className={`${styles.modalBackdrop} ${styles.confirmBackdrop}`}
             onClick={closeConfirmAction}
           >
             <section className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
