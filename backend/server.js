@@ -3025,7 +3025,6 @@ async function refreshProfileCompletion(userId) {
     `UPDATE users
      SET profile_completed = (
        first_name IS NOT NULL AND TRIM(first_name) <> ''
-       AND last_name IS NOT NULL AND TRIM(last_name) <> ''
        AND timezone IS NOT NULL AND TRIM(timezone) <> ''
        AND profile_image_url IS NOT NULL AND TRIM(profile_image_url) <> ''
      )
@@ -3039,7 +3038,6 @@ async function refreshAllProfileCompletion() {
     `UPDATE users
      SET profile_completed = (
        first_name IS NOT NULL AND TRIM(first_name) <> ''
-       AND last_name IS NOT NULL AND TRIM(last_name) <> ''
        AND timezone IS NOT NULL AND TRIM(timezone) <> ''
        AND profile_image_url IS NOT NULL AND TRIM(profile_image_url) <> ''
      )`
@@ -5452,6 +5450,8 @@ app.put("/api/users/:id", requireSession, limitDetailConfirmations, async (req, 
     // !! email, then use "forgot password". It is changed by an admin, with
     // !! the account holder identified out of band - not from a form.
     const { firstName, lastName, country, birthDate, timezone, currentPassword } = req.body;
+    const normalizedFirstName = String(firstName || "").trim();
+    const normalizedLastName = String(lastName || "").trim();
     const normalizedBirthDate = birthDate ? String(birthDate).slice(0, 10) : null;
     const normalizedCountry = String(country || "").trim();
     const resolvedTimezone = normalizeTimezone(timezone, timezoneFromCountry(normalizedCountry));
@@ -5460,10 +5460,11 @@ app.put("/api/users/:id", requireSession, limitDetailConfirmations, async (req, 
       return res.status(400).json({ message: "Birthday must be a valid date" });
     }
 
-    // Validate required fields for profile completion
-    if (!firstName || !lastName || !resolvedTimezone) {
+    // Last name is optional; the database column remains NOT NULL, so an
+    // omitted value is stored as an empty string.
+    if (!normalizedFirstName || !resolvedTimezone) {
       return res.status(400).json({
-        message: "First name, last name, and timezone are required to complete your profile"
+        message: "First name and timezone are required to complete your profile"
       });
     }
 
@@ -5482,8 +5483,8 @@ app.put("/api/users/:id", requireSession, limitDetailConfirmations, async (req, 
        SET first_name = ?, last_name = ?, country = ?, birth_date = ?, timezone = ?
        WHERE user_id = ?`,
       [
-        firstName,
-        lastName,
+        normalizedFirstName,
+        normalizedLastName,
         normalizedCountry || null,
         encryptNullableText(normalizedBirthDate),
         resolvedTimezone,

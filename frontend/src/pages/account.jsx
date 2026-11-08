@@ -947,8 +947,8 @@ export default function Account() {
               <input name="firstName" value={form.firstName} onChange={onChange} required />
             </label>
             <label>
-              <span>Your last name</span>
-              <input name="lastName" value={form.lastName} onChange={onChange} required />
+              <span>Your last name (optional)</span>
+              <input name="lastName" value={form.lastName} onChange={onChange} />
             </label>
             <label>
               <span>Time zone</span>
@@ -1087,13 +1087,12 @@ export default function Account() {
               />
             </label>
             <label className={fieldClass}>
-              <span className={labelClass}>{ACCOUNT.lastName}</span>
+              <span className={labelClass}>{ACCOUNT.lastName} (optional)</span>
               <input
                 className={inputClass}
                 name="lastName"
                 value={form.lastName}
                 onChange={onChange}
-                required
               />
             </label>
           </div>
