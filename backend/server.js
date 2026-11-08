@@ -13806,28 +13806,9 @@ app.post("/api/calendar/set-availability", requireSession, requireBodyIdentity("
           return res.status(400).json({ message: "Break time must be within your availability window" });
         }
       }
-
-      // Check if there's already a booked class during this time window
-      const [existingClasses] = await connection.query(
-        `SELECT class_id, start_time, end_time FROM classes 
-         WHERE teacher_id = ? AND scheduled_date = ? AND status = 'scheduled' FOR UPDATE`,
-        [teacher_id, available_date]
-      );
-
-      if (existingClasses.length > 0) {
-        return res.status(409).json({ message: "Cannot update availability: a student has a booked class on this day." });
-      }
-    } else {
-      const [existingClassesAny] = await connection.query(
-        `SELECT class_id FROM classes 
-         WHERE teacher_id = ? AND scheduled_date = ? AND status = 'scheduled' LIMIT 1 FOR UPDATE`,
-        [teacher_id, available_date]
-      );
-      if (existingClassesAny.length > 0) {
-        return res.status(409).json({ message: "Cannot update availability: a student has a booked class on this day." });
-      }
     }
 
+    // Availability controls future bookings; existing classes remain reserved.
     // Insert or update availability
     const [result] = await connection.query(
       `INSERT INTO teacher_availability (teacher_id, available_date, status, start_time, end_time, break_start, break_end)
@@ -14021,20 +14002,6 @@ app.post("/api/calendar/set-availability-bulk", requireSession, requireBodyIdent
           skippedDates.push({ date: availableDate, reason: "time_has_passed" });
           continue;
         }
-      }
-
-      const [existingClasses] = await connection.query(
-        `SELECT class_id FROM classes
-         WHERE teacher_id = ?
-           AND scheduled_date = ?
-           AND status IN ('scheduled', 'completed')
-         LIMIT 1 FOR UPDATE`,
-        [teacher_id, availableDate]
-      );
-
-      if (existingClasses.length > 0) {
-        skippedDates.push({ date: availableDate, reason: "has_booked_class" });
-        continue;
       }
 
       await connection.query(

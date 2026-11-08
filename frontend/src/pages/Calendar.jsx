@@ -563,7 +563,7 @@ function AvailabilityDialog({ open, onClose, screen = "form", children }) {
   const headings = {
     form: {
       title: "Set Your Schedule",
-      sub: "Set your available times from today up to 3 months ahead. You cannot set availability on dates with existing bookings or past dates.",
+      sub: "Set your available times from today up to 3 months ahead. You can edit days with bookings; existing classes stay reserved. Past dates cannot be edited.",
       label: "Set Your Schedule",
     },
     list: {
@@ -882,7 +882,7 @@ function AvailabilityAvailabilities({
 
                     {record.has_booked_class ? (
                       <div className={cal.availNote}>
-                        A student has a class on this day, so it cannot be changed.
+                        You can edit this day. Existing classes stay reserved. Availability cannot be deleted while a class is booked.
                       </div>
                     ) : null}
 
@@ -891,7 +891,6 @@ function AvailabilityAvailabilities({
                         type="button"
                         className={cal.availBtnEdit}
                         onClick={() => onEdit(record)}
-                        disabled={!!record.has_booked_class}
                       >
                         Edit
                       </button>
@@ -3384,17 +3383,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         if (breakStartDate < start || breakEndDate > end) {
           return "Break time must be within your availability window";
         }
-      }
-
-      const bookedClasses = classesCache[date] || [];
-      const hasConflict = bookedClasses.some(cls => {
-        if (cls.teacher_id !== localUserId) return false;
-        const classStart = new Date(`2000-01-01T${(cls.start_time || cls.time || "").substring(0, 5)}`);
-        const classEnd = new Date(`2000-01-01T${(cls.end_time || "").substring(0, 5)}`);
-        return classStart < end && classEnd > start;
-      });
-      if (hasConflict) {
-        return "You have a booked class during this time period";
       }
     }
 
