@@ -8,6 +8,7 @@ import { formatRecordingDuration } from "../utils/recordingDuration.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { openAuthenticatedFile } from "../utils/authenticatedFile.js";
 import { readStoredUser } from "../utils/sessionUser.js";
+import ModalPortal from "../utils/ModalPortal.jsx";
 
 const API = API_BASE_URL;
 const RECORDS_PER_PAGE = 10;
@@ -540,6 +541,7 @@ export default function StudentClassHistory({ mode = "student" }) {
         </main>
       </div>
 
+      <ModalPortal>
       {selectedProof && (
         <div
           role="presentation"
@@ -554,6 +556,8 @@ export default function StudentClassHistory({ mode = "student" }) {
             alignItems: "center",
             justifyContent: "center",
             padding: 24,
+            overflowY: "auto",
+            boxSizing: "border-box",
           }}
         >
           <section
@@ -563,7 +567,7 @@ export default function StudentClassHistory({ mode = "student" }) {
             onClick={(event) => event.stopPropagation()}
             style={{
               width: "min(920px, 96vw)",
-              maxHeight: "92vh",
+              maxHeight: "calc(100dvh - 48px)",
               overflow: "auto",
               background: "#fff",
               border: "1px solid rgba(38, 66, 59, 0.12)",
@@ -607,6 +611,7 @@ export default function StudentClassHistory({ mode = "student" }) {
           </section>
         </div>
       )}
+      </ModalPortal>
     </div>
   );
 }

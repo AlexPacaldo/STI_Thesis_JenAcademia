@@ -6545,7 +6545,7 @@ app.put("/api/admin/users/:userId/email", requireAdminSession, async (req, res) 
     await connection.beginTransaction();
 
     const [userRows] = await connection.query(
-      `SELECT user_id, first_name, email, role, status
+      `SELECT user_id, first_name, email, role, status, password_changed
        FROM users
        WHERE user_id = ?
        LIMIT 1
@@ -6563,6 +6563,15 @@ app.put("/api/admin/users/:userId/email", requireAdminSession, async (req, res) 
       return res.status(400).json({ message: "Restore the account before changing the email" });
     }
 
+    if (userRows[0].email.toLowerCase() === email.toLowerCase()) {
+      await connection.rollback();
+      return res.json({
+        message: "Email is unchanged",
+        emailUpdated: false,
+        setupInviteRequired: !Boolean(userRows[0].password_changed),
+      });
+    }
+
     const [existingRows] = await connection.query(
       "SELECT user_id FROM users WHERE email = ? AND user_id <> ? LIMIT 1",
       [email, userId]
@@ -6574,31 +6583,40 @@ app.put("/api/admin/users/:userId/email", requireAdminSession, async (req, res) 
     }
 
     await connection.query("UPDATE users SET email = ? WHERE user_id = ?", [email, userId]);
-    const setupInvite = await createAccountSetupInvite(connection, userId);
+    const setupInviteRequired = !Boolean(userRows[0].password_changed);
+    const setupInvite = setupInviteRequired
+      ? await createAccountSetupInvite(connection, userId)
+      : null;
     await connection.commit();
 
     let inviteEmailResult = null;
-    try {
-      inviteEmailResult = await sendAccountSetupInviteEmail({
-        email,
-        firstName: userRows[0].first_name,
-        role: userRows[0].role,
-        inviteUrl: setupInvite.inviteUrl,
-        expiresAt: setupInvite.expiresAt,
-      });
-    } catch (mailErr) {
-      console.error("Email updated, but setup invite email failed:", mailErr);
-      inviteEmailResult = { sent: false, error: mailErr.message };
+    if (setupInvite) {
+      try {
+        inviteEmailResult = await sendAccountSetupInviteEmail({
+          email,
+          firstName: userRows[0].first_name,
+          role: userRows[0].role,
+          inviteUrl: setupInvite.inviteUrl,
+          expiresAt: setupInvite.expiresAt,
+        });
+      } catch (mailErr) {
+        console.error("Email updated, but setup invite email failed:", mailErr);
+        inviteEmailResult = { sent: false, error: mailErr.message };
+      }
     }
 
     res.json({
-      message: inviteEmailResult?.sent
-        ? "Email updated and setup invite sent"
-        : "Email updated and setup invite prepared, but email was not sent",
+      message: setupInviteRequired
+        ? inviteEmailResult?.sent
+          ? "Email updated and setup invite sent"
+          : "Email updated and setup invite prepared, but email was not sent"
+        : "Email updated",
+      emailUpdated: true,
+      setupInviteRequired,
       inviteEmailSent: Boolean(inviteEmailResult?.sent),
       inviteEmailSkipped: Boolean(inviteEmailResult?.skipped),
-      setupInviteExpiresAt: setupInvite.expiresAt,
-      setupInviteUrl: setupInvite.inviteUrl,
+      setupInviteExpiresAt: setupInvite?.expiresAt,
+      setupInviteUrl: setupInvite?.inviteUrl,
     });
   } catch (err) {
     await connection.rollback();

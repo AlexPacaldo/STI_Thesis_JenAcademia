@@ -1573,12 +1573,18 @@ export default function AdminDashboard() {
       const response = await axios.put(`${API}/api/admin/users/${studentAccountModal.user_id}/email`, {
         email: nextEmail,
       });
-      notify(
-        response.data?.inviteEmailSent
-          ? "Email updated and new setup invite sent."
-          : "Email updated. Invite was prepared, but email was not sent. Check email settings.",
-        response.data?.inviteEmailSent ? "success" : "warning"
-      );
+      if (!response.data?.emailUpdated) {
+        notify("That is already the account's email address.", "info");
+      } else if (!response.data?.setupInviteRequired) {
+        notify("Email updated. The user will need the new address for future sign-ins and password resets.", "success");
+      } else {
+        notify(
+          response.data?.inviteEmailSent
+            ? "Email updated and new setup invite sent."
+            : "Email updated. Invite was prepared, but email was not sent. Check email settings.",
+          response.data?.inviteEmailSent ? "success" : "warning"
+        );
+      }
       await loadUsers();
       await refreshStudentAccount(studentAccountModal.user_id);
     } catch (e) {
@@ -4656,6 +4662,7 @@ export default function AdminDashboard() {
           </section>
         )}
 
+        <ModalPortal>
         {/* Confirmation Dialog */}
         {confirmDialog && (
           <div
@@ -4670,8 +4677,9 @@ export default function AdminDashboard() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              zIndex: 1000,
+              zIndex: 1200,
               padding: "20px",
+              overflowY: "auto",
             }}
             onClick={() => setConfirmDialog(null)}
           >
@@ -4683,6 +4691,8 @@ export default function AdminDashboard() {
                 padding: "24px",
                 maxWidth: "440px",
                 width: "100%",
+                maxHeight: "calc(100dvh - 40px)",
+                overflowY: "auto",
                 boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
                 animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
               }}
@@ -4747,6 +4757,7 @@ export default function AdminDashboard() {
               justifyContent: "center",
               padding: 24,
               zIndex: 1200,
+              overflowY: "auto",
             }}
           >
             <section
@@ -4756,7 +4767,7 @@ export default function AdminDashboard() {
               onClick={(event) => event.stopPropagation()}
               style={{
                 width: "min(960px, 100%)",
-                maxHeight: "90vh",
+                maxHeight: "calc(100dvh - 48px)",
                 overflow: "auto",
                 background: "#fff",
                 border: "1px solid rgba(38, 66, 59, 0.12)",
@@ -4814,8 +4825,9 @@ export default function AdminDashboard() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              zIndex: 1000,
+              zIndex: 1200,
               padding: "20px",
+              overflowY: "auto",
             }}
             onClick={() => setDeleteConfirm(null)}
           >
@@ -4827,6 +4839,8 @@ export default function AdminDashboard() {
                 padding: "24px",
                 maxWidth: "440px",
                 width: "100%",
+                maxHeight: "calc(100dvh - 40px)",
+                overflowY: "auto",
                 boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)",
                 animation: "scaleIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
               }}
@@ -4875,6 +4889,8 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+        </ModalPortal>
+        <ModalPortal>
         {studentAccountModal && (
           <div
             role="presentation"
@@ -4887,7 +4903,8 @@ export default function AdminDashboard() {
               alignItems: "center",
               justifyContent: "center",
               padding: 24,
-              zIndex: 1080,
+              overflowY: "auto",
+              zIndex: 1200,
             }}
           >
             <section
@@ -4897,7 +4914,7 @@ export default function AdminDashboard() {
               onClick={(event) => event.stopPropagation()}
               style={{
                 width: "min(720px, 100%)",
-                maxHeight: "90vh",
+                maxHeight: "calc(100dvh - 48px)",
                 overflow: "auto",
                 background: "#fff",
                 border: "1px solid rgba(38, 66, 59, 0.12)",
@@ -4961,46 +4978,37 @@ export default function AdminDashboard() {
                 )}
 
                 <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 14 }}>
-                  {accountSetupComplete ? (
-                    <>
-                      <div style={{ color: "#667085", fontSize: "0.9rem", marginBottom: 6 }}>
-                        {accountModalRoleLabel} Email
-                      </div>
-                      <div style={{ color: "#10231d", fontWeight: 700, overflowWrap: "anywhere" }}>
-                        {studentAccountModal.email || "-"}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <label htmlFor="studentEmailDraft">{accountModalRoleLabel} Email</label>
-                      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                        <input
-                          id="studentEmailDraft"
-                          type="email"
-                          value={studentEmailDraft}
-                          onChange={(e) => setStudentEmailDraft(e.target.value)}
-                          style={{
-                            flex: "1 1 260px",
-                            padding: "10px 12px",
-                            borderRadius: 8,
-                            border: "1px solid #d0d5dd",
-                            fontSize: "0.95rem",
-                          }}
-                        />
-                        <button
-                          type="button"
-                          className={styles.approve}
-                          onClick={saveStudentEmail}
-                          disabled={studentAccountActionLoading === "email"}
-                        >
-                          {studentAccountActionLoading === "email" ? "Saving..." : "Save & Resend"}
-                        </button>
-                      </div>
-                      <p style={{ margin: "8px 0 0", color: "#667085", fontSize: "0.82rem", lineHeight: 1.5 }}>
-                        Saving a new email invalidates old unused invites and sends a fresh setup link.
-                      </p>
-                    </>
-                  )}
+                  <label htmlFor="studentEmailDraft">{accountModalRoleLabel} Email (sign-in address)</label>
+                  <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                    <input
+                      id="studentEmailDraft"
+                      type="email"
+                      value={studentEmailDraft}
+                      onChange={(e) => setStudentEmailDraft(e.target.value)}
+                      disabled={Boolean(studentAccountActionLoading)}
+                      style={{
+                        flex: "1 1 260px",
+                        minWidth: 0,
+                        padding: "10px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #d0d5dd",
+                        fontSize: "0.95rem",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={styles.approve}
+                      onClick={saveStudentEmail}
+                      disabled={Boolean(studentAccountActionLoading) || studentEmailDraft.trim() === studentAccountModal.email}
+                    >
+                      {studentAccountActionLoading === "email" ? "Saving..." : "Save email"}
+                    </button>
+                  </div>
+                  <p style={{ margin: "8px 0 0", color: "#667085", fontSize: "0.82rem", lineHeight: 1.5 }}>
+                    {accountSetupComplete
+                      ? "Only an administrator can change this address. The user will need it for future sign-ins and password resets."
+                      : "Changing this email replaces the unused setup invite and sends a fresh setup link to the new address."}
+                  </p>
                 </div>
 
                 {!accountSetupComplete && (
@@ -5027,6 +5035,7 @@ export default function AdminDashboard() {
             </section>
           </div>
         )}
+        </ModalPortal>
         {/* Portalled so the overlay covers the whole viewport. See ModalPortal. */}
         <ModalPortal>
           {inviteManualCopy && (
