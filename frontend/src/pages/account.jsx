@@ -875,18 +875,6 @@ export default function Account() {
                 alt="Your profile"
               />
             )}
-            <input
-              ref={fileInputRef}
-              className={styles.firstSetupFileInput}
-              type="file"
-              accept="image/*"
-              aria-label="Choose a profile picture"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) handleProfileFile(file);
-                event.target.value = "";
-              }}
-            />
             <button
               type="button"
               className={styles.firstSetupPrimary}
@@ -1752,6 +1740,19 @@ export default function Account() {
           </>
         )}
       </div>
+
+      <input
+        ref={fileInputRef}
+        className={styles.firstSetupFileInput}
+        type="file"
+        accept="image/*"
+        aria-label="Choose a profile picture"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) handleProfileFile(file);
+          event.target.value = "";
+        }}
+      />
 
       {cropModal && (
         <ModalPortal>
