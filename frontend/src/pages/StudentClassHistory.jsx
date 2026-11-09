@@ -1,3 +1,4 @@
+import { isStartScreenshotTimely } from "../utils/classSession.js";
 import axios from "axios";
 import { useEffect, useMemo, useState } from "react";
 import styles from "../assets/AdminDashboard.module.css";
@@ -116,8 +117,7 @@ const getReviewReasons = (row) => {
   if (!row.summary) reasons.push("Missing class summary");
   if (row.evidence_mode === "screenshots") {
     if (!row.start_proof_url || !row.proof_url) reasons.push("Both start and end screenshots are required");
-    const delay = new Date(row.start_proof_uploaded_at).getTime() - new Date(row.student_joined_at).getTime();
-    if (row.start_proof_url && (!Number.isFinite(delay) || delay < 0 || delay > 300000)) reasons.push("Start screenshot was outside the five-minute submission window");
+    if (row.start_proof_url && !isStartScreenshotTimely(row)) reasons.push("Start screenshot was outside the five-minute submission window");
   } else if (!row.recording_url || Number(row.recording_duration_seconds || 0) < requiredMinutes * 60) reasons.push(`Recording must cover at least ${requiredMinutes} minutes`);
 
   return reasons;

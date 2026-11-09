@@ -461,6 +461,13 @@
   font-weight: 700;
 }
 
+.topName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .topUser > i {
   color: #5e7268;
   font-size: 0.7rem;
@@ -3435,6 +3442,11 @@
   border: 1px solid #e0e9da;
   border-radius: 12px;
   background: #fff;
+}
+
+.flowCardNeutral {
+  border-color: var(--border);
+  background: var(--surface-soft);
 }
 
 .flowCardOld {

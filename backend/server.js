@@ -11,6 +11,7 @@ import multer from "multer";
 import mysql from "mysql2/promise";
 import path from "path";
 import { assessClassEvidence } from "./classEvidence.js";
+import { classEntryError, hasScheduledClassEnded } from "./classSession.js";
 // Aliased on purpose: the wrapper below owns the throttle and the logging, and two
 // functions called archiveDormantAccounts in one file is how the policy engine and
 // the scheduler get swapped over by accident.
@@ -1811,7 +1812,6 @@ function hasClassConflict(rows, start, end, excludeClassId = null) {
 
 async function getStudentPackageAvailability(connection, studentId) {
   const db = connection || pool;
-  await autoMarkPastClassesAsNoShow(db);
   const [packageRows] = await db.query(
     `SELECT package_id, student_id, total_classes, classes_used, classes_left, class_duration, status, created_at, expires_at
      FROM student_class_packages
@@ -1855,7 +1855,6 @@ async function getStudentPackageAvailability(connection, studentId) {
      FROM classes
      WHERE student_id = ?
        AND status = 'scheduled'
-       AND scheduled_date >= CURDATE()
        AND NOT EXISTS (
          SELECT 1 FROM class_attendance_logs cal
          WHERE cal.class_id = classes.class_id
@@ -4204,56 +4203,6 @@ async function notifyUpcomingContractExpirations(db = pool) {
   return rows.length;
 }
 
-const AUTO_MARK_PAST_CLASSES_INTERVAL_MS = 60 * 1000;
-const CLASS_ATTENDANCE_GRACE_MINUTES = 15;
-let lastAutoMarkPastClassesAt = 0;
-let autoMarkPastClassesPromise = null;
-
-async function autoMarkPastClassesAsNoShow(db = pool) {
-  const now = Date.now();
-  if (autoMarkPastClassesPromise) return autoMarkPastClassesPromise;
-  if (now - lastAutoMarkPastClassesAt < AUTO_MARK_PAST_CLASSES_INTERVAL_MS) return;
-
-  autoMarkPastClassesPromise = db
-    .query(
-      `SELECT c.class_id, c.teacher_id, c.student_id
-       FROM classes c
-       LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
-       WHERE c.status = 'scheduled'
-         AND TIMESTAMP(c.scheduled_date, COALESCE(c.start_time, '00:00:00')) <= DATE_SUB(NOW(), INTERVAL ? MINUTE)
-         AND (
-           cal.log_id IS NULL
-           OR cal.teacher_started_at IS NULL
-           OR cal.student_joined_at IS NULL
-         )`,
-      [CLASS_ATTENDANCE_GRACE_MINUTES]
-    )
-    .then(async ([rows]) => {
-      if (!rows.length) return;
-      const classIds = rows.map((row) => row.class_id);
-      await db.query(
-        `UPDATE classes
-         SET status = 'no-show'
-         WHERE class_id IN (?) AND status = 'scheduled'`,
-        [classIds]
-      );
-      rows.forEach((row) => {
-        broadcastCalendarChange([row.teacher_id, row.student_id], "class-no-show", {
-          class_id: row.class_id,
-          status: "no-show",
-        });
-      });
-    })
-    .then(() => {
-      lastAutoMarkPastClassesAt = Date.now();
-    })
-    .finally(() => {
-      autoMarkPastClassesPromise = null;
-    });
-
-  await autoMarkPastClassesPromise;
-}
-
 /**
  * How often the dormancy sweep is allowed to run.
  *
@@ -4319,24 +4268,6 @@ async function runDormancySweep(db) {
   } else {
     console.log(`[dormancy] scanned ${result.scanned} active accounts, archived ${result.archived.length}`);
   }
-}
-
-async function markClassNoShowIfAttendanceGraceExpired(db, classId) {
-  const [result] = await db.query(
-    `UPDATE classes c
-     LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
-     SET c.status = 'no-show'
-     WHERE c.class_id = ?
-       AND c.status = 'scheduled'
-       AND TIMESTAMP(c.scheduled_date, COALESCE(c.start_time, '00:00:00')) <= DATE_SUB(NOW(), INTERVAL ? MINUTE)
-       AND (
-         cal.log_id IS NULL
-         OR cal.teacher_started_at IS NULL
-         OR cal.student_joined_at IS NULL
-       )`,
-    [classId, CLASS_ATTENDANCE_GRACE_MINUTES]
-  );
-  return Number(result.affectedRows || 0) > 0;
 }
 
 const assignmentSelect = `
@@ -4456,8 +4387,6 @@ app.get("/api/dashboard/:role/:user_id", requireSession, async (req, res) => {
     if (!scheduledDate) {
       return res.status(400).json({ message: "scheduled_date is required" });
     }
-
-    await autoMarkPastClassesAsNoShow(pool);
     const scheduledDateText = normalizeDateKey(scheduledDate);
     const sourceStartDate = addDaysToDateKey(scheduledDateText, -1) || scheduledDateText;
     const sourceEndDate = addDaysToDateKey(scheduledDateText, 1) || scheduledDateText;
@@ -5284,7 +5213,6 @@ app.get("/api/users/:id", requireSession, async (req, res) => {
       return res.status(403).json({ message: "You can only act on your own account." });
     }
     await refreshProfileCompletion(req.params.id);
-    await autoMarkPastClassesAsNoShow(pool);
     const [rows] = await pool.query(
       `SELECT u.user_id, u.first_name, u.last_name, u.email, u.contact_number AS contact, u.country, u.birth_date, u.profile_image_url, u.timezone, u.role, u.status,
               u.profile_completed, u.password_changed, u.created_at,
@@ -8109,7 +8037,6 @@ app.get("/api/calendar/teacher-booking-conflicts", requireSession, async (req, r
 app.get("/api/calendar/classes-by-date", requireSession, requireQueryScope("student_id", "teacher_id"), async (req, res) => {
   try {
     const { scheduled_date, student_id, teacher_id } = req.query;
-    await autoMarkPastClassesAsNoShow(pool);
 
     let query = `SELECT ${classSelectFields},
                        stu.first_name as student_name,
@@ -8145,8 +8072,7 @@ app.get("/api/calendar/classes-by-date", requireSession, requireQueryScope("stud
                   AND tea.status = 'active' AND tea.profile_completed = TRUE
                  WHERE c.scheduled_date = ?
                  AND c.status = 'scheduled'
-                 ${req.query.include_reserved === 'true' ? '' : "AND COALESCE(cal.verification_status, 'pending') <> 'incomplete'"}
-                 AND c.scheduled_date >= CURDATE()`;
+                 ${req.query.include_reserved === 'true' ? '' : "AND COALESCE(cal.verification_status, 'pending') <> 'incomplete'"}`;
     const params = [scheduled_date];
 
     if (student_id) {
@@ -8191,8 +8117,6 @@ app.get("/api/calendar/classes-by-month", requireSession, requireQueryScope("stu
       return res.status(400).json({ message: "Invalid year or month" });
     }
 
-    await autoMarkPastClassesAsNoShow(pool);
-
     const daysInMonth = new Date(yearValue, monthIndex, 0).getDate();
     const startDate = `${yearValue}-${String(monthIndex).padStart(2, "0")}-01`;
     const endDate = `${yearValue}-${String(monthIndex).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
@@ -8231,8 +8155,7 @@ app.get("/api/calendar/classes-by-month", requireSession, requireQueryScope("stu
                   AND tea.status = 'active' AND tea.profile_completed = TRUE
                  WHERE c.scheduled_date BETWEEN ? AND ?
                  AND c.status = 'scheduled'
-                 ${req.query.include_reserved === 'true' ? '' : "AND COALESCE(cal.verification_status, 'pending') <> 'incomplete'"}
-                 AND c.scheduled_date >= CURDATE()`;
+                 ${req.query.include_reserved === 'true' ? '' : "AND COALESCE(cal.verification_status, 'pending') <> 'incomplete'"}`;
     const params = [startDate, endDate];
 
     if (student_id) {
@@ -8274,8 +8197,6 @@ app.get("/api/calendar/upcoming-classes", requireSession, requireQueryScope("tea
       return res.status(400).json({ message: "Missing teacher_id or student_id" });
     }
 
-    await autoMarkPastClassesAsNoShow(pool);
-
     let query = `SELECT ${classSelectFields}, \
                        stu.first_name as student_name, \
                        stu.last_name as student_last_name, \
@@ -8290,9 +8211,9 @@ app.get("/api/calendar/upcoming-classes", requireSession, requireQueryScope("tea
                        tea.email as teacher_email, \
                        tea.profile_image_url AS teacher_profile_image_url, \
                        tea.timezone as teacher_timezone, \
-                       COALESCE(c.class_link, vs.teams_meeting_link) as class_link \
+                       cal.teacher_started_at, cal.student_joined_at, cal.teacher_ended_at, cal.verification_status, COALESCE(c.class_link, vs.teams_meeting_link) as class_link \
                  FROM classes c \
-                 LEFT JOIN video_sessions vs ON vs.class_id = c.class_id \
+                 LEFT JOIN video_sessions vs ON vs.class_id = c.class_id LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id \
                  JOIN users stu ON c.student_id = stu.user_id \
                   AND stu.status = 'active' AND stu.profile_completed = TRUE \
                  LEFT JOIN student_profiles sp ON sp.user_id = stu.user_id \
@@ -8300,7 +8221,7 @@ app.get("/api/calendar/upcoming-classes", requireSession, requireQueryScope("tea
                   AND tea.status = 'active' AND tea.profile_completed = TRUE \
                  WHERE c.status = 'scheduled' \
                  AND NOT EXISTS (SELECT 1 FROM class_attendance_logs cal WHERE cal.class_id = c.class_id AND cal.verification_status = 'incomplete') \
-                 AND c.scheduled_date >= CURDATE()`;
+                 AND (c.scheduled_date >= CURDATE() OR (cal.teacher_started_at IS NOT NULL AND cal.teacher_ended_at IS NULL))`;
     const params = [];
 
     if (teacher_id) {
@@ -8363,12 +8284,12 @@ const classVerificationSelect = `
   cal.updated_at
 `;
 
-async function getClassVerification(connection, classId) {
+async function getClassVerification(connection, classId, forUpdate = false) {
   const [rows] = await connection.query(
     `SELECT ${classVerificationSelect}
      FROM class_attendance_logs cal
      WHERE cal.class_id = ?
-     LIMIT 1`,
+     LIMIT 1${forUpdate ? " FOR UPDATE" : ""}`,
     [classId]
   );
 
@@ -8422,6 +8343,7 @@ app.get("/api/calendar/classes/:class_id/classroom", requireSession, requireClas
               tea.first_name AS teacher_first_name,
               tea.last_name AS teacher_last_name,
               tea.email AS teacher_email,
+               tea.timezone AS teacher_timezone,
               stu.first_name AS student_first_name,
               stu.last_name AS student_last_name,
               stu.email AS student_email
@@ -8454,6 +8376,9 @@ app.get("/api/calendar/classes/:class_id/classroom", requireSession, requireClas
     }
 
     const verification = await getClassVerification(pool, class_id);
+    const entryError = classEntryError(classInfo, verification,
+      zonedWallClockToInstant(classInfo.scheduled_date, classInfo.start_time, classInfo.teacher_timezone || "Asia/Manila"));
+    if (!isAdmin && entryError) return res.status(409).json({ message: entryError });
     const jitsiJwt = createJitsiJwtForClass({
       classInfo,
       user,
@@ -8496,7 +8421,10 @@ app.post("/api/calendar/classes/:class_id/start", requireSession, requireClassAc
     await connection.query("SELECT user_id FROM users WHERE user_id IN (?) ORDER BY user_id FOR UPDATE",
       [[bookingRows[0].teacher_id, bookingRows[0].student_id].sort((a, b) => Number(a) - Number(b))]);
     const [classRows] = await connection.query(
-      `SELECT c.class_id, c.teacher_id, c.student_id, c.status
+      `SELECT c.class_id, c.teacher_id, c.student_id, c.status, c.duration,
+              DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
+              TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time,
+              tea.timezone AS teacher_timezone
        FROM classes c
        JOIN users stu ON c.student_id = stu.user_id
         AND stu.status = 'active' AND stu.profile_completed = TRUE
@@ -8520,19 +8448,14 @@ app.post("/api/calendar/classes/:class_id/start", requireSession, requireClassAc
       return res.status(400).json({ message: "Only scheduled classes can be started" });
     }
 
-    if (await markClassNoShowIfAttendanceGraceExpired(connection, classInfo.class_id)) {
-      await connection.commit();
-      committed = true;
-      broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-no-show", {
-        class_id: classInfo.class_id,
-        status: "no-show",
-      });
-      return res.status(409).json({ message: `This class was missed because attendance was not completed within ${CLASS_ATTENDANCE_GRACE_MINUTES} minutes after the scheduled start time.` });
-    }
-
     if (recording_consent !== true && recording_consent !== "true") {
       return res.status(400).json({ message: "Recording consent is required before joining this class" });
     }
+
+    const existingAttendance = await getClassVerification(connection, class_id, true);
+    const entryError = classEntryError(classInfo, existingAttendance,
+      zonedWallClockToInstant(classInfo.scheduled_date, classInfo.start_time, classInfo.teacher_timezone || "Asia/Manila"));
+    if (entryError) return res.status(409).json({ message: entryError });
 
     await connection.query(
       `INSERT INTO class_attendance_logs (class_id, teacher_id, student_id, evidence_mode, teacher_started_at, teacher_recording_consent_at, verification_status)
@@ -8569,7 +8492,10 @@ app.post("/api/calendar/classes/:class_id/start", requireSession, requireClassAc
 });
 
 app.post("/api/calendar/classes/:class_id/join", requireSession, requireClassAccess(), async (req, res) => {
+  const connection = await pool.getConnection();
+  let committed = false;
   try {
+    await connection.beginTransaction();
     const { class_id } = req.params;
     const { student_id, recording_consent } = req.body;
     if (!sessionMayActFor(req, student_id)) {
@@ -8580,15 +8506,22 @@ app.post("/api/calendar/classes/:class_id/join", requireSession, requireClassAcc
       return res.status(400).json({ message: "Missing class_id or student_id" });
     }
 
-    const [classRows] = await pool.query(
-      `SELECT c.class_id, c.teacher_id, c.student_id, c.status
+    const [bookingRows] = await connection.query("SELECT teacher_id, student_id FROM classes WHERE class_id = ?", [class_id]);
+    if (!bookingRows.length) return res.status(404).json({ message: "Class not found" });
+    await connection.query("SELECT user_id FROM users WHERE user_id IN (?) ORDER BY user_id FOR UPDATE",
+      [[bookingRows[0].teacher_id, bookingRows[0].student_id].sort((a, b) => Number(a) - Number(b))]);
+    const [classRows] = await connection.query(
+      `SELECT c.class_id, c.teacher_id, c.student_id, c.status, c.duration,
+              DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
+              TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time,
+              tea.timezone AS teacher_timezone
        FROM classes c
        JOIN users stu ON c.student_id = stu.user_id
         AND stu.status = 'active' AND stu.profile_completed = TRUE
        JOIN users tea ON c.teacher_id = tea.user_id
         AND tea.status = 'active' AND tea.profile_completed = TRUE
        WHERE c.class_id = ?
-       LIMIT 1`,
+       LIMIT 1 FOR UPDATE`,
       [class_id]
     );
 
@@ -8605,43 +8538,32 @@ app.post("/api/calendar/classes/:class_id/join", requireSession, requireClassAcc
       return res.status(400).json({ message: "Only scheduled classes can be confirmed" });
     }
 
-    if (await markClassNoShowIfAttendanceGraceExpired(pool, classInfo.class_id)) {
-      broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-no-show", {
-        class_id: classInfo.class_id,
-        status: "no-show",
-      });
-      return res.status(409).json({ message: `This class was missed because attendance was not completed within ${CLASS_ATTENDANCE_GRACE_MINUTES} minutes after the scheduled start time.` });
-    }
-
     if (recording_consent !== true && recording_consent !== "true") {
       return res.status(400).json({ message: "Recording consent is required before joining this class" });
     }
 
-    const [logRows] = await pool.query(
-      `SELECT log_id, teacher_started_at
-       FROM class_attendance_logs
-       WHERE class_id = ?
-       LIMIT 1`,
-      [class_id]
+    const existingAttendance = await getClassVerification(connection, class_id, true);
+    const entryError = classEntryError(classInfo, existingAttendance,
+      zonedWallClockToInstant(classInfo.scheduled_date, classInfo.start_time, classInfo.teacher_timezone || "Asia/Manila"));
+    if (entryError) return res.status(409).json({ message: entryError });
+
+    await connection.query(
+      `INSERT INTO class_attendance_logs
+        (class_id, teacher_id, student_id, student_joined_at, student_recording_consent_at, verification_status)
+       VALUES (?, ?, ?, NOW(), NOW(), 'student_confirmed')
+       ON DUPLICATE KEY UPDATE
+         student_joined_at = COALESCE(student_joined_at, NOW()),
+         student_recording_consent_at = COALESCE(student_recording_consent_at, NOW()),
+         verification_status = CASE
+           WHEN teacher_ended_at IS NULL THEN 'student_confirmed'
+           ELSE verification_status
+         END`,
+      [classInfo.class_id, classInfo.teacher_id, classInfo.student_id]
     );
 
-    if (!logRows.length || !logRows[0].teacher_started_at) {
-      return res.status(400).json({ message: "The teacher must start the class before attendance can be confirmed" });
-    }
-
-    await pool.query(
-      `UPDATE class_attendance_logs
-       SET student_joined_at = COALESCE(student_joined_at, NOW()),
-           student_recording_consent_at = COALESCE(student_recording_consent_at, NOW()),
-           verification_status = CASE
-             WHEN teacher_ended_at IS NULL THEN 'student_confirmed'
-             ELSE verification_status
-           END
-       WHERE class_id = ?`,
-      [class_id]
-    );
-
-    const verification = await getClassVerification(pool, class_id);
+    const verification = await getClassVerification(connection, class_id);
+    await connection.commit();
+    committed = true;
     broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-verification-changed", {
       class_id: classInfo.class_id,
       verification_status: verification?.verification_status || "student_confirmed",
@@ -8650,6 +8572,9 @@ app.post("/api/calendar/classes/:class_id/join", requireSession, requireClassAcc
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error confirming attendance" });
+  } finally {
+    if (!committed) await connection.rollback();
+    connection.release();
   }
 });
 
@@ -8976,7 +8901,7 @@ app.post("/api/calendar/classes/:class_id/start-proof", classProofUpload.single(
       return res.status(403).json({ message: "Only the assigned teacher can manage class evidence." });
     }
     const log = await getClassVerification(pool, req.params.class_id);
-    if (!req.file || !log || String(log.teacher_id) !== String(req.body.teacher_id) || !log.student_joined_at || log.teacher_ended_at || log.evidence_mode !== 'screenshots' || log.start_proof_url) {
+    if (!req.file || !log || String(log.teacher_id) !== String(req.body.teacher_id) || !log.teacher_started_at || !log.student_joined_at || log.teacher_ended_at || log.evidence_mode !== 'screenshots' || log.start_proof_url) {
       if (req.file) await deleteLocalClassProofImage(`/uploads/class-proofs/${req.file.filename}`);
       return res.status(400).json({ message: "Start screenshot requires screenshot mode, confirmed student attendance, and no previous start screenshot." });
     }
@@ -9267,18 +9192,16 @@ app.put("/api/admin/class-verifications/:class_id/approve", requireAdminSession,
       const [packageRows] = await connection.query(
         `SELECT package_id, student_id, total_classes, classes_used, classes_left, status
          FROM student_class_packages
-         WHERE student_id = ?
-           AND status = 'active'
-           AND classes_left > 0
-         ORDER BY created_at DESC
+         WHERE student_id = ? AND created_at <= ?
+         ORDER BY created_at DESC, package_id DESC
          LIMIT 1
          FOR UPDATE`,
-        [classInfo.student_id]
+        [classInfo.student_id, classInfo.created_at]
       );
 
-      if (!packageRows.length) {
+      if (!packageRows.length || Number(packageRows[0].classes_left) <= 0) {
         await connection.rollback();
-        return res.status(400).json({ message: "This student has no classes left to consume." });
+        return res.status(400).json({ message: "The original contract for this class has no remaining allowance." });
       }
 
       await connection.query(
@@ -9288,11 +9211,11 @@ app.put("/api/admin/class-verifications/:class_id/approve", requireAdminSession,
 
       await connection.query(
         `UPDATE student_class_packages
-         SET classes_used = classes_used + 1,
-             status = CASE
-               WHEN total_classes - (classes_used + 1) <= 0 THEN 'expired'
+         SET status = CASE
+               WHEN classes_used + 1 >= total_classes THEN 'expired'
                ELSE status
-             END
+             END,
+             classes_used = classes_used + 1
          WHERE package_id = ?`,
         [packageRows[0].package_id]
       );
@@ -9413,6 +9336,8 @@ app.put("/api/admin/class-verifications/:class_id/incomplete", requireAdminSessi
       );
     }
 
+    const { package: refreshedPackage, bookedClasses: refreshedBookedClasses, bookableClasses: refreshedBookableClasses } =
+      await getStudentPackageAvailability(connection, classInfo.student_id);
     const verification = await getClassVerification(connection, class_id);
     await connection.commit();
 
@@ -9588,8 +9513,6 @@ app.post("/api/calendar/class", requireSession, requireClassBookingScope(), asyn
     if (!class_name || !teacher_id || !student_id || !scheduled_date) {
       return res.status(400).json({ message: "Missing required fields" });
     }
-
-    await autoMarkPastClassesAsNoShow(pool);
     await connection.beginTransaction();
 
     const [participantRows] = await connection.query(
@@ -9637,7 +9560,6 @@ app.post("/api/calendar/class", requireSession, requireClassBookingScope(), asyn
        FROM classes
        WHERE student_id = ?
          AND status = 'scheduled'
-         AND scheduled_date >= CURDATE()
          AND NOT EXISTS (
            SELECT 1 FROM class_attendance_logs cal
            WHERE cal.class_id = classes.class_id
@@ -9850,7 +9772,7 @@ app.put("/api/calendar/classes/:class_id/complete", requireSession, requireClass
     await connection.beginTransaction();
 
     const [classRows] = await connection.query(
-      `SELECT c.class_id, c.teacher_id, c.student_id, c.class_name, c.status, c.duration,
+      `SELECT c.class_id, c.teacher_id, c.student_id, c.class_name, c.status, c.duration, c.created_at,
               cal.teacher_started_at, cal.student_joined_at, cal.teacher_ended_at,
               cal.duration_minutes, cal.proof_url, cal.recording_url, cal.summary, cal.verification_status
        FROM classes c
@@ -9904,14 +9826,15 @@ app.put("/api/calendar/classes/:class_id/complete", requireSession, requireClass
     const [packageRows] = await connection.query(
       `SELECT package_id, student_id, total_classes, classes_used, classes_left, status
        FROM student_class_packages
-       WHERE student_id = ? AND status = 'active'
-       FOR UPDATE`,
-      [classInfo.student_id]
+       WHERE student_id = ? AND created_at <= ?
+       ORDER BY created_at DESC, package_id DESC
+       LIMIT 1 FOR UPDATE`,
+      [classInfo.student_id, classInfo.created_at]
     );
 
-    if (!packageRows.length) {
+    if (!packageRows.length || packageRows[0].status !== "active") {
       await connection.rollback();
-      return res.status(404).json({ message: "No active package found for this student" });
+      return res.status(409).json({ message: "The original contract for this class is no longer active. Please submit the class for administrator review." });
     }
 
     const currentPackage = packageRows[0];
@@ -9929,11 +9852,11 @@ app.put("/api/calendar/classes/:class_id/complete", requireSession, requireClass
 
     await connection.query(
       `UPDATE student_class_packages
-       SET classes_used = classes_used + 1,
-           status = CASE
-             WHEN total_classes - (classes_used + 1) <= 0 THEN 'expired'
+       SET status = CASE
+             WHEN classes_used + 1 >= total_classes THEN 'expired'
              ELSE status
-           END
+           END,
+           classes_used = classes_used + 1
        WHERE package_id = ?`,
       [currentPackage.package_id]
     );
@@ -10437,7 +10360,10 @@ app.put("/api/calendar/classes/:class_id/no-show", requireSession, requireClassA
     await connection.beginTransaction();
 
     const [classRows] = await connection.query(
-      `SELECT c.class_id, c.teacher_id, c.student_id, c.class_name, c.status,
+      `SELECT c.class_id, c.teacher_id, c.student_id, c.class_name, c.status, c.duration,
+              DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
+              TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time,
+              tea.timezone AS teacher_timezone,
               cal.student_joined_at
        FROM classes c
        LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
@@ -10474,6 +10400,12 @@ app.put("/api/calendar/classes/:class_id/no-show", requireSession, requireClassA
     if (classInfo.status === "no-show") {
       await connection.rollback();
       return res.status(409).json({ message: "This class has already been marked as no-show" });
+    }
+
+    if (!hasScheduledClassEnded(classInfo,
+      zonedWallClockToInstant(classInfo.scheduled_date, classInfo.start_time, classInfo.teacher_timezone || "Asia/Manila"))) {
+      await connection.rollback();
+      return res.status(409).json({ message: "A class can only be marked as no-show after its scheduled end time." });
     }
 
     if (classInfo.student_joined_at) {
@@ -10542,7 +10474,8 @@ app.post("/api/calendar/reschedule-request", requireSession, requireBodyIdentity
               stu.timezone AS student_timezone,
               ru.first_name AS requester_first,
               ru.last_name AS requester_last,
-              cal.teacher_started_at AS class_started_at
+              cal.teacher_started_at AS class_started_at,
+              cal.student_joined_at AS student_joined_at
        FROM classes c
        JOIN users tea ON c.teacher_id = tea.user_id
         AND tea.status = 'active' AND tea.profile_completed = TRUE
@@ -10564,9 +10497,9 @@ app.post("/api/calendar/reschedule-request", requireSession, requireBodyIdentity
       return res.status(409).json({ message: "Ask your teacher to propose a new group time. Both students must approve it." });
     }
 
-    // A class the teacher has already started is not one that can be moved, so
+    // Once either participant records attendance, this class cannot be moved, so
     // neither side can ask for a reschedule for it any more.
-    if (isRescheduleClosedByStart(classData.class_started_at)) {
+    if (isRescheduleClosedByStart(classData.class_started_at, classData.student_joined_at)) {
       return res.status(409).json({ message: RESCHEDULE_CLOSED_AFTER_START_MESSAGE });
     }
 
@@ -10692,7 +10625,6 @@ app.get("/api/calendar/booked-dates/:user_id", requireSession, async (req, res) 
       return res.status(403).json({ message: "You can only act on your own account." });
     }
     const { user_id } = req.params;
-    await autoMarkPastClassesAsNoShow(pool);
     const [bookedDates] = await pool.query(
       `SELECT DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
               TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time,
@@ -10968,7 +10900,8 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
               c.start_time,
               c.end_time,
               c.duration,
-              cal.teacher_started_at AS class_started_at
+              cal.teacher_started_at AS class_started_at,
+              cal.student_joined_at AS student_joined_at
        FROM classes c
        JOIN users stu ON c.student_id = stu.user_id
         AND stu.status = 'active' AND stu.profile_completed = TRUE
@@ -10991,7 +10924,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
     // The class has already been held, so moving it now would rewrite a class
     // that already happened. The request stays pending and the other side can
     // still decline it.
-    if (isRescheduleClosedByStart(classInfo.class_started_at)) {
+    if (isRescheduleClosedByStart(classInfo.class_started_at, classInfo.student_joined_at)) {
       return res.status(409).json({ message: RESCHEDULE_CLOSED_AFTER_START_MESSAGE });
     }
 
@@ -11717,7 +11650,7 @@ app.get("/api/calendar/remarks/:class_id", requireSession, async (req, res) => {
   try {
     const { class_id } = req.params;
 
-    if (!(await sessionMayReadClassRemarks(req, class_id))) {
+    if (!(await sessionMayActOnClass(req, class_id))) {
       return res.status(403).json({ message: "You can only view remarks for your own classes." });
     }
 
@@ -12623,7 +12556,6 @@ app.get("/api/student/profile/:student_id", requireSession, async (req, res) => 
       return res.status(403).json({ message: "You can only view your own records." });
     }
     const { student_id } = req.params;
-    await autoMarkPastClassesAsNoShow(pool);
 
     const [profileRows] = await pool.query(
       `SELECT sp.*, u.first_name, u.last_name, u.email,
@@ -12660,7 +12592,6 @@ app.get("/api/student/profile/:student_id", requireSession, async (req, res) => 
          FROM classes
          WHERE student_id = ?
            AND status = 'scheduled'
-           AND scheduled_date >= CURDATE()
            AND NOT EXISTS (
              SELECT 1 FROM class_attendance_logs cal
              WHERE cal.class_id = classes.class_id
@@ -13719,7 +13650,7 @@ app.post("/api/admin/student-profile", requireAdminSession, async (req, res) => 
   }
 });
 
-app.put("/api/student/package/:student_id/use-class", requireSession, async (req, res) => {
+app.put("/api/student/package/:student_id/use-class", requireAdminSession, async (req, res) => {
   const connection = await pool.getConnection();
   try {
     if (!(await sessionMayReadStudent(req, req.params.student_id))) {
@@ -13747,11 +13678,11 @@ app.put("/api/student/package/:student_id/use-class", requireSession, async (req
     const packageId = packageRows[0].package_id;
     await connection.query(
       `UPDATE student_class_packages
-       SET classes_used = classes_used + 1,
-           status = CASE
-             WHEN total_classes - (classes_used + 1) <= 0 THEN 'expired'
+       SET status = CASE
+             WHEN classes_used + 1 >= total_classes THEN 'expired'
              ELSE status
-           END
+           END,
+           classes_used = classes_used + 1
        WHERE package_id = ?`,
       [packageId]
     );
@@ -16184,7 +16115,7 @@ async function sendLineReminders() {
     })
     .catch((err) => {
       // A LINE outage or a temporary database error must not stop the class
-      // status sweep that also expires packages and marks no-shows.
+      // status sweep that also expires packages.
       console.error("[line] Reminder sweep error:", err?.message || err);
     })
     .finally(() => {
@@ -16198,7 +16129,6 @@ const runClassStatusSweep = async () => {
   try {
     await Promise.all([
       expireFinishedPackages(pool),
-      autoMarkPastClassesAsNoShow(pool),
       cleanupExpiredClassRecordings(pool),
       // After the expiry pass, so a package that has just expired is not warned
       // about on its way out.

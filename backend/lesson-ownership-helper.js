@@ -3,9 +3,10 @@
  * @param {Object} res - Express response object
  * @param {number} lessonId - The lesson ID to check
  * @param {number} teacherId - The authenticated teacher's ID
+ * @param {Object} pool - Database connection or pool supplied by the caller
  * @returns {Promise<boolean>} True if authorized, throws error otherwise
  */
-async function validateTeacherLessonOwnership(res, lessonId, teacherId) {
+async function validateTeacherLessonOwnership(res, lessonId, teacherId, pool) {
   if (!teacherId) {
     res.status(401).json({ message: "Unauthorized: Teacher ID not provided" });
     return false;

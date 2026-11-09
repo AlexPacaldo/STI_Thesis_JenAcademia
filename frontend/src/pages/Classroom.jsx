@@ -108,7 +108,7 @@ export default function Classroom() {
     try {
       const endpoint = isTeacher ? "start" : "join";
       const payload = isTeacher
-        ? { teacher_id: userId, recording_consent: true }
+        ? { teacher_id: userId, recording_consent: true, evidence_mode: "recording" }
         : { student_id: userId, recording_consent: true };
       const response = await axios.post(`${API}/api/calendar/classes/${classInfo.class_id}/${endpoint}`, payload);
       setVerification(response.data?.verification || null);

@@ -17,7 +17,8 @@ test("starting one group class starts each participant without confirming studen
   await startGroupParticipants(db, 10, "recording");
   const write = db.calls.find(call => call.sql.includes("INSERT INTO class_attendance_logs"));
   assert.deepEqual(write.params, [20, 1, 3, "recording", 10]);
-  assert(!write.sql.includes("student_joined_at"));
+  assert(!/student_joined_at\s*=/.test(write.sql));
+  assert.match(write.sql, /WHEN student_joined_at IS NOT NULL THEN 'student_confirmed'/);
   assert(!write.sql.includes("student_recording_consent_at"));
 });
 test("individual classes have no peer attendance side effects", async () => {

@@ -1,3 +1,5 @@
+import { classEntryIssue, isClassPast } from "../utils/classEntry.js";
+import { hasClassAttendance } from "../utils/classSession.js";
 import GroupClassManager from "../components/GroupClassManager.jsx";
 import { groupClassesForDisplay } from "../utils/groupClasses.js";
 import { availableRanges, candidateSlotMinutes } from "../utils/bookingTimes.js";
@@ -97,10 +99,10 @@ import {
 // API base
 const API = API_BASE_URL;
 
-// Once the teacher has started the class it is not a class that can be
+// Once either participant records attendance the class cannot be
 // moved any more, so the reschedule request is closed for both sides.
 const RESCHEDULE_CLOSED_AFTER_START_MESSAGE =
-  "This class has already started, so it can no longer be rescheduled.";
+  "Attendance has already been recorded for this class, so it can no longer be rescheduled. Contact the administrator if the class cannot proceed.";
 
 // Helper to format date as YYYY-MM-DD in local timezone
 const fmtDate = (d) => {
@@ -270,194 +272,6 @@ const verificationPanelStyle = {
   border: "1px solid var(--border)",
   borderRadius: 18,
   background: "var(--surface-soft)",
-};
-
-// Helper: check if a class is joinable (30 mins before start until class end)
-const isClassJoinable = (classObj, selectedDate, nowValue = Date.now()) => {
-  if (!classObj || !selectedDate) return false;
-
-  try {
-    const now = new Date(nowValue);
-
-    const parseTimeString = (timeStr) => {
-      if (!timeStr) return null;
-      const ampmMatch = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-      if (ampmMatch) {
-        let hours = parseInt(ampmMatch[1], 10);
-        const mins = parseInt(ampmMatch[2], 10);
-        const period = ampmMatch[3].toUpperCase();
-        if (period === 'PM' && hours !== 12) hours += 12;
-        if (period === 'AM' && hours === 12) hours = 0;
-        return hours * 60 + mins;
-      }
-
-      const twentyFourMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
-      if (twentyFourMatch) {
-        const hours = parseInt(twentyFourMatch[1], 10);
-        const mins = parseInt(twentyFourMatch[2], 10);
-        return hours * 60 + mins;
-      }
-
-      return null;
-    };
-
-    const parseDateString = (dateStr) => {
-      if (dateStr instanceof Date && !Number.isNaN(dateStr.getTime())) {
-        return {
-          year: dateStr.getFullYear(),
-          month: dateStr.getMonth(),
-          day: dateStr.getDate(),
-        };
-      }
-
-      const dateMatch = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (!dateMatch) return null;
-
-      return {
-        year: Number(dateMatch[1]),
-        month: Number(dateMatch[2]) - 1,
-        day: Number(dateMatch[3]),
-      };
-    };
-
-    const selectedDateParts = parseDateString(selectedDate);
-    const classStartMins = parseTimeString(classObj.time || classObj.start_time);
-    if (!selectedDateParts || classStartMins == null) return false;
-
-    const startHour = Math.floor(classStartMins / 60);
-    const startMinute = classStartMins % 60;
-    const classStart = new Date(
-      selectedDateParts.year,
-      selectedDateParts.month,
-      selectedDateParts.day,
-      startHour,
-      startMinute,
-      0,
-      0
-    );
-
-    let classEnd = null;
-
-    if (classObj.duration && !Number.isNaN(Number(classObj.duration))) {
-      classEnd = new Date(classStart.getTime() + Number(classObj.duration) * 60 * 1000);
-    } else if (classObj.end_time) {
-      const classEndMins = parseTimeString(classObj.end_time);
-      if (classEndMins != null) {
-        const endHour = Math.floor(classEndMins / 60);
-        const endMinute = classEndMins % 60;
-        classEnd = new Date(
-          selectedDateParts.year,
-          selectedDateParts.month,
-          selectedDateParts.day,
-          endHour,
-          endMinute,
-          0,
-          0
-        );
-
-        if (classEnd <= classStart) {
-          classEnd.setDate(classEnd.getDate() + 1);
-        }
-      }
-    }
-
-    if (!classEnd) {
-      classEnd = new Date(classStart.getTime() + 60 * 60 * 1000);
-    }
-
-    const windowStart = new Date(classStart.getTime() - 30 * 60 * 1000);
-
-    return now >= windowStart && now < classEnd;
-  } catch (e) {
-    return false;
-  }
-};
-
-const isClassPast = (classObj, selectedDate, nowValue = Date.now()) => {
-  if (!classObj || !selectedDate) return false;
-
-  try {
-    const now = new Date(nowValue);
-    const parseTimeString = (timeStr) => {
-      if (!timeStr) return null;
-      const ampmMatch = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-      if (ampmMatch) {
-        let hours = parseInt(ampmMatch[1], 10);
-        const mins = parseInt(ampmMatch[2], 10);
-        const period = ampmMatch[3].toUpperCase();
-        if (period === "PM" && hours !== 12) hours += 12;
-        if (period === "AM" && hours === 12) hours = 0;
-        return hours * 60 + mins;
-      }
-      const twentyFourMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
-      if (twentyFourMatch) {
-        const hours = parseInt(twentyFourMatch[1], 10);
-        const mins = parseInt(twentyFourMatch[2], 10);
-        return hours * 60 + mins;
-      }
-      return null;
-    };
-
-    const parseDateString = (dateStr) => {
-      if (dateStr instanceof Date && !Number.isNaN(dateStr.getTime())) {
-        return {
-          year: dateStr.getFullYear(),
-          month: dateStr.getMonth(),
-          day: dateStr.getDate(),
-        };
-      }
-
-      const dateMatch = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (!dateMatch) return null;
-
-      return {
-        year: Number(dateMatch[1]),
-        month: Number(dateMatch[2]) - 1,
-        day: Number(dateMatch[3]),
-      };
-    };
-
-    const selectedDateParts = parseDateString(selectedDate);
-    const classStartMins = parseTimeString(classObj.time || classObj.start_time);
-    if (!selectedDateParts || classStartMins == null) return false;
-
-    const startHour = Math.floor(classStartMins / 60);
-    const startMinute = classStartMins % 60;
-    const classStart = new Date(
-      selectedDateParts.year,
-      selectedDateParts.month,
-      selectedDateParts.day,
-      startHour,
-      startMinute,
-      0,
-      0
-    );
-
-    let classEnd = null;
-    if (classObj.duration && !Number.isNaN(Number(classObj.duration))) {
-      classEnd = new Date(classStart.getTime() + Number(classObj.duration) * 60 * 1000);
-    } else if (classObj.end_time) {
-      const classEndMins = parseTimeString(classObj.end_time);
-      if (classEndMins != null) {
-        const endHour = Math.floor(classEndMins / 60);
-        const endMinute = classEndMins % 60;
-        classEnd = new Date(
-          selectedDateParts.year,
-          selectedDateParts.month,
-          selectedDateParts.day,
-          endHour,
-          endMinute,
-          0,
-          0
-        );
-      }
-    }
-
-    if (!classEnd) return false;
-    return now >= classEnd;
-  } catch {
-    return false;
-  }
 };
 
 const addSeconds = (time) => {
@@ -1576,13 +1390,14 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     selectedClassVerification?.student_joined_at || selectedClass?.student_joined_at
   );
   const selectedClassEnded = Boolean(selectedClassVerification?.teacher_ended_at);
+  const selectedClassHasAttendance = hasClassAttendance(selectedClassVerification) || selectedClassStudentConfirmed;
   const selectedClassVerified = selectedVerificationStatus === "verified";
   const canShowClassEntryAction = !selectedClassEnded;
-  // A class the teacher has already started is not one that can be moved, so
+  // A class with attendance already recorded cannot be moved, so
   // the reschedule request is closed for the teacher and the student alike.
   const canShowRescheduleAction =
-    !selectedClassStarted && !selectedClassEnded && !isAdmin && !requestMode && !selectedClass?.group_session_id;
-  const showRescheduleClosedNotice = selectedClassStarted && !selectedClassEnded && !isAdmin;
+    !selectedClassHasAttendance && !selectedClassEnded && !isAdmin && !requestMode && !selectedClass?.group_session_id;
+  const showRescheduleClosedNotice = selectedClassHasAttendance && !selectedClassEnded && !isAdmin;
   const shouldRemindStartScreenshot =
     localRole === "teacher" &&
     !isAdmin &&
@@ -3635,7 +3450,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       setRequestError("Please select a class first");
       return;
     }
-    if (selectedClassStarted) {
+    if (selectedClassHasAttendance) {
       setRequestError(RESCHEDULE_CLOSED_AFTER_START_MESSAGE);
       return;
     }
@@ -3697,7 +3512,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       setRequestError("Please select a class first");
       return;
     }
-    if (selectedClassStarted) {
+    if (selectedClassHasAttendance) {
       setRequestError(RESCHEDULE_CLOSED_AFTER_START_MESSAGE);
       return;
     }
@@ -3773,7 +3588,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   });
   const isTeacherOrAdmin = localRole === "teacher" || isAdmin;
   const isSelectedClassCompleted = selectedClass?.status === "completed";
-  const isSelectedClassConfirmable = isClassJoinable(selectedClass, selectedDate, currentTimeTick);
+  const selectedClassEntryError = classEntryIssue(selectedClass, selectedDate, currentTimeTick, selectedClassVerification);
+  const isSelectedClassConfirmable = !selectedClassEntryError;
   const isSelectedClassNoShowable =
     selectedClass?.status === "scheduled" &&
     isClassPast(selectedClass, selectedDate, currentTimeTick) &&
@@ -3827,23 +3643,17 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   const isClassEntryDisabled =
     isSelectedClassCompleted ||
     !isSelectedClassConfirmable ||
-    isUpdatingVerification ||
-    (localRole === "student" && !selectedClassStarted);
+    isUpdatingVerification;
   const selectedClassEntryLabel = (() => {
     if (isUpdatingVerification) return "Saving...";
     if (isSelectedClassCompleted) return "Class is done";
     if (localRole === "teacher" && !selectedClassStarted) return "Start & Join Class";
-    // The student words. A student who is waiting for their teacher does not
-    // need to know that the class has not been "started" - they need to know
-    // that it is not their turn yet.
-    if (localRole === "student" && !selectedClassStarted) return CLASS_INFO.waitingForTeacher;
     if (localRole === "student" && !selectedClassStudentConfirmed) return CLASS_INFO.joinAndHere;
     return CLASS_INFO.joinClass;
   })();
   const selectedClassEntryTitle = (() => {
     if (isSelectedClassCompleted) return "This class is already done";
-    if (!isSelectedClassConfirmable) return "You can join 30 minutes before the class starts";
-    if (localRole === "student" && !selectedClassStarted) return "Your teacher has to start the class first";
+    if (!isSelectedClassConfirmable) return selectedClassEntryError;
     return "";
   })();
   const classEntryConfirmMode =
@@ -3854,9 +3664,9 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     ? {
         badge: "SS",
         title: "Start class with screenshots?",
-        message: "After the student confirms attendance, capture the start screenshot right away. It must show the meeting, participants, and visible system time.",
+        message: "Once you and the student have joined, capture the start screenshot right away. It must show the meeting, participants, and visible system time.",
         details: [
-          "Upload the start screenshot within 5 minutes of student confirmation.",
+          "Upload the start screenshot within 5 minutes after both you and the student have joined.",
           "Capture the end screenshot before leaving the meeting.",
           "Keep this Calendar page open so you can upload both screenshots.",
         ],
@@ -3907,7 +3717,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return;
     }
     if (!isSelectedClassConfirmable) {
-      notify?.("You can start the class 30 minutes before it starts until it ends.", "error");
+      notify?.(selectedClassEntryError, "error");
       return;
     }
 
@@ -3935,7 +3745,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return;
     }
     if (!isSelectedClassConfirmable) {
-      notify?.("You can say you are here from 30 minutes before the class starts.", "error");
+      notify?.(selectedClassEntryError, "error");
       return;
     }
 
@@ -4096,7 +3906,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     if (localRole === "teacher" && !selectedClassStarted) {
       const verification = await startSelectedClassSession();
       if (!verification) { meetingTab.close(); return; }
-    } else if (localRole === "student" && selectedClassStarted && !selectedClassStudentConfirmed) {
+    } else if (localRole === "student" && !selectedClassStudentConfirmed) {
       const verification = await confirmSelectedClassAttendance();
       if (!verification) { meetingTab.close(); return; }
     }
@@ -5778,7 +5588,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                 <div className={styles.verificationHelpText}>Show the meeting, participants, and visible system time in both screenshots.</div>
                 {shouldRemindStartScreenshot && (
                   <div role="alert" className={styles.verificationAlert}>
-                    Upload the start screenshot within 5 minutes of student confirmation.
+                    Upload the start screenshot within 5 minutes after both you and the student have joined.
                   </div>
                 )}
                 <div
@@ -6305,7 +6115,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
             role={localRole}
             viewerTimezone={viewerTimezone}
             selectedClass={selectedClass}
-            selectedStarted={selectedClassStarted}
+            selectedStarted={selectedClassHasAttendance}
             peers={selectedClass?.group_session_id ? selectedClasses.filter(cls => cls.group_session_id === selectedClass.group_session_id) : []}
             refreshToken={calendarRefreshToken}
             onUpdated={() => { setSelectedClassId(null); triggerCalendarRefresh(); }}
@@ -6704,7 +6514,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                   { showRescheduleClosedNotice && !requestMode && (
                     <RescheduleClosedNotice />
                   ) }
-                  { requestMode && selectedClassStarted && (
+                  { requestMode && selectedClassHasAttendance && (
                     <div style={{ marginTop: 12, padding: 14, border: "1px solid rgba(245, 158, 11, 0.32)", borderRadius: 8, background: "rgba(245, 158, 11, 0.1)" }}>
                       <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#8a5a12" }}>Reschedule unavailable</h4>
                       <p style={{ margin: 0, fontSize: "0.75rem", color: "#8a5a12", lineHeight: 1.4 }}>
@@ -6712,7 +6522,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                       </p>
                     </div>
                   ) }
-                  { requestMode && !selectedClassStarted && !selectedClassEnded && (
+                  { requestMode && !selectedClassHasAttendance && !selectedClassEnded && (
                     <div className={cal.panelCard} style={{ marginTop: 12 }}>
                       <div>
                         <h4 style={{ margin: "0 0 6px 0", fontSize: "1.05rem", fontWeight: 800, color: "var(--primary)" }}>
@@ -7366,7 +7176,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     { showRescheduleClosedNotice && !requestMode && (
                       <RescheduleClosedNotice />
                     )}
-                    { requestMode && selectedClassStarted && (
+                    { requestMode && selectedClassHasAttendance && (
                       <div style={{ marginTop: 12, padding: 14, border: "1px solid rgba(245, 158, 11, 0.32)", borderRadius: 8, background: "rgba(245, 158, 11, 0.1)" }}>
                         <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#8a5a12" }}>Reschedule unavailable</h4>
                         <p style={{ margin: 0, fontSize: "0.75rem", color: "#8a5a12", lineHeight: 1.4 }}>
@@ -7374,7 +7184,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         </p>
                       </div>
                     )}
-                    { requestMode && !selectedClassStarted && !selectedClassEnded && (
+                    { requestMode && !selectedClassHasAttendance && !selectedClassEnded && (
                       <div style={{ marginTop: 12, padding: 14, border: "1px solid #e0e0e0", borderRadius: 8, background: "#fafafa" }}>
                       <div style={{ marginBottom: 12 }}>
                         <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#333" }}>{CLASS_INFO.changeTimeTitle}</h4>

@@ -195,7 +195,7 @@ test("pending proposals reserve times and history hides the other student's orig
 
 test("pair validation rejects different durations, students, teachers and started lessons", () => {
   const f = fixture();
-  for (const changes of [{ duration: 50 }, { student_id: 2 }, { teacher_id: 9 }, { started: 1 }, { status: "completed" }]) {
+  for (const changes of [{ duration: 50 }, { student_id: 2 }, { teacher_id: 9 }, { started: 1 }, { student_joined_at: new Date() }, { status: "completed" }]) {
     assert.throws(() => validateGroupPair([f.state.classes[0], { ...f.state.classes[1], ...changes }]));
   }
   const now = Date.now();
@@ -236,4 +236,16 @@ test("an unavailable group schema disables group routes without running feature 
   await handlers.get("/api/calendar/group-class-proposals")({ session: { userId: 1, role: "teacher" } }, response);
   assert.equal(response.code, 503);
   assert.match(response.body.message, /Existing bookings are unchanged/);
+});
+
+
+test("student attendance invalidates a pending group proposal before conversion", async () => {
+  const f = fixture();
+  await f.service.create(f.teacher, f.body);
+  f.state.classes[0].student_joined_at = new Date();
+  const result = await f.service.respond(f.student(2), 1, "accept");
+  assert.equal(result.status, "invalidated");
+  assert.equal(f.state.sessions.length, 0);
+  assert(f.state.classes.every(row => !row.group_session_id));
+  assert(f.queries.some(sql => sql.includes("gl.student_joined_at IS NOT NULL")));
 });

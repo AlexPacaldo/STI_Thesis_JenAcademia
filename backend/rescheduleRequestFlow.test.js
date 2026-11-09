@@ -123,8 +123,14 @@ test("an empty start time is not a started class", () => {
   assert.equal(isRescheduleClosedByStart(""), false);
 });
 
-test("the closed message says the class has started", () => {
-  assert.match(RESCHEDULE_CLOSED_AFTER_START_MESSAGE, /already started/);
+test("the closed message explains recorded attendance and administrator resolution", () => {
+  assert.match(RESCHEDULE_CLOSED_AFTER_START_MESSAGE, /Attendance has already been recorded/);
   assert.match(RESCHEDULE_CLOSED_AFTER_START_MESSAGE, /no longer be rescheduled/);
 });
 
+
+
+test("student-first attendance also closes rescheduling", () => {
+  assert.equal(isRescheduleClosedByStart(null, "2026-11-09T10:00:00Z"), true);
+  assert.equal(isRescheduleClosedByStart(null, null), false);
+});

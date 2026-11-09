@@ -10,7 +10,12 @@ export async function startGroupParticipants(db, classId, evidenceMode) {
       FROM class_attendance_logs WHERE class_id = ?
       ON DUPLICATE KEY UPDATE teacher_started_at = COALESCE(teacher_started_at, VALUES(teacher_started_at)),
         teacher_recording_consent_at = COALESCE(teacher_recording_consent_at, VALUES(teacher_recording_consent_at)),
-        evidence_mode = COALESCE(evidence_mode, VALUES(evidence_mode))`,
+        evidence_mode = COALESCE(evidence_mode, VALUES(evidence_mode)),
+        verification_status = CASE
+          WHEN teacher_ended_at IS NOT NULL THEN verification_status
+          WHEN student_joined_at IS NOT NULL THEN 'student_confirmed'
+          ELSE 'in_progress'
+        END`,
     [peer.class_id, peer.teacher_id, peer.student_id, evidenceMode, classId]);
   }
   return peers;

@@ -1,3 +1,5 @@
+import { hasClassAttendance } from "./classSession.js";
+
 // A group owns one shared session. Existing class IDs remain each student's
 // participation/contract/attendance record, so historical references stay valid.
 export class GroupClassError extends Error {
@@ -18,12 +20,12 @@ export function validateGroupPair(rows) {
   if (id(rows[0].student_id) === id(rows[1].student_id)) fail("Choose classes belonging to two different students.");
   if (![25, 50].includes(id(rows[0].duration)) || id(rows[0].duration) !== id(rows[1].duration)) fail("Both classes must have the same duration.");
   if (String(rows[0].class_name).trim().toLowerCase() !== String(rows[1].class_name).trim().toLowerCase()) fail("Both classes must be for the same course.");
-  if (rows.some(row => row.status !== "scheduled" || row.started)) fail("Only scheduled classes that have not started can be grouped.");
+  if (rows.some(row => row.status !== "scheduled" || row.started || hasClassAttendance(row))) fail("Only scheduled classes that have not started can be grouped.");
   if (rows.some(row => row.group_session_id) && (!rows[0].group_session_id || id(rows[0].group_session_id) !== id(rows[1].group_session_id))) fail("An existing group can only be moved with its original participants.");
 }
 export function unchangedBooking(row, member) {
   return id(row?.class_id) === id(member.class_id) && id(row?.teacher_id) === id(member.teacher_id)
-    && id(row?.student_id) === id(member.student_id) && row.status === "scheduled" && !row.started
+    && id(row?.student_id) === id(member.student_id) && row.status === "scheduled" && !row.started && !hasClassAttendance(row)
     && dateKey(row.scheduled_date) === dateKey(member.original_date)
     && timeKey(row.start_time) === timeKey(member.original_time)
     && id(row.duration) === id(member.duration)
@@ -46,7 +48,7 @@ const validOriginalsSql = `NOT EXISTS (
     OR gc.start_time <> gm.original_time OR gc.duration <> gm.duration
     OR gc.class_name <> gm.original_name
     OR COALESCE(gc.group_session_id, 0) <> COALESCE(gm.original_group_session_id, 0)
-    OR gl.teacher_started_at IS NOT NULL))`;
+    OR gl.teacher_started_at IS NOT NULL OR gl.student_joined_at IS NOT NULL))`;
 
 export async function ensureGroupClassSchema(db, columnExists) {
   await db.query(`CREATE TABLE IF NOT EXISTS group_class_sessions (
@@ -85,7 +87,7 @@ export function createGroupClassService({ pool, instant, encrypt, meetingLink, b
     const [rows] = await db.query(`SELECT c.*, DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
       TIME_FORMAT(c.start_time, '%H:%i') AS start_time, u.timezone AS teacher_timezone,
       EXISTS(SELECT 1 FROM class_attendance_logs cal WHERE cal.class_id = c.class_id
-        AND cal.teacher_started_at IS NOT NULL) AS started
+        AND (cal.teacher_started_at IS NOT NULL OR cal.student_joined_at IS NOT NULL)) AS started
       FROM classes c JOIN users u ON u.user_id = c.teacher_id
       WHERE c.class_id IN (?) ORDER BY c.class_id ${lock ? "FOR UPDATE" : ""}`, [classIds]);
     return rows;
@@ -189,7 +191,7 @@ export function createGroupClassService({ pool, instant, encrypt, meetingLink, b
         WHERE c.teacher_id = ? AND c.student_id <> ? AND c.duration = ? AND c.class_name = ?
         AND c.status = 'scheduled' AND c.scheduled_date >= CURDATE()
         AND ((? IS NULL AND c.group_session_id IS NULL) OR c.group_session_id = ?)
-        AND NOT EXISTS (SELECT 1 FROM class_attendance_logs cal WHERE cal.class_id = c.class_id AND cal.teacher_started_at IS NOT NULL)
+        AND NOT EXISTS (SELECT 1 FROM class_attendance_logs cal WHERE cal.class_id = c.class_id AND (cal.teacher_started_at IS NOT NULL OR cal.student_joined_at IS NOT NULL))
         ORDER BY c.scheduled_date, c.start_time LIMIT 100`,
       [rows[0].teacher_id, rows[0].student_id, rows[0].duration, rows[0].class_name, rows[0].group_session_id || null, rows[0].group_session_id || null]);
       return { candidates: candidates.filter(candidate => moment(candidate.scheduled_date, candidate.start_time, rows[0].teacher_timezone) > Date.now() + 16 * 60_000), teacher_timezone: rows[0].teacher_timezone };
