@@ -276,9 +276,6 @@ export default function Homepage() {
   const processIntroY = useTransform(scrollYProgress, [0.22, 0.34], ["0%", "-115%"]);
   const navigate = useNavigate();
   const goToLogin = () => navigate("/login");
-  const scrollToSection = (sectionId) => {
-    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth" });
-  };
   const turnstileSiteKey = String(import.meta.env.VITE_TURNSTILE_SITE_KEY || "").trim();
 
   useEffect(() => {
@@ -511,29 +508,9 @@ export default function Homepage() {
                 followMouse
                 proximity={260}
                 className={styles.ctaButton}
-                onClick={() => scrollToSection("contact")}
+                onClick={goToLogin}
               >
-                Contact us to get started
-              </SpecularButton>
-              <SpecularButton
-                size="md"
-                radius={999}
-                tint="#ffffff"
-                tintOpacity={0.86}
-                textColor="#1e3828"
-                lineColor="#7aa64a"
-                baseColor="#1e3828"
-                intensity={1.1}
-                shineSize={10}
-                shineFade={42}
-                thickness={1}
-                speed={0.5}
-                followMouse
-                proximity={240}
-                className={styles.secondaryButton}
-                onClick={() => scrollToSection("how-it-works")}
-              >
-                See how it works
+                Log in
               </SpecularButton>
             </div>
 
