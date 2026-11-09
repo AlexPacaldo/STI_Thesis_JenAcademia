@@ -1,8 +1,8 @@
 # Scheduling and attendance rules
 
-- A scheduled class opens 30 minutes before its scheduled start. Students can
-  join and record their attendance before the teacher arrives. There is no
-  15-minute attendance cutoff or automatic no-show conversion.
+- Students can join a scheduled class before its scheduled start and record
+  their attendance before the teacher arrives. There is no 15-minute
+  attendance cutoff or automatic no-show conversion.
 - An unstarted class closes at its scheduled end. Once the teacher starts,
   participants can join or rejoin until the teacher ends the session. Closed,
   cancelled, completed, no-show and incomplete sessions reject entry.
