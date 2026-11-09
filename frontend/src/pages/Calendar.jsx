@@ -1,5 +1,5 @@
 import { classEntryIssue, isClassPast } from "../utils/classEntry.js";
-import { hasClassAttendance } from "../utils/classSession.js";
+import { hasClassAttendance, attendanceMinutes } from "../utils/classSession.js";
 import GroupClassManager from "../components/GroupClassManager.jsx";
 import { groupClassesForDisplay } from "../utils/groupClasses.js";
 import { availableRanges, candidateSlotMinutes } from "../utils/bookingTimes.js";
@@ -3609,11 +3609,15 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       String(remark.class_id) === String(selectedClass?.id) &&
       String(remark.remarks || "").trim().length > 0
   );
+  const sharedAttendanceMinutes = attendanceMinutes(selectedClassVerification,
+    selectedClassVerification?.teacher_ended_at || new Date(currentTimeTick));
+  const hasRequiredAttendanceDuration = sharedAttendanceMinutes >= requiredRecordingMinutes;
   const canEndVerifyAndComplete =
     selectedClassStarted &&
     selectedClassStudentConfirmed &&
     hasVerificationSummarySentence &&
     hasVerificationProof &&
+    hasRequiredAttendanceDuration &&
     !recording.session &&
     !isUpdatingVerification;
   const canSubmitClassForReview =
@@ -3624,10 +3628,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     (
       recording.session?.status === "failed" ||
       !selectedClassStudentConfirmed ||
-      !hasVerificationProof
+      !hasVerificationProof ||
+      !hasRequiredAttendanceDuration
     );
   const missingVerificationItems = [
     !selectedClassStudentConfirmed ? "student attendance" : "",
+    !hasRequiredAttendanceDuration ? `shared attendance: ${sharedAttendanceMinutes} / ${requiredRecordingMinutes} minutes` : "",
     evidenceMode === "screenshots" && !hasStartScreenshot ? "start screenshot" : "",
     evidenceMode === "screenshots" && !hasEndScreenshot ? "end screenshot" : "",
     evidenceMode === "recording" && !hasVerificationRecording ? "recording" : "",
@@ -3636,6 +3642,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   const endVerifyDisabledReason = (() => {
     if (recording.session) return "Stop recording and finish uploading before completing the class.";
     if (!selectedClassStudentConfirmed) return "Student must join and confirm attendance first.";
+    if (!hasRequiredAttendanceDuration) return `Both participants must attend for at least ${requiredRecordingMinutes} minutes, or submit the class for review.`;
     if (!hasVerificationSummarySentence) return "Enter at least one complete sentence in the class summary.";
     if (!hasVerificationProof) return evidenceMode === "recording" ? `Upload a recording covering at least ${requiredRecordingMinutes} minutes, or submit for review.` : "Upload both the start and end screenshots.";
     return "";

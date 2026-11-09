@@ -11,7 +11,8 @@ import multer from "multer";
 import mysql from "mysql2/promise";
 import path from "path";
 import { assessClassEvidence } from "./classEvidence.js";
-import { classEntryError, hasScheduledClassEnded } from "./classSession.js";
+import { scheduleWindow, futureScheduleError, contractScheduleError, readBookingContract, classScheduleConflict } from "./scheduling.js";
+import { classEntryError, hasScheduledClassEnded, attendanceMinutes } from "./classSession.js";
 // Aliased on purpose: the wrapper below owns the throttle and the logging, and two
 // functions called archiveDormantAccounts in one file is how the policy engine and
 // the scheduler get swapped over by accident.
@@ -6095,9 +6096,9 @@ app.post("/api/admin/users", requireAdminSession, async (req, res) => {
       // Create student class package if classesAvailed is provided
       if (classesAvailed && parseInt(classesAvailed, 10) > 0) {
         await pool.query(`
-          INSERT INTO student_class_packages (student_id, total_classes, classes_used, status, class_duration)
-          VALUES (?, ?, 0, 'active', ?)
-        `, [userId, parseInt(classesAvailed, 10), classDurationValue]);
+          INSERT INTO student_class_packages (student_id, total_classes, classes_used, status, class_duration, expires_at)
+          VALUES (?, ?, 0, 'active', ?, DATE_ADD(NOW(), INTERVAL ? MONTH))
+        `, [userId, parseInt(classesAvailed, 10), classDurationValue, CONTRACT_TERM_MONTHS]);
       }
 
     }
@@ -6685,9 +6686,9 @@ app.put("/api/admin/student-contracts/:student_id", requireAdminSession, async (
     } else if (parsedTotal > 0) {
       const [insertResult] = await connection.query(
         `INSERT INTO student_class_packages
-         (student_id, total_classes, classes_used, status, class_duration)
-         VALUES (?, ?, ?, ?, ?)`,
-        [student_id, parsedTotal, parsedUsed, packageStatus, parsedDuration]
+         (student_id, total_classes, classes_used, status, class_duration, expires_at)
+         VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MONTH))`,
+        [student_id, parsedTotal, parsedUsed, packageStatus, parsedDuration, CONTRACT_TERM_MONTHS]
       );
       reviewPackageId = insertResult?.insertId || null;
     }
@@ -7782,9 +7783,9 @@ app.put("/api/admin/contract-requests/:request_id", requireAdminSession, async (
 
       await connection.query(
         `INSERT INTO student_class_packages
-         (student_id, total_classes, classes_used, status, class_duration)
-         VALUES (?, ?, 0, 'active', ?)`,
-        [request.student_id, request.requested_classes, normalizeClassDuration(request.class_duration)]
+         (student_id, total_classes, classes_used, status, class_duration, expires_at)
+         VALUES (?, ?, 0, 'active', ?, DATE_ADD(NOW(), INTERVAL ? MONTH))`,
+        [request.student_id, request.requested_classes, normalizeClassDuration(request.class_duration), CONTRACT_TERM_MONTHS]
       );
     }
 
@@ -9003,21 +9004,21 @@ app.post("/api/calendar/classes/:class_id/end", classProofUpload.single("proof_i
       const endImage = await fs.promises.readFile(req.file.path);
       if (startImage.equals(endImage)) validEvidence = false;
     }
-    if (!validEvidence && !requestedReview) {
-      return res.status(400).json({ message: `Upload timely start and end screenshots, or a recording of at least ${requiredMinutes} minutes. Otherwise submit for review with a reason.` });
+    if ((!validEvidence || attendanceMinutes(logRows[0], logRows[0].teacher_ended_at || new Date()) < requiredMinutes) && !requestedReview) {
+      return res.status(400).json({ message: `Both participants must attend for at least ${requiredMinutes} minutes, with timely screenshots or a qualifying recording. Otherwise submit for review with a reason.` });
     }
 
     await pool.query(
       `UPDATE class_attendance_logs
        SET teacher_ended_at = COALESCE(teacher_ended_at, NOW()),
-           duration_minutes = GREATEST(duration_minutes, TIMESTAMPDIFF(MINUTE, teacher_started_at, COALESCE(teacher_ended_at, NOW()))),
+           duration_minutes = GREATEST(0, COALESCE(TIMESTAMPDIFF(MINUTE, GREATEST(teacher_started_at, student_joined_at), teacher_ended_at), 0)),
            proof_url = NULLIF(?, ''),
            end_proof_uploaded_at = IF(? <> '', NOW(), end_proof_uploaded_at),
            review_reason = NULLIF(?, ''),
            summary = ?,
            verification_status = CASE
              WHEN student_joined_at IS NOT NULL
-              AND TIMESTAMPDIFF(MINUTE, teacher_started_at, COALESCE(teacher_ended_at, NOW())) >= ?
+              AND duration_minutes >= ?
               AND ? = 1 AND ? = ''
              THEN 'verified'
              ELSE 'needs_review'
@@ -9516,7 +9517,7 @@ app.post("/api/calendar/class", requireSession, requireClassBookingScope(), asyn
     await connection.beginTransaction();
 
     const [participantRows] = await connection.query(
-      `SELECT user_id, role, status, profile_completed
+      `SELECT user_id, role, status, profile_completed, timezone
        FROM users
        WHERE user_id IN (?, ?)
        ORDER BY user_id FOR UPDATE`,
@@ -9541,7 +9542,7 @@ app.post("/api/calendar/class", requireSession, requireClassBookingScope(), asyn
     }
 
     const [packageRows] = await connection.query(
-      `SELECT package_id, total_classes, classes_used, classes_left, class_duration, created_at
+      `SELECT package_id, total_classes, classes_used, classes_left, class_duration, created_at, expires_at, status
        FROM student_class_packages
        WHERE student_id = ? AND status = 'active'
        ORDER BY created_at DESC
@@ -9591,6 +9592,14 @@ app.post("/api/calendar/class", requireSession, requireClassBookingScope(), asyn
       return res.status(400).json({ message: "Invalid class duration or start time." });
     }
     const computedEndTime = minutesToTimeKey(classRange.end);
+    const teacherTimezone = participantRows.find(user => Number(user.user_id) === Number(teacher_id)).timezone || "Asia/Manila";
+    const requestedWindow = scheduleWindow(scheduled_date, start_time, classDuration, teacherTimezone);
+    const scheduleError = futureScheduleError(requestedWindow) || contractScheduleError(packageRows[0], requestedWindow, classDuration);
+    if (scheduleError) {
+      await connection.rollback();
+      return res.status(400).json({ message: scheduleError });
+    }
+
 
     const [availabilityRows] = await connection.query(
       `SELECT status,
@@ -9632,17 +9641,8 @@ app.post("/api/calendar/class", requireSession, requireClassBookingScope(), asyn
       }
     }
 
-    const [conflictRows] = await connection.query(
-      `SELECT class_id, teacher_id, student_id, start_time, end_time, duration
-       FROM classes
-       WHERE status = 'scheduled'
-         AND scheduled_date = ?
-         AND (teacher_id = ? OR student_id = ?)
-       FOR UPDATE`,
-      [scheduled_date, teacher_id, student_id]
-    );
-
-    if (hasClassConflict(conflictRows, classRange.start, classRange.end)
+    if (await classScheduleConflict(connection, { teacherId: teacher_id, studentId: student_id,
+      date: scheduled_date, window: requestedWindow })
       || groupClassSchemaReady && await groupHoldConflict(connection, { teacherId: teacher_id, studentId: student_id,
         date: scheduled_date, start: start_time, duration: classDuration, instant: zonedWallClockToInstant })) {
       await connection.rollback();
@@ -9815,6 +9815,7 @@ app.put("/api/calendar/classes/:class_id/complete", requireSession, requireClass
       !classInfo.student_joined_at ||
       !classInfo.teacher_ended_at ||
       Number(classInfo.duration_minutes || 0) < requiredMinutes ||
+      attendanceMinutes(classInfo, classInfo.teacher_ended_at) < requiredMinutes ||
       !hasEvidence
     ) {
       await connection.rollback();
@@ -10475,7 +10476,7 @@ app.post("/api/calendar/reschedule-request", requireSession, requireBodyIdentity
               ru.first_name AS requester_first,
               ru.last_name AS requester_last,
               cal.teacher_started_at AS class_started_at,
-              cal.student_joined_at AS student_joined_at
+              cal.student_joined_at AS student_joined_at, cal.verification_status
        FROM classes c
        JOIN users tea ON c.teacher_id = tea.user_id
         AND tea.status = 'active' AND tea.profile_completed = TRUE
@@ -10493,6 +10494,9 @@ app.post("/api/calendar/reschedule-request", requireSession, requireBodyIdentity
     }
 
     const classData = classRows[0];
+    if (classData.status !== "scheduled" || classData.verification_status === "incomplete") {
+      return res.status(409).json({ message: "Only an unresolved scheduled class can be rescheduled." });
+    }
     if (classData.group_session_id) {
       return res.status(409).json({ message: "Ask your teacher to propose a new group time. Both students must approve it." });
     }
@@ -10508,6 +10512,13 @@ app.post("/api/calendar/reschedule-request", requireSession, requireBodyIdentity
     if (!requestedRange) {
       return res.status(400).json({ message: "Invalid requested time" });
     }
+
+    const requestedWindow = scheduleWindow(requestedDateKey, requestedTimeKey, classDuration, classData.teacher_timezone);
+    const scheduleError = futureScheduleError(requestedWindow);
+    if (scheduleError) return res.status(400).json({ message: scheduleError });
+    const originalContract = await readBookingContract(pool, classData.student_id, classData.created_at, false);
+    const contractError = contractScheduleError(originalContract, requestedWindow, classDuration);
+    if (contractError) return res.status(400).json({ message: contractError });
 
     const [availabilityRows] = await pool.query(
       `SELECT status,
@@ -10542,22 +10553,13 @@ app.post("/api/calendar/reschedule-request", requireSession, requireBodyIdentity
       }
     }
 
-    const [teacherConflictRows] = await pool.query(
-      `SELECT class_id, teacher_id, student_id, start_time, end_time, duration
-       FROM classes
-       WHERE class_id <> ?
-         AND scheduled_date = ?
-         AND status = 'scheduled'
-         AND (teacher_id = ? OR student_id = ?)`,
-      [class_id, requestedDateKey, classData.teacher_id, classData.student_id]
-    );
-
-    if (hasClassConflict(teacherConflictRows, requestedRange.start, requestedRange.end, class_id)) {
+    if (await classScheduleConflict(pool, { teacherId: classData.teacher_id, studentId: classData.student_id,
+      date: requestedDateKey, window: requestedWindow, excludeClassId: class_id, lock: false })) {
       return res.status(409).json({ message: "This time slot overlaps with another booked class." });
     }
 
     // Determine recipient: if student requested, notify teacher; if teacher requested, notify student
-    const recipientId = classData.student_id === requested_by_id ? classData.teacher_id : classData.student_id;
+    const recipientId = String(classData.student_id) === String(requested_by_id) ? classData.teacher_id : classData.student_id;
     const requesterUser = await pool.query(
       `SELECT first_name, last_name FROM users WHERE user_id = ?`,
       [requested_by_id]
@@ -10857,6 +10859,9 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
     if (!authCheck.length) {
       return res.status(403).json({ message: "Not authorized" });
     }
+    if (String(authCheck[0].requested_by_id) === String(user_id)) {
+      return res.status(403).json({ message: "Only the other participant can approve a reschedule request." });
+    }
     if (authCheck[0].status !== "pending") {
       return res.status(409).json({ message: "This request is no longer pending." });
     }
@@ -10893,7 +10898,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
 
     // Get current class end_time to calculate duration
     const [classData] = await connection.query(
-      `SELECT c.teacher_id,
+      `SELECT c.teacher_id, c.status, c.created_at, tea.timezone AS teacher_timezone,
               c.student_id,
               ${groupClassSchemaReady ? "c.group_session_id" : "NULL AS group_session_id"},
               DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
@@ -10901,7 +10906,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
               c.end_time,
               c.duration,
               cal.teacher_started_at AS class_started_at,
-              cal.student_joined_at AS student_joined_at
+              cal.student_joined_at AS student_joined_at, cal.verification_status
        FROM classes c
        JOIN users stu ON c.student_id = stu.user_id
         AND stu.status = 'active' AND stu.profile_completed = TRUE
@@ -10917,6 +10922,9 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
     }
 
     const classInfo = classData[0];
+    if (classInfo.status !== "scheduled" || classInfo.verification_status === "incomplete") {
+      return res.status(409).json({ message: "Only an unresolved scheduled class can be rescheduled." });
+    }
     if (classInfo.group_session_id) {
       return res.status(409).json({ message: "Group class changes require a new proposal and approval from both students." });
     }
@@ -10935,6 +10943,13 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
     if (!requestedRange) {
       return res.status(400).json({ message: "Invalid requested time" });
     }
+
+    const requestedWindow = scheduleWindow(requested_date_key, requested_time_key, classDuration, classInfo.teacher_timezone);
+    const scheduleError = futureScheduleError(requestedWindow);
+    if (scheduleError) return res.status(400).json({ message: scheduleError });
+    const originalContract = await readBookingContract(connection, classInfo.student_id, classInfo.created_at, true);
+    const contractError = contractScheduleError(originalContract, requestedWindow, classDuration);
+    if (contractError) return res.status(400).json({ message: contractError });
 
     const [availabilityRows] = await connection.query(
       `SELECT status,
@@ -10972,18 +10987,8 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
       }
     }
 
-    const [conflictRows] = await connection.query(
-      `SELECT class_id, teacher_id, student_id, start_time, end_time, duration
-       FROM classes
-       WHERE class_id <> ?
-         AND scheduled_date = ?
-         AND status = 'scheduled'
-         AND (teacher_id = ? OR student_id = ?)
-       FOR UPDATE`,
-      [class_id, requested_date, classInfo.teacher_id, classInfo.student_id]
-    );
-
-    if (hasClassConflict(conflictRows, requestedRange.start, requestedRange.end, class_id)
+    if (await classScheduleConflict(connection, { teacherId: classInfo.teacher_id, studentId: classInfo.student_id,
+      date: requested_date_key, window: requestedWindow, excludeClassId: class_id })
       || groupClassSchemaReady && await groupHoldConflict(connection, { teacherId: classInfo.teacher_id, studentId: classInfo.student_id,
         date: requested_date_key, start: requested_time_key, duration: classDuration, instant: zonedWallClockToInstant })) {
       return res.status(409).json({ message: "That time overlaps with another booked class." });
@@ -11136,6 +11141,9 @@ app.post("/api/calendar/reschedule-requests/:id/reject", requireSession, async (
 
     if (!authCheck.length) {
       return res.status(403).json({ message: "Not authorized" });
+    }
+    if (String(authCheck[0].requested_by_id) === String(user_id)) {
+      return res.status(403).json({ message: "Only the other participant can decline a reschedule request. Cancel your own request instead." });
     }
     if (authCheck[0].status !== "pending") {
       return res.status(409).json({ message: "This request is no longer pending." });

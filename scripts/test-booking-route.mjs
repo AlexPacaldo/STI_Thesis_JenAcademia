@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { scheduleWindow, futureScheduleError, contractScheduleError, classScheduleConflict } from "../backend/scheduling.js";
+import { zonedWallClockToInstant } from "../backend/lineReminders.js";
 import { normalizeTime, timeToMinutes } from "../frontend/src/utils/classTime.js";
 
 const source = readFileSync(new URL("../backend/server.js", import.meta.url), "utf8");
@@ -10,9 +12,12 @@ const routeStart = source.indexOf('app.post("/api/calendar/class",');
 const routeEnd = source.indexOf('\n// ', routeStart);
 const helperStart = source.indexOf("const ALLOWED_CLASS_DURATIONS");
 const helperEnd = source.indexOf("async function getStudentPackageAvailability", helperStart);
+const bookingDate = new Date(Date.now() + 3 * 86400_000).toISOString().slice(0, 10);
 let handler;
 let classes = [];
 let availability;
+let packageOverrides = {};
+let participantTimezone = "UTC";
 let releasePrevious = Promise.resolve();
 let inserted = 0;
 
@@ -28,11 +33,11 @@ const pool = {
           const previous = releasePrevious;
           releasePrevious = new Promise(resolve => { unlock = resolve; });
           await previous;
-          return [[{ user_id: params[0], role: "teacher", status: "active", profile_completed: 1 },
+          return [[{ user_id: params[0], role: "teacher", timezone: participantTimezone, status: "active", profile_completed: 1 },
             { user_id: params[1], role: "student", status: "active", profile_completed: 1 }]];
         }
         if (sql.includes("FROM student_class_packages")) return [[{
-          package_id: 1, total_classes: 10, classes_left: 10, class_duration: 25, created_at: "2026-01-01",
+          package_id: 1, total_classes: 10, classes_left: 10, class_duration: 25, created_at: "2020-01-01", status: "active", expires_at: "2099-12-31", ...packageOverrides,
         }]];
         if (sql.includes("COUNT(*)")) return [[{ booked_count: 0 }]];
         if (sql.includes("FROM teacher_availability")) {
@@ -45,7 +50,7 @@ const pool = {
         }
         if (sql.includes("INSERT INTO classes")) {
           inserted++;
-          classes.push({ class_id: inserted, teacher_id: params[1], student_id: params[2], start_time: params[4], duration: params[6] });
+          classes.push({ scheduled_date: params[3], teacher_timezone: "UTC", class_id: inserted, teacher_id: params[1], student_id: params[2], start_time: params[4], duration: params[6] });
           return [{ insertId: inserted }];
         }
         if (sql.includes("SELECT first_name")) return [[{ first_name: "Test", last_name: "Student" }]];
@@ -56,21 +61,21 @@ const pool = {
 };
 vm.runInNewContext(source.slice(helperStart, helperEnd) + source.slice(routeStart, routeEnd), {
   app: { post: (_path, ...callbacks) => { handler = callbacks.at(-1); } },
-  groupClassSchemaReady: true, groupHoldConflict: async () => false, zonedWallClockToInstant: () => {},
+  groupClassSchemaReady: true, groupHoldConflict: async () => false, zonedWallClockToInstant, scheduleWindow, futureScheduleError, contractScheduleError, classScheduleConflict,
   pool, requireSession() {}, requireClassBookingScope: () => () => {},
   timeToMinutes, normalizeTimeKey: normalizeTime, pad: value => String(value).padStart(2, "0"),
   getStudentPackageAvailability: async () => ({ package: null }),
   generateJitsiMeetingLink: () => "test-meeting", encryptNullableText: value => value,
   broadcastCalendarChange() {}, console,
 });
-async function book(time, student = 2) {
+async function book(time, student = 2, overrides = {}) {
   const result = { code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
   await handler({ body: { class_name: "English", teacher_id: 1, student_id: student,
-    scheduled_date: "2027-01-05", start_time: time, duration: 25 } }, result);
+    scheduled_date: bookingDate, start_time: time, duration: 25, ...overrides } }, result);
   return result;
 }
 function reset(overrides = {}) {
-  classes = []; inserted = 0;
+  classes = []; inserted = 0; packageOverrides = {}; participantTimezone = "UTC";
   availability = { status: "available", start_time: "08:00", end_time: "17:00", break_start: "11:15", break_end: "11:30", ...overrides };
 }
 reset(); assert.equal((await book("11:00")).code, 400); assert.equal(inserted, 0);
@@ -78,7 +83,7 @@ reset(); assert.equal((await book("10:50")).code, 201);
 reset(); assert.equal((await book("16:40")).code, 400);
 reset({ status: "unavailable" }); assert.equal((await book("12:00")).code, 400);
 reset({ start_time: null }); assert.equal((await book("12:00")).code, 400);
-reset(); classes = [{ class_id: 90, start_time: "12:00", duration: 25 }];
+reset(); classes = [{ scheduled_date: bookingDate, teacher_timezone: "UTC", class_id: 90, start_time: "12:00", duration: 25 }];
 assert.equal((await book("12:20")).code, 409); // The requested lesson overlaps.
 assert.equal((await book("12:25")).code, 201); // It starts as soon as the existing lesson ends.
 reset();
@@ -134,3 +139,16 @@ assert.equal(conflictQueryCount, 1);
 const invalidDate = await getConflicts({ userId: 2, role: "student" }, { teacher_id: "1", scheduled_date: "2026-02-30" });
 assert.equal(invalidDate.code, 400);
 console.log("Assigned students can check minimal teacher booking conflicts; unrelated schedules remain private.");
+
+
+reset(); assert.equal((await book("10:00", 2, { scheduled_date: "2000-01-01" })).code, 400); assert.equal(inserted, 0);
+reset(); assert.equal((await book("10:00", 2, { scheduled_date: "2100-01-01" })).code, 400); assert.equal(inserted, 0);
+reset(); packageOverrides = { expires_at: `${bookingDate}T10:24:59Z` };
+assert.equal((await book("10:00")).code, 400); assert.equal(inserted, 0);
+reset(); packageOverrides = { expires_at: `${bookingDate}T10:25:00Z` };
+assert.equal((await book("10:00")).code, 201);
+reset({ end_time: "20:00" }); participantTimezone = "Asia/Manila";
+classes = [{ class_id: 90, scheduled_date: bookingDate, start_time: "10:00", duration: 25, teacher_timezone: "UTC" }];
+assert.equal((await book("18:00")).code, 409); assert.equal(inserted, 0);
+assert.equal((await book("10:00")).code, 201);
+console.log("Booking API rejects past dates, lessons extending past contract expiry and real-time overlaps across teacher timezones.");

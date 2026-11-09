@@ -41,3 +41,9 @@ export function hasScheduledClassEnded(classInfo, scheduledStart, now = Date.now
   return Number.isFinite(start) && Number.isFinite(now) && duration > 0
     && now >= start + duration * 60_000;
 }
+
+export function attendanceMinutes(log, endedAt = log?.teacher_ended_at) {
+  const ready = attendanceReadyAt(log);
+  const end = timestamp(endedAt);
+  return Number.isFinite(ready) && Number.isFinite(end) ? Math.max(0, Math.floor((end - ready) / 60_000)) : 0;
+}

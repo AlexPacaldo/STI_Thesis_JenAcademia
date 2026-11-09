@@ -54,3 +54,16 @@ test("ending a group independently verifies each attendee and never verifies an 
     assert(!db.calls.some(call => /UPDATE classes|student_class_packages/.test(call.sql)));
   }
 });
+
+
+test("a group student joining only for the final minute needs review", async () => {
+  const db = database();
+  const log = { teacher_started_at: new Date("2026-11-09T10:00:00Z"), student_joined_at: new Date("2026-11-09T10:24:00Z"),
+    evidence_mode: "screenshots", start_proof_url: "/start.png", start_proof_uploaded_at: new Date("2026-11-09T10:24:30Z") };
+  const source = { teacher_ended_at: new Date("2026-11-09T10:25:00Z"), proof_url: "/end.png", summary: "A complete lesson." };
+  await endGroupParticipants(db, 10, { getVerification: async (_db, classId) => classId === 10 ? source : log,
+    requiredMinutes: () => 15, encrypt: value => value, evidenceAccepted: true });
+  const write = db.calls.find(call => call.sql.includes("UPDATE class_attendance_logs"));
+  assert.equal(write.params[1], 1);
+  assert.equal(write.params[6], "needs_review");
+});

@@ -15,6 +15,20 @@
   for that booking. Pending approvals recheck this rule under a transaction
   lock. If a student joins and the teacher never arrives, an administrator
   can mark the verification incomplete to release the booking credit.
+- Booking and rescheduling require a future start time. The full lesson must
+  fit within its original active contract, including the lesson's end time.
+  Approval rechecks the original contract rather than using a newer package.
+  New contracts receive their expiry at creation; legacy missing deadlines use
+  the standard three-calendar-month term.
+- Only the other participant can approve or decline a reschedule request.
+  The requester can cancel their own request.
+- Individual booking and rescheduling compare occupied intervals as real
+  instants in each teacher's timezone, including adjacent calendar dates.
+  Back-to-back lessons are allowed; overlapping lessons are refused.
+- Verified duration begins when both participants are present. Waiting for the
+  other participant does not count toward the minimum duration. This applies
+  independently to each student in a group. Short sessions can be submitted
+  for administrator review instead of being automatically verified.
 - Unresolved past bookings retain their credit reservations until resolved.
   Date and month views keep these bookings accessible. Active sessions remain
   in the upcoming list even when they cross midnight.
@@ -37,6 +51,7 @@ Run the backend unit suite with `node --test` from `backend`, and run:
 node scripts/test-class-entry.mjs
 node scripts/test-scheduling-lifecycle.mjs
 node scripts/test-booking-route.mjs
+node scripts/test-reschedule-boundaries.mjs
 node scripts/test-booking-times.mjs
 node scripts/test-availability-editing.mjs
 ```

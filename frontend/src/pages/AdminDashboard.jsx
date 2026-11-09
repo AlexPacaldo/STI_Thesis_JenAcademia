@@ -1,4 +1,4 @@
-import { isStartScreenshotTimely } from "../utils/classSession.js";
+import { isStartScreenshotTimely, attendanceMinutes } from "../utils/classSession.js";
 import axios from "axios";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
@@ -390,7 +390,7 @@ const getRequiredClassMinutes = (duration) => {
 
 const getVerificationReviewReasons = (row) => {
   const reasons = [];
-  const durationMinutes = Number(row.duration_minutes || 0);
+  const durationMinutes = Math.min(Number(row.duration_minutes || 0), attendanceMinutes(row));
   const requiredMinutes = getRequiredClassMinutes(row.duration);
 
   if (!row.teacher_started_at) reasons.push("Missing teacher start");

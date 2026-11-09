@@ -1,3 +1,4 @@
+import { attendanceMinutes } from "./classSession.js";
 import { groupClassPeers } from "./groupClasses.js";
 import { assessClassEvidence } from "./classEvidence.js";
 
@@ -52,7 +53,7 @@ export async function endGroupParticipants(db, classId, { getVerification, requi
   for (const peer of peers) {
     const log = await getVerification(db, peer.class_id);
     if (!log || log.teacher_ended_at) continue;
-    const minutes = Math.max(0, Math.floor((new Date(source.teacher_ended_at) - new Date(log.teacher_started_at)) / 60_000));
+    const minutes = attendanceMinutes(log, source.teacher_ended_at);
     const evidence = { ...log, proof_url: source.proof_url };
     const valid = evidenceAccepted && assessClassEvidence(evidence, requiredMinutes(peer.duration));
     const status = log.student_joined_at && minutes >= requiredMinutes(peer.duration) && valid && !source.review_reason ? "verified" : "needs_review";

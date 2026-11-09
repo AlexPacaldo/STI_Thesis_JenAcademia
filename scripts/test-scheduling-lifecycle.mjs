@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { isRescheduleClosedByStart, RESCHEDULE_CLOSED_AFTER_START_MESSAGE } from "../backend/rescheduleRequestFlow.js";
-import { hasScheduledClassEnded } from "../backend/classSession.js";
+import { hasScheduledClassEnded, attendanceMinutes } from "../backend/classSession.js";
 import { zonedWallClockToInstant } from "../backend/lineReminders.js";
+import { assessClassEvidence } from "../backend/classEvidence.js";
 
 const source = readFileSync(new URL("../backend/server.js", import.meta.url), "utf8");
 const reply = () => ({ code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } });
@@ -16,7 +17,7 @@ function route(method, path, context) {
     app: { [method]: (_path, ...callbacks) => { handler = callbacks.at(-1); } },
     requireSession() {}, requireAdminSession() {}, requireClassAccess: () => () => {},
     requireBodyIdentity: () => () => {}, sessionMayActFor: () => true,
-    console, groupClassSchemaReady: false, ...context,
+    console, groupClassSchemaReady: false, attendanceMinutes, ...context,
   });
   return handler;
 }
@@ -56,7 +57,7 @@ const rescheduleDb = {
     if (sql.includes("FROM classes")) {
       assert.match(sql, /cal.student_joined_at AS student_joined_at/);
       assert.match(sql, /FOR UPDATE/);
-      return [[{ teacher_id: 2, student_id: 3, class_started_at: null, student_joined_at: new Date() }]];
+      return [[{ teacher_id: 2, student_id: 3, status: "scheduled", class_started_at: null, student_joined_at: new Date() }]];
     }
     if (sql.includes("UPDATE classes")) moved = true;
     throw new Error(`Unexpected query: ${sql}`);
@@ -133,7 +134,7 @@ for (const [path, admin] of [["/api/calendar/classes/:class_id/complete", false]
       if (sql.includes("FROM classes")) {
         assert.match(sql, /c.created_at/);
         return [[{ class_id: 1, teacher_id: 2, student_id: 3, status: "scheduled", created_at: originalCreatedAt,
-          duration: 25, teacher_started_at: new Date(), student_joined_at: new Date(), teacher_ended_at: new Date(),
+          duration: 25, teacher_started_at: new Date("2020-01-01T10:00:00Z"), student_joined_at: new Date("2020-01-01T10:00:00Z"), teacher_ended_at: new Date("2020-01-01T10:25:00Z"),
           duration_minutes: 25, summary: "A complete class.", verification_status: "verified" }]];
       }
       if (sql.includes("UPDATE class_attendance_logs")) return [{ affectedRows: 1 }];
@@ -153,6 +154,29 @@ for (const [path, admin] of [["/api/calendar/classes/:class_id/complete", false]
   assert.equal(res.code, admin ? 400 : 409);
   assert.equal(debited, false);
 }
+
+// The actual end route must refuse automatic verification when the student
+// attended only the final minute, even though the screenshot evidence qualifies.
+const endNow = Date.now();
+const shortLog = { evidence_mode: "screenshots", teacher_started_at: new Date(endNow - 25 * 60_000),
+  student_joined_at: new Date(endNow - 60_000), start_proof_uploaded_at: new Date(endNow - 30_000),
+  start_proof_url: "/start.png", proof_url: "/end.png", duration_minutes: 25 };
+let endedWrites = 0;
+const endHandler = route("post", "/api/calendar/classes/:class_id/end", {
+  classProofUpload: { single: () => () => {} }, assessClassEvidence, getRequiredClassMinutes: () => 15,
+  hasCompleteSentence: () => true,
+  pool: { async query(sql) {
+    if (sql.includes("FROM classes")) return [[{ class_id: 1, teacher_id: 2, student_id: 3, duration: 25, status: "scheduled" }]];
+    if (sql.includes("FROM class_attendance_logs")) return [[shortLog]];
+    endedWrites++;
+    throw new Error("A short class must not be automatically verified");
+  } },
+});
+const shortResponse = reply();
+await endHandler({ params: { class_id: 1 }, body: { teacher_id: 2, summary: "We practiced conversation." } }, shortResponse);
+assert.equal(shortResponse.code, 400);
+assert.match(shortResponse.body.message, /Both participants must attend/);
+assert.equal(endedWrites, 0);
 
 // MySQL applies assignments left-to-right. Exhaustion must use the old usage
 // exactly once, so the penultimate class leaves one active credit.
