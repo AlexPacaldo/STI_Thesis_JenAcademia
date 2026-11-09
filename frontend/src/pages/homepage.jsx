@@ -414,7 +414,8 @@ export default function Homepage() {
               className={styles.navButton}
               onClick={goToLogin}
             >
-              Login
+              <span>Log in</span>
+              <span className={styles.navArrow} aria-hidden="true">→</span>
             </SpecularButton>
             <button
               className={styles.mobileMenuButton}
@@ -490,30 +491,6 @@ export default function Homepage() {
               JEN Academia connects students with the right tutor, makes class booking easier, and keeps
               learning progress clear once your student account is set up.
             </p>
-
-            <div className={styles.heroActions}>
-              <SpecularButton
-                size="md"
-                radius={999}
-                tint="#1e3828"
-                tintOpacity={1}
-                textColor="#ffffff"
-                lineColor="#ffffff"
-                baseColor="#79a847"
-                intensity={1.25}
-                shineSize={12}
-                shineFade={38}
-                thickness={1.15}
-                speed={0.55}
-                followMouse
-                proximity={260}
-                className={styles.ctaButton}
-                onClick={goToLogin}
-              >
-                <span>Log in</span>
-                <span className={styles.ctaArrow} aria-hidden="true">→</span>
-              </SpecularButton>
-            </div>
 
             <div className={styles.heroMeta}>
               <div className={styles.avatarRow}>

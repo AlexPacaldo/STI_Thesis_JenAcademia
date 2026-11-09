@@ -170,10 +170,59 @@
 }
 
 .navButton {
-  background: var(--primary-dark);
+  position: relative;
   color: var(--surface-white);
-  padding: 0.85rem 1.55rem;
-  box-shadow: 0 24px 48px rgba(30, 56, 40, 0.18);
+  padding: 0.55rem 0.7rem 0.55rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: linear-gradient(135deg, #173b29, #28583a);
+  box-shadow: 0 12px 28px rgba(23, 59, 41, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.navButton :global(.specular-button__label) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+}
+
+.navButton::after {
+  position: absolute;
+  inset: -4px;
+  border: 1px solid rgba(121, 168, 71, 0.32);
+  border-radius: inherit;
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transition: inset 0.2s ease, opacity 0.2s ease;
+}
+
+.navArrow {
+  display: grid;
+  width: 1.35rem;
+  height: 1.35rem;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 1rem;
+  line-height: 1;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.navButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 34px rgba(23, 59, 41, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.navButton:hover::after {
+  inset: -6px;
+  opacity: 1;
+}
+
+.navButton:hover .navArrow {
+  background: rgba(255, 255, 255, 0.24);
+  transform: translateX(2px);
 }
 
 .secondaryButton {
@@ -181,11 +230,6 @@
   color: var(--primary-dark);
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(30, 56, 40, 0.08);
-}
-
-.secondaryButton:hover,
-.navButton:hover {
-  transform: translateY(-1px);
 }
 
 .heroSection {
@@ -267,70 +311,6 @@
   color: rgba(23, 52, 42, 0.76);
 }
 
-.heroActions {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-bottom: 2.2rem;
-}
-
-.ctaButton {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.65rem;
-  padding: 0.95rem 1.25rem 0.95rem 1.55rem;
-  color: var(--surface-white);
-  background: linear-gradient(135deg, #173b29, #28583a);
-  border-radius: 999px;
-  text-decoration: none;
-  font-weight: 700;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  box-shadow: 0 12px 28px rgba(23, 59, 41, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.16);
-  text-transform: capitalize;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.ctaButton::after {
-  position: absolute;
-  inset: -4px;
-  border: 1px solid rgba(121, 168, 71, 0.32);
-  border-radius: inherit;
-  content: "";
-  opacity: 0;
-  pointer-events: none;
-  transition: inset 0.2s ease, opacity 0.2s ease;
-}
-
-.ctaArrow {
-  display: grid;
-  width: 1.55rem;
-  height: 1.55rem;
-  place-items: center;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.14);
-  font-size: 1.1rem;
-  line-height: 1;
-  transition: background 0.2s ease, transform 0.2s ease;
-}
-
-.ctaButton:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 34px rgba(23, 59, 41, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-}
-
-.ctaButton:hover::after {
-  inset: -6px;
-  opacity: 1;
-}
-
-.ctaButton:hover .ctaArrow {
-  background: rgba(255, 255, 255, 0.24);
-  transform: translateX(2px);
-}
-
 .secondaryButton {
   display: inline-flex;
   align-items: center;
@@ -345,9 +325,7 @@
   box-shadow: 0 10px 28px rgba(30, 56, 40, 0.06);
 }
 
-.ctaButton:hover,
-.secondaryButton:hover,
-.navButton:hover {
+.secondaryButton:hover {
   transform: translateY(-1px);
 }
 
@@ -1106,12 +1084,6 @@
     font-size: 1.1rem;
   }
 
-  .navButton {
-    padding: 10px 20px;
-    font-size: 14px;
-    min-height: 40px;
-  }
-
   .topNav {
     display: none;
   }
@@ -1142,14 +1114,7 @@
     max-width: 100%;
   }
 
-  .heroActions {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .ctaButton,
-  .secondaryButton,
-  .navButton {
+  .secondaryButton {
     width: 100%;
   }
 
@@ -1218,12 +1183,6 @@
 
   .logoText {
     font-size: 1rem;
-  }
-
-  .navButton {
-    padding: 8px 16px;
-    font-size: 13px;
-    min-height: 36px;
   }
 
   .heroSection {
@@ -1345,12 +1304,6 @@
     font-size: 0.94rem;
   }
 
-  .navButton {
-    padding: 8px 14px;
-    font-size: 13px;
-    min-height: 36px;
-  }
-
   .heroBadge {
     padding: 0.5rem 0.8rem;
     font-size: 0.72rem;
@@ -1363,10 +1316,6 @@
 
   .heroSection p {
     font-size: 0.95rem;
-  }
-
-  .ctaButton {
-    padding: 0.9rem 1rem;
   }
 
   .secondaryButton {
@@ -1714,13 +1663,6 @@
     font-size: clamp(2.65rem, 10vw, 3.7rem);
   }
 
-  .heroActions {
-    width: 100%;
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .ctaButton,
   .secondaryButton {
     width: 100%;
   }
