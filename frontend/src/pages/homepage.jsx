@@ -510,7 +510,8 @@ export default function Homepage() {
                 className={styles.ctaButton}
                 onClick={goToLogin}
               >
-                Log in
+                <span>Log in</span>
+                <span className={styles.ctaArrow} aria-hidden="true">→</span>
               </SpecularButton>
             </div>
 
