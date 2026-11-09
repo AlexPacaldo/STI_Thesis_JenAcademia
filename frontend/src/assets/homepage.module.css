@@ -172,7 +172,8 @@
 .navButton {
   position: relative;
   color: var(--surface-white);
-  padding: 0.55rem 0.7rem 0.55rem 1rem;
+  padding: 0.75rem 0.9rem 0.75rem 1.2rem;
+  font-size: 1rem;
   border: 1px solid rgba(255, 255, 255, 0.24);
   background: linear-gradient(135deg, #173b29, #28583a);
   box-shadow: 0 12px 28px rgba(23, 59, 41, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.16);
@@ -200,12 +201,12 @@
 
 .navArrow {
   display: grid;
-  width: 1.35rem;
-  height: 1.35rem;
+  width: 1.55rem;
+  height: 1.55rem;
   place-items: center;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.14);
-  font-size: 1rem;
+  font-size: 1.1rem;
   line-height: 1;
   transition: background 0.2s ease, transform 0.2s ease;
 }
