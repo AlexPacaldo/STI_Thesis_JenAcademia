@@ -14,6 +14,7 @@
  */
 
 import mysql from "mysql2/promise";
+import { ensureLineSetupColumn } from "./lineSetup.js";
 import {
   DB_CONNECTION_LIMIT,
   DB_HOST,
@@ -145,6 +146,7 @@ async function main() {
 
   try {
     await addUserColumns(connection);
+    await ensureLineSetupColumn(connection, (table, column) => columnExists(connection, table, column));
     await createReminderLog(connection);
     console.log("\nDone. LINE reminder schema is up to date.");
   } finally {

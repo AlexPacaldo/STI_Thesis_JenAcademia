@@ -1,4 +1,5 @@
 import { startGroupParticipants, shareGroupEvidence, groupRecordingConsentReady, endGroupParticipants } from "./groupClassAttendance.js";
+import { ensureLineSetupColumn, isLineSetupRequired } from "./lineSetup.js";
 import { createGroupClassService, ensureGroupClassSchema, registerGroupClassRoutes, groupProposalHolds, groupHoldConflict } from "./groupClasses.js";
 // server.js (ESM)
 import bcrypt from "bcryptjs";
@@ -3412,6 +3413,7 @@ const SCHEMA_STEPS = [
   ["contract request lifecycle columns", ensureContractRequestLifecycleColumns],
   ["contract request notification dedupe", dedupeContractRequestNotifications],
   ["profile completion refresh", refreshAllProfileCompletion],
+  ["LINE first-time setup flag", () => ensureLineSetupColumn(pool, columnExists)],
   ["student contract requests table", ensureStudentContractRequestsTable],
   ["class package duration column", ensureStudentClassPackageDurationColumn],
   ["class status no-show column", ensureClassStatusSupportsNoShow],
@@ -12333,6 +12335,7 @@ async function handleLineWebhookEvent(event) {
           SET line_user_id = ?,
               line_display_name = ?,
               line_linked_at = NOW(),
+              line_setup_completed = TRUE,
               line_link_code_hash = NULL,
               line_link_code_expires_at = NULL
         WHERE user_id = ?`,
@@ -12415,7 +12418,7 @@ app.get("/api/users/:id/line", requireSession, async (req, res) => {
     }
 
     const [rows] = await pool.query(
-      `SELECT line_user_id, line_display_name, line_linked_at, line_reminders_enabled
+      `SELECT role, line_setup_completed, line_user_id, line_display_name, line_linked_at, line_reminders_enabled
          FROM users
         WHERE user_id = ?
         LIMIT 1`,
@@ -12432,6 +12435,7 @@ app.get("/api/users/:id/line", requireSession, async (req, res) => {
       configured: isLineConfigured(),
       webhookConfigured: isLineWebhookConfigured(),
       linked: Boolean(row.line_user_id),
+      setupRequired: isLineSetupRequired(row),
       displayName: row.line_display_name || "",
       linkedAt: row.line_linked_at || null,
       remindersEnabled:

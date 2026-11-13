@@ -190,6 +190,7 @@ export default function Account() {
   const [isProfileIncomplete, setIsProfileIncomplete] = useState(false);
   const [firstSetupStep, setFirstSetupStep] = useState(0);
   const [firstSetupFinished, setFirstSetupFinished] = useState(false);
+  const [lineSetupRequired, setLineSetupRequired] = useState(false);
   const [lineCheckError, setLineCheckError] = useState("");
   const [lineCheckAttempt, setLineCheckAttempt] = useState(0);
   // LINE reminders are a student-only feature. Teachers and admins don't use
@@ -230,7 +231,7 @@ export default function Account() {
   // to the finished Account page, so they must not open over the wizard.
   const firstSetupActive =
     Boolean(user) &&
-    (isProfileIncomplete || firstSetupFinished || (isStudent && !lineState.linked)) &&
+    (isProfileIncomplete || firstSetupFinished || (isStudent && lineSetupRequired)) &&
     ["student", "teacher", "admin"].includes(user.role);
   const editDialogOpen = !firstSetupActive && (profileEditing || passwordEditing);
   // Kept by identity: the LINE card reports on every status change, and a new
@@ -245,6 +246,7 @@ export default function Account() {
     );
     if (isStudent && next.linked && lineSetupRequiredRef.current) {
       lineSetupRequiredRef.current = false;
+      setLineSetupRequired(false);
       if (isProfileIncomplete) {
         setFirstSetupStep(2);
       } else {
@@ -418,8 +420,10 @@ export default function Account() {
           linked,
           usable: Boolean(response.data?.configured && response.data?.webhookConfigured),
         });
-        lineSetupRequiredRef.current = !linked;
-        if (!linked && user.profileCompleted) {
+        const setupRequired = Boolean(response.data?.setupRequired);
+        lineSetupRequiredRef.current = setupRequired;
+        setLineSetupRequired(setupRequired);
+        if (setupRequired && user.profileCompleted) {
           setFirstSetupStep(user.profileImageUrl ? 1 : 0);
           setFirstSetupFinished(false);
         }
@@ -657,7 +661,7 @@ export default function Account() {
     // !! LINE reminders are student-only. A teacher or admin can save their
     // !! details without ever linking LINE, so don't send them back to a step
     // !! that doesn't exist for them.
-    if (lineApplies && !lineState.linked) {
+    if (lineApplies && (isProfileIncomplete || lineSetupRequired) && !lineState.linked) {
       setFirstSetupStep(1);
       notify("Connect LINE first so we can send your class reminders.", "error");
       return;

@@ -235,7 +235,7 @@ function App() {
             return;
           }
           const data = await response.json();
-          const setupRequired = !data?.linked;
+          const setupRequired = Boolean(data?.setupRequired);
           setLineGate({
             userId: currentUserId,
             status: setupRequired ? "required" : "ready",
