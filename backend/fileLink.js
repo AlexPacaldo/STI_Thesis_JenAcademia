@@ -30,12 +30,15 @@ import crypto from "crypto";
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 
 /**
- * The kinds of file a link can open. Both live in uploads/assignments and both
- * are reached from the two ends of an assignment, so they share a route - which
- * is exactly why the kind has to be inside the signed payload: without it, a
- * submission id could be presented where an assignment id is expected.
+ * The kind is signed with the id because ids can overlap across the assignment,
+ * submission, and history records resolved by the same file route.
  */
-export const FILE_LINK_KINDS = ["assignment", "submission"];
+export const FILE_LINK_KINDS = [
+  "assignment",
+  "submission",
+  "assignment-upload",
+  "submission-history",
+];
 
 const base64url = (buffer) => Buffer.from(buffer).toString("base64url");
 
