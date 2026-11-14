@@ -701,8 +701,9 @@ export default function AssignTask() {
                         onChange={(e) => setInstructions(e.target.value)}
                       />
                       <div className={styles.Attachment}>
-                        <label htmlFor="attachment" className={styles.label}>
-                          <b>Attach files (optional):</b>
+                        <label htmlFor="attachment" className={styles.fileLabel}>
+                          <span className={styles.fileIcon} aria-hidden="true">📎</span>
+                          Attach files
                         </label>
                         <input
                           id="attachment"
@@ -716,9 +717,6 @@ export default function AssignTask() {
                             addAttachmentFiles(files, attachmentFiles, setAttachmentFiles, event.target);
                           }}
                         />
-                        <p className={styles.fileInfo}>
-                          Choose files again to add more. Remove any you do not want before posting.
-                        </p>
                         <p className={styles.fileInfo}>
                           Up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
                         </p>
@@ -946,26 +944,17 @@ export default function AssignTask() {
                 autoFocus
               />
               <div className={styles.Attachment}>
-                <label className={styles.label} htmlFor="editAssignmentAttachment">
-                  Update attachments (optional)
-                </label>
-                {editedAttachmentFiles.length ? (
-                  <SelectedAttachmentList
-                    files={editedAttachmentFiles}
-                    onRemove={(index) =>
-                      removeAttachmentFile(index, editedAttachmentFiles, setEditedAttachmentFiles)
-                    }
-                    disabled={isSavingInstructions}
-                  />
-                ) : getAssignmentFiles(editingAssignment).map((file) => (
-                  <p className={styles.fileInfo} key={file.id ?? file.url}>
-                    Current attachment: {file.name || getSubmissionFileName(file.url)}
+                {getAssignmentFiles(editingAssignment).length ? (
+                  <p className={styles.editAssignmentFileNote}>
+                    Current attachments: {getAssignmentFiles(editingAssignment).map((file) => file.name || getSubmissionFileName(file.url)).join(", ")}
                   </p>
-                ))}
-                <p className={styles.fileInfo}>
-                  Additional selections are added to this list. Saving selected files replaces the current set; up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
-                </p>
-                <p className={styles.fileInfo}>{ASSIGNMENT_UPLOAD_TYPE_LABEL}</p>
+                ) : null}
+                <label className={styles.fileLabel} htmlFor="editAssignmentAttachment">
+                  <span className={styles.fileIcon} aria-hidden="true">📎</span>
+                  {getAssignmentFiles(editingAssignment).length
+                    ? "Replace attached files (optional; leave blank to keep current files)"
+                    : "Attach files"}
+                </label>
                 <input
                   id="editAssignmentAttachment"
                   type="file"
@@ -983,6 +972,19 @@ export default function AssignTask() {
                   }}
                   disabled={isSavingInstructions}
                 />
+                <p className={styles.fileInfo}>
+                  Selected files are added to the replacement set; up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
+                </p>
+                <p className={styles.fileInfo}>{ASSIGNMENT_UPLOAD_TYPE_LABEL}</p>
+                {editedAttachmentFiles.length ? (
+                  <SelectedAttachmentList
+                    files={editedAttachmentFiles}
+                    onRemove={(index) =>
+                      removeAttachmentFile(index, editedAttachmentFiles, setEditedAttachmentFiles)
+                    }
+                    disabled={isSavingInstructions}
+                  />
+                ) : null}
                 {attachmentError ? (
                   <p className={styles.uploadError} role="alert">{attachmentError}</p>
                 ) : null}
