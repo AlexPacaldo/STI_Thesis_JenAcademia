@@ -93,16 +93,16 @@ function getSubmissionFiles(submission) {
 
 function SelectedAttachmentList({ files, onRemove, disabled = false }) {
   return (
-    <ul className={styles.selectedFileList}>
+    <ul className={styles.attachmentFileList}>
       {files.map((file, index) => (
         <li
-          className={styles.selectedFileItem}
+          className={styles.attachmentFileItem}
           key={`${file.name}-${file.size}-${file.lastModified}-${index}`}
         >
-          <span className={styles.selectedFileName}>{file.name}</span>
+          <span className={styles.attachmentFileName}>{file.name}</span>
           <button
             type="button"
-            className={styles.removeSelectedFileButton}
+            className={styles.removeAttachmentFileButton}
             aria-label={`Remove ${file.name}`}
             onClick={() => onRemove(index)}
             disabled={disabled}

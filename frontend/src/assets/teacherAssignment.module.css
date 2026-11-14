@@ -256,7 +256,7 @@
   margin: 0;
   font-size: 1rem;
   font-weight: 800;
-  color: var(--text-mid);
+  color: #4a6b64;
 }
 
 .fileIcon {
@@ -267,10 +267,10 @@
 .fileInput {
   width: 100%;
   padding: 10px;
-  border: 1px solid var(--border-mid);
-  border-radius: var(--control-radius);
-  background: var(--surface-recessed);
-  color: var(--text);
+  border: 1px solid #b9c9c4;
+  border-radius: 8px;
+  background: #f1f5f4;
+  color: #1a2e29;
   font-size: 1rem;
   box-sizing: border-box;
 }
@@ -290,10 +290,10 @@
 .Attachment .fileInfo {
   font-size: 0.95rem;
   font-weight: 700;
-  color: var(--text-mid);
+  color: #4a6b64;
 }
 
-.selectedFileList {
+.attachmentFileList {
   display: grid;
   gap: 8px;
   margin: 0;
@@ -301,43 +301,43 @@
   list-style: none;
 }
 
-.selectedFileItem {
+.attachmentFileItem {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--control-radius);
-  background: var(--surface-soft);
+  border: 1px solid #cdd6d3;
+  border-radius: 8px;
+  background: #eef4f2;
 }
 
-.selectedFileName {
+.attachmentFileName {
   min-width: 0;
-  color: var(--text-mid);
+  color: #4a6b64;
   font-size: 0.95rem;
   font-weight: 700;
   overflow-wrap: anywhere;
 }
 
-.removeSelectedFileButton {
+.removeAttachmentFileButton {
   flex: 0 0 auto;
   padding: 6px 10px;
   cursor: pointer;
-  border: 1px solid var(--text-danger);
-  border-radius: var(--control-radius);
-  background: var(--surface);
-  color: var(--text-danger);
+  border: 1px solid #b94a3b;
+  border-radius: 8px;
+  background: #fff;
+  color: #b94a3b;
   font-size: 0.85rem;
   font-weight: 800;
 }
 
-.removeSelectedFileButton:hover {
-  background: var(--surface-recessed);
+.removeAttachmentFileButton:hover {
+  background: #f1f5f4;
 }
 
-.removeSelectedFileButton:disabled {
+.removeAttachmentFileButton:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
