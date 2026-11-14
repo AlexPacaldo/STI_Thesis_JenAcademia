@@ -668,29 +668,34 @@ export default function AssignmentsDropbox() {
                           setSubmitMessage("");
                         }}
                       />
-                      <label className={styles.fileLabel}>
-                        <span className={styles.fileIcon} aria-hidden="true">📎</span>
-                        Attach files
-                      </label>
-                      <input
-                        type="file"
-                        multiple
-                        accept={ASSIGNMENT_UPLOAD_ACCEPT}
-                        className={styles.fileInput}
-                        onChange={(event) => {
-                          const files = Array.from(event.target.files || []);
-                          if (files.length) addSelectedFiles(files);
-                          event.target.value = "";
-                        }}
-                      />
-                      <p className={styles.fileInfo}>
-                        Up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
-                      </p>
-                      <p className={styles.fileInfo}>{ASSIGNMENT_UPLOAD_TYPE_LABEL}</p>
-                      {selectedFiles.length ? (
-                        <SelectedFileList files={selectedFiles} onRemove={removeSelectedFile} />
-                      ) : null}
-                      {fileUploadError ? <p className={styles.submitMessage}>{fileUploadError}</p> : null}
+                      <div className={styles.assignmentAttachment}>
+                        <label className={styles.fileLabel} htmlFor="assignment-submission-files">
+                          Attach files (optional):
+                        </label>
+                        <input
+                          id="assignment-submission-files"
+                          type="file"
+                          multiple
+                          accept={ASSIGNMENT_UPLOAD_ACCEPT}
+                          className={styles.fileInput}
+                          onChange={(event) => {
+                            const files = Array.from(event.target.files || []);
+                            if (files.length) addSelectedFiles(files);
+                            event.target.value = "";
+                          }}
+                        />
+                        <p className={styles.attachmentInfo}>
+                          Choose files again to add more. Remove any you do not want before submitting.
+                        </p>
+                        <p className={styles.attachmentInfo}>
+                          Up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
+                        </p>
+                        <p className={styles.attachmentInfo}>{ASSIGNMENT_UPLOAD_TYPE_LABEL}</p>
+                        {selectedFiles.length ? (
+                          <SelectedFileList files={selectedFiles} onRemove={removeSelectedFile} />
+                        ) : null}
+                        {fileUploadError ? <p className={styles.submitMessage}>{fileUploadError}</p> : null}
+                      </div>
                       <div className={styles.editorActions}>
                         <button
                           type="button"
@@ -758,33 +763,38 @@ export default function AssignmentsDropbox() {
                             : ""}
                         </p>
                       ) : null}
-                      <label className={styles.fileLabel}>
-                        <span className={styles.fileIcon} aria-hidden="true">📎</span>
-                        {submittedFiles.length
-                          ? "Replace attached files (optional; leave blank to keep current files)"
-                          : "Attach files"}
-                      </label>
-                      <input
-                        type="file"
-                        multiple
-                        accept={ASSIGNMENT_UPLOAD_ACCEPT}
-                        className={styles.fileInput}
-                        onChange={(event) => {
-                          const files = Array.from(event.target.files || []);
-                          if (files.length) addSelectedFiles(files);
-                          event.target.value = "";
-                        }}
-                      />
-                      <p className={styles.fileInfo}>
-                        Selected files are added to the replacement set; up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
-                      </p>
-                      <p className={styles.fileInfo}>{ASSIGNMENT_UPLOAD_TYPE_LABEL}</p>
-                      {selectedFiles.length ? (
-                        <SelectedFileList files={selectedFiles} onRemove={removeSelectedFile} />
-                      ) : null}
-                      {fileUploadError ? (
-                        <p className={styles.submitMessage} role="alert">{fileUploadError}</p>
-                      ) : null}
+                      <div className={styles.assignmentAttachment}>
+                        <label className={styles.fileLabel} htmlFor="edit-submission-files">
+                          Attach files (optional):
+                        </label>
+                        <input
+                          id="edit-submission-files"
+                          type="file"
+                          multiple
+                          accept={ASSIGNMENT_UPLOAD_ACCEPT}
+                          className={styles.fileInput}
+                          onChange={(event) => {
+                            const files = Array.from(event.target.files || []);
+                            if (files.length) addSelectedFiles(files);
+                            event.target.value = "";
+                          }}
+                        />
+                        <p className={styles.attachmentInfo}>
+                          {submittedFiles.length
+                            ? "Choose files again to add more. Remove any you do not want; leave the list empty to keep current files."
+                            : "Choose files again to add more. Remove any you do not want before saving."}
+                        </p>
+                        <p className={styles.attachmentInfo}>
+                          Up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
+                        </p>
+                        <p className={styles.attachmentInfo}>{ASSIGNMENT_UPLOAD_TYPE_LABEL}</p>
+                        {selectedFiles.length ? (
+                          <SelectedFileList files={selectedFiles} onRemove={removeSelectedFile} />
+                        ) : null}
+                        {fileUploadError ? (
+                          <p className={styles.submitMessage} role="alert">{fileUploadError}</p>
+                        ) : null}
+                      </div>
                       <div className={styles.editorActions}>
                         <button
                           type="button"
