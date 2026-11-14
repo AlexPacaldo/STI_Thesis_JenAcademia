@@ -199,6 +199,29 @@ function getSubmissionFiles(submission) {
     : [];
 }
 
+function SelectedFileList({ files, onRemove }) {
+  return (
+    <ul className={styles.selectedFileList}>
+      {files.map((file, index) => (
+        <li
+          className={styles.selectedFileItem}
+          key={`${file.name}-${file.size}-${file.lastModified}-${index}`}
+        >
+          <span className={styles.selectedFileName}>{file.name}</span>
+          <button
+            type="button"
+            className={styles.removeSelectedFileButton}
+            aria-label={`Remove ${file.name}`}
+            onClick={() => onRemove(index)}
+          >
+            Remove
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function formatSubmissionDate(value) {
   if (!value) return "Date unavailable";
   const date = new Date(String(value).replace(" ", "T"));
@@ -328,6 +351,20 @@ export default function AssignmentsDropbox() {
     setFileUploadError("");
     setSubmitMessage("");
     setIsEditingSubmission(false);
+  };
+
+  const addSelectedFiles = (files) => {
+    const nextFiles = [...selectedFiles, ...files];
+    setSelectedFiles(nextFiles);
+    setFileUploadError(getAssignmentUploadError(nextFiles));
+    setSubmitMessage("");
+  };
+
+  const removeSelectedFile = (indexToRemove) => {
+    const nextFiles = selectedFiles.filter((_, index) => index !== indexToRemove);
+    setSelectedFiles(nextFiles);
+    setFileUploadError(getAssignmentUploadError(nextFiles));
+    setSubmitMessage("");
   };
 
   const openSubmissionHistory = async () => {
@@ -635,18 +672,15 @@ export default function AssignmentsDropbox() {
                         className={styles.fileInput}
                         onChange={(event) => {
                           const files = Array.from(event.target.files || []);
-                          setSelectedFiles(files);
-                          setFileUploadError(getAssignmentUploadError(files));
-                          setSubmitMessage("");
+                          if (files.length) addSelectedFiles(files);
+                          event.target.value = "";
                         }}
                       />
                       <p className={styles.fileInfo}>
                         Up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
                       </p>
                       {selectedFiles.length ? (
-                        <ul className={styles.fileInfo}>
-                          {selectedFiles.map((file) => <li key={`${file.name}-${file.size}`}>{file.name}</li>)}
-                        </ul>
+                        <SelectedFileList files={selectedFiles} onRemove={removeSelectedFile} />
                       ) : null}
                       {fileUploadError ? <p className={styles.submitMessage}>{fileUploadError}</p> : null}
                       <div className={styles.editorActions}>
@@ -728,18 +762,18 @@ export default function AssignmentsDropbox() {
                         className={styles.fileInput}
                         onChange={(event) => {
                           const files = Array.from(event.target.files || []);
-                          setSelectedFiles(files);
-                          setFileUploadError(getAssignmentUploadError(files));
-                          setSubmitMessage("");
+                          if (files.length) addSelectedFiles(files);
+                          event.target.value = "";
                         }}
                       />
                       <p className={styles.fileInfo}>
-                        Selecting files replaces the current set; up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
+                        Selected files are added to the replacement set; up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
                       </p>
                       {selectedFiles.length ? (
-                        <ul className={styles.fileInfo}>
-                          {selectedFiles.map((file) => <li key={`${file.name}-${file.size}`}>{file.name}</li>)}
-                        </ul>
+                        <SelectedFileList files={selectedFiles} onRemove={removeSelectedFile} />
+                      ) : null}
+                      {fileUploadError ? (
+                        <p className={styles.submitMessage} role="alert">{fileUploadError}</p>
                       ) : null}
                       <div className={styles.editorActions}>
                         <button

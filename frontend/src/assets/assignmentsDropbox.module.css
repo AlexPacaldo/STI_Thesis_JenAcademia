@@ -331,6 +331,50 @@
   color: var(--text-mid);
 }
 
+.selectedFileList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.selectedFileItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--surface-soft);
+}
+
+.selectedFileName {
+  min-width: 0;
+  color: var(--text-mid);
+  font-size: 0.95rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.removeSelectedFileButton {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  cursor: pointer;
+  border: 1px solid var(--text-danger);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--text-danger);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.removeSelectedFileButton:hover {
+  background: var(--surface-recessed);
+}
+
 .editorActions {
   display: flex;
   gap: 12px;
