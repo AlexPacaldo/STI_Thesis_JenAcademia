@@ -564,7 +564,14 @@ fs.mkdirSync(classRecordingUploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    fs.mkdir(uploadDir, { recursive: true }, cb);
+    fs.mkdir(uploadDir, { recursive: true }, (err) => {
+      if (err) {
+        cb(err);
+        return;
+      }
+
+      cb(null, uploadDir);
+    });
   },
   filename: (req, file, cb) => {
     const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
