@@ -14,6 +14,7 @@ import { readStoredUser } from "../utils/sessionUser.js";
 import { formatDateInTimezone, getStoredUserTimezone, parseServerTimestamp } from "../utils/timezone.js";
 import { useNotification } from "./NotificationContainer";
 import { API_BASE_URL } from "../utils/api.js";
+import { getNotificationTargetUrl } from "../utils/notificationNavigation.js";
 
 const API = API_BASE_URL;
 
@@ -161,7 +162,12 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
       handleMarkAsRead(notification.notification_id).catch(() => {});
     }
 
-    const targetUrl = getNotificationTargetUrl(notification);
+    const currentUser = readStoredUser() || {};
+    const targetUrl = getNotificationTargetUrl(
+      notification,
+      currentUser.role,
+      window.location.origin
+    );
     navigate(targetUrl);
     onClose?.();
   };
@@ -199,38 +205,6 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
       message: "It will go away for good. You cannot get it back.",
       confirmLabel: "Delete note"
     });
-  };
-
-  const getNotificationTargetUrl = (notification) => {
-    const actionUrl = notification.action_url || notification.actionUrl;
-    const relatedId = notification.related_id ?? notification.relatedId;
-    const relatedType = notification.related_type ?? notification.relatedType;
-    const currentUser = readStoredUser() || {};
-    const role = currentUser.role;
-
-    if (actionUrl && typeof actionUrl === "string" && actionUrl.trim()) {
-      return actionUrl;
-    }
-
-    if (relatedType === "class" && relatedId && (role === "teacher" || role === "student")) {
-      return `/Calendar?classId=${encodeURIComponent(relatedId)}`;
-    }
-
-    if (notification.type === "assignment" && relatedId) {
-      return `/assignmentsDropbox?assignmentId=${relatedId}`;
-    }
-    if (notification.type === "remark") {
-      return "/remarks";
-    }
-    if (notification.type === "reschedule" || notification.type === "class_reminder") {
-      return "/Calendar";
-    }
-    if (notification.type === "announcement") {
-      if (role === "teacher") return "/TeacherDashboard";
-      if (role === "admin") return "/AdminDashboard";
-      return "/StudentDashboard";
-    }
-    return "/";
   };
 
   const requestClearAllNotifications = () => {
