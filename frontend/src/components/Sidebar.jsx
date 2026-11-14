@@ -3,15 +3,12 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import styles from "../assets/sidebar.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
-import { getLocalUnreadCount } from "../utils/localNotificationStore.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import NotificationPanel from "./NotificationPanel.jsx";
 import Logo from "../assets/img/Navbar/LOGO.png";
 import { API_BASE_URL } from "../utils/api.js";
 
 const API = API_BASE_URL;
-const BADGE_REFRESH_MS = 60 * 1000;
-
 function isProfileComplete(user) {
   return Boolean(user?.profileCompleted);
 }
@@ -24,7 +21,6 @@ function Sidebar({ isMobileOpen = false, onClose }) {
   const [user, setUser] = useState(storedUser);
   const [role, setRole] = useState(storedUser?.role || null);
   const [profileCompleted, setProfileCompleted] = useState(isProfileComplete(storedUser));
-  const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [studentPackage, setStudentPackage] = useState(null);
   const currentUserId = user?.id || user?.user_id || user?.userId;
@@ -81,15 +77,6 @@ function Sidebar({ isMobileOpen = false, onClose }) {
     };
   }, []);
 
-  // Fetch unread notification count
-  useEffect(() => {
-    if (currentUserId && (role === "student" || role === "teacher" || role === "admin")) {
-      fetchUnreadCount();
-      const interval = setInterval(fetchUnreadCount, BADGE_REFRESH_MS);
-      return () => clearInterval(interval);
-    }
-  }, [currentUserId, role]);
-
   useEffect(() => {
     if (role !== "student" || !currentUserId) {
       setStudentPackage(null);
@@ -101,19 +88,6 @@ function Sidebar({ isMobileOpen = false, onClose }) {
       .then((response) => setStudentPackage(response.data.package || null))
       .catch(() => setStudentPackage(null));
   }, [currentUserId, role, location]);
-
-  const fetchUnreadCount = async () => {
-    const currentUser = readStoredUser() || {};
-    const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
-    const localCount = getLocalUnreadCount({ userId: currentUserId, userName });
-    try {
-      const response = await axios.get(`${API}/api/notifications/unread/${currentUserId}`);
-      setUnreadCount((response.data.unreadCount || 0) + localCount);
-    } catch (err) {
-      console.error("Error fetching unread count:", err);
-      setUnreadCount(localCount);
-    }
-  };
 
   // ✅ Current page routes (you already have these)
   const path = location.pathname;

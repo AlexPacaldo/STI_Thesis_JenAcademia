@@ -2,22 +2,22 @@ import axios from "axios";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import styles from "../assets/header.module.css";
-import { getLocalUnreadCount } from "../utils/localNotificationStore.js";
 import ChatPanel from "./ChatPanel";
 import NotificationPanel from "./NotificationPanel";
 import AccountMenu from "./AccountMenu";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { useNotification } from "./NotificationContainer.jsx";
 
 const API = API_BASE_URL;
 const BADGE_REFRESH_MS = 60 * 1000;
 
 function Header({ isSidebarOpen = false, onMenuClick }) {
+  const { unreadCount = 0 } = useNotification() || {};
   const location = useLocation();
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
   const [profileCompleted, setProfileCompleted] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
@@ -135,15 +135,6 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
     };
   }, []);
 
-  // Fetch unread notification count
-  useEffect(() => {
-    if (currentUserId && (role === "student" || role === "teacher" || role === "admin")) {
-      fetchUnreadCount();
-      const interval = setInterval(fetchUnreadCount, BADGE_REFRESH_MS);
-      return () => clearInterval(interval);
-    }
-  }, [currentUserId, role]);
-
   useEffect(() => {
     if (!currentUserId || !role) {
       setChatUnreadCount(0);
@@ -185,19 +176,6 @@ function Header({ isSidebarOpen = false, onMenuClick }) {
   // !! header should warn a student with no classes left. That warning was
   // !! never built, so the fetch was a request on every page load for a
   // !! number nothing read. The page that needs the number asks for it.
-
-  const fetchUnreadCount = async () => {
-    const currentUser = readStoredUser() || {};
-    const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
-    const localCount = getLocalUnreadCount({ userId: currentUserId, userName });
-    try {
-      const response = await axios.get(`${API}/api/notifications/unread/${currentUserId}`);
-      setUnreadCount((response.data.unreadCount || 0) + localCount);
-    } catch (err) {
-      console.error("Error fetching unread count:", err);
-      setUnreadCount(localCount);
-    }
-  };
 
   // ✅ Current page routes (you already have these)
   const path = location.pathname;

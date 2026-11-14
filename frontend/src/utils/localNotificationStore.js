@@ -20,6 +20,13 @@ export function getAllLocalNotifications() {
 
 export function saveLocalNotifications(notifications) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications));
+  dispatchNotificationsChanged();
+}
+
+export function dispatchNotificationsChanged() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("notificationsChanged"));
+  }
 }
 
 export function addLocalNotification({

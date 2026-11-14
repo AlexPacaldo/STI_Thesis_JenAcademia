@@ -1,8 +1,14 @@
-import React, { useState, useCallback } from "react";
+import axios from "axios";
+import React, { useState, useCallback, useEffect } from "react";
 import Notification from "./Notification";
 import styles from "../assets/notificationContainer.module.css";
+import { getLocalUnreadCount } from "../utils/localNotificationStore.js";
+import { readStoredUser } from "../utils/sessionUser.js";
+import { API_BASE_URL } from "../utils/api.js";
 
 export const NotificationContext = React.createContext();
+const BADGE_REFRESH_MS = 15 * 1000;
+const API = API_BASE_URL;
 
 // NOT Date.now().
 //
@@ -21,6 +27,71 @@ let nextNotificationId = 0;
 
 export function NotificationProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
+  const [currentUser, setCurrentUser] = useState(() => readStoredUser());
+  const [unreadCount, setUnreadCount] = useState(0);
+  const currentUserId = currentUser?.id || currentUser?.user_id || currentUser?.userId;
+  const currentUserRole = currentUser?.role;
+
+  useEffect(() => {
+    const handleProfileUpdate = (event) => {
+      setCurrentUser(event.detail || readStoredUser());
+    };
+    const handleStorageChange = () => setCurrentUser(readStoredUser());
+    const handleLogout = () => setCurrentUser(null);
+
+    window.addEventListener("userProfileUpdated", handleProfileUpdate);
+    window.addEventListener("userLoggedOut", handleLogout);
+    window.addEventListener("storage", handleStorageChange);
+    return () => {
+      window.removeEventListener("userProfileUpdated", handleProfileUpdate);
+      window.removeEventListener("userLoggedOut", handleLogout);
+      window.removeEventListener("storage", handleStorageChange);
+    };
+  }, []);
+
+  const refreshUnreadCount = useCallback(async () => {
+    const supportedRole = ["student", "teacher", "admin"].includes(currentUserRole);
+    if (!currentUserId || !supportedRole) {
+      setUnreadCount(0);
+      return;
+    }
+
+    const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
+    const localCount = getLocalUnreadCount({ userId: currentUserId, userName });
+    try {
+      const response = await axios.get(`${API}/api/notifications/unread/${currentUserId}`);
+      setUnreadCount(Number(response.data.unreadCount || 0) + localCount);
+    } catch (err) {
+      console.error("Error fetching unread notification count:", err);
+      setUnreadCount(localCount);
+    }
+  }, [currentUser, currentUserId, currentUserRole]);
+
+  useEffect(() => {
+    if (!currentUserId || !["student", "teacher", "admin"].includes(currentUserRole)) {
+      setUnreadCount(0);
+      return undefined;
+    }
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshUnreadCount();
+    };
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshUnreadCount();
+    }, BADGE_REFRESH_MS);
+
+    void refreshUnreadCount();
+    window.addEventListener("notificationsChanged", refreshUnreadCount);
+    window.addEventListener("storage", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("notificationsChanged", refreshUnreadCount);
+      window.removeEventListener("storage", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [currentUserId, currentUserRole, refreshUnreadCount]);
 
   const addNotification = useCallback((message, type = "info", duration = 4000) => {
     nextNotificationId += 1;
@@ -39,7 +110,9 @@ export function NotificationProvider({ children }) {
   );
 
   return (
-    <NotificationContext.Provider value={{ notify, addNotification, removeNotification }}>
+    <NotificationContext.Provider
+      value={{ notify, addNotification, removeNotification, unreadCount }}
+    >
       {children}
       <div className={styles.container}>
         {notifications.map((notif) => (

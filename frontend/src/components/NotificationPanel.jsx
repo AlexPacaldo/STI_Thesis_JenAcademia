@@ -15,6 +15,7 @@ import { formatDateInTimezone, getStoredUserTimezone, parseServerTimestamp } fro
 import { useNotification } from "./NotificationContainer";
 import { API_BASE_URL } from "../utils/api.js";
 import { getNotificationTargetUrl } from "../utils/notificationNavigation.js";
+import { dispatchNotificationsChanged } from "../utils/localNotificationStore.js";
 
 const API = API_BASE_URL;
 
@@ -135,6 +136,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
     try {
       await axios.put(`${API}/api/notifications/${notificationId}/read`);
       markLocalNotificationRead(notificationId);
+      dispatchNotificationsChanged();
       setNotifications(prev =>
         prev.map(n => n.notification_id === notificationId ? { ...n, is_read: true } : n)
       );
@@ -279,6 +281,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
         await axios.delete(`${API}/api/notifications/${action.notificationId}`);
         setNotifications(prev => prev.filter(n => n.notification_id !== action.notificationId));
         setTotalNotifications(prev => Math.max(0, prev - 1));
+        dispatchNotificationsChanged();
         notify("Notification deleted", "success");
       } catch (err) {
         console.error("Error deleting notification:", err);
@@ -290,6 +293,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
       try {
         await axios.delete(`${API}/api/notifications/user/${userId}`);
         clearLocalNotificationsForUser({ userId, userName });
+        dispatchNotificationsChanged();
         setNotifications([]);
         setTotalNotifications(0);
         notify("All notifications cleared", "success");
@@ -306,6 +310,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
       try {
         await axios.put(`${API}/api/users/${userId}/notifications/read-all`);
         markAllLocalNotificationsReadForUser({ userId, userName });
+        dispatchNotificationsChanged();
         setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
         notify("All notifications marked as read", "success");
       } catch (err) {
