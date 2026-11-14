@@ -80,6 +80,7 @@ import {
 } from "./lineReminders.js";
 import { describeCorsOrigins, resolveCorsOrigins } from "./corsOrigins.js";
 import {
+  getAssignmentFileTypeError,
   getAssignmentUploadError,
   MAX_ASSIGNMENT_FILES,
   MAX_ASSIGNMENT_FILE_BYTES,
@@ -587,6 +588,16 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
+  fileFilter: (_req, file, cb) => {
+    const error = getAssignmentFileTypeError(file);
+    if (error) {
+      const uploadError = new Error(error);
+      uploadError.code = "INVALID_FILE_TYPE";
+      cb(uploadError);
+      return;
+    }
+    cb(null, true);
+  },
   limits: {
     fileSize: MAX_ASSIGNMENT_FILE_BYTES,
     files: MAX_ASSIGNMENT_FILES,
@@ -622,6 +633,11 @@ const optionalFileUpload = (req, res, next) => {
 
       if (err.code === "LIMIT_FILE_SIZE") {
         res.status(413).json({ message: "Each file must be 10 MiB or smaller." });
+        return;
+      }
+
+      if (err.code === "INVALID_FILE_TYPE") {
+        res.status(400).json({ message: err.message });
         return;
       }
 

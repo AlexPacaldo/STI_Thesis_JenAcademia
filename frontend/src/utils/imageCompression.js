@@ -1,4 +1,8 @@
-export const compressImageFile = (file, { maxDimension = 1600, quality = 0.85 } = {}) => new Promise((resolve, reject) => {
+export const compressImageFile = (file, {
+  maxDimension = 1600,
+  quality = 0.85,
+  outputType = "image/webp",
+} = {}) => new Promise((resolve, reject) => {
   if (!file || !file.type?.startsWith("image/")) {
     reject(new Error("Please choose an image file."));
     return;
@@ -25,8 +29,13 @@ export const compressImageFile = (file, { maxDimension = 1600, quality = 0.85 } 
       }
 
       const baseName = file.name ? file.name.replace(/\.[^.]+$/, "") : "image";
-      resolve(new File([blob], `${baseName}.webp`, { type: "image/webp" }));
-    }, "image/webp", quality);
+      const outputExtension = outputType === "image/png"
+        ? "png"
+        : outputType === "image/jpeg"
+          ? "jpg"
+          : "webp";
+      resolve(new File([blob], `${baseName}.${outputExtension}`, { type: blob.type }));
+    }, outputType, quality);
   };
 
   image.onerror = () => {

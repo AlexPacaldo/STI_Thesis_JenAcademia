@@ -16,6 +16,8 @@ import {
 import { compressFileIfImage } from "../utils/imageCompression.js";
 import ModalPortal from "../utils/ModalPortal.jsx";
 import {
+  ASSIGNMENT_UPLOAD_ACCEPT,
+  ASSIGNMENT_UPLOAD_TYPE_LABEL,
   getAssignmentUploadError,
   MAX_ASSIGNMENT_FILES,
   MAX_ASSIGNMENT_FILE_BYTES,
@@ -421,7 +423,9 @@ export default function AssignmentsDropbox() {
       const formData = new FormData();
       formData.append("submissionText", comment.trim());
       for (const file of selectedFiles) {
-        const uploadFile = await compressFileIfImage(file);
+        const uploadFile = await compressFileIfImage(file, {
+          outputType: file.type === "image/png" ? "image/png" : "image/jpeg",
+        });
         formData.append("files", uploadFile, uploadFile.name);
       }
 
@@ -497,7 +501,9 @@ export default function AssignmentsDropbox() {
         formData.append("submissionText", comment.trim());
       }
       for (const file of selectedFiles) {
-        const uploadFile = await compressFileIfImage(file);
+        const uploadFile = await compressFileIfImage(file, {
+          outputType: file.type === "image/png" ? "image/png" : "image/jpeg",
+        });
         formData.append("files", uploadFile, uploadFile.name);
       }
 
@@ -669,6 +675,7 @@ export default function AssignmentsDropbox() {
                       <input
                         type="file"
                         multiple
+                        accept={ASSIGNMENT_UPLOAD_ACCEPT}
                         className={styles.fileInput}
                         onChange={(event) => {
                           const files = Array.from(event.target.files || []);
@@ -679,6 +686,7 @@ export default function AssignmentsDropbox() {
                       <p className={styles.fileInfo}>
                         Up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
                       </p>
+                      <p className={styles.fileInfo}>{ASSIGNMENT_UPLOAD_TYPE_LABEL}</p>
                       {selectedFiles.length ? (
                         <SelectedFileList files={selectedFiles} onRemove={removeSelectedFile} />
                       ) : null}
@@ -759,6 +767,7 @@ export default function AssignmentsDropbox() {
                       <input
                         type="file"
                         multiple
+                        accept={ASSIGNMENT_UPLOAD_ACCEPT}
                         className={styles.fileInput}
                         onChange={(event) => {
                           const files = Array.from(event.target.files || []);
@@ -769,6 +778,7 @@ export default function AssignmentsDropbox() {
                       <p className={styles.fileInfo}>
                         Selected files are added to the replacement set; up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
                       </p>
+                      <p className={styles.fileInfo}>{ASSIGNMENT_UPLOAD_TYPE_LABEL}</p>
                       {selectedFiles.length ? (
                         <SelectedFileList files={selectedFiles} onRemove={removeSelectedFile} />
                       ) : null}

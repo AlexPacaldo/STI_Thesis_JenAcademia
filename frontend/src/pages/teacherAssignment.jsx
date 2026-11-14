@@ -14,6 +14,8 @@ import {
   useAuthenticatedFileUrl,
 } from "../utils/authenticatedFile.js";
 import {
+  ASSIGNMENT_UPLOAD_ACCEPT,
+  ASSIGNMENT_UPLOAD_TYPE_LABEL,
   getAssignmentUploadError,
   MAX_ASSIGNMENT_FILES,
   MAX_ASSIGNMENT_FILE_BYTES,
@@ -670,6 +672,7 @@ export default function AssignTask() {
                           ref={fileInputRef}
                           type="file"
                           multiple
+                          accept={ASSIGNMENT_UPLOAD_ACCEPT}
                           className={styles.fileInput}
                           onChange={(event) => {
                             const files = Array.from(event.target.files || []);
@@ -680,6 +683,7 @@ export default function AssignTask() {
                         <p className={styles.fileInfo}>
                           Up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
                         </p>
+                        <p className={styles.fileInfo}>{ASSIGNMENT_UPLOAD_TYPE_LABEL}</p>
                         {attachmentFiles.length ? (
                           <ul className={styles.fileInfo}>
                             {attachmentFiles.map((file) => <li key={`${file.name}-${file.size}`}>{file.name}</li>)}
@@ -915,10 +919,12 @@ export default function AssignTask() {
                 <p className={styles.fileInfo}>
                   Selecting files replaces the current set; up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
                 </p>
+                <p className={styles.fileInfo}>{ASSIGNMENT_UPLOAD_TYPE_LABEL}</p>
                 <input
                   id="editAssignmentAttachment"
                   type="file"
                   multiple
+                  accept={ASSIGNMENT_UPLOAD_ACCEPT}
                   className={styles.fileInput}
                   onChange={(event) => {
                     const files = Array.from(event.target.files || []);
