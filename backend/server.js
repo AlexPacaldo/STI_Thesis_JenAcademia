@@ -80,6 +80,12 @@ import {
 } from "./lineReminders.js";
 import { describeCorsOrigins, resolveCorsOrigins } from "./corsOrigins.js";
 import {
+  getAssignmentUploadError,
+  MAX_ASSIGNMENT_FILES,
+  MAX_ASSIGNMENT_FILE_BYTES,
+  MAX_ASSIGNMENT_TOTAL_BYTES,
+} from "../shared/assignmentUploadLimits.js";
+import {
   MailTransportError,
   contactFormRecipient,
   describeMailConfig,
@@ -575,13 +581,20 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
-    cb(null, `${Date.now()}-${safeName}`);
+    cb(null, `${Date.now()}-${crypto.randomBytes(8).toString("hex")}-${safeName}`);
   },
 });
 
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: MAX_ASSIGNMENT_FILE_BYTES,
+    files: MAX_ASSIGNMENT_FILES,
+  },
+});
 
-// An optional single "file" field, on a route that may not be multipart at all.
+// Optional assignment uploads; both the new "files" field and the legacy
+// single "file" field are accepted for clients that have not refreshed yet.
 //
 // Shared by the two file-bearing assignment routes: the worksheet a teacher
 // attaches when posting a task, and the work a student sends back. Both files
@@ -597,12 +610,25 @@ const optionalFileUpload = (req, res, next) => {
     return;
   }
 
-  upload.single("file")(req, res, (err) => {
+  upload.fields([
+    { name: "files", maxCount: MAX_ASSIGNMENT_FILES },
+    { name: "file", maxCount: 1 },
+  ])(req, res, (err) => {
     if (err) {
       console.error("Assignment file upload failed:", {
         code: err.code || null,
         message: err.message,
       });
+
+      if (err.code === "LIMIT_FILE_SIZE") {
+        res.status(413).json({ message: "Each file must be 10 MiB or smaller." });
+        return;
+      }
+
+      if (err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE") {
+        res.status(400).json({ message: `Choose no more than ${MAX_ASSIGNMENT_FILES} files.` });
+        return;
+      }
 
       if (err.code === "ENOSPC") {
         res.status(507).json({ message: "The server is out of upload storage. Please contact support." });
@@ -627,6 +653,19 @@ const optionalFileUpload = (req, res, next) => {
       res.status(500).json({ message: "The file could not be uploaded. Please retry the upload." });
       return;
     }
+
+    const files = Object.values(req.files || {}).flat();
+    const uploadError = getAssignmentUploadError(files);
+    if (uploadError) {
+      files.forEach((file) => removeUploadedFile(uploadedFileUrl(req, file)));
+      const status = files.reduce((total, file) => total + file.size, 0) > MAX_ASSIGNMENT_TOTAL_BYTES
+        ? 413
+        : 400;
+      res.status(status).json({ message: uploadError });
+      return;
+    }
+
+    req.assignmentFiles = files;
     next();
   });
 };
@@ -634,12 +673,41 @@ const optionalFileUpload = (req, res, next) => {
 // Build the public URL for a file just written by multer.
 //
 // Built from the request rather than a configured base URL so the value stays
-// correct behind the Railway TLS hop, and from req.file.filename rather than
+// correct behind the Railway TLS hop, and from the stored filename rather than
 // the client's name so a traversal attempt in the name cannot escape the
 // uploads directory.
 function uploadedFileUrl(req, file) {
   if (!file) return null;
   return `${req.protocol}://${req.get("host")}/uploads/assignments/${encodeURIComponent(file.filename)}`;
+}
+
+function getRequestUploadFiles(req) {
+  return Array.isArray(req.assignmentFiles) ? req.assignmentFiles : [];
+}
+
+function storedUploadFiles(req) {
+  return getRequestUploadFiles(req).map((file) => ({
+    url: uploadedFileUrl(req, file),
+    name: file.originalname,
+  }));
+}
+
+function removeRequestUploadFiles(req) {
+  getRequestUploadFiles(req).forEach((file) => removeUploadedFile(uploadedFileUrl(req, file)));
+}
+
+async function getOwnerUploadFiles(assignmentId, ownerType, ownerId, legacyUrl, legacyName, connection = pool) {
+  const [rows] = await connection.query(
+    `SELECT file_id AS id, file_url AS url, file_name AS name
+     FROM assignment_upload_files
+     WHERE assignment_id = ? AND owner_type = ? AND owner_id = ?
+     ORDER BY file_id`,
+    [assignmentId, ownerType, ownerId]
+  );
+  if (rows.length) return rows;
+  return legacyUrl
+    ? [{ id: null, url: legacyUrl, name: legacyName || fileNameFromStoredUrl(legacyUrl) }]
+    : [];
 }
 
 // For GET /f, which streams a file off disk and so has no req.file.mimetype to
@@ -2360,6 +2428,22 @@ async function ensureSubmissionHistoryTable() {
   `);
 }
 
+async function ensureAssignmentUploadFilesTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS assignment_upload_files (
+      file_id INT AUTO_INCREMENT PRIMARY KEY,
+      assignment_id INT NOT NULL,
+      owner_type ENUM('assignment', 'submission', 'history') NOT NULL,
+      owner_id INT NOT NULL,
+      file_url VARCHAR(1000) NOT NULL,
+      file_name VARCHAR(255) NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_assignment_upload_owner (assignment_id, owner_type, owner_id),
+      INDEX idx_assignment_upload_url (file_url(191))
+    )
+  `);
+}
+
 async function ensureBooksColumns() {
   if (!(await columnExists("books", "teacher_id"))) {
     await pool.query("ALTER TABLE books ADD COLUMN teacher_id INT DEFAULT NULL AFTER course_id");
@@ -3432,6 +3516,7 @@ const SCHEMA_STEPS = [
   ["assignment attachment columns", ensureAssignmentAttachmentColumns],
   ["assignment archive column", ensureAssignmentArchiveColumn],
   ["submission history table", ensureSubmissionHistoryTable],
+  ["assignment upload files table", ensureAssignmentUploadFilesTable],
   ["books columns", ensureBooksColumns],
   ["remark columns", ensureRemarkColumns],
   ["reschedule request decline reason column", ensureRescheduleRequestDeclineReasonColumn],
@@ -4406,6 +4491,66 @@ const submissionSelect = `
   JOIN users teacher ON teacher.user_id = a.teacher_id
     AND teacher.status = 'active' AND teacher.profile_completed = TRUE
 `;
+
+async function addUploadFiles(records, ownerType, ownerIdField, legacyUrlField, legacyNameField, outputField) {
+  const ownerIds = [...new Set(
+    records.map((record) => record[ownerIdField]).filter((id) => id !== null && id !== undefined)
+  )];
+  const filesByOwner = new Map();
+
+  if (ownerIds.length) {
+    const [rows] = await pool.query(
+      `SELECT file_id AS id, owner_id AS ownerId, file_url AS url, file_name AS name
+       FROM assignment_upload_files
+       WHERE owner_type = ? AND owner_id IN (?)
+       ORDER BY file_id`,
+      [ownerType, ownerIds]
+    );
+
+    for (const row of rows) {
+      const key = String(row.ownerId);
+      const files = filesByOwner.get(key) || [];
+      files.push({ id: row.id, url: row.url, name: row.name });
+      filesByOwner.set(key, files);
+    }
+  }
+
+  return records.map((record) => {
+    const files = filesByOwner.get(String(record[ownerIdField]));
+    const legacyUrl = record[legacyUrlField];
+    return {
+      ...record,
+      [outputField]: files?.length
+        ? files
+        : legacyUrl
+          ? [{
+              id: null,
+              url: legacyUrl,
+              name: record[legacyNameField] || fileNameFromStoredUrl(legacyUrl),
+            }]
+          : [],
+    };
+  });
+}
+
+async function insertUploadFiles(connection, assignmentId, ownerType, ownerId, files) {
+  if (!files.length) return;
+
+  const values = files.flatMap((file) => [
+    assignmentId,
+    ownerType,
+    ownerId,
+    file.url,
+    file.name,
+  ]);
+  const placeholders = files.map(() => "(?, ?, ?, ?, ?)").join(", ");
+  await connection.query(
+    `INSERT INTO assignment_upload_files
+       (assignment_id, owner_type, owner_id, file_url, file_name)
+     VALUES ${placeholders}`,
+    values
+  );
+}
 
 // ---------- courses ----------
 app.get("/api/courses", async (_req, res) => {
@@ -12820,7 +12965,17 @@ app.get("/api/teacher/:teacher_id/assignments", requireSession, async (req, res)
       [teacher_id]
     );
 
-    res.json({ assignments: decryptRows(rows, ["instructions", "description", "comments", "feedback"]) });
+    const assignments = decryptRows(rows, ["instructions", "description", "comments", "feedback"]);
+    res.json({
+      assignments: await addUploadFiles(
+        assignments,
+        "assignment",
+        "id",
+        "attachmentUrl",
+        "attachmentName",
+        "attachmentFiles"
+      ),
+    });
   } catch (err) {
     console.error("GET /api/teacher/:teacher_id/assignments error:", err);
     res.status(500).json({ message: "Error fetching teacher assignments" });
@@ -12840,7 +12995,17 @@ app.get("/api/teacher/:teacher_id/submissions", requireSession, async (req, res)
       [teacher_id]
     );
 
-    res.json({ submissions: decryptRows(rows, ["comments", "feedback", "assignmentInstructions"]) });
+    const submissions = decryptRows(rows, ["comments", "feedback", "assignmentInstructions"]);
+    res.json({
+      submissions: await addUploadFiles(
+        submissions,
+        "submission",
+        "id",
+        "fileUrl",
+        "fileName",
+        "submissionFiles"
+      ),
+    });
   } catch (err) {
     console.error("GET /api/teacher/:teacher_id/submissions error:", err);
     res.status(500).json({ message: "Error fetching assignment submissions" });
@@ -12860,7 +13025,25 @@ app.get("/api/student/:student_id/assignments", requireSession, async (req, res)
       [student_id]
     );
 
-    res.json({ assignments: decryptRows(rows, ["instructions", "description", "comments", "feedback"]) });
+    const assignments = decryptRows(rows, ["instructions", "description", "comments", "feedback"]);
+    const withAttachments = await addUploadFiles(
+      assignments,
+      "assignment",
+      "id",
+      "attachmentUrl",
+      "attachmentName",
+      "attachmentFiles"
+    );
+    res.json({
+      assignments: await addUploadFiles(
+        withAttachments,
+        "submission",
+        "submissionId",
+        "fileUrl",
+        "fileName",
+        "submissionFiles"
+      ),
+    });
   } catch (err) {
     console.error("GET /api/student/:student_id/assignments error:", err);
     res.status(500).json({ message: "Error fetching student assignments" });
@@ -12885,7 +13068,23 @@ app.get("/api/assignments/:assignment_id", requireSession, async (req, res) => {
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    res.json({ assignment: decryptFields(rows[0], ["instructions", "description", "comments", "feedback"]) });
+    const [assignmentWithAttachments] = await addUploadFiles(
+      [decryptFields(rows[0], ["instructions", "description", "comments", "feedback"])],
+      "assignment",
+      "id",
+      "attachmentUrl",
+      "attachmentName",
+      "attachmentFiles"
+    );
+    const [assignment] = await addUploadFiles(
+      [assignmentWithAttachments],
+      "submission",
+      "submissionId",
+      "fileUrl",
+      "fileName",
+      "submissionFiles"
+    );
+    res.json({ assignment });
   } catch (err) {
     console.error("GET /api/assignments/:assignment_id error:", err);
     res.status(500).json({ message: "Error fetching assignment" });
@@ -12893,17 +13092,19 @@ app.get("/api/assignments/:assignment_id", requireSession, async (req, res) => {
 });
 
 app.patch("/api/assignments/:assignment_id", requireSession, optionalFileUpload, async (req, res) => {
-  const uploadedAttachmentUrl = uploadedFileUrl(req, req.file);
-  let attachmentSaved = false;
+  const uploadedFiles = storedUploadFiles(req);
+  let uploadsSaved = uploadedFiles.length === 0;
+  let conn;
+  let transactionStarted = false;
   try {
     const { assignment_id } = req.params;
     const session = req.session || {};
     const hasInstructions = Object.prototype.hasOwnProperty.call(req.body || {}, "instructions");
     const hasArchiveState = Object.prototype.hasOwnProperty.call(req.body || {}, "isArchived");
-    const hasAttachment = Boolean(req.file);
+    const hasAttachments = uploadedFiles.length > 0;
 
-    if (!hasInstructions && !hasArchiveState && !hasAttachment) {
-      return res.status(400).json({ message: "Provide assignment instructions, an attachment, or archive state to update." });
+    if (!hasInstructions && !hasArchiveState && !hasAttachments) {
+      return res.status(400).json({ message: "Provide assignment instructions, attachments, or archive state to update." });
     }
     if (hasInstructions && (typeof req.body.instructions !== "string" || !req.body.instructions.trim())) {
       return res.status(400).json({ message: "Assignment instructions cannot be empty." });
@@ -12913,7 +13114,7 @@ app.patch("/api/assignments/:assignment_id", requireSession, optionalFileUpload,
     }
 
     const [assignmentRows] = await pool.query(
-      "SELECT teacher_id, attachment_url FROM assignments WHERE assignment_id = ? LIMIT 1",
+      "SELECT teacher_id, attachment_url, attachment_name FROM assignments WHERE assignment_id = ? LIMIT 1",
       [assignment_id]
     );
     const assignment = assignmentRows[0];
@@ -12938,39 +13139,67 @@ app.patch("/api/assignments/:assignment_id", requireSession, optionalFileUpload,
       updates.push("is_archived = ?");
       values.push(req.body.isArchived ? 1 : 0);
     }
-    if (hasAttachment) {
+    if (hasAttachments) {
       updates.push("attachment_url = ?", "attachment_name = ?");
-      values.push(uploadedAttachmentUrl, req.file.originalname);
+      values.push(uploadedFiles[0].url, uploadedFiles[0].name);
     }
 
-    await pool.query(
+    const oldFiles = hasAttachments
+      ? await getOwnerUploadFiles(
+          assignment_id,
+          "assignment",
+          assignment_id,
+          assignment.attachment_url,
+          assignment.attachment_name
+        )
+      : [];
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    transactionStarted = true;
+    await conn.query(
       `UPDATE assignments SET ${updates.join(", ")} WHERE assignment_id = ?`,
       [...values, assignment_id]
     );
-    attachmentSaved = hasAttachment;
-    if (hasAttachment && assignment.attachment_url) {
-      removeUploadedFile(assignment.attachment_url);
+    if (hasAttachments) {
+      await conn.query(
+        `DELETE FROM assignment_upload_files
+         WHERE assignment_id = ? AND owner_type = 'assignment' AND owner_id = ?`,
+        [assignment_id, assignment_id]
+      );
+      await insertUploadFiles(conn, assignment_id, "assignment", assignment_id, uploadedFiles);
     }
+    await conn.commit();
+    transactionStarted = false;
+    uploadsSaved = true;
+    oldFiles.forEach((file) => removeUploadedFile(file.url));
 
     const [rows] = await pool.query(
       `${assignmentSelect} WHERE a.assignment_id = ? LIMIT 1`,
       [assignment_id]
     );
+    const [assignmentWithFiles] = await addUploadFiles(
+      [decryptFields(rows[0], ["instructions", "description", "comments", "feedback"])],
+      "assignment",
+      "id",
+      "attachmentUrl",
+      "attachmentName",
+      "attachmentFiles"
+    );
     res.json({
-      assignment: decryptFields(rows[0], ["instructions", "description", "comments", "feedback"]),
+      assignment: assignmentWithFiles,
       message: hasArchiveState
         ? (req.body.isArchived ? "Assignment archived." : "Assignment restored.")
-        : hasAttachment
-          ? "Assignment instructions and attachment updated."
+        : hasAttachments
+          ? "Assignment instructions and attachments updated."
           : "Assignment instructions updated.",
     });
   } catch (err) {
+    if (transactionStarted) await conn.rollback();
     console.error("PATCH /api/assignments/:assignment_id error:", err);
     res.status(500).json({ message: "Could not update the assignment." });
   } finally {
-    if (uploadedAttachmentUrl && !attachmentSaved) {
-      removeUploadedFile(uploadedAttachmentUrl);
-    }
+    conn?.release();
+    if (!uploadsSaved) removeRequestUploadFiles(req);
   }
 });
 
@@ -12984,6 +13213,28 @@ app.post("/api/assignment-attachments/link", requireSession, async (req, res) =>
     const { url } = req.body || {};
     if (!url) {
       return res.status(400).json({ message: "A file url is required" });
+    }
+
+    const [uploadRows] = await pool.query(
+      `SELECT file_id, assignment_id, file_name
+       FROM assignment_upload_files
+       WHERE file_url = ? AND owner_type = 'assignment'
+       LIMIT 1`,
+      [url]
+    );
+    const uploadedAttachment = uploadRows[0];
+    if (uploadedAttachment) {
+      if (!(await sessionMayReadAssignment(req, uploadedAttachment.assignment_id))) {
+        return res.status(403).json({ message: "You can only open files on your own assignments." });
+      }
+
+      return res.json(
+        fileLinkResponse(req, {
+          kind: "assignment-upload",
+          id: uploadedAttachment.file_id,
+          filename: uploadedAttachment.file_name || "Attachment",
+        })
+      );
     }
 
     const [rows] = await pool.query(
@@ -13025,6 +13276,28 @@ app.post("/api/submission-files/link", requireSession, async (req, res) => {
     const { url } = req.body || {};
     if (!url) {
       return res.status(400).json({ message: "A file url is required" });
+    }
+
+    const [uploadRows] = await pool.query(
+      `SELECT file_id, assignment_id, file_name
+       FROM assignment_upload_files
+       WHERE file_url = ? AND owner_type IN ('submission', 'history')
+       LIMIT 1`,
+      [url]
+    );
+    const uploadedSubmissionFile = uploadRows[0];
+    if (uploadedSubmissionFile) {
+      if (!(await sessionMayReadAssignment(req, uploadedSubmissionFile.assignment_id))) {
+        return res.status(403).json({ message: "You can only open submitted work on your own assignments." });
+      }
+
+      return res.json(
+        fileLinkResponse(req, {
+          kind: "assignment-upload",
+          id: uploadedSubmissionFile.file_id,
+          filename: uploadedSubmissionFile.file_name || fileNameFromStoredUrl(url) || "Submission",
+        })
+      );
     }
 
     const [rows] = await pool.query(
@@ -13126,7 +13399,17 @@ app.get("/f/:token/:filename", async (req, res) => {
 
   let storedUrl;
   let storedName;
-  if (link.kind === "assignment") {
+  if (link.kind === "assignment-upload") {
+    const [rows] = await pool.query(
+      `SELECT file_url, file_name
+       FROM assignment_upload_files
+       WHERE file_id = ?
+       LIMIT 1`,
+      [link.id]
+    );
+    storedUrl = rows[0]?.file_url;
+    storedName = rows[0]?.file_name;
+  } else if (link.kind === "assignment") {
     const [rows] = await pool.query(
       `SELECT attachment_url, attachment_name
        FROM assignments
@@ -13250,7 +13533,24 @@ app.delete("/api/assignments/:assignment_id", requireSession, async (req, res) =
        WHERE assignment_id = ?`,
       [assignment_id]
     );
-    const submissionFiles = submissionRows.map((row) => row.file_url).filter(Boolean);
+    const [historyRows] = await conn.query(
+      `SELECT file_url
+       FROM submission_history
+       WHERE assignment_id = ?`,
+      [assignment_id]
+    );
+    const [uploadRows] = await conn.query(
+      `SELECT file_url
+       FROM assignment_upload_files
+       WHERE assignment_id = ?`,
+      [assignment_id]
+    );
+    const filesToRemove = new Set([
+      assignment.attachment_url,
+      ...submissionRows.map((row) => row.file_url),
+      ...historyRows.map((row) => row.file_url),
+      ...uploadRows.map((row) => row.file_url),
+    ].filter(Boolean));
 
     await conn.beginTransaction();
     transactionStarted = true;
@@ -13268,6 +13568,10 @@ app.delete("/api/assignments/:assignment_id", requireSession, async (req, res) =
       "DELETE FROM assignment_submissions WHERE assignment_id = ?",
       [assignment_id]
     );
+    await conn.query(
+      "DELETE FROM assignment_upload_files WHERE assignment_id = ?",
+      [assignment_id]
+    );
 
     await conn.query("DELETE FROM assignments WHERE assignment_id = ?", [assignment_id]);
 
@@ -13276,8 +13580,7 @@ app.delete("/api/assignments/:assignment_id", requireSession, async (req, res) =
 
     // Only after the rows are gone, so a failure here cannot leave the database
     // pointing at a file that no longer exists.
-    removeUploadedFile(assignment.attachment_url);
-    submissionFiles.forEach(removeUploadedFile);
+    filesToRemove.forEach(removeUploadedFile);
 
     res.json({
       message: "Assignment deleted",
@@ -13296,6 +13599,10 @@ app.delete("/api/assignments/:assignment_id", requireSession, async (req, res) =
 });
 
 app.post("/api/assignments", requireSession, optionalFileUpload, async (req, res) => {
+  const uploadedFiles = storedUploadFiles(req);
+  let uploadsSaved = uploadedFiles.length === 0;
+  let conn;
+  let transactionStarted = false;
   try {
     const {
       teacherId,
@@ -13331,10 +13638,9 @@ app.post("/api/assignments", requireSession, optionalFileUpload, async (req, res
     // actually put in the uploads folder, so trusting a URL sent alongside it
     // would let a caller point an assignment at somebody else's file, or at
     // nothing at all after a successful upload.
-    const uploadedAttachmentUrl = uploadedFileUrl(req, req.file);
-    const resolvedAttachmentUrl = uploadedAttachmentUrl ?? attachmentUrl ?? attachment_url ?? null;
+    const resolvedAttachmentUrl = uploadedFiles[0]?.url ?? attachmentUrl ?? attachment_url ?? null;
     const resolvedAttachmentName = (
-      uploadedAttachmentUrl ? req.file.originalname : attachmentName ?? attachment_name
+      uploadedFiles[0]?.name ?? attachmentName ?? attachment_name
     ) || null;
 
     if (!resolvedTeacherId || !resolvedStudentId || !assignmentTitle || !assignmentInstructions) {
@@ -13366,7 +13672,10 @@ app.post("/api/assignments", requireSession, optionalFileUpload, async (req, res
       resolvedCourseId = profileRows[0]?.course_id ?? null;
     }
 
-    const [result] = await pool.query(
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    transactionStarted = true;
+    const [result] = await conn.query(
       `INSERT INTO assignments (teacher_id, student_id, course_id, title, instructions, due_date, due_time, attempt_limit, attachment_url, attachment_name)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -13382,6 +13691,12 @@ app.post("/api/assignments", requireSession, optionalFileUpload, async (req, res
         resolvedAttachmentName,
       ]
     );
+    if (uploadedFiles.length) {
+      await insertUploadFiles(conn, result.insertId, "assignment", result.insertId, uploadedFiles);
+    }
+    await conn.commit();
+    transactionStarted = false;
+    uploadsSaved = true;
 
     await pool.query(
       `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
@@ -13400,9 +13715,18 @@ app.post("/api/assignments", requireSession, optionalFileUpload, async (req, res
        LIMIT 1`,
       [result.insertId]
     );
+    const [assignmentWithFiles] = await addUploadFiles(
+      [decryptFields(rows[0], ["instructions", "description", "comments", "feedback"])],
+      "assignment",
+      "id",
+      "attachmentUrl",
+      "attachmentName",
+      "attachmentFiles"
+    );
 
-    res.status(201).json({ assignment: decryptFields(rows[0], ["instructions", "description", "comments", "feedback"]), message: "Assignment created" });
+    res.status(201).json({ assignment: assignmentWithFiles, message: "Assignment created" });
   } catch (err) {
+    if (transactionStarted) await conn.rollback();
     // Same reasoning as the advisor routes: a bare "Error creating assignment"
     // cannot be told apart from a missing column, a bad request, or a database
     // outage without reading the Railway log. The message is not secret, so it
@@ -13412,11 +13736,16 @@ app.post("/api/assignments", requireSession, optionalFileUpload, async (req, res
       message: "Error creating assignment",
       ...(process.env.NODE_ENV !== "production" ? { error: err.message } : {}),
     });
+  } finally {
+    conn?.release();
+    if (!uploadsSaved) removeRequestUploadFiles(req);
   }
 });
 
 app.post("/api/assignments/:assignment_id/submissions", requireSession, optionalFileUpload, async (req, res) => {
   const conn = await pool.getConnection();
+  const uploadedFiles = storedUploadFiles(req);
+  let uploadsSaved = uploadedFiles.length === 0;
   let transactionStarted = false;
   try {
     const { assignment_id } = req.params;
@@ -13425,13 +13754,12 @@ app.post("/api/assignments/:assignment_id/submissions", requireSession, optional
     // someone's behalf. Ignores a forged studentId in the body.
     const resolvedStudentId = sessionIdentity(req).studentId ?? studentId ?? student_id;
     const text = (submissionText ?? comments ?? "").trim();
-    const uploadedFile = uploadedFileUrl(req, req.file);
-    const finalFileUrl = uploadedFile ?? fileUrl ?? file_url ?? null;
+    const finalFileUrl = uploadedFiles[0]?.url ?? fileUrl ?? file_url ?? null;
     // Only from the upload: a body-supplied URL has no trustworthy name behind
     // it, and inventing one would put a wrong title in the teacher's tab.
-    const finalFileName = uploadedFile ? req.file.originalname : null;
+    const finalFileName = uploadedFiles[0]?.name ?? null;
 
-    if (!resolvedStudentId || (!text && !finalFileUrl)) {
+    if (!resolvedStudentId || (!text && !finalFileUrl && !uploadedFiles.length)) {
       return res.status(400).json({ message: "Student and submission text or file are required" });
     }
 
@@ -13488,10 +13816,29 @@ app.post("/api/assignments/:assignment_id/submissions", requireSession, optional
     // Archive the current submission into history before it gets overwritten.
     if (existingSubmissionRows.length > 0) {
       const prev = existingSubmissionRows[0];
-      await conn.query(
+      const [previousFiles] = await conn.query(
+        `SELECT file_url, file_name
+         FROM assignment_upload_files
+         WHERE assignment_id = ? AND owner_type = 'submission' AND owner_id = ?
+         ORDER BY file_id`,
+        [assignment_id, prev.submission_id]
+      );
+      const filesToArchive = previousFiles.length
+        ? previousFiles
+        : prev.file_url
+          ? [{ file_url: prev.file_url, file_name: prev.file_name || fileNameFromStoredUrl(prev.file_url) }]
+          : [];
+      const [historyResult] = await conn.query(
         `INSERT INTO submission_history (assignment_id, student_id, submission_text, file_url, file_name, submitted_at, attempt_count)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [assignment_id, resolvedStudentId, prev.submission_text, prev.file_url, prev.file_name, prev.submitted_at, prev.attempt_count]
+      );
+      await insertUploadFiles(
+        conn,
+        assignment_id,
+        "history",
+        historyResult.insertId,
+        filesToArchive.map((file) => ({ url: file.file_url, name: file.file_name }))
       );
     }
 
@@ -13508,6 +13855,15 @@ app.post("/api/assignments/:assignment_id/submissions", requireSession, optional
                                graded_at = NULL`,
       [assignment_id, resolvedStudentId, encryptNullableText(text || null), finalFileUrl, finalFileName]
     );
+    const submissionId = existingSubmissionRows[0]?.submission_id ?? result.insertId;
+    if (existingSubmissionRows.length) {
+      await conn.query(
+        `DELETE FROM assignment_upload_files
+         WHERE assignment_id = ? AND owner_type = 'submission' AND owner_id = ?`,
+        [assignment_id, submissionId]
+      );
+    }
+    await insertUploadFiles(conn, assignment_id, "submission", submissionId, uploadedFiles);
 
     await conn.query(
       `UPDATE assignments SET status = 'submitted' WHERE assignment_id = ?`,
@@ -13527,6 +13883,7 @@ app.post("/api/assignments/:assignment_id/submissions", requireSession, optional
 
     await conn.commit();
     transactionStarted = false;
+    uploadsSaved = true;
 
     const [rows] = await conn.query(
       `${submissionSelect}
@@ -13535,7 +13892,15 @@ app.post("/api/assignments/:assignment_id/submissions", requireSession, optional
       [assignment_id, resolvedStudentId]
     );
 
-    res.status(result.insertId ? 201 : 200).json({ submission: decryptFields(rows[0], ["comments", "feedback"]), message: "Assignment submitted" });
+    const [submission] = await addUploadFiles(
+      [decryptFields(rows[0], ["comments", "feedback"])],
+      "submission",
+      "id",
+      "fileUrl",
+      "fileName",
+      "submissionFiles"
+    );
+    res.status(result.insertId ? 201 : 200).json({ submission, message: "Assignment submitted" });
   } catch (err) {
     if (transactionStarted) {
       await conn.rollback();
@@ -13547,17 +13912,19 @@ app.post("/api/assignments/:assignment_id/submissions", requireSession, optional
     });
   } finally {
     conn.release();
+    if (!uploadsSaved) removeRequestUploadFiles(req);
   }
 });
 
 app.patch("/api/assignments/:assignment_id/submission", requireSession, optionalFileUpload, async (req, res) => {
   const conn = await pool.getConnection();
+  const uploadedFiles = storedUploadFiles(req);
+  let uploadsSaved = uploadedFiles.length === 0;
   let transactionStarted = false;
   try {
     const { assignment_id } = req.params;
     const studentId = sessionIdentity(req).studentId;
     const text = String(req.body?.submissionText ?? "").trim();
-    const uploadedFile = uploadedFileUrl(req, req.file);
 
     if (!studentId) {
       return res.status(403).json({ message: "Only the assigned student can edit this submission." });
@@ -13605,12 +13972,27 @@ app.patch("/api/assignments/:assignment_id/submission", requireSession, optional
       await conn.rollback();
       return res.status(404).json({ message: "No submission found to edit." });
     }
-    if (!text && !uploadedFile && !existingSubmission.file_url) {
+    if (!text && !uploadedFiles.length && !existingSubmission.file_url) {
       await conn.rollback();
       return res.status(400).json({ message: "Please provide an answer or attach a file." });
     }
 
-    await conn.query(
+    const [currentFiles] = await conn.query(
+      `SELECT file_url, file_name
+       FROM assignment_upload_files
+       WHERE assignment_id = ? AND owner_type = 'submission' AND owner_id = ?
+       ORDER BY file_id`,
+      [assignment_id, existingSubmission.submission_id]
+    );
+    const filesToArchive = currentFiles.length
+      ? currentFiles
+      : existingSubmission.file_url
+        ? [{
+            file_url: existingSubmission.file_url,
+            file_name: existingSubmission.file_name || fileNameFromStoredUrl(existingSubmission.file_url),
+          }]
+        : [];
+    const [historyResult] = await conn.query(
       `INSERT INTO submission_history
          (assignment_id, student_id, submission_text, file_url, file_name, submitted_at, attempt_count)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -13623,6 +14005,13 @@ app.patch("/api/assignments/:assignment_id/submission", requireSession, optional
         existingSubmission.submitted_at,
         existingSubmission.attempt_count,
       ]
+    );
+    await insertUploadFiles(
+      conn,
+      assignment_id,
+      "history",
+      historyResult.insertId,
+      filesToArchive.map((file) => ({ url: file.file_url, name: file.file_name }))
     );
 
     await conn.query(
@@ -13637,15 +14026,30 @@ app.patch("/api/assignments/:assignment_id/submission", requireSession, optional
        WHERE submission_id = ?`,
       [
         encryptNullableText(text || null),
-        uploadedFile,
-        uploadedFile,
-        uploadedFile ? req.file.originalname : null,
+        uploadedFiles[0]?.url ?? null,
+        uploadedFiles[0]?.url ?? null,
+        uploadedFiles[0]?.name ?? null,
         existingSubmission.submission_id,
       ]
     );
+    if (uploadedFiles.length) {
+      await conn.query(
+        `DELETE FROM assignment_upload_files
+         WHERE assignment_id = ? AND owner_type = 'submission' AND owner_id = ?`,
+        [assignment_id, existingSubmission.submission_id]
+      );
+      await insertUploadFiles(
+        conn,
+        assignment_id,
+        "submission",
+        existingSubmission.submission_id,
+        uploadedFiles
+      );
+    }
 
     await conn.commit();
     transactionStarted = false;
+    uploadsSaved = true;
 
     const [rows] = await conn.query(
       `${submissionSelect}
@@ -13653,8 +14057,16 @@ app.patch("/api/assignments/:assignment_id/submission", requireSession, optional
        LIMIT 1`,
       [assignment_id, studentId]
     );
+    const [submission] = await addUploadFiles(
+      [decryptFields(rows[0], ["comments", "feedback"])],
+      "submission",
+      "id",
+      "fileUrl",
+      "fileName",
+      "submissionFiles"
+    );
     res.json({
-      submission: decryptFields(rows[0], ["comments", "feedback"]),
+      submission,
       message: "Submission updated",
     });
   } catch (err) {
@@ -13668,6 +14080,7 @@ app.patch("/api/assignments/:assignment_id/submission", requireSession, optional
     });
   } finally {
     conn.release();
+    if (!uploadsSaved) removeRequestUploadFiles(req);
   }
 });
 
@@ -13688,7 +14101,17 @@ app.get("/api/assignments/:assignment_id/submission-history", requireSession, as
       [assignment_id, sessionIdentity(req).studentId]
     );
 
-    res.json({ history: decryptRows(rows, ["submission_text"]) });
+    const history = decryptRows(rows, ["submission_text"]);
+    res.json({
+      history: await addUploadFiles(
+        history,
+        "history",
+        "history_id",
+        "file_url",
+        "file_name",
+        "files"
+      ),
+    });
   } catch (err) {
     console.error("GET /api/assignments/:assignment_id/submission-history error:", err);
     res.status(500).json({ message: "Error fetching submission history" });

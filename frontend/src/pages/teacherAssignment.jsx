@@ -13,6 +13,12 @@ import {
   openSubmissionFile,
   useAuthenticatedFileUrl,
 } from "../utils/authenticatedFile.js";
+import {
+  getAssignmentUploadError,
+  MAX_ASSIGNMENT_FILES,
+  MAX_ASSIGNMENT_FILE_BYTES,
+  MAX_ASSIGNMENT_TOTAL_BYTES,
+} from "../../../shared/assignmentUploadLimits.js";
 
 const API = API_BASE_URL;
 
@@ -65,6 +71,24 @@ function getSubmissionFileName(url) {
   return decodeURIComponent(String(url).split("/").pop() || "Submitted file");
 }
 
+function getAssignmentFiles(assignment) {
+  if (Array.isArray(assignment?.attachmentFiles) && assignment.attachmentFiles.length) {
+    return assignment.attachmentFiles;
+  }
+  return assignment?.attachmentUrl
+    ? [{ url: assignment.attachmentUrl, name: assignment.attachmentName }]
+    : [];
+}
+
+function getSubmissionFiles(submission) {
+  if (Array.isArray(submission?.submissionFiles) && submission.submissionFiles.length) {
+    return submission.submissionFiles;
+  }
+  return submission?.fileUrl
+    ? [{ url: submission.fileUrl, name: submission.fileName }]
+    : [];
+}
+
 // Rendered through the session token rather than a plain URL: these are
 // <img>/<video>/<iframe> sources, which cannot send an Authorization header.
 // The file is fetched with the header and handed over as a blob: URL.
@@ -109,7 +133,7 @@ function SubmissionPreview({ url }) {
   );
 }
 
-function SubmissionFile({ url }) {
+function SubmissionFile({ url, name }) {
   // Reported rather than swallowed: the realistic failure here is a blocked
   // pop-up, and without this the click looks like it did nothing at all.
   const { notify } = useNotification() || {};
@@ -120,7 +144,7 @@ function SubmissionFile({ url }) {
       <div className={styles.submissionFileHeading}>
         <div>
           <span className={styles.submissionLabel}>Submitted file</span>
-          <p className={styles.fileName}>{getSubmissionFileName(url)}</p>
+          <p className={styles.fileName}>{name || getSubmissionFileName(url)}</p>
         </div>
         <button
           type="button"
@@ -151,7 +175,9 @@ export default function AssignTask() {
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [due, setDue] = useState("");
   const [instructions, setInstructions] = useState("");
-  const [attachmentFile, setAttachmentFile] = useState(null);
+  const [attachmentFiles, setAttachmentFiles] = useState([]);
+  const [editedAttachmentFiles, setEditedAttachmentFiles] = useState([]);
+  const [attachmentError, setAttachmentError] = useState("");
   const [hasAttemptLimit, setHasAttemptLimit] = useState(false);
   const [attemptLimit, setAttemptLimit] = useState("1");
   const [activeTab, setActiveTab] = useState("assign");
@@ -163,7 +189,6 @@ export default function AssignTask() {
   const [confirmAction, setConfirmAction] = useState(null);
   const [editingAssignment, setEditingAssignment] = useState(null);
   const [editedInstructions, setEditedInstructions] = useState("");
-  const [editedAttachmentFile, setEditedAttachmentFile] = useState(null);
   const [isSavingInstructions, setIsSavingInstructions] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -179,7 +204,16 @@ export default function AssignTask() {
       return;
     }
     const selectedStudentName = selectedStudent?.name || "selected student";
-    const attachmentNote = attachmentFile ? ` with the attached file "${attachmentFile.name}"` : "";
+    const uploadError = getAssignmentUploadError(attachmentFiles);
+    if (uploadError) {
+      setAttachmentError(uploadError);
+      notify?.(uploadError, "error");
+      return;
+    }
+
+    const attachmentNote = attachmentFiles.length
+      ? ` with ${attachmentFiles.length} attached file${attachmentFiles.length === 1 ? "" : "s"}`
+      : "";
     setConfirmAction({
       type: "create-assignment",
       title: `Give assignment to ${selectedStudentName}?`,
@@ -202,9 +236,7 @@ export default function AssignTask() {
       formData.append("instructions", instructions);
       formData.append("due", due);
       formData.append("attemptLimit", hasAttemptLimit ? Number(attemptLimit) : "");
-      if (attachmentFile) {
-        formData.append("file", attachmentFile, attachmentFile.name);
-      }
+      attachmentFiles.forEach((file) => formData.append("files", file, file.name));
 
       const res = await apiFetch(`${API}/api/assignments`, {
         method: "POST",
@@ -237,7 +269,8 @@ export default function AssignTask() {
       setDue("");
       setHasAttemptLimit(false);
       setAttemptLimit("1");
-      setAttachmentFile(null);
+      setAttachmentFiles([]);
+      setAttachmentError("");
       // Cleared directly rather than via a controlled input: the element is
       // uncontrolled, so React will not reset the visible file name on its own.
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -260,17 +293,25 @@ export default function AssignTask() {
     });
   };
 
-  const updateAssignment = async (assignment, changes, file = null) => {
+  const updateAssignment = async (assignment, changes, files = []) => {
+    const selectedFiles = Array.isArray(files) ? files : files ? [files] : [];
+    const uploadError = getAssignmentUploadError(selectedFiles);
+    if (uploadError) {
+      setAttachmentError(uploadError);
+      notify?.(uploadError, "error");
+      return null;
+    }
+
     try {
-      const body = file ? new FormData() : JSON.stringify(changes);
-      if (file) {
+      const body = selectedFiles.length ? new FormData() : JSON.stringify(changes);
+      if (selectedFiles.length) {
         Object.entries(changes).forEach(([key, value]) => body.append(key, String(value)));
-        body.append("file", file, file.name);
+        selectedFiles.forEach((file) => body.append("files", file, file.name));
       }
 
       const res = await apiFetch(`${API}/api/assignments/${assignment.id}`, {
         method: "PATCH",
-        ...(file ? {} : { headers: { "Content-Type": "application/json" } }),
+        ...(selectedFiles.length ? {} : { headers: { "Content-Type": "application/json" } }),
         body,
       });
 
@@ -323,12 +364,13 @@ export default function AssignTask() {
     setIsSavingInstructions(true);
     const updated = await updateAssignment(editingAssignment, {
       instructions: editedInstructions.trim(),
-    }, editedAttachmentFile);
+    }, editedAttachmentFiles);
     setIsSavingInstructions(false);
     if (updated) {
       setEditingAssignment(null);
       setEditedInstructions("");
-      setEditedAttachmentFile(null);
+      setEditedAttachmentFiles([]);
+      setAttachmentError("");
     }
   };
 
@@ -621,19 +663,30 @@ export default function AssignTask() {
                       />
                       <div className={styles.Attachment}>
                         <label htmlFor="attachment" className={styles.label}>
-                          <b>Attach a file (optional):</b>
+                          <b>Attach files (optional):</b>
                         </label>
                         <input
                           id="attachment"
                           ref={fileInputRef}
                           type="file"
+                          multiple
                           className={styles.fileInput}
-                          onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)}
+                          onChange={(event) => {
+                            const files = Array.from(event.target.files || []);
+                            setAttachmentFiles(files);
+                            setAttachmentError(getAssignmentUploadError(files));
+                          }}
                         />
-                        {attachmentFile ? (
-                          <p className={styles.fileInfo}>
-                            Attached: {attachmentFile.name}
-                          </p>
+                        <p className={styles.fileInfo}>
+                          Up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
+                        </p>
+                        {attachmentFiles.length ? (
+                          <ul className={styles.fileInfo}>
+                            {attachmentFiles.map((file) => <li key={`${file.name}-${file.size}`}>{file.name}</li>)}
+                          </ul>
+                        ) : null}
+                        {attachmentError ? (
+                          <p className={styles.uploadError} role="alert">{attachmentError}</p>
                         ) : null}
                       </div>
                       <button type="button" className={styles.submitComment} onClick={onSubmit}>
@@ -672,12 +725,12 @@ export default function AssignTask() {
                             <p className={styles.postedInstructions}>
                               {assignment.instructions || "No instructions provided."}
                             </p>
-                            {assignment.attachmentName ? (
-                              <p className={styles.fileInfo}>
+                            {getAssignmentFiles(assignment).map((file) => (
+                              <p className={styles.fileInfo} key={file.id ?? file.url}>
                                 <i className="bi bi-paperclip" aria-hidden="true" />{" "}
-                                {assignment.attachmentName}
+                                {file.name || getSubmissionFileName(file.url)}
                               </p>
-                            ) : null}
+                            ))}
                           </div>
                           <div className={styles.postedActions}>
                             <button
@@ -686,7 +739,8 @@ export default function AssignTask() {
                               onClick={() => {
                                 setEditingAssignment(assignment);
                                 setEditedInstructions(assignment.instructions || "");
-                                setEditedAttachmentFile(null);
+                                setEditedAttachmentFiles([]);
+                                setAttachmentError("");
                               }}
                             >
                               Edit instructions
@@ -769,10 +823,16 @@ export default function AssignTask() {
                                 </p>
                               </div>
 
-                              {item.fileUrl ? (
+                              {getSubmissionFiles(item).length ? (
                                 <div className={styles.submissionBlock}>
-                                  <span className={styles.submissionLabel}>Attachment</span>
-                                  {<SubmissionFile url={item.fileUrl} />}
+                                  <span className={styles.submissionLabel}>Attachments</span>
+                                  {getSubmissionFiles(item).map((file) => (
+                                    <SubmissionFile
+                                      key={file.id ?? file.url}
+                                      url={file.url}
+                                      name={file.name}
+                                    />
+                                  ))}
                                 </div>
                               ) : null}
                             </div>
@@ -822,7 +882,8 @@ export default function AssignTask() {
               if (!isSavingInstructions) {
                 setEditingAssignment(null);
                 setEditedInstructions("");
-                setEditedAttachmentFile(null);
+                setEditedAttachmentFiles([]);
+                setAttachmentError("");
               }
             }}
           >
@@ -840,24 +901,35 @@ export default function AssignTask() {
               />
               <div className={styles.Attachment}>
                 <label className={styles.label} htmlFor="editAssignmentAttachment">
-                  Add or replace attachment (optional)
+                  Replace attachments (optional)
                 </label>
-                {editedAttachmentFile ? (
-                  <p className={styles.fileInfo}>Selected: {editedAttachmentFile.name}</p>
-                ) : editingAssignment.attachmentName ? (
-                  <p className={styles.fileInfo}>
-                    Current attachment: {editingAssignment.attachmentName}
+                {editedAttachmentFiles.length ? (
+                  <ul className={styles.fileInfo}>
+                    {editedAttachmentFiles.map((file) => <li key={`${file.name}-${file.size}`}>{file.name}</li>)}
+                  </ul>
+                ) : getAssignmentFiles(editingAssignment).map((file) => (
+                  <p className={styles.fileInfo} key={file.id ?? file.url}>
+                    Current attachment: {file.name || getSubmissionFileName(file.url)}
                   </p>
-                ) : null}
+                ))}
+                <p className={styles.fileInfo}>
+                  Selecting files replaces the current set; up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
+                </p>
                 <input
                   id="editAssignmentAttachment"
                   type="file"
+                  multiple
                   className={styles.fileInput}
-                  onChange={(event) =>
-                    setEditedAttachmentFile(event.target.files?.[0] ?? null)
-                  }
+                  onChange={(event) => {
+                    const files = Array.from(event.target.files || []);
+                    setEditedAttachmentFiles(files);
+                    setAttachmentError(getAssignmentUploadError(files));
+                  }}
                   disabled={isSavingInstructions}
                 />
+                {attachmentError ? (
+                  <p className={styles.uploadError} role="alert">{attachmentError}</p>
+                ) : null}
               </div>
               <div className={`${styles.confirmActions} ${styles.editAssignmentActions}`}>
                 <button
@@ -866,7 +938,8 @@ export default function AssignTask() {
                   onClick={() => {
                     setEditingAssignment(null);
                     setEditedInstructions("");
-                    setEditedAttachmentFile(null);
+                    setEditedAttachmentFiles([]);
+                    setAttachmentError("");
                   }}
                   disabled={isSavingInstructions}
                 >

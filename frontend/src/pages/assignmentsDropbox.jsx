@@ -15,6 +15,12 @@ import {
 } from "../utils/authenticatedFile.js";
 import { compressFileIfImage } from "../utils/imageCompression.js";
 import ModalPortal from "../utils/ModalPortal.jsx";
+import {
+  getAssignmentUploadError,
+  MAX_ASSIGNMENT_FILES,
+  MAX_ASSIGNMENT_FILE_BYTES,
+  MAX_ASSIGNMENT_TOTAL_BYTES,
+} from "../../../shared/assignmentUploadLimits.js";
 
 const API = API_BASE_URL;
 
@@ -41,12 +47,12 @@ function getFileExtension(url) {
   return clean.includes(".") ? clean.split(".").pop().toLowerCase() : "";
 }
 
-function SubmissionPreview({ fileUrl, storedPath }) {
+function SubmissionPreview({ fileUrl, fileName: providedFileName, storedPath }) {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewError, setPreviewError] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(true);
   const ext = getFileExtension(fileUrl);
-  const fileName = getFileName(fileUrl);
+  const fileName = providedFileName || getFileName(fileUrl);
 
   useEffect(() => {
     let cancelled = false;
@@ -172,6 +178,27 @@ function getAttemptLimit(assignment) {
   return Number.isInteger(limit) && limit > 0 ? limit : null;
 }
 
+function getAssignmentFiles(assignment) {
+  if (Array.isArray(assignment?.attachmentFiles) && assignment.attachmentFiles.length) {
+    return assignment.attachmentFiles;
+  }
+  return assignment?.attachmentUrl
+    ? [{ url: assignment.attachmentUrl, name: assignment.attachmentName }]
+    : [];
+}
+
+function getSubmissionFiles(submission) {
+  const files = submission?.submissionFiles ?? submission?.files;
+  if (Array.isArray(files) && files.length) return files;
+  const fileUrl = submission?.fileUrl ?? submission?.file_url;
+  return fileUrl
+    ? [{
+        url: fileUrl,
+        name: submission.fileName ?? submission.file_name ?? getFileName(fileUrl),
+      }]
+    : [];
+}
+
 function formatSubmissionDate(value) {
   if (!value) return "Date unavailable";
   const date = new Date(String(value).replace(" ", "T"));
@@ -181,7 +208,8 @@ function formatSubmissionDate(value) {
 export default function AssignmentsDropbox() {
   const { notify } = useNotification() || {};
   const [comment, setComment] = useState("");
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [fileUploadError, setFileUploadError] = useState("");
   const [submitMessage, setSubmitMessage] = useState("");
   const [showSubmitConfirmation, setShowSubmitConfirmation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -227,7 +255,8 @@ export default function AssignmentsDropbox() {
     setSubmitMessage("");
     setIsEditingSubmission(false);
     setComment("");
-    setSelectedFile(null);
+    setSelectedFiles([]);
+    setFileUploadError("");
 
     apiFetch(`${API}/api/assignments/${assignmentId}`)
       .then(async (res) => {
@@ -277,20 +306,26 @@ export default function AssignmentsDropbox() {
   };
 
   const submittedAnswer = selectedAssignment?.comments || "";
-  const submittedFileUrl = normalizeFileUrl(selectedAssignment?.fileUrl);
+  const submittedFiles = getSubmissionFiles(selectedAssignment).map((file) => ({
+    ...file,
+    url: normalizeFileUrl(file.url),
+  }));
+  const assignmentFiles = getAssignmentFiles(selectedAssignment);
   const canSubmit = !isAttemptLimitReached && !isAssignmentPastDue();
   const submitButtonLabel = canResubmit ? "Submit Again" : "Submit";
 
   const startEditingSubmission = () => {
     setComment(submittedAnswer);
-    setSelectedFile(null);
+    setSelectedFiles([]);
+    setFileUploadError("");
     setSubmitMessage("");
     setIsEditingSubmission(true);
   };
 
   const cancelEditingSubmission = () => {
     setComment("");
-    setSelectedFile(null);
+    setSelectedFiles([]);
+    setFileUploadError("");
     setSubmitMessage("");
     setIsEditingSubmission(false);
   };
@@ -306,7 +341,19 @@ export default function AssignmentsDropbox() {
       if (!res.ok) {
         throw new Error(data.message || "Could not load submission history.");
       }
-      setSubmissionHistory(Array.isArray(data.history) ? data.history : []);
+      const previousSubmissions = Array.isArray(data.history) ? data.history : [];
+      const currentSubmission = selectedAssignment?.submissionId
+        ? [{
+            history_id: "current-submission",
+            isCurrent: true,
+            submission_text: selectedAssignment.comments,
+            file_url: selectedAssignment.fileUrl,
+            file_name: selectedAssignment.fileName,
+            files: selectedAssignment.submissionFiles,
+            submitted_at: selectedAssignment.submittedAt,
+          }]
+        : [];
+      setSubmissionHistory([...currentSubmission, ...previousSubmissions]);
     } catch (err) {
       console.error("Load assignment submission history error:", err);
       setHistoryError(err.message || "Could not load submission history.");
@@ -316,8 +363,14 @@ export default function AssignmentsDropbox() {
   };
 
   const saveSubmissionEdit = async () => {
-    if (!selectedAssignment || !comment.trim() && !selectedFile && !selectedAssignment.fileUrl) {
+    if (!selectedAssignment || (!comment.trim() && !selectedFiles.length && !submittedFiles.length)) {
       setSubmitMessage("Please write an answer or attach a file before saving.");
+      return;
+    }
+
+    const uploadError = getAssignmentUploadError(selectedFiles);
+    if (uploadError) {
+      setFileUploadError(uploadError);
       return;
     }
 
@@ -330,9 +383,9 @@ export default function AssignmentsDropbox() {
       setIsSubmitting(true);
       const formData = new FormData();
       formData.append("submissionText", comment.trim());
-      if (selectedFile) {
-        const uploadFile = await compressFileIfImage(selectedFile);
-        formData.append("file", uploadFile, uploadFile.name);
+      for (const file of selectedFiles) {
+        const uploadFile = await compressFileIfImage(file);
+        formData.append("files", uploadFile, uploadFile.name);
       }
 
       const res = await apiFetch(`${API}/api/assignments/${selectedAssignment.id}/submission`, {
@@ -350,10 +403,12 @@ export default function AssignmentsDropbox() {
         comments: submission.comments ?? "",
         fileUrl: submission.fileUrl ?? prev.fileUrl,
         fileName: submission.fileName ?? prev.fileName,
+        submissionFiles: submission.submissionFiles ?? prev.submissionFiles,
         submittedAt: submission.submittedAt ?? prev.submittedAt,
       }));
       setIsEditingSubmission(false);
-      setSelectedFile(null);
+      setSelectedFiles([]);
+      setFileUploadError("");
       setSubmitMessage("");
       notify?.("Submission updated!", "success");
     } catch (err) {
@@ -386,8 +441,14 @@ export default function AssignmentsDropbox() {
       return;
     }
 
-    if (!comment.trim() && !selectedFile) {
+    if (!comment.trim() && !selectedFiles.length) {
       setSubmitMessage("Please write an answer or attach a file before submitting.");
+      return;
+    }
+
+    const uploadError = getAssignmentUploadError(selectedFiles);
+    if (uploadError) {
+      setFileUploadError(uploadError);
       return;
     }
 
@@ -398,9 +459,9 @@ export default function AssignmentsDropbox() {
       if (comment.trim()) {
         formData.append("submissionText", comment.trim());
       }
-      if (selectedFile) {
-        const uploadFile = await compressFileIfImage(selectedFile);
-        formData.append("file", uploadFile, uploadFile.name);
+      for (const file of selectedFiles) {
+        const uploadFile = await compressFileIfImage(file);
+        formData.append("files", uploadFile, uploadFile.name);
       }
 
       const res = await apiFetch(`${API}/api/assignments/${selectedAssignment.id}/submissions`, {
@@ -420,13 +481,15 @@ export default function AssignmentsDropbox() {
         comments: submission.comments ?? "",
         fileUrl: submission.fileUrl ?? null,
         fileName: submission.fileName ?? null,
+        submissionFiles: submission.submissionFiles ?? [],
         submittedAt: submission.submittedAt ?? prev.submittedAt,
         attemptsUsed: Number(submission.attemptsUsed ?? submission.attemptCount ?? prev.attemptsUsed ?? 1),
         attemptCount: Number(submission.attemptCount ?? submission.attemptsUsed ?? prev.attemptCount ?? 1),
       }));
       notify?.("Assignment submitted!", "success");
       setComment("");
-      setSelectedFile(null);
+      setSelectedFiles([]);
+      setFileUploadError("");
     } catch (err) {
       console.error("Submit assignment error:", err);
       setSubmitMessage(err.message || "Could not submit assignment.");
@@ -457,8 +520,14 @@ export default function AssignmentsDropbox() {
       return;
     }
 
-    if (!comment.trim() && !selectedFile) {
+    if (!comment.trim() && !selectedFiles.length) {
       setSubmitMessage("Please write an answer or attach a file before submitting.");
+      return;
+    }
+
+    const uploadError = getAssignmentUploadError(selectedFiles);
+    if (uploadError) {
+      setFileUploadError(uploadError);
       return;
     }
 
@@ -532,11 +601,14 @@ export default function AssignmentsDropbox() {
                         </span>
                       ) : null}
                     </div>
-                    <AssignmentAttachment
-                      url={selectedAssignment?.attachmentUrl}
-                      name={selectedAssignment?.attachmentName}
-                      onError={() => notify?.("That file could not be opened. Please try again.", "error")}
-                    />
+                    {assignmentFiles.map((file) => (
+                      <AssignmentAttachment
+                        key={file.id ?? file.url}
+                        url={file.url}
+                        name={file.name}
+                        onError={() => notify?.("That file could not be opened. Please try again.", "error")}
+                      />
+                    ))}
                   </div>
 
                   {canSubmit ? (
@@ -555,16 +627,28 @@ export default function AssignmentsDropbox() {
                       />
                       <label className={styles.fileLabel}>
                         <span className={styles.fileIcon} aria-hidden="true">📎</span>
-                        Attach a file
+                        Attach files
                       </label>
                       <input
                         type="file"
+                        multiple
                         className={styles.fileInput}
-                        onChange={(e) => {
-                          setSelectedFile(e.target.files?.[0] ?? null);
+                        onChange={(event) => {
+                          const files = Array.from(event.target.files || []);
+                          setSelectedFiles(files);
+                          setFileUploadError(getAssignmentUploadError(files));
                           setSubmitMessage("");
                         }}
                       />
+                      <p className={styles.fileInfo}>
+                        Up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
+                      </p>
+                      {selectedFiles.length ? (
+                        <ul className={styles.fileInfo}>
+                          {selectedFiles.map((file) => <li key={`${file.name}-${file.size}`}>{file.name}</li>)}
+                        </ul>
+                      ) : null}
+                      {fileUploadError ? <p className={styles.submitMessage}>{fileUploadError}</p> : null}
                       <div className={styles.editorActions}>
                         <button
                           type="button"
@@ -624,26 +708,39 @@ export default function AssignmentsDropbox() {
                           setSubmitMessage("");
                         }}
                       />
-                      {submittedFileUrl ? (
+                      {submittedFiles.length ? (
                         <p className={styles.editSubmissionFileNote}>
-                          Current attachment: {selectedAssignment.fileName || getFileName(submittedFileUrl)}
-                          {selectedFile ? ` · Replacement selected: ${selectedFile.name}` : ""}
+                          Current attachments: {submittedFiles.map((file) => file.name || getFileName(file.url)).join(", ")}
+                          {selectedFiles.length
+                            ? ` · Replacement selected: ${selectedFiles.map((file) => file.name).join(", ")}`
+                            : ""}
                         </p>
                       ) : null}
                       <label className={styles.fileLabel}>
                         <span className={styles.fileIcon} aria-hidden="true">📎</span>
-                        {submittedFileUrl
-                          ? "Replace attached file (optional; leave blank to keep current file)"
-                          : "Attach a file"}
+                        {submittedFiles.length
+                          ? "Replace attached files (optional; leave blank to keep current files)"
+                          : "Attach files"}
                       </label>
                       <input
                         type="file"
+                        multiple
                         className={styles.fileInput}
                         onChange={(event) => {
-                          setSelectedFile(event.target.files?.[0] ?? null);
+                          const files = Array.from(event.target.files || []);
+                          setSelectedFiles(files);
+                          setFileUploadError(getAssignmentUploadError(files));
                           setSubmitMessage("");
                         }}
                       />
+                      <p className={styles.fileInfo}>
+                        Selecting files replaces the current set; up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
+                      </p>
+                      {selectedFiles.length ? (
+                        <ul className={styles.fileInfo}>
+                          {selectedFiles.map((file) => <li key={`${file.name}-${file.size}`}>{file.name}</li>)}
+                        </ul>
+                      ) : null}
                       <div className={styles.editorActions}>
                         <button
                           type="button"
@@ -680,29 +777,31 @@ export default function AssignmentsDropbox() {
                       <p className={styles.submissionAnswerText}>{submittedAnswer}</p>
                     </div>
                   ) : null}
-                  {!isEditingSubmission && submittedFileUrl ? (
-                    <>
-                      <div className={styles.submittedFileInfo}>
-                        <span className={styles.submittedFileLabel}>SUBMITTED FILE</span>
-                        <p className={styles.submissionFileName}>
-                          {selectedAssignment.fileName || getFileName(submittedFileUrl)}
-                        </p>
-                      </div>
-                      <div className={styles.submissionFileActions}>
-                        <button
-                          type="button"
-                          className={styles.submissionFileButton}
-                          onClick={() =>
-                            openSubmissionFile(submittedFileUrl).catch(() =>
-                              notify?.("That file could not be opened. Please try again.", "error")
-                            )
-                          }
-                        >
-                          Open file
-                        </button>
-                      </div>
-                      <SubmissionPreview fileUrl={submittedFileUrl} />
-                    </>
+                  {!isEditingSubmission && submittedFiles.length ? (
+                    <div className={styles.submittedFileInfo}>
+                      <span className={styles.submittedFileLabel}>SUBMITTED FILES</span>
+                      {submittedFiles.map((file) => (
+                        <div className={styles.submissionFileItem} key={file.id ?? file.url}>
+                          <p className={styles.submissionFileName}>
+                            {file.name || getFileName(file.url)}
+                          </p>
+                          <div className={styles.submissionFileActions}>
+                            <button
+                              type="button"
+                              className={styles.submissionFileButton}
+                              onClick={() =>
+                                openSubmissionFile(file.url).catch(() =>
+                                  notify?.("That file could not be opened. Please try again.", "error")
+                                )
+                              }
+                            >
+                              Open file
+                            </button>
+                          </div>
+                          <SubmissionPreview fileUrl={file.url} fileName={file.name} />
+                        </div>
+                      ))}
+                    </div>
                   ) : null}
 
                 </div>
@@ -790,8 +889,15 @@ export default function AssignmentsDropbox() {
               ) : (
                 <div className={styles.historyList}>
                   {submissionHistory.map((submission, index) => (
-                    <article className={styles.historyEntry} key={submission.history_id}>
-                      <h3>Previous submission {submissionHistory.length - index}</h3>
+                    <article
+                      className={styles.historyEntry}
+                      key={submission.isCurrent ? "current-submission" : submission.history_id}
+                    >
+                      <h3>
+                        {submission.isCurrent
+                          ? "Current submission"
+                          : `Previous submission ${submissionHistory.length - index}`}
+                      </h3>
                       <p className={styles.historyDate}>
                         Submitted {formatSubmissionDate(submission.submitted_at)}
                       </p>
@@ -800,19 +906,20 @@ export default function AssignmentsDropbox() {
                           <p className={styles.submissionAnswerText}>{submission.submission_text}</p>
                         </div>
                       ) : null}
-                      {submission.file_url ? (
+                      {getSubmissionFiles(submission).map((file) => (
                         <button
                           type="button"
                           className={styles.submissionFileButton}
+                          key={file.id ?? file.url}
                           onClick={() =>
-                            openSubmissionFile(submission.file_url).catch(() =>
+                            openSubmissionFile(file.url).catch(() =>
                               notify?.("That file could not be opened. Please try again.", "error")
                             )
                           }
                         >
-                          Open {submission.file_name || getFileName(submission.file_url)}
+                          Open {file.name || getFileName(file.url)}
                         </button>
-                      ) : null}
+                      ))}
                     </article>
                   ))}
                 </div>

@@ -280,6 +280,13 @@
   overflow-wrap: anywhere;
 }
 
+.uploadError {
+  margin: 0;
+  color: #b42318;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
 /* Confirm dialog for posting an assignment.
    Was inline styles with hardcoded hex, which pinned it to one palette. Now
    matches account.module.css, which is the reference the rest of the app's
