@@ -84,7 +84,7 @@ import {
   MAX_ASSIGNMENT_FILES,
   MAX_ASSIGNMENT_FILE_BYTES,
   MAX_ASSIGNMENT_TOTAL_BYTES,
-} from "../shared/assignmentUploadLimits.js";
+} from "./assignmentUploadLimits.js";
 import {
   MailTransportError,
   contactFormRecipient,
