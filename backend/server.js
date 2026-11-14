@@ -563,7 +563,9 @@ const classRecordingUploadDir = path.join(PRIVATE_UPLOAD_ROOT, "class-recordings
 fs.mkdirSync(classRecordingUploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
-  destination: uploadDir,
+  destination: (_req, _file, cb) => {
+    fs.mkdir(uploadDir, { recursive: true }, cb);
+  },
   filename: (req, file, cb) => {
     const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
     cb(null, `${Date.now()}-${safeName}`);
@@ -590,8 +592,32 @@ const optionalFileUpload = (req, res, next) => {
 
   upload.single("file")(req, res, (err) => {
     if (err) {
-      console.error("Upload error:", err);
-      res.status(500).json({ message: "Error uploading file" });
+      console.error("Assignment file upload failed:", {
+        code: err.code || null,
+        message: err.message,
+      });
+
+      if (err.code === "ENOSPC") {
+        res.status(507).json({ message: "The server is out of upload storage. Please contact support." });
+        return;
+      }
+
+      if (["EACCES", "EPERM", "EROFS"].includes(err.code)) {
+        res.status(500).json({ message: "The server cannot save uploaded files. Please contact support." });
+        return;
+      }
+
+      if (err instanceof multer.MulterError) {
+        res.status(400).json({ message: err.message });
+        return;
+      }
+
+      if (err.code === "ENOENT") {
+        res.status(500).json({ message: "The upload folder is unavailable. Please retry the upload." });
+        return;
+      }
+
+      res.status(500).json({ message: "The file could not be uploaded. Please retry the upload." });
       return;
     }
     next();
@@ -1126,6 +1152,27 @@ async function sessionMayReadSubmission(req, submissionId) {
      WHERE s.submission_id = ?
      LIMIT 1`,
     [submissionId]
+  );
+  const submission = rows[0];
+  if (!submission) return false;
+
+  return (
+    String(submission.teacher_id) === String(session.userId) ||
+    String(submission.student_id) === String(session.userId)
+  );
+}
+
+async function sessionMayReadSubmissionHistory(req, historyId) {
+  const session = req.session || {};
+  if (session.role === "admin") return true;
+
+  const [rows] = await pool.query(
+    `SELECT h.student_id, a.teacher_id
+     FROM submission_history h
+     JOIN assignments a ON a.assignment_id = h.assignment_id
+     WHERE h.history_id = ?
+     LIMIT 1`,
+    [historyId]
   );
   const submission = rows[0];
   if (!submission) return false;
@@ -12982,21 +13029,40 @@ app.post("/api/submission-files/link", requireSession, async (req, res) => {
     );
 
     const submission = rows[0];
-    if (!submission) {
+    if (submission) {
+      if (!(await sessionMayReadSubmission(req, submission.submission_id))) {
+        return res.status(403).json({ message: "You can only open submitted work on your own assignments." });
+      }
+
+      return res.json(
+        fileLinkResponse(req, {
+          kind: "submission",
+          id: submission.submission_id,
+          filename: submission.file_name || fileNameFromStoredUrl(url) || "Submission",
+        })
+      );
+    }
+
+    const [historyRows] = await pool.query(
+      `SELECT history_id, file_name
+       FROM submission_history
+       WHERE file_url = ?
+       LIMIT 1`,
+      [url]
+    );
+    const historicalSubmission = historyRows[0];
+    if (!historicalSubmission) {
       return res.status(404).json({ message: "That file is no longer available." });
     }
-    if (!(await sessionMayReadSubmission(req, submission.submission_id))) {
+    if (!(await sessionMayReadSubmissionHistory(req, historicalSubmission.history_id))) {
       return res.status(403).json({ message: "You can only open submitted work on your own assignments." });
     }
 
     res.json(
       fileLinkResponse(req, {
-        kind: "submission",
-        id: submission.submission_id,
-        // file_name is null for work submitted before this column existed. The
-        // stored path still carries the sanitised original as its last segment,
-        // which is a better title than "Submission".
-        filename: submission.file_name || fileNameFromStoredUrl(url) || "Submission",
+        kind: "submission-history",
+        id: historicalSubmission.history_id,
+        filename: historicalSubmission.file_name || fileNameFromStoredUrl(url) || "Submission",
       })
     );
   } catch (err) {
@@ -13063,6 +13129,16 @@ app.get("/f/:token/:filename", async (req, res) => {
     );
     storedUrl = rows[0]?.attachment_url;
     storedName = rows[0]?.attachment_name;
+  } else if (link.kind === "submission-history") {
+    const [rows] = await pool.query(
+      `SELECT file_url, file_name
+       FROM submission_history
+       WHERE history_id = ?
+       LIMIT 1`,
+      [link.id]
+    );
+    storedUrl = rows[0]?.file_url;
+    storedName = rows[0]?.file_name;
   } else {
     const [rows] = await pool.query(
       `SELECT file_url, file_name
@@ -13510,7 +13586,7 @@ app.patch("/api/assignments/:assignment_id/submission", requireSession, optional
     }
 
     const [submissionRows] = await conn.query(
-      `SELECT submission_id, file_url
+      `SELECT submission_id, submission_text, file_url, file_name, submitted_at, attempt_count
        FROM assignment_submissions
        WHERE assignment_id = ? AND student_id = ?
        LIMIT 1
@@ -13526,6 +13602,21 @@ app.patch("/api/assignments/:assignment_id/submission", requireSession, optional
       await conn.rollback();
       return res.status(400).json({ message: "Please provide an answer or attach a file." });
     }
+
+    await conn.query(
+      `INSERT INTO submission_history
+         (assignment_id, student_id, submission_text, file_url, file_name, submitted_at, attempt_count)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        assignment_id,
+        studentId,
+        existingSubmission.submission_text,
+        existingSubmission.file_url,
+        existingSubmission.file_name,
+        existingSubmission.submitted_at,
+        existingSubmission.attempt_count,
+      ]
+    );
 
     await conn.query(
       `UPDATE assignment_submissions

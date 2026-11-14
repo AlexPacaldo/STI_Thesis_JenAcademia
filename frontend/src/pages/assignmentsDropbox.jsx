@@ -172,6 +172,12 @@ function getAttemptLimit(assignment) {
   return Number.isInteger(limit) && limit > 0 ? limit : null;
 }
 
+function formatSubmissionDate(value) {
+  if (!value) return "Date unavailable";
+  const date = new Date(String(value).replace(" ", "T"));
+  return Number.isNaN(date.getTime()) ? "Date unavailable" : date.toLocaleString();
+}
+
 export default function AssignmentsDropbox() {
   const { notify } = useNotification() || {};
   const [comment, setComment] = useState("");
@@ -180,6 +186,10 @@ export default function AssignmentsDropbox() {
   const [showSubmitConfirmation, setShowSubmitConfirmation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditingSubmission, setIsEditingSubmission] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [submissionHistory, setSubmissionHistory] = useState([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState("");
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("instructions");
@@ -283,6 +293,26 @@ export default function AssignmentsDropbox() {
     setSelectedFile(null);
     setSubmitMessage("");
     setIsEditingSubmission(false);
+  };
+
+  const openSubmissionHistory = async () => {
+    setIsHistoryOpen(true);
+    setIsLoadingHistory(true);
+    setHistoryError("");
+
+    try {
+      const res = await apiFetch(`${API}/api/assignments/${selectedAssignment.id}/submission-history`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Could not load submission history.");
+      }
+      setSubmissionHistory(Array.isArray(data.history) ? data.history : []);
+    } catch (err) {
+      console.error("Load assignment submission history error:", err);
+      setHistoryError(err.message || "Could not load submission history.");
+    } finally {
+      setIsLoadingHistory(false);
+    }
   };
 
   const saveSubmissionEdit = async () => {
@@ -560,6 +590,25 @@ export default function AssignmentsDropbox() {
               {hasExistingSubmission ? (
                 <div className={styles.submissionCard}>
                   <h2 className={styles.submissionHead}>Your submission</h2>
+                  <div className={styles.submissionActions}>
+                    {!isEditingSubmission ? (
+                      <button
+                        type="button"
+                        className={styles.editSubmissionButton}
+                        onClick={startEditingSubmission}
+                        disabled={isAssignmentPastDue()}
+                      >
+                        Edit submission
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={styles.editSubmissionButton}
+                      onClick={openSubmissionHistory}
+                    >
+                      Submission history
+                    </button>
+                  </div>
                   {isEditingSubmission ? (
                     <div className={styles.editSubmissionForm}>
                       <label className={styles.editSubmissionLabel} htmlFor="edit-submission-text">
@@ -619,14 +668,6 @@ export default function AssignmentsDropbox() {
                     </div>
                   ) : (
                     <>
-                      <button
-                        type="button"
-                        className={styles.editSubmissionButton}
-                        onClick={startEditingSubmission}
-                        disabled={isAssignmentPastDue()}
-                      >
-                        Edit submission
-                      </button>
                       {isAssignmentPastDue() ? (
                         <p className={styles.editSubmissionNote}>
                           Submissions can no longer be edited after the due date.
@@ -712,6 +753,70 @@ export default function AssignmentsDropbox() {
                   Confirm submission
                 </button>
               </div>
+            </section>
+          </div>
+        </ModalPortal>
+      ) : null}
+      {isHistoryOpen ? (
+        <ModalPortal>
+          <div
+            className={styles.submitConfirmBackdrop}
+            onClick={() => setIsHistoryOpen(false)}
+          >
+            <section
+              className={styles.historyModal}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="submissionHistoryTitle"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className={styles.historyHeader}>
+                <h2 id="submissionHistoryTitle">Submission history</h2>
+                <button
+                  type="button"
+                  className={styles.cancelEditButton}
+                  onClick={() => setIsHistoryOpen(false)}
+                  aria-label="Close submission history"
+                >
+                  Close
+                </button>
+              </div>
+              {isLoadingHistory ? (
+                <p className={styles.historyMessage}>Loading submission history…</p>
+              ) : historyError ? (
+                <p className={styles.historyError} role="alert">{historyError}</p>
+              ) : submissionHistory.length === 0 ? (
+                <p className={styles.historyMessage}>There are no past submissions yet.</p>
+              ) : (
+                <div className={styles.historyList}>
+                  {submissionHistory.map((submission, index) => (
+                    <article className={styles.historyEntry} key={submission.history_id}>
+                      <h3>Previous submission {submissionHistory.length - index}</h3>
+                      <p className={styles.historyDate}>
+                        Submitted {formatSubmissionDate(submission.submitted_at)}
+                      </p>
+                      {submission.submission_text ? (
+                        <div className={styles.submissionAnswerBlock}>
+                          <p className={styles.submissionAnswerText}>{submission.submission_text}</p>
+                        </div>
+                      ) : null}
+                      {submission.file_url ? (
+                        <button
+                          type="button"
+                          className={styles.submissionFileButton}
+                          onClick={() =>
+                            openSubmissionFile(submission.file_url).catch(() =>
+                              notify?.("That file could not be opened. Please try again.", "error")
+                            )
+                          }
+                        >
+                          Open {submission.file_name || getFileName(submission.file_url)}
+                        </button>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              )}
             </section>
           </div>
         </ModalPortal>
