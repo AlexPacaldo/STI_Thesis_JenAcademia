@@ -280,6 +280,56 @@
   overflow-wrap: anywhere;
 }
 
+.selectedFileList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.selectedFileItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(38, 66, 59, 0.14);
+  border-radius: 12px;
+  background: rgba(145, 167, 154, 0.08);
+}
+
+.selectedFileName {
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.removeSelectedFileButton {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  cursor: pointer;
+  border: 1px solid #b42318;
+  border-radius: 10px;
+  background: #fff;
+  color: #b42318;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.removeSelectedFileButton:hover:not(:disabled) {
+  background: #fff3f2;
+}
+
+.removeSelectedFileButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .uploadError {
   margin: 0;
   color: #b42318;

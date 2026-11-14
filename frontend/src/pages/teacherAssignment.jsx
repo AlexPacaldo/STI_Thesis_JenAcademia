@@ -91,6 +91,30 @@ function getSubmissionFiles(submission) {
     : [];
 }
 
+function SelectedAttachmentList({ files, onRemove, disabled = false }) {
+  return (
+    <ul className={styles.selectedFileList}>
+      {files.map((file, index) => (
+        <li
+          className={styles.selectedFileItem}
+          key={`${file.name}-${file.size}-${file.lastModified}-${index}`}
+        >
+          <span className={styles.selectedFileName}>{file.name}</span>
+          <button
+            type="button"
+            className={styles.removeSelectedFileButton}
+            aria-label={`Remove ${file.name}`}
+            onClick={() => onRemove(index)}
+            disabled={disabled}
+          >
+            Remove
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // Rendered through the session token rather than a plain URL: these are
 // <img>/<video>/<iframe> sources, which cannot send an Authorization header.
 // The file is fetched with the header and handed over as a blob: URL.
@@ -198,6 +222,19 @@ export default function AssignTask() {
 
   const currentTeacherId = currentUser.id ?? currentUser.user_id ?? null;
   const teacherName = getUserName(currentUser) || "You";
+
+  const addAttachmentFiles = (files, currentFiles, setFiles, input) => {
+    const nextFiles = [...currentFiles, ...files];
+    setFiles(nextFiles);
+    setAttachmentError(getAssignmentUploadError(nextFiles));
+    if (input) input.value = "";
+  };
+
+  const removeAttachmentFile = (indexToRemove, files, setFiles) => {
+    const nextFiles = files.filter((_, index) => index !== indexToRemove);
+    setFiles(nextFiles);
+    setAttachmentError(getAssignmentUploadError(nextFiles));
+  };
 
   const closeConfirmAction = () => setConfirmAction(null);
   const requestCreateAssignment = () => {
@@ -676,18 +713,23 @@ export default function AssignTask() {
                           className={styles.fileInput}
                           onChange={(event) => {
                             const files = Array.from(event.target.files || []);
-                            setAttachmentFiles(files);
-                            setAttachmentError(getAssignmentUploadError(files));
+                            addAttachmentFiles(files, attachmentFiles, setAttachmentFiles, event.target);
                           }}
                         />
+                        <p className={styles.fileInfo}>
+                          Choose files again to add more. Remove any you do not want before posting.
+                        </p>
                         <p className={styles.fileInfo}>
                           Up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
                         </p>
                         <p className={styles.fileInfo}>{ASSIGNMENT_UPLOAD_TYPE_LABEL}</p>
                         {attachmentFiles.length ? (
-                          <ul className={styles.fileInfo}>
-                            {attachmentFiles.map((file) => <li key={`${file.name}-${file.size}`}>{file.name}</li>)}
-                          </ul>
+                          <SelectedAttachmentList
+                            files={attachmentFiles}
+                            onRemove={(index) =>
+                              removeAttachmentFile(index, attachmentFiles, setAttachmentFiles)
+                            }
+                          />
                         ) : null}
                         {attachmentError ? (
                           <p className={styles.uploadError} role="alert">{attachmentError}</p>
@@ -905,19 +947,23 @@ export default function AssignTask() {
               />
               <div className={styles.Attachment}>
                 <label className={styles.label} htmlFor="editAssignmentAttachment">
-                  Replace attachments (optional)
+                  Update attachments (optional)
                 </label>
                 {editedAttachmentFiles.length ? (
-                  <ul className={styles.fileInfo}>
-                    {editedAttachmentFiles.map((file) => <li key={`${file.name}-${file.size}`}>{file.name}</li>)}
-                  </ul>
+                  <SelectedAttachmentList
+                    files={editedAttachmentFiles}
+                    onRemove={(index) =>
+                      removeAttachmentFile(index, editedAttachmentFiles, setEditedAttachmentFiles)
+                    }
+                    disabled={isSavingInstructions}
+                  />
                 ) : getAssignmentFiles(editingAssignment).map((file) => (
                   <p className={styles.fileInfo} key={file.id ?? file.url}>
                     Current attachment: {file.name || getSubmissionFileName(file.url)}
                   </p>
                 ))}
                 <p className={styles.fileInfo}>
-                  Selecting files replaces the current set; up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
+                  Additional selections are added to this list. Saving selected files replaces the current set; up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
                 </p>
                 <p className={styles.fileInfo}>{ASSIGNMENT_UPLOAD_TYPE_LABEL}</p>
                 <input
@@ -928,8 +974,12 @@ export default function AssignTask() {
                   className={styles.fileInput}
                   onChange={(event) => {
                     const files = Array.from(event.target.files || []);
-                    setEditedAttachmentFiles(files);
-                    setAttachmentError(getAssignmentUploadError(files));
+                    addAttachmentFiles(
+                      files,
+                      editedAttachmentFiles,
+                      setEditedAttachmentFiles,
+                      event.target
+                    );
                   }}
                   disabled={isSavingInstructions}
                 />
