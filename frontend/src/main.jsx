@@ -29,7 +29,7 @@ const TeacherBooksLessons = lazy(() => import("./pages/teacherBooksLessons.jsx")
 const Calendar = lazy(() => import("./pages/Calendar.jsx"));
 
 function Page({ children }) {
-  return <Suspense fallback={null}>{children}</Suspense>;
+  return <Suspense fallback={<div role="status" style={{ padding: 24 }}>Loading page…</div>}>{children}</Suspense>;
 }
 
 const router = createBrowserRouter([

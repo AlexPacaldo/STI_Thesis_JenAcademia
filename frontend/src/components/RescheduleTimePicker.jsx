@@ -31,8 +31,8 @@ export default function RescheduleTimePicker({ date, times, selectedTime, durati
       <p role="status" className={styles.timeOfDay}>
         {!date ? "Choose a new date first."
           : loading ? "Checking available times…"
-          : search ? !ranked.length ? "No free times on this day. Please choose another day."
-            : exact ? `${humanTime(search)} is available. Select a time below.`
+          : !ranked.length ? "No free times on this day. Please choose another day."
+          : search ? exact ? `${humanTime(search)} is available. Select a time below.`
               : `${humanTime(search)} isn't available. Here are the closest available times on this day.`
           : "Enter your preferred start time to find available times nearby."}
       </p>

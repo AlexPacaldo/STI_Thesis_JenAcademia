@@ -2,7 +2,8 @@ import { classEntryIssue, isClassPast } from "../utils/classEntry.js";
 import { hasClassAttendance, attendanceMinutes } from "../utils/classSession.js";
 import GroupClassManager from "../components/GroupClassManager.jsx";
 import { groupClassesForDisplay } from "../utils/groupClasses.js";
-import { availableRanges, candidateSlotMinutes } from "../utils/bookingTimes.js";
+import { bookableSlots, bookingDayAvailability } from "../utils/bookingAvailability.js";
+import { availabilityNotificationView } from "../utils/availabilityNotification.js";
 import { openSseStream } from "../utils/sseClient.js";
 import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
 import { describeExtensionEligibility } from "../utils/contractExpiry.js";
@@ -156,7 +157,6 @@ const formatScheduleDate = (dateKey) => {
 };
 
 const rangesOverlap = (startA, endA, startB, endB) => startA < endB && endA > startB;
-const getCandidateSlotMinutes = candidateSlotMinutes;
 
 const getClassRange = (classObj) => {
   const start = timeToMinutes(classObj?.start_time || classObj?.startTime || classObj?.time);
@@ -865,6 +865,7 @@ function DayPicker({ days, selected, onPick, emptyMessage, statusFor }) {
             key={day.key}
             type="button"
             onClick={() => onPick(day.key)}
+            disabled={Boolean(statusFor) && !free}
             aria-pressed={active}
             title={
               status === "available"
@@ -986,6 +987,22 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const initialDateApplied = useRef(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedClassId, setSelectedClassId] = useState(null);
+  const previousClassUrl = useRef(searchParams.get("classId"));
+
+  const openClassDetails = (classId, date = selectedDate) => {
+    setSelectedClassId(classId);
+    if (date) setSelectedDate(date);
+    const params = new URLSearchParams(location.search);
+    params.set("classId", classId);
+    if (date) params.set("date", date);
+    navigate(`/Calendar?${params}`, { state: { classListEntry: true } });
+  };
+
+  const closeClassDetails = () => {
+    setSelectedClassId(null);
+    if (isSimpleStudentView) setSelectedDate(null);
+    navigate("/Calendar", { replace: true });
+  };
   // reschedule request form
   const [requestMode, setRequestMode] = useState(false);
   const [requestDate, setRequestDate] = useState("");
@@ -1012,6 +1029,11 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const [remarkSubmitting, setRemarkSubmitting] = useState(false);
   const [isEditingSelectedRemark, setIsEditingSelectedRemark] = useState(false);
   const [teacherClassesCache, setTeacherClassesCache] = useState({});
+  const [bookingAvailabilitySnapshot, setBookingAvailabilitySnapshot] = useState(null);
+  const [simpleAvailabilityLoading, setSimpleAvailabilityLoading] = useState(false);
+  const [simpleAvailabilityError, setSimpleAvailabilityError] = useState("");
+  const [bookingInitialStep, setBookingInitialStep] = useState("choose");
+
   const [studentBookingMode, setStudentBookingMode] = useState(false);  const [studentBookingDate, setStudentBookingDate] = useState(fmtDate(today));
   const [studentBookingTime, setStudentBookingTime] = useState("");
   const [studentBookingSelections, setStudentBookingSelections] = useState([]);
@@ -1526,17 +1548,6 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   // The availability being edited, if any.
   const [editingAvailability, setEditingAvailability] = useState(null);
   const [teacherAvailabilityRecordForDate, setTeacherAvailabilityRecordForDate] = useState(null); // individual selected date record
-  // Have the records for the day the student picked arrived yet?
-  const [teacherAvailabilityLoaded, setTeacherAvailabilityLoaded] = useState(true);
-  // Which day have the free times been worked out for?
-  //
-  // !! The free times are worked out from two things that arrive separately:
-  // !! the teacher's classes for that day, and the teacher's plan for that
-  // !! month. Until both are here there are no times to show, and the wizard
-  // !! has to say "looking" rather than "no free times" - otherwise a student
-  // !! is told the teacher is busy when the answer simply has not come back
-  // !! yet.
-  const [bookingTimesReadyDate, setBookingTimesReadyDate] = useState("");
   const [confirmAction, setConfirmAction] = useState(null);
   const closeConfirmAction = () => setConfirmAction(null);
   const triggerCalendarRefresh = useCallback(() => {
@@ -2093,17 +2104,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   };
 };
 
-  // Candidate slots use the teacher's clock; cached classes use the viewer's.
-  const classRangeForAvailability = (cls, sourceDate, sourceTimezone) => {
-    const range = getClassRange(cls);
-    if (!range) return null;
-    const start = convertDateTime(normalizeDate(cls.scheduled_date), minutesToTime(range.start), viewerTimezone, sourceTimezone);
-    const dayOffset = (Date.parse(start.date) - Date.parse(sourceDate)) / 86400000;
-    const minute = timeToMinutes(start.time);
-    if (!Number.isFinite(dayOffset) || minute == null) return null;
-    return { start: minute + dayOffset * 1440, end: minute + dayOffset * 1440 + range.end - range.start };
-  };
-
   const buildClassQueryParams = (scheduledDate) => {
     const params = { scheduled_date: scheduledDate };
 
@@ -2264,77 +2264,19 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     }
     
     const classes = [...(teacherClassesCache[dateKey] || []), ...(classesCache[dateKey] || [])];
-    const teacherAvailabilityRecord = teacherAvailabilityList.find(
-      record => normalizeDate(record.available_date) === dateKey && record.status === "available"
-    ) || (teacherAvailabilityRecordForDate && teacherAvailabilityRecordForDate.status === "available" ? teacherAvailabilityRecordForDate : null);
-
-    if (
-      !(teacherAvailabilityRecord?.source_start_time || teacherAvailabilityRecord?.start_time) ||
-      !(teacherAvailabilityRecord?.source_end_time || teacherAvailabilityRecord?.end_time)
-    ) {
-      setAvailableTimeSlots([]);
-      return;
+    const records = [...teacherAvailabilityList];
+    if (teacherAvailabilityRecordForDate && !records.some(record =>
+      String(record.id) === String(teacherAvailabilityRecordForDate.id))) {
+      records.push(teacherAvailabilityRecordForDate);
     }
-
     const duration = normalizeClassDuration(durationOverride ?? studentPackage?.class_duration ?? studentProfile?.course_duration);
-    const availabilityStart = timeToMinutes(teacherAvailabilityRecord.source_start_time || teacherAvailabilityRecord.start_time);
-    const availabilityEnd = timeToMinutes(teacherAvailabilityRecord.source_end_time || teacherAvailabilityRecord.end_time);
-    if (availabilityStart == null || availabilityEnd == null || availabilityEnd <= availabilityStart) {
-      setAvailableTimeSlots([]);
-      return;
-    }
+    const finalSlots = records.flatMap(record => bookableSlots(record, {
+      duration, occupied: classes, viewerTimezone, excludeClassId,
+      endKey: localRole === "student" ? studentBookingEndKey : scheduleWindowEndKey,
+      expiresAt: localRole === "student" ? studentPackage?.expires_at : null,
+    })).filter(slot => slot.date === dateKey).map(slot => slot.time);
 
-    const breakStart = teacherAvailabilityRecord.source_break_start || teacherAvailabilityRecord.break_start
-      ? timeToMinutes(teacherAvailabilityRecord.source_break_start || teacherAvailabilityRecord.break_start)
-      : null;
-    const breakEnd = teacherAvailabilityRecord.source_break_end || teacherAvailabilityRecord.break_end
-      ? timeToMinutes(teacherAvailabilityRecord.source_break_end || teacherAvailabilityRecord.break_end)
-      : null;
-    const teacherTimezone = teacherAvailabilityRecord.source_timezone || teacherAvailabilityRecord.teacher_timezone || DEFAULT_TIMEZONE;
-    const sourceDate = teacherAvailabilityRecord.source_available_date || dateKey;
-    const occupiedRanges = classes
-      .filter(cls => cls?.id !== excludeClassId && (Number(cls.teacher_id) === Number(tId) || Number(cls.student_id) === Number(localUserId)))
-      .map(cls => classRangeForAvailability(cls, sourceDate, teacherTimezone))
-      .filter(Boolean);
-
-    const availabilityRanges = availableRanges(availabilityStart, availabilityEnd, breakStart, breakEnd);
-
-    const finalSlotsInTeacherTimezone = [];
-    availabilityRanges.forEach(({ start, end }) => {
-      getCandidateSlotMinutes(start, end, duration, occupiedRanges).forEach((minute) => {
-        const slotEnd = minute + duration;
-        const conflictsWithClass = occupiedRanges.some(range => rangesOverlap(minute, slotEnd, range.start, range.end));
-        if (!conflictsWithClass) {
-          finalSlotsInTeacherTimezone.push(minutesToTime(minute));
-        }
-      });
-    });
-
-    const currentViewerDate = formatDateInTimezone(new Date(), viewerTimezone);
-    const currentViewerTime = formatTimeInTimezone(new Date(), viewerTimezone);
-    const currentViewerMinutes = timeToMinutes(currentViewerTime);
-    const finalSlots = finalSlotsInTeacherTimezone
-      .map(slot => {
-        const converted = convertDateTime(
-          teacherAvailabilityRecord.source_available_date || dateKey,
-          slot,
-          teacherTimezone,
-          viewerTimezone
-        );
-        return converted.date === dateKey ? converted.time : null;
-      })
-      .filter(Boolean)
-      .filter((slot) => {
-        if (!slot) return false;
-        if (dateKey < currentViewerDate) return false;
-        if (dateKey === currentViewerDate && currentViewerMinutes != null) {
-          const slotMinutes = timeToMinutes(slot);
-          return slotMinutes != null && slotMinutes > currentViewerMinutes;
-        }
-        return true;
-      });
-
-    setAvailableTimeSlots(finalSlots);
+    setAvailableTimeSlots([...new Set(finalSlots)].sort());
   };
 
   const handleSelectTimeSlot = (time, setTime, setError, isBooked, conflictMessage, sameDateTimeCheck) => {
@@ -2347,6 +2289,24 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       setError(conflictMessage);
     }
   };
+
+  // Details are a history entry above the class list, including direct links
+  // opened from notifications or a page such as Books/Lessons.
+  useEffect(() => {
+    const classId = searchParams.get("classId");
+    if (classId && !location.state?.classListEntry) {
+      const detailsUrl = `/Calendar?${searchParams}`;
+      navigate("/Calendar", { replace: true });
+      navigate(detailsUrl, { state: { ...location.state, classListEntry: true } });
+    }
+    if (previousClassUrl.current !== classId) {
+      previousClassUrl.current = classId;
+      if (!classId) {
+        setSelectedClassId(null);
+        if (isSimpleStudentView) setSelectedDate(null);
+      } else initialDateApplied.current = false;
+    }
+  }, [searchParams, location.state, navigate, isSimpleStudentView]);
 
   // whenever selectedDate changes we fetch if necessary
   useEffect(() => {
@@ -2414,12 +2374,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       const targetYear = bookingDate.getFullYear();
       const targetMonth = bookingDate.getMonth() + 1;
 
-      // !! The free times for the chosen day are worked out from these
-      // !! records. Until they arrive the wizard has nothing to show, and a
-      // !! wizard that shows "no free times" while it is still asking is
-      // !! telling the student a lie.
-      setTeacherAvailabilityLoaded(false);
-
       axios
         .get(`${API}/api/calendar/teacher-availability-records`, {
           params: { teacher_id: assignedTeacherId, year: targetYear, month: targetMonth }
@@ -2434,8 +2388,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         .catch(err => {
           console.error("Error loading teacher availability records:", err);
           setTeacherAvailabilityList([]);
-        })
-        .finally(() => setTeacherAvailabilityLoaded(true));
+        });
     }
   }, [studentBookingMode, assignedTeacherId, localRole, studentBookingDate, calendarRefreshToken]);
 
@@ -2503,16 +2456,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     }
     if (studentBookingMode && studentBookingDate && assignedTeacherId && teacherClassesCache[studentBookingDate] !== undefined) {
       loadAvailableTimeSlots(studentBookingDate, assignedTeacherId);
-      // The times for this day have now been worked out - but only once the
-      // teacher's plan for the month is here. Worked out without it, the
-      // answer is "no free times", and the wizard would say that to a
-      // student whose teacher is wide open.
-      if (teacherAvailabilityLoaded) setBookingTimesReadyDate(studentBookingDate);
+
     }
     if (requestMode && requestDate && selectedClass?.teacher_id && classesCache[requestDate] !== undefined) {
       loadAvailableTimeSlots(requestDate, selectedClass.teacher_id, selectedClassDuration, selectedClass.id);
     }
-  }, [selectedDate, teacherId, classesCache, availability, studentBookingMode, studentBookingDate, assignedTeacherId, teacherClassesCache, teacherAvailabilityList, teacherAvailabilityLoaded, studentPackage, studentProfile, requestMode, requestDate, selectedClass?.teacher_id, selectedClass?.id, selectedClassDuration, calendarRefreshToken]);
+  }, [selectedDate, teacherId, classesCache, availability, studentBookingMode, studentBookingDate, assignedTeacherId, teacherClassesCache, teacherAvailabilityList, studentPackage, studentProfile, requestMode, requestDate, selectedClass?.teacher_id, selectedClass?.id, selectedClassDuration, calendarRefreshToken]);
 
   // preload every day in the month so cells with classes are colored on load
   useEffect(() => {
@@ -2654,8 +2603,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     }
     setStudentBookingDate(chosen);
     setStudentBookingTime("");
-    // The free times have to be worked out again for this day.
-    setBookingTimesReadyDate("");
     setSelectedDate(null);
     // preload teacher classes for the chosen date if we already know the teacher
     if (assignedTeacherId) loadTeacherClassesForDate(chosen, assignedTeacherId);
@@ -2668,7 +2615,10 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     loadClassesForDate(chosen);
     // attempt to preload teacher availability for the selected class/party
     const teacherIdToLoad = selectedClass?.teacher_id || counterpartyId || assignedTeacherId || selectedClass?.teacher_id;
-    if (teacherIdToLoad) loadSpecificTeacherAvailability(teacherIdToLoad);
+    if (teacherIdToLoad) {
+      loadSpecificTeacherAvailability(teacherIdToLoad);
+      loadTeacherClassesForDate(chosen, teacherIdToLoad);
+    }
   };
 
   const handleCellClick = (d) => {
@@ -2765,7 +2715,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     if (!selectedClass || !selectedClass.id) return false;
     
     const dateKey = normalizeDate(dateStr);
-    const classesOnDate = classesCache[dateKey] || [];
+    const classesOnDate = [...(classesCache[dateKey] || []), ...(teacherClassesCache[dateKey] || [])];
     const requestedStart = timeToMinutes(timeStr);
     const requestedEnd = requestedStart == null ? null : requestedStart + selectedClassDuration;
     if (requestedStart == null || requestedEnd == null) return false;
@@ -2774,7 +2724,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     // - Exclude the current class being rescheduled
     // - Only include classes with the same teacher
     return classesOnDate.some(cls => {
-      if (cls.id === selectedClass.id || cls.teacher_id !== selectedClass.teacher_id) return false;
+      if (String(cls.id || cls.class_id) === String(selectedClass.id)) return false;
+      if (Number(cls.teacher_id) !== Number(selectedClass.teacher_id) && Number(cls.student_id) !== Number(selectedClass.student_id)) return false;
       const range = getClassRange(cls);
       return range && rangesOverlap(requestedStart, requestedEnd, range.start, range.end);
     });
@@ -2808,6 +2759,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   };
 
   const getRescheduleAvailabilityStatus = (dateStr) => {
+    if (isSimpleStudentView) return simpleAvailabilityLoading ? "" :
+      simpleRescheduleSlots.some(slot => slot.date === dateStr) ? "available" : "unavailable";
     const teacherDateTime = getRescheduleTeacherDateTime(dateStr, "00:00");
     const teacherDate = normalizeDate(teacherDateTime.date || dateStr);
     if (!teacherDate) return "";
@@ -2886,14 +2839,11 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return true;
     }
     
-    // If no start/end time set, assume available all day
+    // Incomplete availability cannot offer a full lesson.
     const availabilityStartValue = availabilityRecord.source_start_time || availabilityRecord.start_time;
     const availabilityEndValue = availabilityRecord.source_end_time || availabilityRecord.end_time;
 
-    if (!availabilityStartValue || !availabilityEndValue) {
-      console.log(`✅ All-day availability (no specific times set)`);
-      return false;
-    }
+    if (!availabilityStartValue || !availabilityEndValue) return true;
     
     const availStart = availabilityStartValue.substring(0, 5);
     const availEnd = availabilityEndValue.substring(0, 5);
@@ -2923,6 +2873,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     if (!dateStr || !timeStr || !selectedClass) return false;
 
     if (isRescheduleToSameDateTime(dateStr, timeStr)) return false;
+    if (isSimpleStudentView) return simpleRescheduleSlots.some(slot => slot.date === dateStr && slot.time === timeStr);
 
     if (isTimeBookedForReschedule(dateStr, timeStr)) return false;
     if (isCounterpartyDateTimeBooked(dateStr, timeStr)) return false;
@@ -2933,18 +2884,41 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     return true;
   };
 
+  const simpleRescheduleSlots = useMemo(() => {
+    if (!requestMode || !selectedClass || !bookingAvailabilitySnapshot) return [];
+    return bookingAvailabilitySnapshot.records.flatMap(record => bookableSlots(record, {
+      duration: selectedClassDuration,
+      occupied: [...bookingAvailabilitySnapshot.classes, ...Object.values(classesCache).flatMap(classes => classes || [])],
+      viewerTimezone, endKey: studentBookingEndKey, expiresAt: studentPackage?.expires_at,
+      excludeClassId: selectedClass.id,
+    })).filter(slot => {
+      const currentDate = String(selectedClass.scheduled_date || "").slice(0, 10);
+      const currentTime = normalizeTime(selectedClass.start_time || selectedClass.time);
+      if (slot.date === currentDate && slot.time === currentTime) return false;
+      const start = timeToMinutes(slot.time);
+      return !counterpartyBookedDates.some(cls => {
+        if (String(cls.scheduled_date || "").slice(0, 10) !== slot.date) return false;
+        const range = getClassRange(cls);
+        return range && rangesOverlap(start, start + selectedClassDuration, range.start, range.end);
+      });
+    });
+  }, [requestMode, selectedClass, selectedClassDuration, bookingAvailabilitySnapshot, classesCache,
+    viewerTimezone, studentBookingEndKey, studentPackage?.expires_at, counterpartyBookedDates]);
+
   const rescheduleTimeSlots = useMemo(() => {
-    if (!requestMode || !requestDate || !availableTimeSlots?.length) return [];
+    if (!requestMode || !requestDate) return [];
+    if (isSimpleStudentView) return [...new Set(simpleRescheduleSlots.filter(slot => slot.date === requestDate).map(slot => slot.time))].sort();
+    if (!availableTimeSlots?.length) return [];
     return availableTimeSlots.filter((time) => isRescheduleTimeSlotBookable(requestDate, time));
-  }, [requestMode, requestDate, availableTimeSlots, selectedClass, selectedClassDuration, localRole, classesCache, counterpartyBookedDates, teacherAvailabilityList, availability]);
+  }, [requestMode, requestDate, availableTimeSlots, selectedClass, selectedClassDuration, localRole, classesCache, teacherClassesCache, counterpartyBookedDates, teacherAvailabilityList, availability, isSimpleStudentView, simpleRescheduleSlots]);
 
   useEffect(() => {
-    if (!requestMode || !requestTime) return;
+    if (!requestMode || !requestTime || simpleAvailabilityLoading) return;
     if (!rescheduleTimeSlots.includes(requestTime)) {
       setRequestTime("");
       setRequestError("");
     }
-  }, [requestMode, requestTime, rescheduleTimeSlots]);
+  }, [requestMode, requestTime, rescheduleTimeSlots, simpleAvailabilityLoading]);
 
   const getAvailabilityStatusForDate = (dateStr) => {
     const dateKey = normalizeDate(dateStr);
@@ -4485,49 +4459,54 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   // !! which reads as their fault and is not.
   // !!
   // !! The strip can cross a month boundary, so both months are fetched.
-  const [simpleAvailability, setSimpleAvailability] = useState({});
 
-  // Are those days still on their way?
-  //
-  // !! The booking wizard tells a student which days are free, and a day that
-  // !! is "no times yet" because the answer had not arrived yet is a day the
-  // !! wizard must not grey out. So the wizard has to know the difference
-  // !! between "the teacher does not work that day" and "we do not know yet".
-  const [simpleAvailabilityLoading, setSimpleAvailabilityLoading] = useState(false);
+  const bookingAvailabilityRefreshTick = studentBookingMode || requestMode ? Math.floor(currentTimeTick / 30000) : 0;
 
   useEffect(() => {
     if (!isSimpleStudentView || !assignedTeacherId) return;
-
+    const dates = [...simpleBookingDays, ...simpleRescheduleDays];
     const months = new Set();
-    simpleBookingDays.forEach((day) => {
-      const date = dateKeyToLocalDate(day.key);
-      if (date) months.add(`${date.getFullYear()}-${date.getMonth() + 1}`);
+    dates.forEach(day => {
+      [-1, 0, 1].forEach(delta => {
+        const key = addDaysToDateKey(day.key, delta);
+        months.add(key.slice(0, 7));
+      });
     });
     if (!months.size) return;
-
     let active = true;
     setSimpleAvailabilityLoading(true);
-
-    Promise.all(
-      [...months].map((month) => {
-        const [year, monthNumber] = month.split("-").map(Number);
-        return axios
-          .get(`${API}/api/calendar/teacher-availability`, {
-            params: { teacher_id: assignedTeacherId, year, month: monthNumber },
-          })
-          .then((r) => r.data?.availability || {})
-          .catch(() => ({}));
-      })
-    ).then((maps) => {
+    setSimpleAvailabilityError("");
+    setBookingAvailabilitySnapshot(null);
+    Promise.all([...months].map(async key => {
+      const [year, month] = key.split("-").map(Number);
+      const params = { teacher_id: assignedTeacherId, year, month };
+      const [availability, conflicts] = await Promise.all([
+        axios.get(`${API}/api/calendar/teacher-availability-records`, { params }),
+        axios.get(`${API}/api/calendar/teacher-booking-conflicts`, { params }),
+      ]);
+      return { records: availability.data?.records || [], classes: conflicts.data?.classes || [] };
+    })).then(results => {
       if (!active) return;
-      setSimpleAvailability(Object.assign({}, ...maps));
-      setSimpleAvailabilityLoading(false);
+      setBookingAvailabilitySnapshot({
+        records: results.flatMap(result => result.records),
+        classes: results.flatMap(result => result.classes),
+      });
+    }).catch(() => {
+      if (active) setSimpleAvailabilityError(BOOKING.cannotLookUp);
+    }).finally(() => {
+      if (active) setSimpleAvailabilityLoading(false);
     });
+    return () => { active = false; };
+  }, [isSimpleStudentView, assignedTeacherId, simpleBookingDays, simpleRescheduleDays, calendarRefreshToken, bookingAvailabilityRefreshTick]);
 
-    return () => {
-      active = false;
-    };
-  }, [isSimpleStudentView, assignedTeacherId, simpleBookingDays]);
+  const simpleBookingSlots = useMemo(() => (bookingAvailabilitySnapshot?.records || []).flatMap(record =>
+    bookableSlots(record, {
+      duration: studentClassDuration, occupied: [...(bookingAvailabilitySnapshot?.classes || []), ...bookedDates],
+      viewerTimezone, endKey: studentBookingEndKey, expiresAt: studentPackage?.expires_at,
+    })
+  ), [bookingAvailabilitySnapshot, bookedDates, studentClassDuration, viewerTimezone, studentBookingEndKey, studentPackage?.expires_at]);
+  const simpleAvailability = useMemo(() => bookingDayAvailability(simpleBookingDays, simpleBookingSlots),
+    [simpleBookingDays, simpleBookingSlots]);
 
   // The student's own requests, and what they may do about them.
   //
@@ -4603,17 +4582,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   const hasNoClassesLeft = hasNoBookableClasses;
   const studentBookingLimit = Math.max(0, Number(effectiveBookableClasses || 0));
 
-  // Are the free times for the day the student picked still on their way?
-  const bookingTimesLoading = Boolean(
-    studentBookingMode &&
-    studentBookingDate &&
-    (
-      teacherClassesCache[studentBookingDate] === undefined ||
-      (localRole === "student" && !teacherAvailabilityLoaded) ||
-      bookingTimesReadyDate !== studentBookingDate
-    )
-  );
-
   const studentBookingSelectionKey = (date, time) => `${normalizeDate(date)}|${normalizeTime(time)}`;
   const isStudentBookingSelected = (date, time) => {
     const key = studentBookingSelectionKey(date, time);
@@ -4642,54 +4610,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return range && rangesOverlap(requestedStart, requestedEnd, range.start, range.end);
     });
   };
-  const getAvailabilitySlotsForRecord = (record, duration = studentClassDuration, occupiedClasses = []) => {
-    if (!record || record.status !== "available") return [];
-    const dateKey = normalizeDate(record.available_date);
-    const availabilityStart = timeToMinutes(record.source_start_time || record.start_time);
-    const availabilityEnd = timeToMinutes(record.source_end_time || record.end_time);
-    if (!dateKey || availabilityStart == null || availabilityEnd == null || availabilityEnd <= availabilityStart) return [];
-
-    const breakStart = record.source_break_start || record.break_start
-      ? timeToMinutes(record.source_break_start || record.break_start)
-      : null;
-    const breakEnd = record.source_break_end || record.break_end
-      ? timeToMinutes(record.source_break_end || record.break_end)
-      : null;
-    const ranges = availableRanges(availabilityStart, availabilityEnd, breakStart, breakEnd);
-
-    const teacherTimezone = record.source_timezone || record.teacher_timezone || DEFAULT_TIMEZONE;
-    const sourceDate = record.source_available_date || dateKey;
-    const occupiedRanges = (occupiedClasses || [])
-      .map(cls => classRangeForAvailability(cls, sourceDate, teacherTimezone))
-      .filter(Boolean);
-    const currentViewerDate = formatDateInTimezone(new Date(), viewerTimezone);
-    const currentViewerTime = formatTimeInTimezone(new Date(), viewerTimezone);
-    const currentViewerMinutes = timeToMinutes(currentViewerTime);
-    const slots = [];
-
-    ranges.forEach(({ start, end }) => {
-      getCandidateSlotMinutes(start, end, duration, occupiedRanges).forEach((minute) => {
-        const slotEnd = minute + duration;
-        if (occupiedRanges.some(range => rangesOverlap(minute, slotEnd, range.start, range.end))) return;
-        const converted = convertDateTime(sourceDate, minutesToTime(minute), teacherTimezone, viewerTimezone);
-        const convertedDate = normalizeDate(converted.date);
-        const convertedTime = normalizeTime(converted.time);
-        if (!convertedDate || !convertedTime) return;
-        if (convertedDate < currentViewerDate || convertedDate > scheduleWindowEndKey) return;
-        if (convertedDate === currentViewerDate && currentViewerMinutes != null) {
-          const slotMinutes = timeToMinutes(convertedTime);
-          if (slotMinutes == null || slotMinutes <= currentViewerMinutes) return;
-        }
-        slots.push({
-          date: convertedDate,
-          time: convertedTime,
-          teacher_timezone: teacherTimezone,
-        });
-      });
+  const getAvailabilitySlotsForRecord = (record, duration = studentClassDuration, occupiedClasses = []) =>
+    bookableSlots(record, {
+      duration, occupied: occupiedClasses, viewerTimezone,
+      endKey: studentBookingEndKey, expiresAt: studentPackage?.expires_at,
     });
 
-    return slots;
-  };
   /**
    * One day, one time.
    *
@@ -4703,7 +4629,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     const normalizedDate = normalizeDate(date);
     const normalizedTime = normalizeTime(time);
     if (!normalizedDate || !normalizedTime) return;
-    if (isTeacherDateTimeBooked(normalizedDate, normalizedTime)) return;
+    const availableSlot = simpleBookingSlots.find(slot => slot.date === normalizedDate && slot.time === normalizedTime);
+    if (simpleAvailabilityLoading || !availableSlot) return;
 
     if (studentBookingLimit <= 0) {
       setStudentBookingError(BOOKING.noClassesLeft);
@@ -4736,7 +4663,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       {
         date: normalizedDate,
         time: normalizedTime,
-        teacher_timezone: selectedAvailabilityRecord?.teacher_timezone || DEFAULT_TIMEZONE,
+        teacher_timezone: availableSlot.teacher_timezone || selectedAvailabilityRecord?.teacher_timezone || DEFAULT_TIMEZONE,
       },
     ]);
   };
@@ -4982,6 +4909,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   const scheduleWindowEnd = studentBookingEndKey;
 
   const openMonthlyBooking = () => {
+    setBookingInitialStep("choose");
     if (hasNoClassesLeft) {
       setStudentBookingError(BOOKING.noClassesLeft);
       return;
@@ -5008,6 +4936,44 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     setSelectedDate(null);
     setSelectedClassId(null);
   };
+
+  const openedAvailabilityNotification = useRef("");
+  useEffect(() => {
+    if (!isSimpleStudentView || !assignedTeacherId || !studentPackageLoaded
+      || searchParams.get("view") !== "availability"
+      || openedAvailabilityNotification.current === location.key) return;
+    let active = true;
+    const availabilityId = searchParams.get("availabilityId");
+    const availabilityDate = searchParams.get("availabilityDate");
+    const showAvailability = (record, message = "") => {
+      if (!active) return;
+      const target = availabilityNotificationView(record, {
+        todayKey: viewerTodayKey, endKey: studentBookingEndKey, viewerTimezone,
+      });
+      openedAvailabilityNotification.current = location.key;
+      setSelectedDate(null);
+      setSelectedClassId(null);
+      setRequestMode(false);
+      setStudentBookingApplyMode("manual");
+      setStudentBookingSelections([]);
+      setStudentBookingSuggestions([]);
+      setStudentBookingTime("");
+      setStudentBookingDate(target.date);
+      setStudentBookingMonth({ year: target.year, month: target.month });
+      setBookingInitialStep("day");
+      setStudentBookingMode(true);
+      setStudentBookingError(message || (availabilityId || availabilityDate ? target.message : ""));
+    };
+    if (availabilityId || availabilityDate) {
+      axios.get(`${API}/api/calendar/teacher-availability-record`, {
+        params: { teacher_id: assignedTeacherId,
+          ...(availabilityId ? { availability_id: availabilityId } : { available_date: availabilityDate }) },
+      }).then(response => showAvailability(response.data?.record || null))
+        .catch(() => showAvailability(null, "Unable to open this availability update. You can check your teacher's current dates below."));
+    } else showAvailability(null);
+    return () => { active = false; };
+  }, [isSimpleStudentView, assignedTeacherId, studentPackageLoaded, searchParams, location.key,
+    viewerTodayKey, studentBookingEndKey, viewerTimezone]);
 
   const submitContractRequest = async () => {
     setContractRequestError("");
@@ -5339,6 +5305,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
           }
         } catch (slotError) {
           if (slotError?.response?.status === 409) {
+            triggerCalendarRefresh();
             loadClassesForDate(slot.date, true);
             loadTeacherClassesForDate(slot.date, assignedTeacherId, true);
             setStudentBookingSelections([]);
@@ -6286,8 +6253,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                       key={entry.id ?? `${entry.viewerDate}-${entry.timeLabel}`}
                       classInfo={entry}
                       onOpen={() => {
-                        setSelectedDate(entry.viewerDate);
-                        setSelectedClassId(entry.classInfo.id ?? entry.classInfo.class_id);
+                        openClassDetails(entry.classInfo.id ?? entry.classInfo.class_id, entry.viewerDate);
                       }}
                       actionLabel={HOME.details}
                     />
@@ -6536,7 +6502,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                           Request Reschedule
                         </h4>
                         <p className={cal.formHint}>
-                          Select your preferred date and time, and let your teacher know why you need the reschedule.
+                          Required before sending: choose a new date, pick an available time, and add a short reason (minimum 5 characters).
                         </p>
                       </div>
                       {requestError && <div className={cal.errorBox}>{requestError}</div>}
@@ -6547,7 +6513,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                             {requestDate ? new Date(requestDate + "T00:00:00").toLocaleDateString() : "Select a date on the calendar"}
                           </span>
                         </div>
-                        <p className={cal.formHint} style={{ marginTop: 6 }}>Click a day on the calendar</p>
+                        <p className={cal.formHint} style={{ marginTop: 6 }}>Step 1: click a day on the calendar to choose the new date.</p>
                         {requestDate && (
                           <div style={{ marginTop: 6 }}>
                             {getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? (
@@ -6573,7 +6539,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                           selectedTime={requestTime}
                           duration={selectedClassDuration}
                           timezone={viewerTimezone}
-                          loading={Boolean(requestDate && classesCache[requestDate] === undefined)}
+                          loading={Boolean(requestDate && (isSimpleStudentView ? simpleAvailabilityLoading : classesCache[requestDate] === undefined))}
                           onPick={time => {
                             if (!isRescheduleTimeSlotBookable(requestDate, time)) {
                               setRequestTime("");
@@ -6599,6 +6565,9 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                           value={requestReason}
                           onChange={e => { setRequestReason(e.target.value); setRequestError(""); }}
                         />
+                        <p className={cal.formHint} style={{ marginTop: 6 }}>
+                          Step 3: add a short reason so your teacher understands the request.
+                        </p>
                       </div>
                       <div style={{ display: "grid", gap: 8 }}>
                         <button
@@ -6625,7 +6594,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                   <button
                     type="button"
                     className={cal.actionCard}
-                    onClick={() => setSelectedClassId(null)}
+                    onClick={closeClassDetails}
                     style={{ marginTop: "8px" }}
                   >
                     Back to Classes
@@ -6644,7 +6613,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                           type="button"
                           className={cal.dayClass}
                           data-calendar-guide="class"
-                          onClick={() => setSelectedClassId(cls.id)}
+                          onClick={() => openClassDetails(cls.id)}
                         >
                           <span className={cal.dayClassTitle}>{cls.className || cls.name || "Untitled"}</span>
                           <span className={cal.dayClassTime}>
@@ -7214,10 +7183,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                             !! is, and the only thing to do is press one. */}
                         <DayPicker
                           days={simpleRescheduleDays}
+                          statusFor={getRescheduleAvailabilityStatus}
                           selected={requestDate}
                           onPick={chooseRequestDate}
                           emptyMessage="No days to choose from."
                         />
+                        {simpleAvailabilityError && <p role="alert" className={cal.fieldError}>{simpleAvailabilityError}</p>}
                         {requestDate && (
                           <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
                             {getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? (
@@ -7243,7 +7214,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                           selectedTime={requestTime}
                           duration={selectedClassDuration}
                           timezone={viewerTimezone}
-                          loading={Boolean(requestDate && classesCache[requestDate] === undefined)}
+                          loading={Boolean(requestDate && (isSimpleStudentView ? simpleAvailabilityLoading : classesCache[requestDate] === undefined))}
                           onPick={time => {
                             if (!isRescheduleTimeSlotBookable(requestDate, time)) {
                               setRequestTime("");
@@ -7277,14 +7248,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     <button
                       type="button"
                       className={kid.btnGhost}
-                      onClick={() => {
-                        setSelectedClassId(null);
-                        // A student on the simple page has no day view to go
-                        // back to - the list IS the page. Clearing the date
-                        // stops the old "classes on this day" panel taking
-                        // over when they close the class.
-                        if (isSimpleStudentView) setSelectedDate(null);
-                      }}
+                      onClick={closeClassDetails}
                       style={{ marginTop: "8px", width: "100%" }}
                     >
                       ← {isSimpleStudentView ? HOME.backToMyClasses : CLASS_INFO.backToClasses}
@@ -7304,7 +7268,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                             type="button"
                             className={cal.dayClass}
                             data-calendar-guide="class"
-                            onClick={() => setSelectedClassId(cls.id)}
+                            onClick={() => openClassDetails(cls.id)}
                           >
                             <span className={cal.dayClassTitle}>{cls.className || cls.name || "Untitled"}</span>
                             <span className={cal.dayClassTime}>
@@ -7344,13 +7308,15 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                      !! was pressed - the Calendar still owns the classes, the
                      !! limits and the booking itself. */
                   <StudentBookingWizard
+                    key={bookingInitialStep === "day" ? location.key : "booking"}
+                    initialStep={bookingInitialStep}
                     teacherName={assignedTeacherName}
                     courseName={studentProfile?.course_name || ""}
                     classDuration={studentClassDuration}
                     timezone={viewerTimezone}
                     hasNoClassesLeft={hasNoClassesLeft}
                     isSubmitting={isSubmittingStudentBooking}
-                    error={studentBookingError}
+                    error={studentBookingError || simpleAvailabilityError}
                     onClearError={() => setStudentBookingError("")}
                     days={simpleBookingDays}
                     availability={simpleAvailability}
@@ -7362,9 +7328,9 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     onNextMonth={() => moveStudentBookingMonth(1)}
                     selectedDate={studentBookingDate}
                     onPickDate={chooseBookingDate}
-                    timeSlots={availableTimeSlots}
-                    timesLoading={bookingTimesLoading}
-                    isTimeBooked={(time) => isTeacherDateTimeBooked(studentBookingDate, time)}
+                    timeSlots={[...new Set(simpleBookingSlots.filter(slot => slot.date === studentBookingDate).map(slot => slot.time))].sort()}
+                    timesLoading={simpleAvailabilityLoading}
+                    isTimeBooked={(time) => !simpleBookingSlots.some(slot => slot.date === studentBookingDate && slot.time === time)}
                     selections={studentBookingSelections}
                     isSelected={isStudentBookingSelected}
                     onPickTime={pickSingleBookingTime}
@@ -7381,7 +7347,6 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                       // accident.
                       setStudentBookingDate("");
                       setStudentBookingTime("");
-                      setBookingTimesReadyDate("");
                       setStudentBookingError("");
                     }}
                     weeklyWeekdays={studentBookingWeeklyWeekdays}
@@ -7484,8 +7449,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                   key={entry.id}
                                   classInfo={entry}
                                   onOpen={() => {
-                                    setSelectedDate(entry.viewerDate);
-                                    setSelectedClassId(entry.id);
+                                    openClassDetails(entry.id, entry.viewerDate);
                                   }}
                                   actionLabel={HOME.details}
                                 />

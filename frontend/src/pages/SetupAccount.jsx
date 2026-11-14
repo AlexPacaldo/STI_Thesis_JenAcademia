@@ -64,11 +64,11 @@ export default function SetupAccount() {
       return;
     }
     if (form.password.length < 8) {
-      setError("Your password must contain at least 8 characters.");
+      setError("Password requirement: use at least 8 characters. Please choose a longer password.");
       return;
     }
     if (form.password !== form.confirmPassword) {
-      setError("Those passwords do not match yet. Try again.");
+      setError("Passwords do not match yet. Please type the same password in both fields.");
       return;
     }
 
@@ -145,7 +145,7 @@ export default function SetupAccount() {
                 <span className={styles.bigIcon} aria-hidden="true">🔐</span>
                 <p className={styles.eyebrow}>Step 1</p>
                 <h1 id="setup-title">Make a secret password</h1>
-                <p className={styles.description}>Choose a password with at least 8 characters. Keep it secure.</p>
+                <p className={styles.description}>Choose a password with at least 8 characters. Use something memorable but unique, then confirm it below.</p>
 
                 {isDifferentLoggedInUser && (
                   <div className={styles.errorMessage} role="alert">
@@ -190,6 +190,9 @@ export default function SetupAccount() {
                     required
                   />
                 </label>
+                <p className={styles.description} style={{ marginTop: 0, fontSize: "0.92rem" }}>
+                  Password requirement: 8+ characters, matching in both fields.
+                </p>
                 {error && <p className={styles.errorMessage} role="alert">{error}</p>}
                 <div className={styles.actions}>
                   <button type="button" className={styles.secondaryButton} onClick={() => setStep(0)}>

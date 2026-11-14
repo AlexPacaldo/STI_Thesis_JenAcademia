@@ -48,9 +48,10 @@ export function clearSessionToken() {
  * Attach the bearer token to every outgoing request, and drop it when the
  * server says the session is no longer valid.
  *
- * The response handler only acts on 401 from admin routes, and deliberately
+ * The response handler acts on 401 (an invalid session), and deliberately
  * leaves `state.user` alone: clearing that here would fight with whatever the
  * app decides to do about an expired session.
+ * Password confirmation failures use 400 so a typo never revokes this token.
  */
 export function installAuthInterceptor({ onUnauthorized } = {}) {
   axios.interceptors.request.use((config) => {

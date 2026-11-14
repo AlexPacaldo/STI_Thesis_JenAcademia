@@ -332,6 +332,7 @@ function App() {
   const lineGateMatchesCurrentUser = lineGate?.userId === currentUserId;
   const studentLineGatePending =
     currentRole === "student" &&
+    currentPath !== "/account" &&
     (!lineGateMatchesCurrentUser || lineGate.status === "checking") &&
     !isSetupAccountPath(currentPath);
   const studentLineSetupRequired =

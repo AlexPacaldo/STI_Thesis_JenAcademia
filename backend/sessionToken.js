@@ -36,19 +36,26 @@ function sign(payloadEncoded, secret) {
  * @throws if the user id is missing, because a token that cannot identify a
  *         caller is never useful.
  */
-export function signSessionToken({ userId, role }, { secret, ttlMs = DEFAULT_TTL_MS, now = Date.now() } = {}) {
+export function signSessionToken({ userId, role, sessionId }, { secret, ttlMs = DEFAULT_TTL_MS, now = Date.now() } = {}) {
   if (!secret) throw new Error("signSessionToken needs a secret");
   const sub = Number(userId);
   if (!Number.isInteger(sub) || sub <= 0) throw new Error("signSessionToken needs a positive userId");
 
-  const payloadEncoded = base64url(
-    JSON.stringify({ sub, role: String(role || ""), exp: now + ttlMs })
-  );
+  const payload = {
+    sub,
+    role: String(role || ""),
+    exp: now + ttlMs,
+  };
+  if (typeof sessionId === "string" && sessionId.trim()) {
+    payload.sid = sessionId.trim();
+  }
+
+  const payloadEncoded = base64url(JSON.stringify(payload));
   return `${payloadEncoded}.${sign(payloadEncoded, secret)}`;
 }
 
 /**
- * @returns {{sub: number, role: string, exp: number}|null} null for anything
+ * @returns {{sub: number, role: string, exp: number, sid?: string}|null} null for anything
  *   that is not a well-formed, correctly signed, unexpired token.
  */
 export function verifySessionToken(token, { secret, now = Date.now() } = {}) {
@@ -59,8 +66,6 @@ export function verifySessionToken(token, { secret, now = Date.now() } = {}) {
   const [payloadEncoded, signature] = parts;
   if (!payloadEncoded || !signature) return null;
 
-  // Compare as buffers so the length check cannot leak through timing, and so
-  // a malformed signature cannot throw inside timingSafeEqual.
   const expected = Buffer.from(sign(payloadEncoded, secret));
   const provided = Buffer.from(signature);
   if (expected.length !== provided.length) return null;
@@ -78,7 +83,11 @@ export function verifySessionToken(token, { secret, now = Date.now() } = {}) {
   if (!Number.isInteger(sub) || sub <= 0) return null;
   if (!Number.isFinite(payload.exp) || payload.exp <= now) return null;
 
-  return { sub, role: String(payload.role || ""), exp: payload.exp };
+  const result = { sub, role: String(payload.role || ""), exp: payload.exp };
+  if (typeof payload.sid === "string" && payload.sid.trim()) {
+    result.sid = payload.sid.trim();
+  }
+  return result;
 }
 
 /** Pull a bearer token off the Authorization header, or null. */

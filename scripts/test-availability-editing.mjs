@@ -6,6 +6,7 @@ import { timeToMinutes, normalizeTime, humanTime } from "../frontend/src/utils/c
 const source = readFileSync(new URL("../backend/server.js", import.meta.url), "utf8");
 const routes = new Map();
 const saved = [];
+const notices = [];
 const bookedClasses = [{ class_id: 1, teacher_id: 10, start_time: "10:00", end_time: "10:25" }];
 const originalClasses = structuredClone(bookedClasses);
 let commits = 0;
@@ -18,14 +19,20 @@ const pool = {
         if (sql.includes("FROM classes")) return [bookedClasses];
         if (sql.includes("FROM users") && sql.includes("role = 'teacher'")) {
           assert.match(sql, /FOR UPDATE/);
-          return [[{ user_id: 10, first_name: "Teacher", last_name: "Test" }]];
+          return [[{ user_id: 10, first_name: "Teacher", last_name: "Test", timezone: "Asia/Tokyo" }]];
         }
         if (sql.includes("INSERT INTO teacher_availability")) {
           saved.push(params);
           return [{ insertId: 1 }];
         }
         if (sql.includes("SELECT availability_id")) return [[{ availability_id: 1 }]];
-        if (sql.includes("SELECT first_name")) return [[{ first_name: "Teacher", last_name: "Test" }]];
+        if (sql.includes("SELECT first_name")) return [[{ first_name: "Teacher", last_name: "Test", timezone: "Asia/Tokyo" }]];
+        if (sql.includes("FROM student_profiles")) return [[{ user_id: 20 }]];
+        if (sql.includes("INSERT INTO notifications")) {
+          assert.equal((sql.match(/\?/g) || []).length, params.length);
+          notices.push(params);
+          return [{ insertId: 1 }];
+        }
         return [[]];
       },
     };
@@ -67,6 +74,15 @@ assert.equal((await save("set-availability", { end_time: "06:00" })).code, 400);
 assert.equal((await save("set-availability", { break_end: "19:00" })).code, 400);
 assert.equal(commits, 3);
 assert.deepEqual(bookedClasses, originalClasses);
+assert.equal(notices.length, 3);
+assert.match(notices[0][2], /7:35 AM to 6:10 PM \(Asia\/Tokyo\)/);
+assert.match(notices[0][2], /Break: 12:10 PM to 12:35 PM/);
+assert.equal(notices[0][4], "/Calendar?view=availability&availabilityId=1");
+assert.match(notices[1][2], /unavailable/);
+assert.equal(notices[1][4], "/Calendar?view=availability&availabilityId=1");
+assert.match(notices[2][2], /Dates:/);
+assert.match(notices[2][2], /Asia\/Tokyo/);
+assert.equal(notices[2][3], `/Calendar?view=availability&availabilityDate=${date}`);
 
 // Exercise the UI validator with a class inside the edited availability window.
 const frontend = readFileSync(new URL("../frontend/src/pages/Calendar.jsx", import.meta.url), "utf8");

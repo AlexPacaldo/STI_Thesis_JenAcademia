@@ -446,6 +446,7 @@ CREATE TABLE `messages` (
   KEY `idx_sent_at` (`sent_at`),
   KEY `idx_messages_recipient_read` (`recipient_id`,`is_read`),
   KEY `idx_messages_pair_sent` (`sender_id`,`recipient_id`,`sent_at`),
+  KEY `idx_messages_pair_id` (`sender_id`,`recipient_id`,`message_id`),
   CONSTRAINT `messages_ibfk_1` FOREIGN KEY (`sender_id`) REFERENCES `users` (`user_id`),
   CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`recipient_id`) REFERENCES `users` (`user_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

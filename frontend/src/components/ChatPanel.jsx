@@ -1,9 +1,11 @@
 import { openSseStream } from "../utils/sseClient.js";
 import axios from "axios";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import styles from "../assets/chatPanel.module.css";
 import { API_BASE_URL } from "../utils/api.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
+
+import { CHAT_PAGE_SIZE, mergeChatMessages } from "../utils/chatMessages.js";
 
 const API = API_BASE_URL;
 
@@ -100,12 +102,68 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
   const [drafts, setDrafts] = useState({});
   const [messagesByChat, setMessagesByChat] = useState({});
   const [loadingMessagesByChat, setLoadingMessagesByChat] = useState({});
+  const [pagesByChat, setPagesByChat] = useState({});
+  const [loadingOlderByChat, setLoadingOlderByChat] = useState({});
+  const [messageErrors, setMessageErrors] = useState({});
+  const [sendingByChat, setSendingByChat] = useState({});
+  const bodyRefs = useRef({});
+  const scrollState = useRef({});
+  const pendingAnchors = useRef({});
+  const requestVersions = useRef({});
+  const requestsInFlight = useRef(new Set());
+  const expandedChats = useRef([]);
+  const [compact, setCompact] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches);
+  const [viewport, setViewport] = useState(null);
 
-  const notifyChatUpdates = () => {
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 640px)");
+    const update = () => {
+      setCompact(media.matches);
+      if (media.matches) setOpenChats(current => current.slice(0, 1));
+    };
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    const visual = window.visualViewport;
+    if (!visual) return;
+    const update = () => setViewport({ height: visual.height,
+      bottom: Math.max(0, window.innerHeight - visual.height - visual.offsetTop) });
+    update();
+    visual.addEventListener("resize", update);
+    visual.addEventListener("scroll", update);
+    return () => {
+      visual.removeEventListener("resize", update);
+      visual.removeEventListener("scroll", update);
+    };
+  }, []);
+
+  useEffect(() => {
+    expandedChats.current = openChats.filter(chat => !chat.minimized).map(chat => String(chat.user_id));
+  }, [openChats]);
+
+  useLayoutEffect(() => {
+    openChats.forEach(chat => {
+      const id = String(chat.user_id);
+      const body = bodyRefs.current[id];
+      if (!body || chat.minimized) return;
+      const anchor = pendingAnchors.current[id];
+      const position = scrollState.current[id] || { bottom: true };
+      if (anchor) {
+        body.scrollTop = anchor.top + body.scrollHeight - anchor.height;
+        delete pendingAnchors.current[id];
+      } else if (position.bottom || position.force) body.scrollTop = body.scrollHeight;
+      scrollState.current[id] = { bottom: body.scrollHeight - body.clientHeight - body.scrollTop < 48 };
+    });
+  }, [messagesByChat, openChats, loadingMessagesByChat, loadingOlderByChat]);
+
+
+  const notifyChatUpdates = useCallback(() => {
     window.dispatchEvent(new Event("chatUpdated"));
-  };
+  }, []);
 
-  const applyReadReceipt = (receipt) => {
+  const applyReadReceipt = useCallback((receipt) => {
     const chatId = String(receipt?.reader_id || "");
     if (!chatId) return;
 
@@ -127,9 +185,9 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
         }),
       };
     });
-  };
+  }, []);
 
-  const applyPresenceChange = (presence) => {
+  const applyPresenceChange = useCallback((presence) => {
     const chatId = String(presence?.user_id || "");
     if (!chatId) return;
 
@@ -147,9 +205,9 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
 
     setConversations((current) => current.map(updateConversation));
     setOpenChats((current) => current.map(updateConversation));
-  };
+  }, []);
 
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     if (!currentUserId) {
       setConversations([]);
       return;
@@ -166,27 +224,46 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
     } finally {
       setLoadingConversations(false);
     }
-  };
+  }, [currentUserId]);
 
-  const loadMessages = async (chatId) => {
-    if (!currentUserId || !chatId) return;
-
-    setLoadingMessagesByChat((current) => ({ ...current, [chatId]: true }));
+  const loadMessages = useCallback(async (chatId, before = null) => {
+    if (!currentUserId || !chatId || requestsInFlight.current.has(chatId)) return;
+    requestsInFlight.current.add(chatId);
+    const version = (requestVersions.current[chatId] || 0) + 1;
+    requestVersions.current[chatId] = version;
+    const setLoading = before ? setLoadingOlderByChat : setLoadingMessagesByChat;
+    setLoading(current => ({ ...current, [chatId]: true }));
+    setMessageErrors(current => ({ ...current, [chatId]: "" }));
     try {
       const response = await axios.get(
-        `${API}/api/chats/conversations/${currentUserId}/${chatId}/messages`
+        `${API}/api/chats/conversations/${currentUserId}/${chatId}/messages`,
+        { params: { limit: CHAT_PAGE_SIZE, ...(before ? { before } : {}) } }
       );
-      const nextMessages = (response.data.messages || []).map((row) => normalizeMessage(row, currentUserId));
-      setMessagesByChat((current) => ({ ...current, [chatId]: nextMessages }));
-      await axios.put(`${API}/api/chats/conversations/${currentUserId}/${chatId}/read`);
-      await loadConversations();
-    } catch (err) {
-      console.error("Error loading chat thread:", err);
-      setMessagesByChat((current) => ({ ...current, [chatId]: [] }));
+      if (requestVersions.current[chatId] !== version) return;
+      const next = (response.data.messages || []).map(row => normalizeMessage(row, currentUserId));
+      const body = bodyRefs.current[chatId];
+      if (before && body) pendingAnchors.current[chatId] = { height: body.scrollHeight, top: body.scrollTop };
+      if (!before) scrollState.current[chatId] = { bottom: true, force: true };
+      setMessagesByChat(current => ({ ...current, [chatId]: before
+        ? mergeChatMessages(current[chatId] || [], next)
+        : mergeChatMessages(next, (current[chatId] || []).filter(message => Number(message.id) > Number(next.at(-1)?.id || 0))) }));
+      setPagesByChat(current => ({ ...current, [chatId]: {
+        hasMore: Boolean(response.data.hasMore), nextBefore: response.data.nextBefore,
+      } }));
+      if (!before && expandedChats.current.includes(chatId) && document.visibilityState === "visible") {
+        void axios.put(`${API}/api/chats/conversations/${currentUserId}/${chatId}/read`)
+          .then(() => { void loadConversations(); notifyChatUpdates(); }).catch(console.error);
+      }
+    } catch (error) {
+      if (requestVersions.current[chatId] !== version) return;
+      setMessageErrors(current => ({ ...current, [chatId]: error.response?.data?.message || "Could not load messages. Please try again." }));
     } finally {
-      setLoadingMessagesByChat((current) => ({ ...current, [chatId]: false }));
+      if (requestVersions.current[chatId] === version) {
+        requestsInFlight.current.delete(chatId);
+        setLoading(current => ({ ...current, [chatId]: false }));
+      }
     }
-  };
+  }, [currentUserId, loadConversations, notifyChatUpdates]);
 
   useEffect(() => {
     if (!isOpen || !currentUserId) {
@@ -195,12 +272,14 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
 
     loadConversations();
     return undefined;
-  }, [isOpen, currentUserId]);
+  }, [isOpen, currentUserId, loadConversations]);
 
   useEffect(() => {
     if (!currentUserId) return undefined;
 
-    let source = openSseStream(`${API}/api/chats/stream/${currentUserId}`);
+    let source = openSseStream(`${API}/api/chats/stream/${currentUserId}`, { reconnectMs: 5000,
+      onOpen: () => expandedChats.current.forEach(chatId => { void loadMessages(chatId); }),
+    });
 
     const handleChatMessage = async (event) => {
       try {
@@ -216,14 +295,8 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
         const incomingMessage = normalizeMessage(payload, currentUserId);
 
         setMessagesByChat((current) => {
-          const existing = current[chatId] || [];
-          if (existing.some((message) => String(message.id) === String(incomingMessage.id))) {
-            return current;
-          }
-          return {
-            ...current,
-            [chatId]: [...existing, incomingMessage],
-          };
+          if (!current[chatId]) return current;
+          return { ...current, [chatId]: mergeChatMessages(current[chatId], [incomingMessage]) };
         });
 
         setConversations((current) => {
@@ -250,7 +323,7 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
             unread:
               Number(payload.sender_id) === Number(currentUserId)
                 ? 0
-                : String(activeChatId) === chatId
+                : (expandedChats.current.includes(chatId) && document.visibilityState === "visible")
                   ? 0
                   : (Number(baseConversation?.unread || 0) + 1),
             lastMessageAt: payload.sent_at || new Date().toISOString(),
@@ -270,7 +343,7 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
           return [nextConversation, ...current];
         });
 
-        if (String(payload.sender_id) !== String(currentUserId) && String(activeChatId) === chatId) {
+        if (String(payload.sender_id) !== String(currentUserId) && (expandedChats.current.includes(chatId) && document.visibilityState === "visible")) {
           await axios.put(`${API}/api/chats/conversations/${currentUserId}/${chatId}/read`);
           setConversations((current) =>
             current.map((chat) =>
@@ -311,15 +384,13 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
     source.addEventListener("chat-message", handleChatMessage);
     source.addEventListener("chat-read-receipt", handleReadReceipt);
     source.addEventListener("chat-presence-change", handlePresenceChange);
-    source.addEventListener("error", () => {
-      source?.close?.();
-    });
+
 
     return () => {
       source?.close?.();
       source = null;
     };
-  }, [currentUserId, activeChatId]);
+  }, [currentUserId, loadMessages, applyReadReceipt, applyPresenceChange, notifyChatUpdates]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -331,14 +402,6 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
     window.addEventListener("keydown", onEscape);
     return () => window.removeEventListener("keydown", onEscape);
   }, [isOpen, onClose]);
-
-  useEffect(() => {
-    if (!activeChatId) return;
-    const loaded = messagesByChat[activeChatId];
-    if (!loaded) {
-      loadMessages(activeChatId);
-    }
-  }, [activeChatId]);
 
   const filteredChats = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -382,18 +445,30 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
 
   const openConversation = async (chat) => {
     const chatId = String(chat.user_id);
+    const keepIds = [chatId, ...openChats.map(item => String(item.user_id)).filter(id => id !== chatId)].slice(0, compact ? 1 : 3);
+    setMessagesByChat(current => Object.fromEntries(keepIds.map(id => [id, current[id] || []])));
+    Object.keys(requestVersions.current).filter(id => !keepIds.includes(id)).forEach(id => {
+      requestVersions.current[id]++;
+      requestsInFlight.current.delete(id);
+    });
     setActiveChatId(chatId);
     setOpenChats((current) => {
       const next = current.filter((item) => String(item.user_id) !== chatId);
-      return [{ ...chat, minimized: false }, ...next].slice(0, 3);
+      return [{ ...chat, minimized: false }, ...next].slice(0, compact ? 1 : 3);
     });
     if (typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches) {
       onClose();
     }
+    scrollState.current[chatId] = { bottom: true, force: true };
     await loadMessages(chatId);
   };
 
   const closeConversation = (chatId) => {
+    requestVersions.current[chatId] = (requestVersions.current[chatId] || 0) + 1;
+    requestsInFlight.current.delete(chatId);
+    delete scrollState.current[chatId];
+    delete pendingAnchors.current[chatId];
+    setMessagesByChat(current => { const next = { ...current }; delete next[chatId]; return next; });
     setOpenChats((current) => current.filter((chat) => String(chat.user_id) !== String(chatId)));
     setDrafts((current) => {
       const next = { ...current };
@@ -404,33 +479,44 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
   };
 
   const toggleMinimized = (chatId) => {
-    setOpenChats((current) =>
-      current.map((chat) =>
-        String(chat.user_id) === String(chatId) ? { ...chat, minimized: !chat.minimized } : chat
-      )
-    );
+    const restoring = openChats.find(chat => String(chat.user_id) === chatId)?.minimized;
+    setOpenChats(current => current.map(chat => String(chat.user_id) === chatId
+      ? { ...chat, minimized: !chat.minimized } : chat));
+    if (restoring) {
+      scrollState.current[chatId] = { bottom: true, force: true };
+      setActiveChatId(chatId);
+      void loadMessages(chatId);
+    }
   };
 
   const sendMessage = async (chatId) => {
     const message = String(drafts[chatId] || "").trim();
-    if (!message || !currentUserId) return;
+    if (!message || !currentUserId || sendingByChat[chatId]) return;
 
     const recipientId = Number(chatId);
+    setSendingByChat(current => ({ ...current, [chatId]: true }));
     try {
-      await axios.post(`${API}/api/chats/messages`, {
+      const response = await axios.post(`${API}/api/chats/messages`, {
         sender_id: currentUserId,
         recipient_id: recipientId,
         content: message,
       });
-      setDrafts((current) => ({ ...current, [chatId]: "" }));
+      if (response.data?.message?.message_id) {
+        const sent = normalizeMessage(response.data.message, currentUserId);
+        scrollState.current[chatId] = { bottom: true, force: true };
+        setMessagesByChat(current => ({ ...current, [chatId]: mergeChatMessages(current[chatId] || [], [sent]) }));
+      }
+      setDrafts((current) => ({ ...current, [chatId]: current[chatId] === message ? "" : current[chatId] }));
       await loadConversations();
       notifyChatUpdates();
     } catch (err) {
-      console.error("Error sending chat message:", err);
+      setMessageErrors(current => ({ ...current, [chatId]: err.response?.data?.message || "Message was not sent. Your draft is still here." }));
+    } finally {
+      setSendingByChat(current => ({ ...current, [chatId]: false }));
     }
   };
 
-  const visibleChats = openChats.filter((chat) => messagesByChat[String(chat.user_id)]);
+  const visibleChats = compact ? openChats.slice(0, 1) : openChats;
   const seenMessageIdsByChat = useMemo(() => {
     return Object.entries(messagesByChat).reduce((acc, [chatId, messages]) => {
       const lastSeen = [...messages].reverse().find((message) => message.sender === "me" && message.read_at);
@@ -441,7 +527,7 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
 
   return (
     <>
-      <aside className={`${styles.drawer} ${isOpen ? styles.drawerOpen : ""}`} aria-hidden={!isOpen}>
+      <aside className={`${styles.drawer} ${isOpen ? styles.drawerOpen : ""}`} aria-hidden={!isOpen} inert={!isOpen}>
         <div className={styles.drawerHeader}>
           <div className={styles.drawerHeaderMain}>
             <span className={styles.headerIcon} aria-hidden="true">💬</span>
@@ -520,6 +606,7 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
             filteredChats.map((chat) => (
               <button
                 key={chat.id}
+                data-chat-contact={chat.id}
                 type="button"
                 className={`${styles.chatItem} ${String(chat.id) === String(activeChatId) ? styles.chatItemActive : ""} ${chat.unread > 0 ? styles.chatItemUnread : ""}`}
                 onClick={() => openConversation(chat)}
@@ -558,19 +645,21 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
         </div>
       </aside>
 
-      <div className={`${styles.dock} ${isOpen ? styles.dockWithDrawer : ""}`} aria-label="Open chats">
+      <div className={`${styles.dock} ${isOpen ? styles.dockWithDrawer : ""}`} aria-label="Open chats"
+        style={viewport ? { bottom: viewport.bottom, "--chat-viewport-height": `${viewport.height}px` } : undefined}>
         {visibleChats.map((chat) => {
           const chatId = String(chat.user_id);
           const messages = messagesByChat[chatId] || [];
           const minimized = Boolean(chat.minimized);
 
           return (
-            <section key={chatId} className={`${styles.window} ${minimized ? styles.windowMinimized : ""}`}>
+            <section key={chatId} aria-label={`Chat with ${chat.name}`} className={`${styles.window} ${minimized ? styles.windowMinimized : ""}`}>
               <header className={styles.windowHeader}>
                 <button
                   type="button"
                   className={styles.windowTitle}
-                  onClick={() => setActiveChatId(chatId)}
+                  aria-label={`${minimized ? "Restore chat with" : "Conversation with"} ${chat.name}`}
+                  onClick={() => { if (minimized) toggleMinimized(chatId); else setActiveChatId(chatId); }}
                 >
                   <AuthenticatedImage
                     src={chat.profileImageUrl}
@@ -613,8 +702,22 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
 
               {!minimized && (
                 <>
-                  <div className={styles.windowBody}>
-                    {loadingMessagesByChat[chatId] ? (
+                  <div className={styles.windowBody} data-chat-thread={chatId}
+                    ref={node => { if (node) bodyRefs.current[chatId] = node; else delete bodyRefs.current[chatId]; }}
+                    onScroll={event => {
+                      const body = event.currentTarget;
+                      scrollState.current[chatId] = { bottom: body.scrollHeight - body.clientHeight - body.scrollTop < 48 };
+                    }}>
+                    {pagesByChat[chatId]?.hasMore && <button type="button" className={styles.historyButton}
+                      disabled={loadingOlderByChat[chatId] || loadingMessagesByChat[chatId]}
+                      onClick={() => loadMessages(chatId, pagesByChat[chatId].nextBefore)}>
+                      {loadingOlderByChat[chatId] ? "Loading older messages?" : "Load older messages"}
+                    </button>}
+                    {messageErrors[chatId] && <div role="alert" className={styles.threadError}>
+                      {messageErrors[chatId]} <button type="button" onClick={() => loadMessages(chatId,
+                        messages.length ? pagesByChat[chatId]?.nextBefore : null)}>Retry</button>
+                    </div>}
+                    {loadingMessagesByChat[chatId] && !messages.length ? (
                       <div className={styles.windowEmpty}>
                         <span className={styles.windowEmptyIcon} aria-hidden="true">⏳</span>
                         <strong>Loading messages…</strong>
@@ -634,6 +737,7 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
                         return (
                           <div
                             key={message.id}
+                            data-message-id={message.id}
                             className={`${styles.messageRow} ${message.sender === "me" ? styles.messageRowMe : styles.messageRowThem}`}
                           >
                             {message.sender !== "me" && (
@@ -672,10 +776,13 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
                             sendMessage(chatId);
                           }
                         }}
+                        aria-label={`Message ${chat.name}`}
+                        maxLength={10000}
                         placeholder={`Say hi to ${chat.name.split(" ")[0]}…`}
                       />
                     </label>
-                    <button type="button" className={styles.sendButton} onClick={() => sendMessage(chatId)}>
+                    <button type="button" className={styles.sendButton} disabled={sendingByChat[chatId] || !drafts[chatId]?.trim()}
+                      onClick={() => sendMessage(chatId)}>
                       <span aria-hidden="true">➤</span>
                       Send
                     </button>

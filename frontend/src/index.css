@@ -183,6 +183,10 @@ a      { color: inherit; }
 /* ============================================================
    GLOBAL ANIMATIONS
    ============================================================ */
+/* Custom password controls own visibility, avoiding duplicate native eye icons. */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear { display: none; }
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }

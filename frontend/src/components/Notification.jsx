@@ -5,17 +5,19 @@ export default function Notification({ id, message, type = "info", duration = 40
   const [isVisible, setIsVisible] = useState(true);
 
   useEffect(() => {
-    if (duration > 0) {
-      const timer = setTimeout(() => {
-        setIsVisible(false);
-        setTimeout(() => onClose(id), 300); // Allow animation to complete
-      }, duration);
+    if (!isVisible) {
+      const timer = setTimeout(() => onClose(id), 300);
       return () => clearTimeout(timer);
     }
-  }, [duration, id, onClose]);
+    if (duration > 0) {
+      const timer = setTimeout(() => setIsVisible(false), duration);
+      return () => clearTimeout(timer);
+    }
+  }, [duration, id, onClose, isVisible]);
 
   return (
-    <div className={`${styles.notification} ${styles[type]} ${!isVisible ? styles.exit : ""}`}>
+    <div role="status" aria-live="polite" aria-atomic="true"
+      className={`${styles.notification} ${styles[type]} ${!isVisible ? styles.exit : ""}`}>
       <div className={styles.content}>
         <span className={styles.icon}>
           {type === "success" && "✓"}
@@ -26,11 +28,9 @@ export default function Notification({ id, message, type = "info", duration = 40
         <span className={styles.message}>{message}</span>
       </div>
       <button
+        type="button"
         className={styles.close}
-        onClick={() => {
-          setIsVisible(false);
-          setTimeout(() => onClose(id), 300);
-        }}
+        onClick={() => setIsVisible(false)}
         aria-label="Close notification"
       >
         ×

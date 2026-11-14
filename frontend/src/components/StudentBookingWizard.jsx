@@ -67,6 +67,7 @@ const PREVIOUS_STEP = {
 };
 
 export default function StudentBookingWizard({
+  initialStep = "choose",
   teacherName = "",
   courseName = "",
   classDuration = 50,
@@ -120,7 +121,7 @@ export default function StudentBookingWizard({
   onBook = () => {},
   onCancel = () => {},
 }) {
-  const [step, setStep] = useState("choose");
+  const [step, setStep] = useState(initialStep);
   const [finding, setFinding] = useState(false);
   const [preferredTime, setPreferredTime] = useState("");
   const [timeSearch, setTimeSearch] = useState(null);
@@ -707,13 +708,14 @@ export default function StudentBookingWizard({
 
   const isLast = step === "check";
   const canGoNext = (() => {
-    if (step === "day") return Boolean(selectedDate);
+    if (step === "day") return Boolean(selectedDate && !availabilityLoading && dayStatus(selectedDate) === "free");
     if (step === "time") return Boolean(picked && picked.date === selectedDate && !timesLoading
       && timeSlots.includes(picked.time) && !isTimeBooked(picked.time));
     if (step === "weekday") return weeklyWeekdays.length > 0;
     if (step === "weektime") return Boolean(weeklyTime && !isPartOfDay(weeklyTime));
     if (step === "found") return selections.length > 0;
-    if (step === "check") return selections.length > 0 && !hasNoClassesLeft;
+    if (step === "check") return selections.length > 0 && !hasNoClassesLeft && !availabilityLoading
+      && (weekly || (!timesLoading && picked?.date === selectedDate && timeSlots.includes(picked.time) && !isTimeBooked(picked.time)));
     return false;
   })();
 

@@ -31,6 +31,13 @@ export function getNotificationTargetUrl(notification, role, origin) {
     notification.action_url || notification.actionUrl,
     origin
   );
+  // Older availability notices saved only /Calendar, which opens the student's
+  // booked classes. They need the teacher's availability even with no bookings.
+  if (relatedType === "teacher_availability" && (!actionPath || actionPath === "/Calendar")) {
+    return relatedId
+      ? `/Calendar?view=availability&availabilityId=${encodeURIComponent(relatedId)}`
+      : "/Calendar?view=availability";
+  }
   if (actionPath) return actionPath;
 
   if (relatedType === "class" && relatedId && ["teacher", "student"].includes(role)) {

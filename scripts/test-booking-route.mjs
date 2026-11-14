@@ -100,6 +100,8 @@ assert(accessStart >= 0 && accessEnd > accessStart && conflictsStart >= 0 && con
 let conflictsHandler;
 let assignedTeacherId = 1;
 let conflictQueryCount = 0;
+let expectedConflictDate = "2026-11-09";
+let expectedHoldDate = "2026-11-09";
 const conflictsPool = {
   async query(sql, params) {
     if (sql.includes("FROM student_profiles")) return [[{ assigned_teacher_id: assignedTeacherId }]];
@@ -107,7 +109,11 @@ const conflictsPool = {
     assert.match(sql, /SELECT c\.class_id, c\.teacher_id/);
     assert.doesNotMatch(sql, /student_name|student_email|profile_image|first_name|last_name/i);
     assert.equal(params[0], "1");
-    assert.equal(params[1], "2026-11-09");
+    assert.equal(params[1], expectedConflictDate);
+    if (params.length === 3) {
+      assert.equal(params[2], expectedConflictDate);
+      assert.match(sql, /c\.scheduled_date >= \? AND c\.scheduled_date < DATE_ADD\(\?, INTERVAL 1 MONTH\)/);
+    }
     return [[{ class_id: 90, teacher_id: 1, scheduled_date: "2026-11-09", start_time: "20:00:00",
       end_time: "20:25:00", duration: 25, teacher_timezone: "Asia/Manila" }]];
   },
@@ -117,7 +123,7 @@ vm.runInNewContext(source.slice(accessStart, accessEnd) + source.slice(conflicts
   requireSession() {}, pool: conflictsPool, groupClassSchemaReady: true,
   groupProposalHolds: async (_db, options) => {
     assert.equal(options.teacherId, "1");
-    assert.equal(options.date, "2026-11-09");
+    assert.equal(options.date, expectedHoldDate);
     return [{ class_id: "group-hold-1", is_group_hold: true, scheduled_date: "2026-11-09", start_time: "21:00" }];
   },
   console,
@@ -139,6 +145,22 @@ assert.equal(conflictQueryCount, 1);
 const invalidDate = await getConflicts({ userId: 2, role: "student" }, { teacher_id: "1", scheduled_date: "2026-02-30" });
 assert.equal(invalidDate.code, 400);
 console.log("Assigned students can check minimal teacher booking conflicts; unrelated schedules remain private.");
+
+assignedTeacherId = 1;
+expectedConflictDate = "2026-11-01";
+expectedHoldDate = undefined;
+const monthlyConflicts = await getConflicts({ userId: 2, role: "student" }, { teacher_id: "1", year: "2026", month: "11" });
+assert.equal(monthlyConflicts.code, 200);
+assert.equal(monthlyConflicts.body.classes.length, 2);
+const queriesBeforeInvalidMonth = conflictQueryCount;
+for (const month of ["0", "13", "1.5", "invalid"]) {
+  assert.equal((await getConflicts({ userId: 2, role: "student" }, { teacher_id: "1", year: "2026", month })).code, 400);
+}
+assert.equal(conflictQueryCount, queriesBeforeInvalidMonth);
+assignedTeacherId = 9;
+assert.equal((await getConflicts({ userId: 2, role: "student" }, { teacher_id: "1", year: "2026", month: "11" })).code, 403);
+assert.equal(conflictQueryCount, queriesBeforeInvalidMonth);
+console.log("Monthly conflict reads validate the calendar range and preserve teacher access checks.");
 
 
 reset(); assert.equal((await book("10:00", 2, { scheduled_date: "2000-01-01" })).code, 400); assert.equal(inserted, 0);

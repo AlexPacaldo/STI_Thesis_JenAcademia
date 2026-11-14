@@ -3886,7 +3886,7 @@ export default function AdminDashboard() {
                   <label>Password</label>
                   <input type="password" value={aForm.password} onChange={(e)=>setAForm({...aForm, password:e.target.value})} required minLength="8" />
                   <p className={styles.criteriaFieldHint}>
-                    Choose a strong password. The admin will use it to sign in.
+                    Password requirement: use at least 8 characters and choose a unique, strong password the admin will use to sign in.
                   </p>
                 </div>
               </div>

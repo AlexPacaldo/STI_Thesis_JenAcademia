@@ -1,10 +1,11 @@
 import axios from "axios";
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import Notification from "./Notification";
 import styles from "../assets/notificationContainer.module.css";
 import { getLocalUnreadCount } from "../utils/localNotificationStore.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
+import { enqueueToast, MAX_VISIBLE_TOASTS } from "../utils/toastQueue.js";
 
 export const NotificationContext = React.createContext();
 const BADGE_REFRESH_MS = 15 * 1000;
@@ -27,6 +28,7 @@ let nextNotificationId = 0;
 
 export function NotificationProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
+  const toastQueue = useRef([]);
   const [currentUser, setCurrentUser] = useState(() => readStoredUser());
   const [unreadCount, setUnreadCount] = useState(0);
   const currentUserId = currentUser?.id || currentUser?.user_id || currentUser?.userId;
@@ -37,7 +39,11 @@ export function NotificationProvider({ children }) {
       setCurrentUser(event.detail || readStoredUser());
     };
     const handleStorageChange = () => setCurrentUser(readStoredUser());
-    const handleLogout = () => setCurrentUser(null);
+    const handleLogout = () => {
+      setCurrentUser(null);
+      toastQueue.current = [];
+      setNotifications([]);
+    };
 
     window.addEventListener("userProfileUpdated", handleProfileUpdate);
     window.addEventListener("userLoggedOut", handleLogout);
@@ -94,14 +100,20 @@ export function NotificationProvider({ children }) {
   }, [currentUserId, currentUserRole, refreshUnreadCount]);
 
   const addNotification = useCallback((message, type = "info", duration = 4000) => {
+    const text = typeof message === "string" ? message.trim() : message;
+    if (!text) return null;
     nextNotificationId += 1;
-    const id = nextNotificationId;
-    setNotifications((prev) => [...prev, { id, message, type, duration }]);
+    const { queue, id } = enqueueToast(toastQueue.current, {
+      id: nextNotificationId, message: text, type, duration,
+    });
+    toastQueue.current = queue;
+    setNotifications(queue);
     return id;
   }, []);
 
   const removeNotification = useCallback((id) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    toastQueue.current = toastQueue.current.filter((n) => n.id !== id);
+    setNotifications(toastQueue.current);
   }, []);
 
   const notify = useCallback(
@@ -115,7 +127,7 @@ export function NotificationProvider({ children }) {
     >
       {children}
       <div className={styles.container}>
-        {notifications.map((notif) => (
+        {notifications.slice(0, MAX_VISIBLE_TOASTS).map((notif) => (
           <Notification
             key={notif.id}
             id={notif.id}

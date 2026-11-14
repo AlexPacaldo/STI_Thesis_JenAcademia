@@ -52,11 +52,11 @@ export default function ResetPassword() {
     setFormError("");
 
     if (form.password.length < 8) {
-      setFormError("Your password needs at least 8 characters.");
+      setFormError("Password requirement: use at least 8 characters. Try a longer password.");
       return;
     }
     if (form.password !== form.confirmPassword) {
-      setFormError("Those passwords don’t match yet. Try again.");
+      setFormError("Passwords do not match yet. Please type the same password in both fields.");
       return;
     }
 
@@ -126,7 +126,7 @@ export default function ResetPassword() {
             <p className={styles.eyebrow}>Step 1 · Make a new password</p>
             <h1 id="reset-title">Choose your new password</h1>
             <p className={styles.description}>
-              Make it at least 8 characters long, then type it again so we know it’s right.
+              Use at least 8 characters in your new password. Pick something memorable but unique, then type it again to confirm.
             </p>
 
             <form className={styles.form} onSubmit={handleSubmit}>
@@ -179,7 +179,9 @@ export default function ResetPassword() {
               </div>
 
               <p id="password-hint" className={styles.passwordHint}>
-                {form.password.length >= 8 ? "✓ Great! Your password is long enough." : "Use 8 or more characters."}
+                {form.password.length >= 8
+                  ? "✓ Password meets the minimum length requirement."
+                  : "Password requirement: 8 or more characters."}
               </p>
               {formError && <p className={styles.errorMessage} role="alert">{formError}</p>}
 

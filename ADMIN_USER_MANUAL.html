@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="JEN Academia administrator user manual: accounts, schedules, contracts, class verifications, books, and reports.">
+  <title>JEN Academia | Admin User Manual</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --green: #214936;
+      --green-dark: #173627;
+      --green-soft: #eaf2ed;
+      --gold: #d49b35;
+      --ink: #202923;
+      --muted: #5c6c62;
+      --line: #d8e1db;
+      --paper: #fff;
+      --wash: #f5f8f5;
+      --blue: #eaf2fa;
+      --blue-ink: #28567e;
+      --amber: #fff5df;
+      --amber-ink: #725116;
+      font-family: "Aptos", "Segoe UI", Arial, sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+      font-size: 10.5pt;
+      line-height: 1.48;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    .page {
+      position: relative;
+      min-height: 9.4in;
+      padding: 0;
+    }
+    h1, h2, h3, p, ul, ol { margin-top: 0; }
+    h1, h2, h3 { color: var(--green-dark); line-height: 1.18; }
+    h1 { font-size: 30pt; letter-spacing: -.7pt; margin-bottom: 12pt; }
+    h2 { font-size: 20pt; margin: 0 0 9pt; }
+    h3 { font-size: 12pt; margin: 14pt 0 5pt; }
+    p { margin-bottom: 8pt; }
+    ul, ol { padding-left: 20pt; margin-bottom: 9pt; }
+    li { margin-bottom: 3pt; padding-left: 1pt; }
+    a { color: var(--green); text-decoration: none; }
+    .eyebrow {
+      color: var(--green);
+      font-size: 8pt;
+      font-weight: 800;
+      letter-spacing: 1.8pt;
+      text-transform: uppercase;
+      margin-bottom: 8pt;
+    }
+    .subtitle { color: var(--muted); font-size: 13pt; max-width: 5.8in; }
+    .chapter { break-before: page; page-break-before: always; }
+    .chapter-intro { color: var(--muted); margin-bottom: 15pt; max-width: 6.5in; }
+    .cover {
+      min-height: 9.25in;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: .55in .52in .45in;
+      color: white;
+      background:
+        radial-gradient(ellipse at 94% 10%, rgba(212,155,53,.34), transparent 31%),
+        linear-gradient(145deg, #173627 0%, #214936 64%, #315b42 100%);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .cover .eyebrow { color: #e8c573; }
+    .cover h1 { color: white; font-size: 42pt; line-height: 1.04; max-width: 5.8in; margin: 0 0 17pt; }
+    .cover .subtitle { color: #e2ebe4; font-size: 15pt; max-width: 5.1in; }
+    .brand-mark {
+      display: inline-flex;
+      align-items: center;
+      gap: 10pt;
+      color: #fff;
+      font-weight: 800;
+      letter-spacing: .5pt;
+      font-size: 13pt;
+    }
+    .brand-icon {
+      width: 38pt;
+      height: 38pt;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.45);
+      border-radius: 12pt 12pt 12pt 3pt;
+      color: #f0cf7a;
+      font-size: 18pt;
+    }
+    .cover-rule { width: 62pt; height: 3pt; background: var(--gold); margin: 22pt 0; }
+    .cover-meta { color: #d5e0d8; font-size: 9pt; letter-spacing: .4pt; }
+    .cover-bottom { display: flex; justify-content: space-between; align-items: end; }
+    .cover-stamp {
+      border: 1px solid rgba(255,255,255,.33);
+      border-radius: 20pt;
+      padding: 5pt 11pt;
+      color: #e9efe9;
+      font-size: 8pt;
+      letter-spacing: .7pt;
+      text-transform: uppercase;
+    }
+    .contents {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7pt 22pt;
+      margin: 12pt 0 17pt;
+    }
+    .contents a {
+      display: flex;
+      gap: 9pt;
+      border-bottom: 1px solid var(--line);
+      padding: 6pt 0;
+      font-weight: 650;
+    }
+    .contents .num { min-width: 19pt; color: var(--gold); font-weight: 800; }
+    .section-label {
+      display: inline-block;
+      margin: 0 0 8pt;
+      color: var(--green);
+      font-size: 8pt;
+      font-weight: 800;
+      letter-spacing: 1.2pt;
+      text-transform: uppercase;
+    }
+    .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9pt; margin: 10pt 0; }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 9pt;
+      background: var(--paper);
+      padding: 11pt 12pt;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .card h3 { margin: 0 0 5pt; }
+    .card p:last-child, .card ul:last-child, .card ol:last-child { margin-bottom: 0; }
+    .soft-card { background: var(--wash); }
+    .callout {
+      border-left: 3pt solid var(--gold);
+      background: var(--amber);
+      color: var(--amber-ink);
+      padding: 9pt 12pt;
+      border-radius: 0 7pt 7pt 0;
+      margin: 10pt 0;
+      break-inside: avoid;
+    }
+    .tip {
+      border-left: 3pt solid var(--green);
+      background: var(--green-soft);
+      color: #254334;
+      padding: 9pt 12pt;
+      border-radius: 0 7pt 7pt 0;
+      margin: 10pt 0;
+      break-inside: avoid;
+    }
+    .info {
+      border-left: 3pt solid #7092b2;
+      background: var(--blue);
+      color: var(--blue-ink);
+      padding: 9pt 12pt;
+      border-radius: 0 7pt 7pt 0;
+      margin: 10pt 0;
+      break-inside: avoid;
+    }
+    .steps { counter-reset: step; list-style: none; padding: 0; margin: 10pt 0; }
+    .steps li {
+      position: relative;
+      counter-increment: step;
+      padding: 0 0 9pt 34pt;
+      margin: 0 0 7pt;
+      border-bottom: 1px solid #e9eeea;
+      min-height: 27pt;
+    }
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: -1pt;
+      width: 22pt;
+      height: 22pt;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--green);
+      color: white;
+      font-size: 9pt;
+      font-weight: 800;
+    }
+    .steps li:last-child { border-bottom: 0; }
+    .role-tag {
+      display: inline-block;
+      border-radius: 20pt;
+      padding: 3pt 8pt;
+      background: var(--green-soft);
+      color: var(--green);
+      font-size: 8pt;
+      font-weight: 800;
+      letter-spacing: .5pt;
+      text-transform: uppercase;
+      margin-bottom: 8pt;
+    }
+    .split { display: grid; grid-template-columns: 1.05fr .95fr; gap: 16pt; align-items: start; }
+    .compact li { margin-bottom: 2pt; }
+    .small { color: var(--muted); font-size: 9pt; }
+    .footerline {
+      border-top: 1px solid var(--line);
+      margin-top: 17pt;
+      padding-top: 7pt;
+      color: var(--muted);
+      font-size: 8pt;
+      display: flex;
+      justify-content: space-between;
+    }
+    .checklist { list-style: none; padding: 0; }
+    .checklist li { position: relative; padding-left: 19pt; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; top: 0; color: var(--green); font-weight: 900; }
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8pt 0 12pt;
+      font-size: 9pt;
+    }
+    .table th {
+      background: var(--green);
+      color: white;
+      text-align: left;
+      padding: 7pt 8pt;
+      font-weight: 700;
+    }
+    .table td { padding: 7pt 8pt; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .table tr:nth-child(even) td { background: var(--wash); }
+    .pill {
+      display: inline-block;
+      color: var(--green);
+      background: var(--green-soft);
+      border-radius: 5pt;
+      padding: 2pt 6pt;
+      font-size: 8pt;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .endnote {
+      margin-top: 22pt;
+      padding: 13pt 15pt;
+      border-radius: 10pt;
+      background: var(--green-dark);
+      color: white;
+    }
+    .endnote h3 { color: white; margin-top: 0; }
+    @media screen {
+      body { background: var(--wash); padding: 28px 16px; }
+      main { max-width: 8.5in; margin: auto; }
+      .page { padding: .5in; margin-bottom: 24px; }
+      .page:not(.cover) { background: white; }
+      .cover { padding: .55in .52in .45in; }
+      .chapter { min-height: 9.4in; }
+    }
+    @media (max-width: 600px) {
+      .page { padding: 24px; }
+      .contents, .card-grid { grid-template-columns: 1fr; }
+      .cover h1 { font-size: 34pt; }
+      .cover-bottom { display: block; }
+      .cover-stamp { margin-top: 12pt; display: inline-block; }
+    }
+    @media print {
+      @page { size: letter; margin: .54in .62in .58in; }
+      @page {
+        @bottom-left { content: "JEN ACADEMIA  •  ADMIN USER MANUAL"; color: #65736a; font: 8pt "Segoe UI", Arial, sans-serif; }
+        @bottom-right { content: "NOVEMBER 2026  •  " counter(page); color: #65736a; font: 8pt "Segoe UI", Arial, sans-serif; }
+      }
+      html, body { background: white; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      :root { font-size: 9.4pt; line-height: 1.32; }
+      .page { min-height: 0; }
+      .cover { min-height: 9.25in; break-after: page; page-break-after: always; }
+      a { color: inherit; }
+      h2 { font-size: 18pt; margin-bottom: 6pt; }
+      h3 { font-size: 11pt; margin: 10pt 0 4pt; }
+      p { margin-bottom: 6pt; }
+      .chapter-intro { margin-bottom: 10pt; }
+      .steps li { padding-bottom: 5pt; margin-bottom: 4pt; }
+      #student-calendar h3 { margin: 7pt 0 3pt; }
+      #student-calendar .steps li { padding-bottom: 2pt; margin-bottom: 2pt; }
+      #student-calendar .checklist li { margin-bottom: 2pt; }
+      #student-calendar .callout, #student-calendar .tip { padding: 5pt 7pt; margin: 5pt 0; }
+      .card-grid { gap: 6pt; margin: 7pt 0; }
+      .card { padding: 8pt 9pt; }
+      .callout, .tip, .info { padding: 7pt 9pt; margin: 7pt 0; }
+      .table { font-size: 8.4pt; margin: 6pt 0 9pt; }
+      .table th, .table td { padding: 5pt 6pt; }
+      .footerline { display: none; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <section class="page cover" aria-label="Cover">
+    <div class="brand-mark"><span class="brand-icon">J</span> JEN ACADEMIA</div>
+    <div>
+      <p class="eyebrow">A practical guide for school administrators</p>
+      <h1>Admin User<br>Manual</h1>
+      <div class="cover-rule"></div>
+      <p class="subtitle">Step-by-step instructions for managing accounts, classes, contracts, learning materials, and reports.</p>
+    </div>
+    <div class="cover-bottom">
+      <div class="cover-meta">Accounts &middot; Scheduling &middot; Verification &middot; Learning<br>Prepared November 2026</div>
+      <div class="cover-stamp">Administrator edition</div>
+    </div>
+  </section>
+
+  <section class="page chapter" id="contents">
+    <p class="eyebrow">Start here</p>
+    <h2>Find your way around</h2>
+    <p class="chapter-intro">This guide covers the administrator account in JEN Academia. Use the linked contents to go directly to a task. Button and menu labels appear in <b>bold</b>.</p>
+    <nav class="contents" aria-label="Table of contents">
+      <a href="#sign-in"><span class="num">01</span> Sign in &amp; daily routine</a>
+      <a href="#dashboard"><span class="num">02</span> Dashboard &amp; navigation</a>
+      <a href="#teacher"><span class="num">03</span> Create a teacher account</a>
+      <a href="#student"><span class="num">04</span> Create a student account</a>
+      <a href="#accounts"><span class="num">05</span> Account access &amp; invitations</a>
+      <a href="#admin"><span class="num">06</span> Create an admin account</a>
+      <a href="#calendar"><span class="num">07</span> Calendars &amp; requests</a>
+      <a href="#contracts"><span class="num">08</span> Manage class contracts</a>
+      <a href="#contract-requests"><span class="num">09</span> Contract requests &amp; extensions</a>
+      <a href="#verifications"><span class="num">10</span> Verify class records</a>
+      <a href="#books"><span class="num">11</span> Books &amp; teacher access</a>
+      <a href="#lessons"><span class="num">12</span> Lessons &amp; progress</a>
+      <a href="#reviews"><span class="num">13</span> Contract review reports</a>
+      <a href="#help"><span class="num">14</span> Troubleshooting &amp; reference</a>
+    </nav>
+    <div class="card-grid">
+      <div class="card soft-card"><h3>Administrator</h3><p>Creates teacher and student accounts, manages contracts and materials, monitors schedules, and reviews class evidence and reports.</p></div>
+      <div class="card soft-card"><h3>Super administrator</h3><p>Has the additional <b>Create Admin</b> option. An ordinary admin does not see this option. The protected super-admin account cannot be archived or restored through account management.</p></div>
+    </div>
+    <div class="info"><b>Using the manual:</b> follow the steps for the task you need. Screens may adapt to the device size. Confirm the selected person, course, and class before saving a change.</div>
+    <p class="small">Prepared from the application's administrator screens in November 2026. Features depend on the deployed version and the signed-in account's permissions.</p>
+  </section>
+
+  <section class="page chapter" id="sign-in">
+    <p class="eyebrow">01 &middot; Getting started</p>
+    <h2>Sign in &amp; daily routine</h2>
+    <p class="chapter-intro">Use the administrator account supplied by your school. Successful admin sign-in opens the Admin Dashboard.</p>
+    <h3>Sign in</h3>
+    <ol class="steps">
+      <li>Open the JEN Academia website and go to its sign-in page (<b>/login</b>).</li>
+      <li>Enter your administrator email address and password.</li>
+      <li>Submit the sign-in form. Check that the Admin Dashboard and administrator menu appear.</li>
+      <li>If you forgot your password, use the password recovery link on the sign-in page and follow the instructions sent to your registered email.</li>
+    </ol>
+    <h3>A suggested daily workflow</h3>
+    <table class="table">
+      <thead><tr><th>When</th><th>What to check</th></tr></thead>
+      <tbody>
+        <tr><td>Start of the day</td><td>Open <b>Overview</b>. Review today's timetable and items needing attention.</td></tr>
+        <tr><td>Before classes</td><td>Use <b>Calendar</b> to review scheduled lessons and <b>Requests</b> to monitor reschedule activity.</td></tr>
+        <tr><td>When onboarding</td><td>Create the account, check the assigned course and teacher, and confirm that the setup invitation was delivered.</td></tr>
+        <tr><td>During administration</td><td>Review pending contract requests, package details, and expired contracts.</td></tr>
+        <tr><td>After classes</td><td>Open <b>Verifications</b> to review flagged records. Check <b>Contract reviews</b> for completed-contract feedback.</td></tr>
+      </tbody>
+    </table>
+    <h3>Finish your session</h3>
+    <p>Use the account menu to sign out when you finish, especially on a shared device. If inactivity ends your session, sign in again before continuing your task.</p>
+    <div class="tip"><b>Before submitting:</b> recheck names, email addresses, assigned teachers, package counts, and dates. Read each confirmation dialog before confirming.</div>
+  </section>
+
+  <section class="page chapter" id="dashboard">
+    <p class="eyebrow">02 &middot; Your workspace</p>
+    <h2>Dashboard &amp; navigation</h2>
+    <p class="chapter-intro"><b>Overview</b> is the landing screen. Its summary cards and attention items link to the relevant management area.</p>
+    <table class="table">
+      <thead><tr><th>Menu item</th><th>Use it to</th></tr></thead>
+      <tbody>
+        <tr><td><b>Overview</b></td><td>Review school totals, the recent class-status trend, today's timetable, and outstanding work.</td></tr>
+        <tr><td><b>Calendar</b></td><td>Inspect scheduled classes and their details.</td></tr>
+        <tr><td><b>Books / Lessons</b></td><td>Create and maintain books, distribute access, and open lesson content.</td></tr>
+        <tr><td><b>Verifications</b></td><td>Inspect attendance, proof files, recordings, and records needing an admin decision.</td></tr>
+        <tr><td><b>Requests</b></td><td>Monitor participant reschedule requests and their outcomes.</td></tr>
+        <tr><td><b>Contracts</b></td><td>Manage student packages and respond to contract and extension requests.</td></tr>
+        <tr><td><b>Contract reviews</b></td><td>Read teacher evaluations and student feedback for completed contracts.</td></tr>
+        <tr><td><b>Teacher Courses</b></td><td>Change the courses assigned to a teacher.</td></tr>
+        <tr><td><b>Create Teacher</b></td><td>Register a teacher and enter their teaching and matching profile.</td></tr>
+        <tr><td><b>Create Student</b></td><td>Register a learner, record the trial assessment, and set their teacher and package.</td></tr>
+        <tr><td><b>Create Admin</b></td><td>Create another administrator; available to super admins only.</td></tr>
+        <tr><td><b>Account Management</b></td><td>Search accounts, manage setup invitations and email addresses, and archive or restore users.</td></tr>
+      </tbody>
+    </table>
+    <div class="tip"><b>Find a record quickly:</b> use the search box and status filters in the current area. If a record disappears, clear the search and check active or archived views before creating a replacement.</div>
+  </section>
+
+  <section class="page chapter" id="teacher">
+    <p class="eyebrow">03 &middot; Onboard a teacher</p>
+    <h2>Create a teacher account</h2>
+    <ol class="steps">
+      <li>Choose <b>Create Teacher</b> in the administrator menu.</li>
+      <li>Optionally use <b>Auto-fill From Resume</b>. Select a PDF, DOCX, or TXT file up to <b>8 MB</b>. Review every filled field before saving.</li>
+      <li>Complete the teacher's <b>First Name</b>, <b>Last Name</b>, <b>Email</b>, <b>Country</b>, and <b>Birthday</b>.</li>
+      <li>Select the teacher's courses. Complete the <b>AI Matching Profile</b>, including specialization, teaching style, ideal student pace, and experience years.</li>
+      <li>Set the option indicating that the teacher does not teach children when applicable. Add useful teaching strengths and context in <b>Teacher Bio / Notes</b>.</li>
+      <li>Choose <b>Create Teacher</b>. Review the name, email, and course count in the confirmation dialog, then confirm.</li>
+      <li>Read the result message. A successful creation normally sends a setup invitation to the teacher's email. Check the invitation status in <b>Account Management</b>.</li>
+    </ol>
+    <div class="info"><b>Resume assistance:</b> auto-fill keeps existing text entries and combines matching selections with those already chosen. It can miss information. The administrator must check the result and complete missing details.</div>
+    <h3>Update teacher course assignments</h3>
+    <ol class="steps">
+      <li>Open <b>Teacher Courses</b> and search for the teacher or course.</li>
+      <li>Select the courses the teacher should handle, then use the save action.</li>
+      <li>Review and confirm the teacher and course selections.</li>
+    </ol>
+    <div class="tip"><b>Next step:</b> ask the teacher to complete account setup and enter availability. Accurate courses, profile information, and availability support student matching.</div>
+  </section>
+
+  <section class="page chapter" id="student">
+    <p class="eyebrow">04 &middot; Onboard a learner</p>
+    <h2>Create a student account</h2>
+    <ol class="steps">
+      <li>Choose <b>Create Student</b>. Complete the learner's name, email, country, and birthday, then select <b>Enroll in Course</b>.</li>
+      <li>Under <b>Trial Class Assessment</b>, complete the <b>Level Evaluation</b>. Score each displayed criterion from <b>1 to 5</b>; the application computes the proficiency level.</li>
+      <li>Complete the learner's <b>Matching Criteria</b>: learning goal, focus area, learning style, and pace. Use custom entries where the form provides them.</li>
+      <li>Optionally set <b>Preferred Class Time</b> using the preferred days and time of day. Enter <b>Trial Class Notes</b> describing performance, strengths, and learning needs.</li>
+      <li>Use <b>Analyze with AI</b> for matching assistance. Review the recommended teacher, fit information, and availability warnings. Select the intended <b>Assigned Teacher</b>.</li>
+      <li>Under <b>Class Package Information</b>, select <b>Number of Classes Availed</b> (10, 15, or 20) and <b>Class Duration</b> (25 or 50 minutes).</li>
+      <li>Choose <b>Create Student</b>. Review the confirmation summary, including course, computed level, teacher, and any schedule warnings, then confirm.</li>
+      <li>Check the success message and invitation status. Confirm that the learner can receive the setup email.</li>
+    </ol>
+    <div class="callout"><b>Matching is assistance:</b> review suggestions before saving. A teacher recommendation or preferred time does not book a class. Check availability and complete the normal booking process separately.</div>
+    <div class="tip"><b>If analysis is unavailable:</b> keep the assessment and matching information accurate, select an appropriate teacher manually, and follow any validation message shown by the form.</div>
+  </section>
+
+  <section class="page chapter" id="accounts">
+    <p class="eyebrow">05 &middot; Account management</p>
+    <h2>Account access &amp; invitations</h2>
+    <h3>Find an account and correct its email</h3>
+    <ol class="steps">
+      <li>Open <b>Account Management</b>. Search by name, email, or role and locate the user under <b>Active Students</b> or <b>Active Teachers</b>.</li>
+      <li>Open the user's account details. Check their setup progress, invitation status, and invitation expiry.</li>
+      <li>To correct the sign-in address, enter the new email and choose <b>Save email</b>. Read the result message before closing the dialog.</li>
+    </ol>
+    <p>For an account still awaiting setup, changing the email replaces the unused invitation and sends a fresh link. For a completed account, tell the user to use the new address for future sign-ins and password resets.</p>
+    <h3>Help a user complete setup</h3>
+    <ul class="checklist">
+      <li>For unfinished setup, choose <b>Resend Invite</b> to send a fresh invitation.</li>
+      <li>Use <b>Copy Fresh Link</b> when you need to share a new setup link privately. If automatic copying fails, use the manual-copy dialog.</li>
+      <li>Ask the user to use the newest link and check their spam folder. Once setup is completed, invitation controls are no longer shown.</li>
+      <li>If the account was created but email delivery failed, recover the invitation from account management instead of creating the account again.</li>
+    </ul>
+    <h3>Archive or restore an account</h3>
+    <ol class="steps">
+      <li>For an active student or teacher, choose <b>Archive</b>. Confirm the correct user in the dialog.</li>
+      <li>To reactivate a user, find them in the archived users list and choose <b>Restore</b>, then confirm.</li>
+      <li>Also check <b>Archived by the Dormancy Rule</b> for accounts closed automatically after inactivity. The panel provides a restore action.</li>
+    </ol>
+    <div class="callout"><b>Effect on access:</b> archived users cannot continue normal account access. Restore the account when access should resume. The protected super-admin account is excluded from these actions.</div>
+  </section>
+
+  <section class="page chapter" id="admin">
+    <p class="eyebrow">06 &middot; Super-admin task</p>
+    <h2>Create an admin account</h2>
+    <p class="chapter-intro">Only a signed-in super administrator can open <b>Create Admin</b>. If the menu item is absent, ask the school's super administrator to create the account.</p>
+    <ol class="steps">
+      <li>Choose <b>Create Admin</b> from the administrator menu.</li>
+      <li>Enter the new administrator's <b>First Name</b>, <b>Last Name</b>, <b>Email</b>, <b>Country</b>, and <b>Birthday</b>.</li>
+      <li>Enter a strong password of at least <b>8 characters</b>. This is the password the new administrator will use to sign in.</li>
+      <li>Review the person's details and submit the form using its create action.</li>
+      <li>Check the result message. Share the sign-in address and credentials privately with the intended administrator.</li>
+      <li>Ask the new administrator to sign in and confirm that the Admin Dashboard opens.</li>
+    </ol>
+    <div class="info"><b>Account setup differs by role:</b> student and teacher creation uses setup invitations. The Create Admin form asks the super administrator to set the initial password directly.</div>
+    <h3>Keep administration accountable</h3>
+    <div class="card-grid">
+      <div class="card soft-card"><h3>Use individual accounts</h3><p>Give each administrator their own sign-in. Keep passwords and setup links private.</p></div>
+      <div class="card soft-card"><h3>Check the intended role</h3><p>Use the correct creation form. A learner or teacher should be created through their corresponding menu option.</p></div>
+    </div>
+  </section>
+
+  <section class="page chapter" id="calendar">
+    <p class="eyebrow">07 &middot; Scheduling oversight</p>
+    <h2>Calendars &amp; reschedule requests</h2>
+    <h3>Review the school calendar</h3>
+    <ol class="steps">
+      <li>Open <b>Calendar</b> from the administrator menu.</li>
+      <li>Move to the date or month you need and inspect the scheduled classes.</li>
+      <li>Select a class to review its participants, schedule, and current status.</li>
+      <li>Compare the class details with the relevant student's contract and assigned teacher before following up on a conflict.</li>
+    </ol>
+    <h3>Monitor a reschedule request</h3>
+    <ol class="steps">
+      <li>Open <b>Requests</b> and use the status filters to find the request.</li>
+      <li>Check the class, teacher, student, current schedule, requested schedule, and reason.</li>
+      <li>Review whether it is pending, approved, or declined. If declined, read the displayed decline reason.</li>
+      <li>For pending items, follow up with the responsible participant. After a decision, check the class schedule and request status.</li>
+    </ol>
+    <div class="info"><b>Decision ownership:</b> this admin screen monitors participant reschedule requests. It does not provide admin approval or rejection buttons for them. Contract requests have separate approval controls under <b>Contracts</b>.</div>
+    <h3>Remove a request record</h3>
+    <p>The <b>Remove request</b> action opens a confirmation. Use it only when the request record should be removed, and check the selected item before confirming. Removing a request is not a reschedule approval.</p>
+    <div class="tip"><b>Compare the displayed times:</b> check the date and time zone when discussing a schedule with teachers or learners in another country.</div>
+  </section>
+
+  <section class="page chapter" id="contracts">
+    <p class="eyebrow">08 &middot; Student packages</p>
+    <h2>Manage class contracts</h2>
+    <p class="chapter-intro">Use <b>Contracts</b> to review student packages, remaining classes, and expiry information.</p>
+    <ol class="steps">
+      <li>Open <b>Contracts</b> and locate the student's package. Search by student, email, course, teacher, or status; adjust the filters as needed.</li>
+      <li>Review the current totals, classes used, classes remaining, assigned teacher, package status, and expiry badge.</li>
+      <li>Change the required fields in the package card. Use the table below as a reference.</li>
+      <li>Use the save action and review the confirmation summary. Confirm only after checking the student, course, teacher, total classes, and usage.</li>
+      <li>Check the saved record and remaining balance after the operation succeeds.</li>
+    </ol>
+    <table class="table">
+      <thead><tr><th>Field</th><th>What to check</th></tr></thead>
+      <tbody>
+        <tr><td><b>Course</b></td><td>Select the correct course. Use <b>Keep current</b> when appropriate.</td></tr>
+        <tr><td><b>Teacher</b></td><td>Select an eligible teacher for the course. Check <b>Teacher Courses</b> if the expected teacher is missing.</td></tr>
+        <tr><td><b>Duration</b></td><td>Choose 25 or 50 minutes for the package.</td></tr>
+        <tr><td><b>Total classes</b></td><td>Enter the agreed package total.</td></tr>
+        <tr><td><b>Classes used</b></td><td>Enter the correct usage count; it must not exceed the total.</td></tr>
+        <tr><td><b>Status</b></td><td>Choose Active, Expired, or Cancelled to reflect the package's actual state.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout"><b>Balance example:</b> 15 total classes with 6 used leaves 9 classes. Changing totals or usage changes the learner's remaining balance. Check the class history before correcting a count.</div>
+  </section>
+
+  <section class="page chapter" id="contract-requests">
+    <p class="eyebrow">09 &middot; Contract decisions</p>
+    <h2>Contract requests &amp; extensions</h2>
+    <h3>Review a pending contract request</h3>
+    <ol class="steps">
+      <li>Open <b>Contracts</b> and find the contract requests area.</li>
+      <li>Use the search and status filters to locate the student. Read the request type, course, requested classes, reason, and any displayed package details.</li>
+      <li>Expand earlier versions when revision history is available. Make your decision using the latest request.</li>
+      <li>Choose <b>Approve request</b> or <b>Decline</b>. Review the student, course, and action in the confirmation dialog, then confirm.</li>
+      <li>Check the resolved status. After approval, review the resulting package in the contracts area.</li>
+    </ol>
+    <h3>Approve an extension</h3>
+    <ol class="steps">
+      <li>For an extension request, inspect the student's current package status and expiry.</li>
+      <li>Choose <b>Approve extension</b> to open the extension dialog.</li>
+      <li>Set the <b>New end date</b>. Read the dialog's instructions and confirm the extension.</li>
+      <li>Verify the request outcome and the package's updated expiry information.</li>
+    </ol>
+    <p>An extension changes the existing contract's end date. It keeps the package and class usage intact. Payment is handled outside the system; recording an extension does not charge the learner.</p>
+    <h3>Clear resolved requests from the active list</h3>
+    <p>For an approved or declined request, <b>Remove from list</b> archives the resolved record. Review the confirmation before proceeding; the record is archived rather than deleted.</p>
+    <div class="tip"><b>Keep request types distinct:</b> a new-contract request concerns a class package. An extension request concerns the package expiry. Participant date or time changes appear under <b>Requests</b>.</div>
+  </section>
+
+  <section class="page chapter" id="verifications">
+    <p class="eyebrow">10 &middot; Attendance &amp; evidence</p>
+    <h2>Verify class records</h2>
+    <ol class="steps">
+      <li>Open <b>Verifications</b>. Search by class, teacher, student, or date and use the status filters to locate records requiring attention.</li>
+      <li>Confirm the class and participants. Read any missing-evidence notices and review reasons.</li>
+      <li>Expand <b>Attendance and notes</b>. Compare when the teacher started, the student joined, and the teacher ended the class. Read the class summary and teacher's review request.</li>
+      <li>Open <b>Start photo</b>, <b>Watch recording</b>, or <b>End photo</b> when available. Check that the evidence supports the class record.</li>
+      <li>For a record waiting for admin review, choose <b>Approve verified</b> if the evidence supports completion, or <b>Mark incomplete</b> if it does not.</li>
+      <li>Read the confirmation and check the class, teacher, student, and schedule before confirming. Verify the updated status.</li>
+    </ol>
+    <table class="table">
+      <thead><tr><th>Record state</th><th>Administrator response</th></tr></thead>
+      <tbody>
+        <tr><td>Pending</td><td>Check which class steps or evidence are still outstanding.</td></tr>
+        <tr><td>Waiting for admin review</td><td>Inspect the reasons and supporting evidence, then approve or mark incomplete.</td></tr>
+        <tr><td>Verified</td><td>The verification is finalized. Review it if a class-record question arises.</td></tr>
+        <tr><td>Incomplete</td><td>The record is finalized as incomplete. Read its evidence and notes when following up.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout"><b>Evidence cleanup:</b> <b>Remove record</b> and <b>Clear Final Records</b> remove verification logs and their uploaded proof files. Bulk clearing applies only to verified and incomplete records; pending and admin-review records stay. Review the confirmation carefully and retain any needed evidence before cleanup.</div>
+  </section>
+
+  <section class="page chapter" id="books">
+    <p class="eyebrow">11 &middot; Library management</p>
+    <h2>Books &amp; teacher access</h2>
+    <h3>Add a book</h3>
+    <ol class="steps">
+      <li>Open <b>Books / Lessons</b> and choose <b>Add Book</b>.</li>
+      <li>Enter the title and course. Add an optional description and cover image. The cover picker accepts JPG, PNG, and WEBP.</li>
+      <li>Under <b>Distribute to teachers</b>, select the teachers who should receive the book. You can also leave distribution empty and assign it later.</li>
+      <li>Save the book and check that its title, course, and teacher distribution are correct.</li>
+    </ol>
+    <h3>Change details or distribution</h3>
+    <ul class="checklist">
+      <li>Search by title, course, or teacher to find the book.</li>
+      <li>Use <b>Edit Book</b> to update its editable details and cover.</li>
+      <li>Use the distribution control to change which eligible teachers receive it, then save.</li>
+      <li>When changing the course while creating a book, reselect teachers for the new course; earlier teacher selections are cleared.</li>
+    </ul>
+    <h3>Archive or restore a book</h3>
+    <p>Use <b>Archive</b> and confirm when the book should leave the active library. Its lessons and student progress are kept. To bring it back, switch to the archived view and choose <b>Restore</b>, then confirm.</p>
+    <div class="info"><b>Who can see the material?</b> Administrators maintain the shared library. Teachers see books distributed to them. Student access follows the assigned teacher and course. Removing distribution removes the affected teacher's access.</div>
+    <div class="tip"><b>Retiring material:</b> books use archive and restore controls. Open a book to manage its individual lessons and check learner progress.</div>
+  </section>
+
+  <section class="page chapter" id="lessons">
+    <p class="eyebrow">12 &middot; Learning materials</p>
+    <h2>Lessons &amp; student progress</h2>
+    <h3>Upload a lesson</h3>
+    <ol class="steps">
+      <li>Open <b>Books / Lessons</b> and enter the intended book's content page.</li>
+      <li>Choose <b>+ Upload Lesson</b>.</li>
+      <li>Enter the lesson title and complete the other fields shown in the upload dialog.</li>
+      <li>Select the learning file. The picker accepts <b>PDF, DOC, DOCX, and TXT</b>. Add any additional notes.</li>
+      <li>Choose <b>Upload</b> and wait for the success result.</li>
+      <li>Open the new lesson from the list and check its title, notes, and uploaded file.</li>
+    </ol>
+    <h3>Check book content and cover</h3>
+    <p>Select a lesson to inspect its uploaded material. Use the book's cover-change control when a new cover is needed, then save the image and confirm its appearance.</p>
+    <h3>Review learner progress</h3>
+    <ol class="steps">
+      <li>Open the book's <b>Students Progress</b> area.</li>
+      <li>Locate the learner and review the lesson-completion information.</li>
+      <li>Use the progress record to identify lessons needing follow-up with the assigned teacher.</li>
+    </ol>
+    <h3>Delete an individual lesson</h3>
+    <p>Choose the lesson's delete control. Read the <b>Delete this lesson?</b> dialog and verify the selected lesson before choosing <b>Delete lesson</b>. Use the cancel action if you selected the wrong item.</p>
+    <div class="callout"><b>Check the scope:</b> archiving a book preserves its lessons and progress. Deleting an individual lesson is a separate action; review the confirmation before removing learning material.</div>
+  </section>
+
+  <section class="page chapter" id="reviews">
+    <p class="eyebrow">13 &middot; Evaluation &amp; feedback</p>
+    <h2>Contract review reports</h2>
+    <p class="chapter-intro">Use <b>Contract reviews</b> to read the teacher's evaluation of a learner and the learner's rating of their teacher after a contract is completed.</p>
+    <ol class="steps">
+      <li>Choose <b>Contract reviews</b> from the administrator menu.</li>
+      <li>Search by student, teacher, course, level, or status. Use the filters to narrow the reports.</li>
+      <li>Review the report summary and submission states. A <b>Pending</b> label means that side's review has not yet been submitted.</li>
+      <li>Choose <b>View report</b> for the intended student and contract.</li>
+      <li>Read the teacher evaluation, which uses five proficiency criteria, and the student rating, which uses five teaching criteria. Review the submitted scores and feedback.</li>
+      <li>Close the report after reviewing it. Follow up with the relevant person if a submission is still pending or the feedback needs attention.</li>
+    </ol>
+    <div class="info"><b>When a report appears:</b> a report opens when every class in a contract has been completed. A report may still show pending feedback until the teacher or learner submits their review.</div>
+    <h3>Use the right record for your question</h3>
+    <table class="table">
+      <thead><tr><th>Question</th><th>Where to look</th></tr></thead>
+      <tbody>
+        <tr><td>Was the class supported by attendance and proof?</td><td><b>Verifications</b></td></tr>
+        <tr><td>How many classes remain in the package?</td><td><b>Contracts</b></td></tr>
+        <tr><td>Which lessons has the learner completed?</td><td>The book's <b>Students Progress</b> area</td></tr>
+        <tr><td>What did the teacher and learner report after the contract?</td><td><b>Contract reviews</b> &rarr; <b>View report</b></td></tr>
+      </tbody>
+    </table>
+    <div class="tip"><b>Read both sides:</b> use teacher evaluations to understand learning progress and student feedback to understand the teaching experience.</div>
+  </section>
+
+  <section class="page chapter" id="help">
+    <p class="eyebrow">14 &middot; Help &amp; reference</p>
+    <h2>Common issues &amp; glossary</h2>
+    <table class="table">
+      <thead><tr><th>Issue</th><th>What to do</th></tr></thead>
+      <tbody>
+        <tr><td>Cannot sign in or session ended</td><td>Check the registered email. Use password recovery if needed, then sign in again. Check whether the account was archived.</td></tr>
+        <tr><td>Create Admin is missing</td><td>This option requires a super-admin account. Ask the school's super administrator to create the account.</td></tr>
+        <tr><td>Setup email did not arrive</td><td>Check the address and spam folder. Use <b>Resend Invite</b> or <b>Copy Fresh Link</b> for unfinished accounts. Report a delivery warning to system support.</td></tr>
+        <tr><td>Invitation expired</td><td>Generate a fresh invitation from account details and ask the user to use the newest link.</td></tr>
+        <tr><td>Teacher is missing from a selection</td><td>Check that the teacher is active and assigned to the relevant course under <b>Teacher Courses</b>.</td></tr>
+        <tr><td>AI assistance failed</td><td>Review the message, complete the profile manually, and choose an appropriate teacher. Report repeated failures to system support.</td></tr>
+        <tr><td>A record cannot be found</td><td>Clear searches and filters. Check the correct date, status, and archived view.</td></tr>
+        <tr><td>Proof or recording will not open</td><td>Confirm the record has a file, allow the file-opening window if blocked, and sign in again if the session expired. Report missing evidence.</td></tr>
+        <tr><td>Dashboard data does not load</td><td>Refresh and sign in again. If it persists, report the screen and exact error to system support.</td></tr>
+      </tbody>
+    </table>
+    <h3>Words used in the platform</h3>
+    <p><b>Contract / package:</b> the learner's class allocation, usage, duration, status, and expiry. <b>Verification:</b> attendance and evidence used to confirm a class. <b>Distribution:</b> a teacher's access to a book. <b>Archive:</b> moving a supported record out of active use, with restore available where shown. <b>Setup invitation:</b> the link a new student or teacher uses to finish account setup.</p>
+    <div class="endnote"><h3>When you need help</h3><p>Give system support the affected screen, record or class, approximate time, exact error message, and steps that led to it. Share screenshots through the school's approved support channel and keep passwords and setup links private.</p></div>
+  </section>
+</main>
+</body>
+</html>

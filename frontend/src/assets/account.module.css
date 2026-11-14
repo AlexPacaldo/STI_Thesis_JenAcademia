@@ -942,6 +942,8 @@
   font-size: 18px;
 }
 
+.fieldError { display: block; color: var(--text-danger, #a52323); font-size: 0.875rem; line-height: 1.5; margin-top: 6px; }
+
 /* Edit dialogs (details / password). These share the backdrop and scaling
    of the picture modals but sit taller so a full form fits. */
 .editModal {

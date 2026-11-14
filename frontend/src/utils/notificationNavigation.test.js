@@ -2,6 +2,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { getNotificationTargetUrl } from "./notificationNavigation.js";
 
+test("legacy teacher availability notices open availability rather than an empty class list", () => {
+  assert.equal(getNotificationTargetUrl({ related_type: "teacher_availability", related_id: 8, action_url: "/Calendar" }, "student", "http://localhost:5173"),
+    "/Calendar?view=availability&availabilityId=8");
+  assert.equal(getNotificationTargetUrl({ related_type: "teacher_availability" }, "student", "http://localhost:5173"),
+    "/Calendar?view=availability");
+});
+
+test("new availability notices preserve the saved schedule destination", () => {
+  const path = "/Calendar?view=availability&availabilityDate=2026-12-01";
+  assert.equal(getNotificationTargetUrl({ related_type: "teacher_availability", action_url: path }, "student", "http://localhost:5173"), path);
+});
+
 test("assignment notifications route to the page for the recipient role", () => {
   assert.equal(
     getNotificationTargetUrl(

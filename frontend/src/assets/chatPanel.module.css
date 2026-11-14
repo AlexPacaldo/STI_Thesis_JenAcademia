@@ -596,13 +596,18 @@
 
 .dockWithDrawer {
   right: calc(min(420px, 94vw) + 14px);
+  max-width: calc(100vw - min(420px, 94vw) - 28px);
 }
 
 /* ---------------------------------------------------------------- window */
 
 .window {
   width: 380px;
+  flex: 0 1 380px;
+  min-width: 0;
+  max-width: 100%;
   height: 500px;
+  max-height: calc(var(--chat-viewport-height, 100dvh) - 24px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -615,7 +620,7 @@
 }
 
 .windowMinimized {
-  height: 64px;
+  height: 70px;
 }
 
 .windowHeader {
@@ -633,6 +638,7 @@
 
 .windowTitle {
   min-width: 0;
+  flex: 1 1 0;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -683,6 +689,7 @@
 
 .windowActions {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 6px;
 }
@@ -723,6 +730,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  overflow-anchor: none;
   overscroll-behavior: contain;
   padding: 16px 14px;
   background: var(--surface-soft);
@@ -938,6 +946,15 @@
   text-align: center;
 }
 
+.historyButton {
+  display: block; margin: 0 auto 16px; min-height: 44px; padding: 8px 12px;
+  border: 1px solid var(--border-strong); border-radius: 12px;
+  background: var(--surface); color: var(--primary); cursor: pointer;
+}
+.threadError { margin-bottom: 12px; color: var(--text-danger); font-size: 0.875rem; }
+.threadError button { min-height: 44px; }
+.sendButton:disabled { opacity: 0.5; cursor: default; }
+
 /* --------------------------------------------------------------- responsive */
 
 @media (max-width: 900px) {
@@ -953,6 +970,7 @@
 
   .dockWithDrawer {
     right: 10px;
+    max-width: calc(100vw - 20px);
   }
 
   .window {
@@ -1045,20 +1063,24 @@
     left: 8px;
     flex-direction: column;
     align-items: flex-end;
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .dockWithDrawer {
     right: 8px;
+    visibility: hidden;
+    pointer-events: none;
   }
 
   .window {
     width: calc(100vw - 16px);
-    height: min(500px, calc(100dvh - 24px));
-    max-height: calc(100dvh - 24px);
+    flex: 0 0 auto;
+    height: min(500px, calc(var(--chat-viewport-height, 100dvh) - 24px - env(safe-area-inset-bottom)));
+    max-height: calc(var(--chat-viewport-height, 100dvh) - 24px - env(safe-area-inset-bottom));
   }
 
   .windowMinimized {
-    height: 60px;
+    height: 64px;
   }
 
   .windowHeader {

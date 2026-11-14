@@ -14,6 +14,8 @@ import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { compressFileIfImage } from "../utils/imageCompression.js";
 import ModalPortal from "../utils/ModalPortal.jsx";
 import { ACCOUNT } from "../utils/studentCopy.js";
+import PasswordInput from "../components/PasswordInput.jsx";
+import { normalizePersonName, personNameError, MAX_NAME_LENGTH, PROFILE_PICTURE_ACCEPT, profilePictureFileError } from "../utils/profileValidation.js";
 
 const API = API_BASE_URL;
 const CROP_SIZE = 320;
@@ -186,7 +188,12 @@ export default function Account() {
   const cameraVideoRef = useRef(null);
   const dragRef = useRef({ active: false, startX: 0, startY: 0, baseX: 0, baseY: 0 });
   const cameraStreamRef = useRef(null);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    const stored = readStoredUser();
+    return stored ? mapUser(stored) : null;
+  });
+  const [nameErrors, setNameErrors] = useState({});
+  const [pictureError, setPictureError] = useState("");
   const [isProfileIncomplete, setIsProfileIncomplete] = useState(false);
   const [firstSetupStep, setFirstSetupStep] = useState(0);
   const [firstSetupFinished, setFirstSetupFinished] = useState(false);
@@ -198,7 +205,7 @@ export default function Account() {
   const isStudent = user?.role === "student";
   const lineApplies = isStudent;
   const [lineState, setLineState] = useState({ loading: true, linked: false, usable: false });
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => user ? formFromUser(user) : {
     firstName: "",
     lastName: "",
     email: "",
@@ -367,6 +374,8 @@ export default function Account() {
   async function loadUser(userId) {
     const res = await axios.get(`${API}/api/users/${userId}`);
     const refreshed = mapUser(res.data?.user ?? res.data);
+    // A profile refresh must preserve the sign-in preference stored on login.
+    refreshed.stayLoggedIn = readStoredUser()?.stayLoggedIn ?? false;
     refreshed.profileCompleted = isCompleteUser(refreshed);
     setUser(refreshed);
     setForm(formFromUser(refreshed));
@@ -551,7 +560,17 @@ export default function Account() {
     });
   }
 
+  function validateProfileNames() {
+    const errors = {
+      firstName: personNameError(form.firstName, "First name", true),
+      lastName: personNameError(form.lastName, "Last name"),
+    };
+    setNameErrors(errors);
+    return !errors.firstName && !errors.lastName;
+  }
+
   async function saveProfileConfirmed() {
+    if (!validateProfileNames()) return;
     setSaving(true);
     try {
       // !! Email is not sent. The server refuses to write it from this route,
@@ -559,6 +578,8 @@ export default function Account() {
       const { email: _lockedEmail, ...editable } = form;
       await axios.put(`${API}/api/users/${user.id}`, {
         ...editable,
+        firstName: normalizePersonName(editable.firstName),
+        lastName: normalizePersonName(editable.lastName),
         currentPassword: detailsPassword,
       });
       setDetailsPassword("");
@@ -575,7 +596,8 @@ export default function Account() {
         }
       }
     } catch (err) {
-      if (err?.response?.status === 401) setDetailsPassword("");
+      if (err?.response?.data?.code === "INCORRECT_PASSWORD") setDetailsPassword("");
+      if (err?.response?.data?.errors) setNameErrors(err.response.data.errors);
       notify(err?.response?.data?.message || "Could not update profile.", "error");
     } finally {
       setSaving(false);
@@ -602,6 +624,10 @@ export default function Account() {
 
   function onChange(e) {
     const { name, value } = e.target;
+    if (name === "firstName" || name === "lastName") {
+      setNameErrors(current => ({ ...current, [name]: personNameError(value,
+        name === "firstName" ? "First name" : "Last name", name === "firstName") }));
+    }
     setForm((current) => {
       if (name === "country") {
         return {
@@ -634,6 +660,7 @@ export default function Account() {
   function cancelProfileEdit() {
     if (user) setForm(formFromUser(user));
     setDetailsPassword("");
+    setNameErrors({});
     setProfileEditing(isProfileIncomplete);
   }
 
@@ -657,6 +684,8 @@ export default function Account() {
       setProfileEditing(true);
       return;
     }
+
+    if (!validateProfileNames()) return;
 
     // !! LINE reminders are student-only. A teacher or admin can save their
     // !! details without ever linking LINE, so don't send them back to a step
@@ -720,6 +749,14 @@ export default function Account() {
 
   function handleProfileFile(file) {
     if (!file) return;
+    const error = profilePictureFileError(file);
+    setPictureError(error);
+    if (error) {
+      notify(error, "error");
+      return;
+    }
+    if (cropModal?.src) URL.revokeObjectURL(cropModal.src);
+    setCropImageSize({ width: 0, height: 0 });
     setCropModal({
       src: URL.createObjectURL(file),
       fileName: file.name || "profile-picture.png",
@@ -742,6 +779,7 @@ export default function Account() {
         headers: { "Content-Type": "multipart/form-data" },
       });
       const nextUser = await loadUser(user.id);
+      setPictureError("");
       notify("Profile picture updated.", "success");
       closeCropModal();
       if (isProfileIncomplete) setFirstSetupStep(1);
@@ -754,7 +792,9 @@ export default function Account() {
         }
       }
     } catch (err) {
-      notify(err?.response?.data?.message || "Could not upload profile picture.", "error");
+      const error = err?.response?.data?.message || err?.message || "Could not upload profile picture.";
+      setPictureError(error);
+      notify(error, "error");
     } finally {
       setPictureUploading(false);
     }
@@ -936,11 +976,17 @@ export default function Account() {
             <h2>Now, check your name and time zone</h2>
             <label>
               <span>Your first name</span>
-              <input name="firstName" value={form.firstName} onChange={onChange} required />
+              <input name="firstName" value={form.firstName} onChange={onChange} required
+                maxLength={MAX_NAME_LENGTH} autoComplete="given-name" aria-invalid={Boolean(nameErrors.firstName)}
+                aria-describedby={nameErrors.firstName ? "setup-first-name-error" : undefined} />
+              {nameErrors.firstName && <span id="setup-first-name-error" className={styles.fieldError} role="alert">{nameErrors.firstName}</span>}
             </label>
             <label>
               <span>Your last name (optional)</span>
-              <input name="lastName" value={form.lastName} onChange={onChange} />
+              <input name="lastName" value={form.lastName} onChange={onChange}
+                maxLength={MAX_NAME_LENGTH} autoComplete="family-name" aria-invalid={Boolean(nameErrors.lastName)}
+                aria-describedby={nameErrors.lastName ? "setup-last-name-error" : undefined} />
+              {nameErrors.lastName && <span id="setup-last-name-error" className={styles.fieldError} role="alert">{nameErrors.lastName}</span>}
             </label>
             <label>
               <span>Time zone</span>
@@ -955,8 +1001,8 @@ export default function Account() {
             </label>
             <label>
               <span>Your password</span>
-              <input
-                type="password"
+              <PasswordInput
+                label="current password"
                 value={detailsPassword}
                 onChange={(event) => setDetailsPassword(event.target.value)}
                 autoComplete="current-password"
@@ -1010,8 +1056,12 @@ export default function Account() {
       return;
     }
 
+    if (pwd.next.length < 8 || new TextEncoder().encode(pwd.next).length > 72) {
+      notify("Password requirement: use at least 8 characters and no more than 72 UTF-8 bytes. Please choose a longer password.", "error");
+      return;
+    }
     if (!pwd.next || pwd.next !== pwd.confirm) {
-      notify("New password and confirm password do not match.", "error");
+      notify("Passwords do not match yet. Please type the same password in both fields.", "error");
       return;
     }
     if (!confirmAction || confirmAction.type !== "save-password") {
@@ -1039,6 +1089,7 @@ export default function Account() {
         }, 400);
       }
     } catch (err) {
+      if (err?.response?.data?.code === "INCORRECT_PASSWORD") setPwd(current => ({ ...current, current: "" }));
       notify(err?.response?.data?.message || "Could not change password. Check current password.", "error");
     } finally {
       setPwdSaving(false);
@@ -1076,7 +1127,12 @@ export default function Account() {
                 value={form.firstName}
                 onChange={onChange}
                 required
+                maxLength={MAX_NAME_LENGTH}
+                autoComplete="given-name"
+                aria-invalid={Boolean(nameErrors.firstName)}
+                aria-describedby={nameErrors.firstName ? "profile-firstName-error" : undefined}
               />
+              {nameErrors.firstName && <span id="profile-firstName-error" className={styles.fieldError} role="alert">{nameErrors.firstName}</span>}
             </label>
             <label className={fieldClass}>
               <span className={labelClass}>{ACCOUNT.lastName} (optional)</span>
@@ -1085,7 +1141,12 @@ export default function Account() {
                 name="lastName"
                 value={form.lastName}
                 onChange={onChange}
+                maxLength={MAX_NAME_LENGTH}
+                autoComplete="family-name"
+                aria-invalid={Boolean(nameErrors.lastName)}
+                aria-describedby={nameErrors.lastName ? "profile-lastName-error" : undefined}
               />
+              {nameErrors.lastName && <span id="profile-lastName-error" className={styles.fieldError} role="alert">{nameErrors.lastName}</span>}
             </label>
           </div>
 
@@ -1171,9 +1232,9 @@ export default function Account() {
             <span className={labelClass}>
               {isStudent ? ACCOUNT.passwordLabel : "Current password"}
             </span>
-            <input
+            <PasswordInput
               className={inputClass}
-              type="password"
+              label="current password"
               value={detailsPassword}
               onChange={(e) => setDetailsPassword(e.target.value)}
               autoComplete="current-password"
@@ -1217,10 +1278,11 @@ export default function Account() {
             <span className={labelClass}>
               {isStudent ? ACCOUNT.currentPassword : "Current password"}
             </span>
-            <input
+            <PasswordInput
               className={inputClass}
-              type="password"
+              label="current password"
               value={pwd.current}
+              name="currentPassword"
               onChange={(e) => setPwd((p) => ({ ...p, current: e.target.value }))}
               autoComplete="current-password"
               required
@@ -1230,10 +1292,11 @@ export default function Account() {
           <div className={rowClass}>
             <label className={fieldClass}>
               <span className={labelClass}>{ACCOUNT.newPassword}</span>
-              <input
+              <PasswordInput
                 className={inputClass}
-                type="password"
+                label="new password"
                 value={pwd.next}
+                name="newPassword"
                 onChange={(e) => setPwd((p) => ({ ...p, next: e.target.value }))}
                 autoComplete="new-password"
                 required
@@ -1243,10 +1306,11 @@ export default function Account() {
               <span className={labelClass}>
                 {isStudent ? ACCOUNT.confirmPassword : "Confirm new password"}
               </span>
-              <input
+              <PasswordInput
                 className={inputClass}
-                type="password"
+                label="confirm new password"
                 value={pwd.confirm}
+                name="confirmPassword"
                 onChange={(e) => setPwd((p) => ({ ...p, confirm: e.target.value }))}
                 autoComplete="new-password"
                 required
@@ -1255,8 +1319,8 @@ export default function Account() {
           </div>
 
           <p className={noteClass}>
-            Make it at least 8 characters. A sentence you can remember is safer
-            than one short word.
+            Password requirement: use at least 8 characters and make both fields match.
+            A short phrase you can remember is stronger than one short word.
           </p>
         </div>
 
@@ -1695,28 +1759,14 @@ export default function Account() {
     );
   }
 
-  if (isStudent && lineCheckError) {
-    return (
-      <main className={styles.pageShell}>
-        <section className={styles.firstSetupCard} role="alert">
-          <span className={styles.firstSetupIcon} aria-hidden="true">📶</span>
-          <p className={styles.firstSetupStep}>Let’s try again</p>
-          <h1>We can’t check LINE yet</h1>
-          <p>{lineCheckError}</p>
-          <button
-            type="button"
-            className={styles.firstSetupPrimary}
-            onClick={() => setLineCheckAttempt((attempt) => attempt + 1)}
-          >
-            Try again
-          </button>
-        </section>
-      </main>
-    );
-  }
 
   return (
     <main className={styles.pageShell}>
+      {isStudent && lineCheckError && <section className={styles.notice} role="alert">
+        <p>{lineCheckError} Your account details are still available.</p>
+        <button type="button" onClick={() => setLineCheckAttempt(attempt => attempt + 1)}>Retry LINE check</button>
+      </section>}
+      {pictureError && <p className={styles.fieldError} role="alert">{pictureError}</p>}
       <div className={styles.accountPage}>
         {firstSetupActive ? (
           renderFirstProfileSetup()
@@ -1749,7 +1799,7 @@ export default function Account() {
         ref={fileInputRef}
         className={styles.firstSetupFileInput}
         type="file"
-        accept="image/*"
+        accept={PROFILE_PICTURE_ACCEPT}
         aria-label="Choose a profile picture"
         onChange={(event) => {
           const file = event.target.files?.[0];
@@ -1776,6 +1826,12 @@ export default function Account() {
                   ref={cropImageRef}
                   src={cropModal.src}
                   alt="Crop preview"
+                  onError={() => {
+                    closeCropModal();
+                    const message = "This picture could not be opened. It may be damaged. Choose another JPG, PNG, WebP, or GIF image.";
+                    setPictureError(message);
+                    notify(message, "error");
+                  }}
                   draggable="false"
                   onLoad={(e) => setCropImageSize({
                     width: e.currentTarget.naturalWidth,

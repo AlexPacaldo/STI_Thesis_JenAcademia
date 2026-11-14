@@ -14,6 +14,8 @@ import path from "path";
 import { assessClassEvidence } from "./classEvidence.js";
 import { scheduleWindow, futureScheduleError, contractScheduleError, readBookingContract, classScheduleConflict } from "./scheduling.js";
 import { classEntryError, hasScheduledClassEnded, attendanceMinutes } from "./classSession.js";
+import { normalizePersonName, personNameError, MAX_PROFILE_UPLOAD_BYTES, profilePictureFormatError, profilePictureContentError } from "./profileValidation.js";
+import { readChatPage } from "./chatPagination.js";
 // Aliased on purpose: the wrapper below owns the throttle and the logging, and two
 // functions called archiveDormantAccounts in one file is how the policy engine and
 // the scheduler get swapped over by accident.
@@ -801,15 +803,26 @@ const profileStorage = multer.diskStorage({
 });
 const profileUpload = multer({
   storage: profileStorage,
-  limits: { fileSize: 2 * 1024 * 1024 },
+  limits: { fileSize: MAX_PROFILE_UPLOAD_BYTES },
   fileFilter: (_req, file, cb) => {
-    if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.mimetype)) {
-      cb(null, true);
-      return;
-    }
-    cb(new Error("Only JPG, PNG, WEBP, and GIF profile images are allowed"));
+    const error = profilePictureFormatError(file);
+    cb(error ? new Error(error) : null, !error);
   },
 });
+function receiveProfilePicture(req, res, next) {
+  if (!sessionMayActFor(req, req.params.id)) {
+    return res.status(403).json({ message: "You can only act on your own account." });
+  }
+  profileUpload.single("profile_picture")(req, res, error => {
+    if (!error) return next();
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ message: "The uploaded profile picture must be 2 MB or smaller." });
+    }
+    return res.status(400).json({ message: error.code === "LIMIT_UNEXPECTED_FILE"
+      ? "Upload one profile picture using the profile picture field."
+      : error.message || "Could not read the profile picture. Choose another image." });
+  });
+}
 const classProofStorage = multer.diskStorage({
   destination: classProofUploadDir,
   filename: (req, file, cb) => {
@@ -947,6 +960,18 @@ export const pool = mysql.createPool(poolConfig);
  * admin_id in the request body and requireAdmin believed it.
  */
 //! Must stay below the `pool` declaration above.
+async function findActiveSessionRecord(userId, sessionId) {
+  if (!sessionId) return null;
+  const [rows] = await pool.query(
+    `SELECT session_id
+     FROM user_sessions
+     WHERE user_id = ? AND session_id = ? AND revoked_at IS NULL AND expires_at > NOW()
+     LIMIT 1`,
+    [userId, sessionId]
+  );
+  return rows[0] || null;
+}
+
 async function authenticateSession(req, res) {
   const token = readBearerToken(req);
   if (!token) {
@@ -975,7 +1000,14 @@ async function authenticateSession(req, res) {
       return null;
     }
 
-    // Verified from the database, not from the token payload.
+    if (claims.sid) {
+      const activeSession = await findActiveSessionRecord(account.user_id, claims.sid);
+      if (!activeSession) {
+        res.status(401).json({ message: "Your session has expired. Please sign in again" });
+        return null;
+      }
+    }
+
     req.session = {
       userId: account.user_id,
       role: account.role,
@@ -1174,7 +1206,7 @@ async function verifySessionPassword(req, password) {
   );
   const matches = rows.length > 0 && (await bcrypt.compare(text, rows[0].password_hash));
   if (!matches) {
-    return { ok: false, status: 401, message: "That password is not correct." };
+    return { ok: false, status: 400, message: "That password is not correct. Please try again.", code: "INCORRECT_PASSWORD" };
   }
   return { ok: true };
 }
@@ -1573,6 +1605,8 @@ const limitResumeParsingTotal = createRateLimiter({
 // this must not lock out a morning of students signing in together.
 const LOGIN_WINDOW_MS = Math.max(1, Number(process.env.LOGIN_RATE_WINDOW_MS) || 15 * 60 * 1000);
 const LOGIN_MAX = Math.max(1, Number(process.env.LOGIN_RATE_MAX) || 100);
+const LOGIN_FAILURE_LIMIT = Math.max(1, Number(process.env.LOGIN_FAILURE_LIMIT) || 5);
+const LOGIN_LOCK_MINUTES = Math.max(1, Number(process.env.LOGIN_LOCK_MINUTES) || 15);
 const CONTACT_RATE_WINDOW_MS = Math.max(1, Number(process.env.CONTACT_RATE_WINDOW_MS) || 15 * 60 * 1000);
 const CONTACT_RATE_MAX = Math.max(1, Number(process.env.CONTACT_RATE_MAX) || 10);
 const limitContactSubmissions = createRateLimiter({
@@ -1599,6 +1633,17 @@ const limitLoginAttempts = createRateLimiter({
   store: createDbStore({ pool }),
   message: "Too many sign-in attempts from this network. Wait a few minutes and try again.",
 });
+
+async function revokeUserSessions(userId, { activeOnly = true } = {}) {
+  if (!userId) return;
+  const [rows] = await pool.query(
+    activeOnly
+      ? `UPDATE user_sessions SET revoked_at = NOW() WHERE user_id = ? AND revoked_at IS NULL`
+      : `UPDATE user_sessions SET revoked_at = NOW() WHERE user_id = ?`,
+    [userId]
+  );
+  return rows;
+}
 
 // Guessing the password behind the "save my details" form.
 //
@@ -2369,6 +2414,7 @@ async function ensurePerformanceIndexes() {
     ["lesson_progress", "idx_lesson_progress_student_updated", "student_id, updated_at"],
     ["messages", "idx_messages_recipient_read", "recipient_id, is_read"],
     ["messages", "idx_messages_pair_sent", "sender_id, recipient_id, sent_at"],
+    ["messages", "idx_messages_pair_id", "sender_id, recipient_id, message_id"],
     ["notifications", "idx_notifications_user_read", "user_id, is_read"],
     ["notifications", "idx_notifications_user_created", "user_id, created_at"],
     ["student_class_packages", "idx_packages_student_status_created", "student_id, status, created_at"],
@@ -2869,6 +2915,35 @@ async function ensurePhoneVerificationChallengesTable() {
       CONSTRAINT phone_verification_user_fk FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
     )
   `);
+}
+
+async function ensureUserSessionsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_sessions (
+      session_id CHAR(64) NOT NULL,
+      user_id INT NOT NULL,
+      issued_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      expires_at DATETIME NOT NULL,
+      revoked_at DATETIME DEFAULT NULL,
+      created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (session_id),
+      KEY idx_user_sessions_user (user_id, revoked_at, expires_at),
+      KEY idx_user_sessions_expires (expires_at),
+      CONSTRAINT user_sessions_user_fk FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
+    )
+  `);
+}
+
+async function ensureUserLoginSecurityColumns() {
+  if (!(await columnExists("users", "failed_login_count"))) {
+    await pool.query("ALTER TABLE users ADD COLUMN failed_login_count INT UNSIGNED NOT NULL DEFAULT 0 AFTER password_hash");
+  }
+  if (!(await columnExists("users", "locked_until"))) {
+    await pool.query("ALTER TABLE users ADD COLUMN locked_until DATETIME DEFAULT NULL AFTER failed_login_count");
+  }
+  if (!(await columnExists("users", "last_failed_login_at"))) {
+    await pool.query("ALTER TABLE users ADD COLUMN last_failed_login_at DATETIME DEFAULT NULL AFTER locked_until");
+  }
 }
 
 async function ensureUserDemographicsColumns() {
@@ -3560,6 +3635,8 @@ const SCHEMA_STEPS = [
   ["account setup invites table", ensureAccountSetupInvitesTable],
   ["password reset tokens table", ensurePasswordResetTokensTable],
   ["phone verification challenges table", ensurePhoneVerificationChallengesTable],
+  ["user sessions table", ensureUserSessionsTable],
+  ["login security columns", ensureUserLoginSecurityColumns],
   ["api rate limits table", ensureApiRateLimitsTable],
   ["user demographics columns", ensureUserDemographicsColumns],
   ["teacher profile columns", ensureTeacherProfileColumns],
@@ -4923,7 +5000,7 @@ app.post("/api/login", limitLoginAttempts, async (req, res) => {
 
     // Look up the user by email
     const [rows] = await pool.query(
-      `SELECT user_id, first_name, last_name, email, contact_number AS contact, password_hash, role, status, profile_completed, password_changed, profile_image_url, country, birth_date, timezone, is_super_admin
+      `SELECT user_id, first_name, last_name, email, contact_number AS contact, password_hash, role, status, profile_completed, password_changed, profile_image_url, country, birth_date, timezone, is_super_admin, failed_login_count, locked_until
        FROM users
        WHERE email = ?
        LIMIT 1`,
@@ -4935,10 +5012,27 @@ app.post("/api/login", limitLoginAttempts, async (req, res) => {
     }
 
     const user = rows[0];
+    if (user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
+      const remainingMs = new Date(user.locked_until).getTime() - Date.now();
+      const remainingMinutes = Math.max(1, Math.ceil(remainingMs / 60000));
+      return res.status(429).json({
+        message: `Too many sign-in attempts. Please try again in ${remainingMinutes} minute${remainingMinutes === 1 ? "" : "s"}.`,
+      });
+    }
 
-    // Compare password with bcrypt
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) {
+      await pool.query(
+        `UPDATE users
+         SET failed_login_count = failed_login_count + 1,
+             last_failed_login_at = NOW(),
+             locked_until = CASE
+               WHEN failed_login_count + 1 >= ? THEN DATE_ADD(NOW(), INTERVAL ? MINUTE)
+               ELSE locked_until
+             END
+         WHERE user_id = ?`,
+        [LOGIN_FAILURE_LIMIT, LOGIN_LOCK_MINUTES, user.user_id]
+      );
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
@@ -4959,6 +5053,22 @@ app.post("/api/login", limitLoginAttempts, async (req, res) => {
       );
       user.timezone = detectedTimezone;
     }
+
+    const sessionId = crypto.randomBytes(16).toString("hex");
+    await revokeUserSessions(user.user_id);
+    await pool.query(
+      `INSERT INTO user_sessions (session_id, user_id, issued_at, expires_at)
+       VALUES (?, ?, NOW(), DATE_ADD(NOW(), INTERVAL ? SECOND))`,
+      [sessionId, user.user_id, Math.floor(SESSION_TTL_MS / 1000)]
+    );
+    await pool.query(
+      `UPDATE users
+       SET failed_login_count = 0,
+           locked_until = NULL,
+           last_failed_login_at = NULL
+       WHERE user_id = ?`,
+      [user.user_id]
+    );
 
     // Success — fetch assigned teacher for students and return a trimmed user object
     let assignedTeacherId = null;
@@ -4985,7 +5095,7 @@ app.post("/api/login", limitLoginAttempts, async (req, res) => {
     let sessionToken = null;
     try {
       sessionToken = signSessionToken(
-        { userId: user.user_id, role: user.role },
+        { userId: user.user_id, role: user.role, sessionId },
         { secret: SESSION_SECRET, ttlMs: SESSION_TTL_MS }
       );
     } catch (err) {
@@ -5608,8 +5718,15 @@ app.put("/api/users/:id", requireSession, limitDetailConfirmations, async (req, 
     // !! email, then use "forgot password". It is changed by an admin, with
     // !! the account holder identified out of band - not from a form.
     const { firstName, lastName, country, birthDate, timezone, currentPassword } = req.body;
-    const normalizedFirstName = String(firstName || "").trim();
-    const normalizedLastName = String(lastName || "").trim();
+    const normalizedFirstName = normalizePersonName(firstName);
+    const normalizedLastName = normalizePersonName(lastName);
+    const nameErrors = {
+      firstName: personNameError(firstName, "First name", true),
+      lastName: personNameError(lastName, "Last name"),
+    };
+    if (nameErrors.firstName || nameErrors.lastName) {
+      return res.status(400).json({ message: nameErrors.firstName || nameErrors.lastName, errors: nameErrors });
+    }
     const normalizedBirthDate = birthDate ? String(birthDate).slice(0, 10) : null;
     const normalizedCountry = String(country || "").trim();
     const resolvedTimezone = normalizeTimezone(timezone, timezoneFromCountry(normalizedCountry));
@@ -5630,7 +5747,7 @@ app.put("/api/users/:id", requireSession, limitDetailConfirmations, async (req, 
     // holder, not somebody who found an unlocked browser or a copied token.
     const passwordCheck = await verifySessionPassword(req, currentPassword);
     if (!passwordCheck.ok) {
-      return res.status(passwordCheck.status).json({ message: passwordCheck.message });
+      return res.status(passwordCheck.status).json({ message: passwordCheck.message, code: passwordCheck.code });
     }
 
     // !! No phone number is written here. Reminders go through LINE, which
@@ -5820,7 +5937,7 @@ app.post("/api/users/:id/phone/verify", requireSession, limitPhoneCodeChecks, as
   }
 });
 
-app.post("/api/users/:id/profile-picture", profileUpload.single("profile_picture"), requireSession, async (req, res) => {
+app.post("/api/users/:id/profile-picture", requireSession, receiveProfilePicture, async (req, res) => {
   try {
     if (!sessionMayActFor(req, req.params.id)) {
       return res.status(403).json({ message: "You can only act on your own account." });
@@ -5830,6 +5947,11 @@ app.post("/api/users/:id/profile-picture", profileUpload.single("profile_picture
     }
 
     const imageUrl = `/uploads/profiles/${req.file.filename}`;
+    const contentError = profilePictureContentError(await fs.promises.readFile(req.file.path), req.file.mimetype);
+    if (contentError) {
+      await deleteLocalProfileImage(imageUrl);
+      return res.status(400).json({ message: contentError });
+    }
     const [currentRows] = await pool.query(
       `SELECT profile_image_url FROM users WHERE user_id = ? LIMIT 1`,
       [req.params.id]
@@ -5874,6 +5996,12 @@ app.put("/api/users/:id/password", requireSession, async (req, res) => {
       return res.status(403).json({ message: "You can only act on your own account." });
     }
     const { current, next } = req.body;
+    if (typeof current !== "string" || !current) {
+      return res.status(400).json({ message: "Enter your current password." });
+    }
+    if (typeof next !== "string" || next.length < 8 || Buffer.byteLength(next, "utf8") > 72) {
+      return res.status(400).json({ message: "New password must be at least 8 characters and no more than 72 UTF-8 bytes." });
+    }
     const userId = req.params.id;
 
     // Fetch current hash
@@ -5886,7 +6014,7 @@ app.put("/api/users/:id/password", requireSession, async (req, res) => {
     const user = rows[0];
     const match = await bcrypt.compare(current, user.password_hash);
     if (!match)
-      return res.status(401).json({ message: "Current password incorrect" });
+      return res.status(400).json({ message: "Current password is incorrect. Please try again.", code: "INCORRECT_PASSWORD" });
 
     // Hash new password
     const newHash = await bcrypt.hash(next, 10);
@@ -8218,8 +8346,11 @@ registerGroupClassRoutes(app, { requireSession, service: groupClassService, avai
 // Return only the time ranges needed to check booking availability.
 app.get("/api/calendar/teacher-booking-conflicts", requireSession, async (req, res) => {
   try {
-    const { scheduled_date, teacher_id } = req.query;
-    const date = String(scheduled_date || "");
+    const { scheduled_date, teacher_id, year, month } = req.query;
+    const monthly = scheduled_date == null;
+    const validMonth = /^\d{4}$/.test(String(year || "")) && Number(year) >= 1000
+      && /^\d{1,2}$/.test(String(month || "")) && Number(month) >= 1 && Number(month) <= 12;
+    const date = monthly && validMonth ? `${year}-${String(month).padStart(2, "0")}-01` : String(scheduled_date || "");
     const parsedDate = new Date(`${date}T00:00:00Z`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsedDate.getTime())
       || parsedDate.toISOString().slice(0, 10) !== date || !/^\d+$/.test(String(teacher_id || ""))) {
@@ -8237,14 +8368,16 @@ app.get("/api/calendar/teacher-booking-conflicts", requireSession, async (req, r
               c.duration, tea.timezone AS teacher_timezone
        FROM classes c
        JOIN users tea ON tea.user_id = c.teacher_id
-       WHERE c.teacher_id = ? AND c.scheduled_date = ? AND c.status = 'scheduled'
+       WHERE c.teacher_id = ? AND ${monthly
+         ? "c.scheduled_date >= ? AND c.scheduled_date < DATE_ADD(?, INTERVAL 1 MONTH)"
+         : "c.scheduled_date = ?"} AND c.status = 'scheduled'
        ORDER BY c.start_time, c.class_id`,
-      [teacher_id, date]
+      monthly ? [teacher_id, date, date] : [teacher_id, date]
     );
     const holds = groupClassSchemaReady
-      ? await groupProposalHolds(pool, { teacherId: teacher_id, date })
+      ? await groupProposalHolds(pool, { teacherId: teacher_id, date: monthly ? undefined : date })
       : [];
-    res.json({ classes: [...classes, ...holds] });
+    res.json({ classes: [...classes, ...holds.filter(hold => !monthly || String(hold.scheduled_date).slice(0, 7) === date.slice(0, 7))] });
   } catch (err) {
     console.error("GET /api/calendar/teacher-booking-conflicts error:", err);
     res.status(500).json({ message: "Unable to check the teacher's current class schedule." });
@@ -12067,11 +12200,11 @@ app.get("/api/chats/conversations/:user_id/:other_user_id/messages", requireSess
       return res.status(403).json({ message: "You can only act on your own account." });
     }
     const { user_id, other_user_id } = req.params;
-    const messages = await getChatThread(user_id, other_user_id);
-    res.json({ messages });
+    const page = await getChatThread(user_id, other_user_id, req.query);
+    res.json(page);
   } catch (err) {
     console.error("GET /api/chats/conversations/:user_id/:other_user_id/messages error:", err);
-    res.status(500).json({ message: "Error fetching chat messages" });
+    res.status(err.status === 400 ? 400 : 500).json({ message: err.status === 400 ? err.message : "Error fetching chat messages" });
   }
 });
 
@@ -14308,9 +14441,12 @@ app.get("/api/calendar/teacher-availability-records", requireSession, requireTea
 // Get teacher availability record for a specific date
 app.get("/api/calendar/teacher-availability-record", requireSession, requireTeacherAvailabilityScope(), async (req, res) => {
   try {
-    const { teacher_id, available_date } = req.query;
-    if (!teacher_id || !available_date) {
+    const { teacher_id, available_date, availability_id } = req.query;
+    if (!teacher_id || (!available_date && !availability_id)) {
       return res.status(400).json({ message: "Missing required parameters" });
+    }
+    if (availability_id && !/^[1-9]\d*$/.test(String(availability_id))) {
+      return res.status(400).json({ message: "Invalid availability record" });
     }
 
     await deletePastTeacherAvailability(teacher_id);
@@ -14331,9 +14467,9 @@ app.get("/api/calendar/teacher-availability-record", requireSession, requireTeac
        WHERE ta.teacher_id = ?
          AND u.status = 'active'
          AND u.profile_completed = TRUE
-         AND DATE(ta.available_date) = ?
+         AND ${availability_id ? "ta.availability_id = ?" : "DATE(ta.available_date) = ?"}
        LIMIT 1`,
-      [teacher_id, available_date]
+      [teacher_id, availability_id || available_date]
     );
 
     res.json({ record: rows[0] || null });
@@ -14464,7 +14600,7 @@ app.post("/api/calendar/set-availability", requireSession, requireBodyIdentity("
     const availabilityId = availabilityRows[0]?.availability_id || result.insertId || null;
 
     const [notificationTeacherRows] = await connection.query(
-      `SELECT first_name, last_name
+      `SELECT first_name, last_name, timezone
        FROM users
        WHERE user_id = ?
        LIMIT 1`,
@@ -14491,17 +14627,21 @@ app.post("/api/calendar/set-availability", requireSession, requireBodyIdentity("
         ? "Teacher Availability Updated"
         : "Teacher Availability Changed";
       const notificationMessage = status === "available"
-        ? `${teacherName} is available on ${humanDate(available_date)} from ${humanTime(start_time)} to ${humanTime(end_time)}.`
+        ? `${teacherName} is available on ${humanDate(available_date)} from ${humanTime(start_time)} to ${humanTime(end_time)} (${notificationTeacherRows[0]?.timezone || "Asia/Manila"}).${break_start && break_end ? ` Break: ${humanTime(break_start)} to ${humanTime(break_end)}.` : ""}`
         : `${teacherName} marked ${humanDate(available_date)} as unavailable.`;
+      const actionUrl = availabilityId
+        ? `/Calendar?view=availability&availabilityId=${encodeURIComponent(availabilityId)}`
+        : `/Calendar?view=availability&availabilityDate=${encodeURIComponent(available_date)}`;
 
       await connection.query(
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
-         VALUES ${studentRows.map(() => "(?, 'announcement', ?, ?, ?, 'teacher_availability', '/Calendar')").join(", ")}`,
+         VALUES ${studentRows.map(() => "(?, 'announcement', ?, ?, ?, 'teacher_availability', ?)").join(", ")}`,
         studentRows.flatMap((student) => [
           student.user_id,
           encryptNullableText(notificationTitle),
           encryptNullableText(notificationMessage),
           availabilityId,
+          actionUrl,
         ])
       );
     }
@@ -14559,7 +14699,7 @@ app.post("/api/calendar/set-availability-bulk", requireSession, requireBodyIdent
     }
 
     const [teacherRows] = await connection.query(
-      `SELECT user_id, first_name, last_name
+      `SELECT user_id, first_name, last_name, timezone
        FROM users
        WHERE user_id = ?
          AND role = 'teacher'
@@ -14678,16 +14818,18 @@ app.post("/api/calendar/set-availability-bulk", requireSession, requireBodyIdent
       const monthName = new Date(selectedYear, selectedMonth - 1, 1).toLocaleString("default", { month: "long" });
       const notificationTitle = "Teacher Availability Updated";
       const notificationMessage = status === "available"
-        ? `${teacherName} updated availability for ${savedDates.length} date${savedDates.length === 1 ? "" : "s"} in ${monthName} ${selectedYear} from ${humanTime(start_time)} to ${humanTime(end_time)}.`
+        ? `${teacherName} updated availability for ${savedDates.length} date${savedDates.length === 1 ? "" : "s"} in ${monthName} ${selectedYear} from ${humanTime(start_time)} to ${humanTime(end_time)} (${teacherRows[0].timezone || "Asia/Manila"}).${break_start && break_end ? ` Break: ${humanTime(break_start)} to ${humanTime(break_end)}.` : ""}\nDates: ${savedDates.map(date => humanDate(date)).join(", ")}.`
         : `${teacherName} marked ${savedDates.length} date${savedDates.length === 1 ? "" : "s"} unavailable in ${monthName} ${selectedYear}.`;
+      const actionUrl = `/Calendar?view=availability&availabilityDate=${encodeURIComponent(savedDates[0])}`;
 
       await connection.query(
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type, action_url)
-         VALUES ${studentRows.map(() => "(?, 'announcement', ?, ?, NULL, 'teacher_availability', '/Calendar')").join(", ")}`,
+         VALUES ${studentRows.map(() => "(?, 'announcement', ?, ?, NULL, 'teacher_availability', ?)").join(", ")}`,
         studentRows.flatMap((student) => [
           student.user_id,
           encryptNullableText(notificationTitle),
           encryptNullableText(notificationMessage),
+          actionUrl,
         ])
       );
     }
@@ -14806,16 +14948,30 @@ const lessonStorage = multer.diskStorage({
   },
 });
 
-const lessonUpload = multer({ 
+const MAX_LESSON_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_BOOK_COVER_BYTES = 5 * 1024 * 1024;
+const LESSON_UPLOAD_MIME_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/rtf",
+  "text/plain",
+]);
+const LESSON_UPLOAD_EXTENSIONS = new Set([".pdf", ".doc", ".docx", ".rtf", ".txt"]);
+const BOOK_COVER_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const BOOK_COVER_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
+
+const lessonUpload = multer({
   storage: lessonStorage,
+  limits: { fileSize: MAX_LESSON_FILE_BYTES },
   fileFilter: (req, file, cb) => {
-    const allowedMimes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
-    if (allowedMimes.includes(file.mimetype)) {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    if (LESSON_UPLOAD_MIME_TYPES.has(file.mimetype) || LESSON_UPLOAD_EXTENSIONS.has(ext)) {
       cb(null, true);
-    } else {
-      cb(new Error('Only PDF, DOC, DOCX, and TXT files are allowed'), false);
+      return;
     }
-  }
+    cb(new Error("Only PDF, DOC, DOCX, RTF, and TXT lesson files are allowed"), false);
+  },
 });
 
 // Create multer storage for book covers
@@ -14832,13 +14988,14 @@ const bookCoverStorage = multer.diskStorage({
 
 const bookCoverUpload = multer({
   storage: bookCoverStorage,
+  limits: { fileSize: MAX_BOOK_COVER_BYTES },
   fileFilter: (req, file, cb) => {
-    const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
-    if (allowedMimes.includes(file.mimetype)) {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    if (BOOK_COVER_MIME_TYPES.has(file.mimetype) || BOOK_COVER_EXTENSIONS.has(ext)) {
       cb(null, true);
-    } else {
-      cb(new Error('Only image/jpeg, image/png, and image/webp are allowed for book covers'), false);
+      return;
     }
+    cb(new Error("Only JPG, PNG, and WEBP images are allowed for book covers"), false);
   },
 });
 
@@ -15184,44 +15341,8 @@ async function getChatConversationsForUser(userId) {
   });
 }
 
-async function getChatThread(userId, otherUserId) {
-  const [rows] = await pool.query(
-    `SELECT
-        m.message_id,
-        m.sender_id,
-        m.recipient_id,
-        m.subject,
-        m.content,
-        m.is_read,
-        m.sent_at,
-        m.read_at,
-        s.first_name AS sender_first_name,
-        s.last_name AS sender_last_name,
-        r.first_name AS recipient_first_name,
-        r.last_name AS recipient_last_name
-     FROM messages m
-     JOIN users s ON s.user_id = m.sender_id
-      AND s.status = 'active' AND (s.role = 'admin' OR s.profile_completed = TRUE)
-     JOIN users r ON r.user_id = m.recipient_id
-      AND r.status = 'active' AND (r.role = 'admin' OR r.profile_completed = TRUE)
-     WHERE (m.sender_id = ? AND m.recipient_id = ?)
-        OR (m.sender_id = ? AND m.recipient_id = ?)
-     ORDER BY m.sent_at ASC, m.message_id ASC`,
-    [userId, otherUserId, otherUserId, userId]
-  );
-
-  return rows.map((row) => ({
-    message_id: row.message_id,
-    sender_id: row.sender_id,
-    recipient_id: row.recipient_id,
-    subject: decryptNullableText(row.subject),
-    content: decryptNullableText(row.content),
-    is_read: Boolean(row.is_read),
-    sent_at: row.sent_at,
-    read_at: row.read_at,
-    sender_name: `${row.sender_first_name || ""} ${row.sender_last_name || ""}`.trim(),
-    recipient_name: `${row.recipient_first_name || ""} ${row.recipient_last_name || ""}`.trim(),
-  }));
+async function getChatThread(userId, otherUserId, options = {}) {
+  return readChatPage(pool, userId, otherUserId, options, decryptNullableText);
 }
 
 // ========== BOOK ACCESS CONTROL & SECURITY HELPERS ==========
