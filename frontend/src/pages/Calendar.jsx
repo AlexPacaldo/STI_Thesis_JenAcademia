@@ -984,7 +984,6 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const initialDateApplied = useRef(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedClassId, setSelectedClassId] = useState(null);
   const previousClassUrl = useRef(searchParams.get("classId"));
@@ -2304,48 +2303,52 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       if (!classId) {
         setSelectedClassId(null);
         if (isSimpleStudentView) setSelectedDate(null);
-      } else initialDateApplied.current = false;
+      }
     }
   }, [searchParams, location.state, navigate, isSimpleStudentView]);
 
-  // whenever selectedDate changes we fetch if necessary
+  // Only the current route may select a class. A classroom lookup can finish
+  // after the student has returned to the list or opened a different class.
   useEffect(() => {
-    if (!initialDateApplied.current) {
-      const dateFromState = location.state?.selectedDate || location.state?.date || searchParams.get("date");
-      const normalizedDate = dateFromState ? normalizeDate(dateFromState) : null;
-      const classIdFromUrl = searchParams.get("classId");
+    let active = true;
+    const dateFromState = location.state?.selectedDate || location.state?.date || searchParams.get("date");
+    const normalizedDate = dateFromState ? normalizeDate(dateFromState) : null;
+    const classIdFromUrl = searchParams.get("classId");
 
-      if (normalizedDate) {
-        setSelectedDate(normalizedDate);
-        setSelectedClassId(classIdFromUrl);
-      } else if (classIdFromUrl) {
-        axios
-          .get(`${API}/api/calendar/classes/${encodeURIComponent(classIdFromUrl)}/classroom`)
-          .then(response => {
-            const classDate = normalizeDate(response.data?.class?.scheduled_date);
-            if (!classDate) {
-              throw new Error("The booked class did not include a scheduled date.");
-            }
-            setSelectedDate(classDate);
-            setSelectedClassId(classIdFromUrl);
-          })
-          .catch(error => {
-            console.error("Error opening booked class from notification:", error);
-            notify?.(
-              error.response?.data?.message || "Unable to open this booked class. Please try again.",
-              "error"
-            );
-          });
-      }
-
-      initialDateApplied.current = true;
-      return;
+    if (normalizedDate) {
+      setSelectedDate(normalizedDate);
+      setSelectedClassId(classIdFromUrl);
+    } else if (classIdFromUrl) {
+      axios
+        .get(`${API}/api/calendar/classes/${encodeURIComponent(classIdFromUrl)}/classroom`)
+        .then(response => {
+          if (!active) return;
+          const classDate = normalizeDate(response.data?.class?.scheduled_date);
+          if (!classDate) {
+            throw new Error("The booked class did not include a scheduled date.");
+          }
+          setSelectedDate(classDate);
+          setSelectedClassId(classIdFromUrl);
+        })
+        .catch(error => {
+          if (!active) return;
+          console.error("Error opening booked class from notification:", error);
+          notify?.(
+            error.response?.data?.message || "Unable to open this booked class. Please try again.",
+            "error"
+          );
+        });
     }
 
+    return () => { active = false; };
+  }, [searchParams, location.state, notify]);
+
+  // Fetch the selected day's classes independently of route initialization.
+  useEffect(() => {
     if (selectedDate) {
       loadClassesForDate(selectedDate);
     }
-  }, [selectedDate, localRole, localUserId, teacherId, studentId, searchParams, calendarRefreshToken, notify]);
+  }, [selectedDate, localRole, localUserId, teacherId, studentId, calendarRefreshToken, notify]);
 
   useEffect(() => {
     if (selectedDate) {
@@ -4463,7 +4466,11 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   const bookingAvailabilityRefreshTick = studentBookingMode || requestMode ? Math.floor(currentTimeTick / 30000) : 0;
 
   useEffect(() => {
-    if (!isSimpleStudentView || !assignedTeacherId) return;
+    if (!isSimpleStudentView || !assignedTeacherId || (!studentBookingMode && !requestMode)) {
+      setBookingAvailabilitySnapshot(null);
+      setSimpleAvailabilityLoading(false);
+      return;
+    }
     const dates = [...simpleBookingDays, ...simpleRescheduleDays];
     const months = new Set();
     dates.forEach(day => {
@@ -4497,14 +4504,16 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       if (active) setSimpleAvailabilityLoading(false);
     });
     return () => { active = false; };
-  }, [isSimpleStudentView, assignedTeacherId, simpleBookingDays, simpleRescheduleDays, calendarRefreshToken, bookingAvailabilityRefreshTick]);
+  }, [isSimpleStudentView, assignedTeacherId, studentBookingMode, requestMode, simpleBookingDays, simpleRescheduleDays, calendarRefreshToken, bookingAvailabilityRefreshTick]);
 
-  const simpleBookingSlots = useMemo(() => (bookingAvailabilitySnapshot?.records || []).flatMap(record =>
+  // Expanding every available day into timezone-aware slots is expensive.
+  // The class list and completed-contract screen do not need booking slots.
+  const simpleBookingSlots = useMemo(() => !studentBookingMode ? [] : (bookingAvailabilitySnapshot?.records || []).flatMap(record =>
     bookableSlots(record, {
       duration: studentClassDuration, occupied: [...(bookingAvailabilitySnapshot?.classes || []), ...bookedDates],
       viewerTimezone, endKey: studentBookingEndKey, expiresAt: studentPackage?.expires_at,
     })
-  ), [bookingAvailabilitySnapshot, bookedDates, studentClassDuration, viewerTimezone, studentBookingEndKey, studentPackage?.expires_at]);
+  ), [studentBookingMode, bookingAvailabilitySnapshot, bookedDates, studentClassDuration, viewerTimezone, studentBookingEndKey, studentPackage?.expires_at]);
   const simpleAvailability = useMemo(() => bookingDayAvailability(simpleBookingDays, simpleBookingSlots),
     [simpleBookingDays, simpleBookingSlots]);
 
