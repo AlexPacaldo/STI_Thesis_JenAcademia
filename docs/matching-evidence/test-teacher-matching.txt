@@ -1,0 +1,118 @@
+=== option catalogues line up with the backend mapping tables ===
+PASS  every student focusArea has a specialization mapping
+PASS  every student learningGoal has a specialization mapping
+PASS  focus area mappings only reference real specializations
+PASS  learning goal mappings only reference real specializations
+PASS  student learningStyle vocabulary == teacher teachingStyle vocabulary
+PASS  student pace vocabulary == teacher best student pace vocabulary
+PASS  every stored level has an experience requirement
+
+=== parsing ===
+PASS  parses teaching style
+PASS  parses best pace
+PASS  recognises the block
+PASS  free text excludes the block
+PASS  stale Teacher strength tag is ignored
+PASS  stale bio still yields the pace
+PASS  stale bio exposes no strength key
+PASS  legacy bio has no block
+PASS  legacy bio is all free text
+PASS  parses comma-joined specialization column
+PASS  parses array specialization
+
+=== scoring ===
+PASS  a matching profile outscores an empty one
+PASS  substring false positives are gone
+PASS  trial notes do not affect the score
+PASS  an advanced student favours the experienced teacher
+PASS  an advanced student penalises the inexperienced teacher
+PASS  a loaded teacher scores lower
+PASS  every teacher gets a reason
+PASS  two focus areas on one specialization score higher
+
+=== selection policy ===
+PASS  an under-limit teacher is preferred over an overloaded one
+PASS  no least-loaded fallback when someone is under the cap
+PASS  least-loaded fallback kicks in when everyone is at the cap
+PASS  fallback picks the lightest load
+PASS  a manual pick is honoured only while under the cap
+PASS  a valid manual pick is respected
+
+=== multi-select helper ===
+PASS  toggles on
+PASS  toggles off
+PASS  appends without duplicates
+
+=== resume auto-fill vocabulary ===
+PASS  resume parser specialization vocabulary == the Create Teacher form
+PASS  resume parser teachingStyle vocabulary == the Create Teacher form
+PASS  resume parser idealStudentPace vocabulary == the Create Teacher form
+PASS  resume parser course allowlists == the Create Teacher form
+PASS  specializations are filtered by the selected courses
+PASS  every specialization is allowed when no course is picked yet
+
+=== resume auto-fill normalization ===
+PASS  bio is collapsed to a single line and the profile marker stripped
+PASS  invented and out-of-scope values are dropped and duplicates collapsed
+PASS  unknown teaching styles are dropped
+PASS  an option label is accepted as an alias of its value
+PASS  experience years are rounded
+PASS  a missing experience is null, not zero
+PASS  garbage input yields empty arrays
+PASS  a better-documented teacher outranks a thin one
+PASS  a thin profile is still ranked, not discarded
+PASS  a single candidate is still selected
+PASS  selection prefers a strong match when both exist
+PASS  the least-loaded fallback is not reported
+PASS  an empty pool selects nobody
+PASS  an empty pool reports no fallback
+PASS  every teacher over the limit still yields one
+PASS  and it reports the least-loaded fallback
+PASS  teacherMatching import block found in server.js
+PASS  server.js imports an exported symbol: overBalanceTeachers
+PASS  server.js imports an exported symbol: rankTeachers
+PASS  server.js imports an exported symbol: scoreTeacherForStudent
+PASS  server.js imports an exported symbol: selectTeacherFromRanking
+PASS  server.js imports an exported symbol: evaluateAvailability
+PASS  server.js imports an exported symbol: AVAILABILITY_HORIZON_DAYS
+PASS  server.js imports an exported symbol: TEACHER_BALANCE_LIMIT
+PASS  server.js imports an exported symbol: preferAvailable
+PASS  server.js imports an exported symbol: applyAdvisorOrder
+PASS  server.js imports an exported symbol: assessMatchStrength
+PASS  server.js imports an exported symbol: preferTeachesChildren
+PASS  server.js imports an exported symbol: teacherWillTeachChildren
+PASS  server.js imports an exported symbol: isChildAge
+PASS  server.js imports an exported symbol: ageFromBirthDate
+PASS  server.js imports an exported symbol: CHILD_MAX_AGE
+PASS  server.js imports the symbol it needs: TEACHER_BALANCE_LIMIT
+PASS  server.js imports the symbol it needs: evaluateAvailability
+PASS  server.js imports the symbol it needs: AVAILABILITY_HORIZON_DAYS
+PASS  no criteria set means nothing to miss
+PASS  so nothing is counted as matched
+PASS  only stated criteria are counted
+PASS  the ones that matched are counted
+PASS  a single-criterion form counts as one
+PASS  and it matched
+PASS  nothing stated is unknown, not weak
+PASS  all covered is strong
+PASS  half covered is partial
+PASS  under half is weak
+PASS  none covered is weak
+PASS  one of one is strong
+PASS  zero of one is weak
+PASS  the verdict carries what matched
+PASS  the verdict carries what was asked
+PASS  no argument at all is unknown
+PASS  a negative count does not go below zero
+PASS  the no-match reason is not flattering
+PASS  a stated custom criterion still counts
+PASS  free text found in the bio counts as covering it
+PASS  so it is not reported as a weak match
+PASS  a stated custom criterion still counts
+PASS  a custom criterion nothing matches is a miss
+PASS  and that reads as weak
+PASS  a structured match survives the free-text pass
+PASS  a substring in prose is not a match
+
+102/102 checks passed.
+All good.

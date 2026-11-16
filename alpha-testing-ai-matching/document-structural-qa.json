@@ -1,0 +1,34 @@
+[
+  {
+    "file": "01_Alpha_Tester_Guide.docx",
+    "title": "Alpha Tester Guide",
+    "tables": 1,
+    "paragraphs": 31,
+    "structuralCheck": "pass",
+    "visualRendering": "unavailable: LibreOffice/soffice not installed (WinError 2)"
+  },
+  {
+    "file": "02_Sample_Student_and_Teacher_Profiles.docx",
+    "title": "Sample Student and Teacher Profiles",
+    "tables": 2,
+    "paragraphs": 106,
+    "structuralCheck": "pass",
+    "visualRendering": "unavailable: LibreOffice/soffice not installed (WinError 2)"
+  },
+  {
+    "file": "03_AI_Matching_Test_Cases.docx",
+    "title": "AI Matching Test Cases",
+    "tables": 1,
+    "paragraphs": 300,
+    "structuralCheck": "pass",
+    "visualRendering": "unavailable: LibreOffice/soffice not installed (WinError 2)"
+  },
+  {
+    "file": "04_Matching_Algorithm_Explanation.docx",
+    "title": "Matching Algorithm Explanation",
+    "tables": 3,
+    "paragraphs": 42,
+    "structuralCheck": "pass",
+    "visualRendering": "unavailable: LibreOffice/soffice not installed (WinError 2)"
+  }
+]

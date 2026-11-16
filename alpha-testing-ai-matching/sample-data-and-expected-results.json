@@ -1,0 +1,3057 @@
+{
+  "date": "17 November 2026",
+  "scope": "Documentation and fictional data only. No records inserted; all QA case statuses Not run. Pure-function expectations are reference calculations, not live QA results.",
+  "courses": [
+    {
+      "course_id": 1,
+      "course_name": "Conversational English"
+    },
+    {
+      "course_id": 2,
+      "course_name": "Online English"
+    },
+    {
+      "course_id": 3,
+      "course_name": "Business English"
+    },
+    {
+      "course_id": 4,
+      "course_name": "IELTS"
+    },
+    {
+      "course_id": 5,
+      "course_name": "News"
+    },
+    {
+      "course_id": 6,
+      "course_name": "Travel English"
+    },
+    {
+      "course_id": 7,
+      "course_name": "Job Interview"
+    },
+    {
+      "course_id": 8,
+      "course_name": "TOEIC"
+    },
+    {
+      "course_id": 9,
+      "course_name": "OPIc"
+    }
+  ],
+  "teachers": [
+    {
+      "fixtureId": "T01",
+      "user_id": 901,
+      "first_name": "Jamie",
+      "last_name": "Demo",
+      "email": "alpha.teacher1@example.com",
+      "country": "Philippines",
+      "birth_date": "1990-06-15",
+      "role": "teacher",
+      "status": "active",
+      "profile_completed": 1,
+      "specialization": "speaking and conversation",
+      "teachingStyle": [
+        "conversational"
+      ],
+      "idealStudentPace": [
+        "slow"
+      ],
+      "experience_years": 6,
+      "teaches_children": 1,
+      "bio": "English language educator.\n\nAI matching profile:\nTeaching style: conversational\nBest student pace: slow",
+      "assigned_student_count": 0,
+      "courseNames": [
+        "Conversational English",
+        "Online English",
+        "Travel English"
+      ]
+    },
+    {
+      "fixtureId": "T02",
+      "user_id": 902,
+      "first_name": "Taylor",
+      "last_name": "Demo",
+      "email": "alpha.teacher2@example.com",
+      "country": "Philippines",
+      "birth_date": "1990-06-15",
+      "role": "teacher",
+      "status": "active",
+      "profile_completed": 1,
+      "specialization": "grammar and writing",
+      "teachingStyle": [
+        "structured"
+      ],
+      "idealStudentPace": [
+        "fast"
+      ],
+      "experience_years": 2,
+      "teaches_children": 1,
+      "bio": "English language educator.\n\nAI matching profile:\nTeaching style: structured\nBest student pace: fast",
+      "assigned_student_count": 0,
+      "courseNames": [
+        "Online English",
+        "IELTS",
+        "Business English"
+      ]
+    },
+    {
+      "fixtureId": "T03",
+      "user_id": 903,
+      "first_name": "Alex",
+      "last_name": "Demo",
+      "email": "alpha.teacher3@example.com",
+      "country": "Philippines",
+      "birth_date": "1990-06-15",
+      "role": "teacher",
+      "status": "active",
+      "profile_completed": 1,
+      "specialization": "listening and pronunciation",
+      "teachingStyle": [
+        "visual"
+      ],
+      "idealStudentPace": [
+        "balanced"
+      ],
+      "experience_years": 5,
+      "teaches_children": 1,
+      "bio": "English language educator.\n\nAI matching profile:\nTeaching style: visual\nBest student pace: balanced",
+      "assigned_student_count": 0,
+      "courseNames": [
+        "Conversational English",
+        "Online English",
+        "Travel English",
+        "IELTS"
+      ]
+    },
+    {
+      "fixtureId": "T04",
+      "user_id": 904,
+      "first_name": "Sam",
+      "last_name": "Demo",
+      "email": "alpha.teacher4@example.com",
+      "country": "Philippines",
+      "birth_date": "1990-06-15",
+      "role": "teacher",
+      "status": "active",
+      "profile_completed": 1,
+      "specialization": "news discussion, speaking and conversation",
+      "teachingStyle": [
+        "interactive"
+      ],
+      "idealStudentPace": [
+        "balanced"
+      ],
+      "experience_years": 7,
+      "teaches_children": 1,
+      "bio": "English language educator.\n\nAI matching profile:\nTeaching style: interactive\nBest student pace: balanced",
+      "assigned_student_count": 0,
+      "courseNames": [
+        "News",
+        "Conversational English"
+      ]
+    },
+    {
+      "fixtureId": "T05",
+      "user_id": 905,
+      "first_name": "Morgan",
+      "last_name": "Demo",
+      "email": "alpha.teacher5@example.com",
+      "country": "Philippines",
+      "birth_date": "1990-06-15",
+      "role": "teacher",
+      "status": "active",
+      "profile_completed": 1,
+      "specialization": "business english, job interview coaching, grammar and writing",
+      "teachingStyle": [
+        "structured"
+      ],
+      "idealStudentPace": [
+        "fast"
+      ],
+      "experience_years": 8,
+      "teaches_children": 1,
+      "bio": "English language educator.\n\nAI matching profile:\nTeaching style: structured\nBest student pace: fast",
+      "assigned_student_count": 0,
+      "courseNames": [
+        "Business English",
+        "Job Interview",
+        "Online English",
+        "TOEIC"
+      ]
+    },
+    {
+      "fixtureId": "T06",
+      "user_id": 906,
+      "first_name": "Casey",
+      "last_name": "Demo",
+      "email": "alpha.teacher6@example.com",
+      "country": "Philippines",
+      "birth_date": "1990-06-15",
+      "role": "teacher",
+      "status": "active",
+      "profile_completed": 1,
+      "specialization": "speaking and conversation",
+      "teachingStyle": [
+        "interactive"
+      ],
+      "idealStudentPace": [
+        "fast"
+      ],
+      "experience_years": 4,
+      "teaches_children": 1,
+      "bio": "English language educator.\n\nAI matching profile:\nTeaching style: interactive\nBest student pace: fast",
+      "assigned_student_count": 0,
+      "courseNames": [
+        "Conversational English",
+        "Travel English",
+        "Online English"
+      ]
+    },
+    {
+      "fixtureId": "T07",
+      "user_id": 907,
+      "first_name": "Riley",
+      "last_name": "Demo",
+      "email": "alpha.teacher7@example.com",
+      "country": "Philippines",
+      "birth_date": "1990-06-15",
+      "role": "teacher",
+      "status": "active",
+      "profile_completed": 1,
+      "specialization": "grammar and writing, speaking and conversation",
+      "teachingStyle": [
+        "structured"
+      ],
+      "idealStudentPace": [
+        "review-heavy"
+      ],
+      "experience_years": 3,
+      "teaches_children": 1,
+      "bio": "English language educator.\n\nAI matching profile:\nTeaching style: structured\nBest student pace: review-heavy",
+      "assigned_student_count": 0,
+      "courseNames": [
+        "Online English",
+        "Conversational English"
+      ]
+    },
+    {
+      "fixtureId": "T08",
+      "user_id": 908,
+      "first_name": "Jordan",
+      "last_name": "Demo",
+      "email": "alpha.teacher8@example.com",
+      "country": "Philippines",
+      "birth_date": "1990-06-15",
+      "role": "teacher",
+      "status": "active",
+      "profile_completed": 1,
+      "specialization": "reading and vocabulary, exam preparation",
+      "teachingStyle": [
+        "independent"
+      ],
+      "idealStudentPace": [
+        "balanced"
+      ],
+      "experience_years": 7,
+      "teaches_children": 1,
+      "bio": "English language educator.\n\nAI matching profile:\nTeaching style: independent\nBest student pace: balanced",
+      "assigned_student_count": 0,
+      "courseNames": [
+        "IELTS",
+        "TOEIC",
+        "News",
+        "Online English"
+      ]
+    }
+  ],
+  "students": [
+    {
+      "fixtureId": "S01",
+      "firstName": "Lea",
+      "lastName": "Demo",
+      "email": "alpha.student1@example.com",
+      "country": "Philippines",
+      "birthDate": "2000-01-15",
+      "courseName": "Conversational English",
+      "levelScores": {
+        "speakingPronunciation": 2,
+        "readingComprehension": 1,
+        "structure": 2,
+        "sentenceGrammar": 1,
+        "vocabulary": 2
+      },
+      "computedLevel": {
+        "level": "novice-low",
+        "avg": 1.6,
+        "reason": "Novice: Reading & Comprehension is 1"
+      },
+      "aiCriteria": {
+        "learningGoal": [
+          "conversation"
+        ],
+        "focusArea": [
+          "speaking"
+        ],
+        "learningStyle": [
+          "conversational"
+        ],
+        "pace": [
+          "slow"
+        ]
+      },
+      "assessment": "Uses short phrases and needs guided everyday speaking practice.",
+      "trialNotes": ""
+    },
+    {
+      "fixtureId": "S02",
+      "firstName": "Noah",
+      "lastName": "Demo",
+      "email": "alpha.student2@example.com",
+      "country": "Philippines",
+      "birthDate": "2000-01-15",
+      "courseName": "Online English",
+      "levelScores": {
+        "speakingPronunciation": 2,
+        "readingComprehension": 2,
+        "structure": 2,
+        "sentenceGrammar": 2,
+        "vocabulary": 2
+      },
+      "computedLevel": {
+        "level": "intermediate-low",
+        "avg": 2,
+        "reason": "Intermediate Low: average 2.0"
+      },
+      "aiCriteria": {
+        "learningGoal": [
+          "confidence"
+        ],
+        "focusArea": [
+          "grammar"
+        ],
+        "learningStyle": [
+          "structured"
+        ],
+        "pace": [
+          "review-heavy"
+        ]
+      },
+      "assessment": "Wants clearer sentences and confidence through structured grammar review.",
+      "trialNotes": ""
+    },
+    {
+      "fixtureId": "S03",
+      "firstName": "Mia",
+      "lastName": "Demo",
+      "email": "alpha.student3@example.com",
+      "country": "Philippines",
+      "birthDate": "2000-01-15",
+      "courseName": "Business English",
+      "levelScores": {
+        "speakingPronunciation": 5,
+        "readingComprehension": 5,
+        "structure": 4,
+        "sentenceGrammar": 5,
+        "vocabulary": 4
+      },
+      "computedLevel": {
+        "level": "advanced",
+        "avg": 4.6,
+        "reason": "Advanced: all five criteria are 4 or higher, average 4.6"
+      },
+      "aiCriteria": {
+        "learningGoal": [
+          "business"
+        ],
+        "focusArea": [
+          "writing"
+        ],
+        "learningStyle": [
+          "structured"
+        ],
+        "pace": [
+          "fast"
+        ]
+      },
+      "assessment": "An experienced professional improving concise business writing.",
+      "trialNotes": ""
+    },
+    {
+      "fixtureId": "S04",
+      "firstName": "Ethan",
+      "lastName": "Demo",
+      "email": "alpha.student4@example.com",
+      "country": "Philippines",
+      "birthDate": "2000-01-15",
+      "courseName": "Conversational English",
+      "levelScores": {
+        "speakingPronunciation": 3,
+        "readingComprehension": 3,
+        "structure": 3,
+        "sentenceGrammar": 3,
+        "vocabulary": 3
+      },
+      "computedLevel": {
+        "level": "intermediate-mid",
+        "avg": 3,
+        "reason": "Intermediate Mid: all five criteria are 3 or higher, average 3.0"
+      },
+      "aiCriteria": {
+        "learningGoal": [
+          "conversation"
+        ],
+        "focusArea": [
+          "speaking"
+        ],
+        "learningStyle": [
+          "interactive"
+        ],
+        "pace": [
+          "fast"
+        ]
+      },
+      "assessment": "Wants active speaking practice through fast-paced activities.",
+      "trialNotes": ""
+    },
+    {
+      "fixtureId": "S05",
+      "firstName": "Zoe",
+      "lastName": "Demo",
+      "email": "alpha.student5@example.com",
+      "country": "Philippines",
+      "birthDate": "2000-01-15",
+      "courseName": "IELTS",
+      "levelScores": {
+        "speakingPronunciation": 4,
+        "readingComprehension": 4,
+        "structure": 3,
+        "sentenceGrammar": 4,
+        "vocabulary": 3
+      },
+      "computedLevel": {
+        "level": "intermediate-high",
+        "avg": 3.6,
+        "reason": "Intermediate High: all five criteria are 3 or higher, average 3.6"
+      },
+      "aiCriteria": {
+        "learningGoal": [
+          "exam-prep"
+        ],
+        "focusArea": [
+          "reading"
+        ],
+        "learningStyle": [
+          "independent"
+        ],
+        "pace": [
+          "balanced"
+        ]
+      },
+      "assessment": "Preparing for IELTS with independent reading practice.",
+      "trialNotes": ""
+    },
+    {
+      "fixtureId": "S06",
+      "firstName": "Ava",
+      "lastName": "Demo",
+      "email": "alpha.student6@example.com",
+      "country": "Philippines",
+      "birthDate": "2000-01-15",
+      "courseName": "Online English",
+      "levelScores": {
+        "speakingPronunciation": 4,
+        "readingComprehension": 4,
+        "structure": 3,
+        "sentenceGrammar": 4,
+        "vocabulary": 3
+      },
+      "computedLevel": {
+        "level": "intermediate-high",
+        "avg": 3.6,
+        "reason": "Intermediate High: all five criteria are 3 or higher, average 3.6"
+      },
+      "aiCriteria": {
+        "learningGoal": [
+          "confidence"
+        ],
+        "focusArea": [
+          "pronunciation"
+        ],
+        "learningStyle": [
+          "visual"
+        ],
+        "pace": [
+          "balanced"
+        ]
+      },
+      "assessment": "Needs visual pronunciation support while building confidence.",
+      "trialNotes": ""
+    },
+    {
+      "fixtureId": "S07",
+      "firstName": "Liam",
+      "lastName": "Demo",
+      "email": "alpha.student7@example.com",
+      "country": "Philippines",
+      "birthDate": "2000-01-15",
+      "courseName": "Conversational English",
+      "levelScores": {
+        "speakingPronunciation": 3,
+        "readingComprehension": 3,
+        "structure": 3,
+        "sentenceGrammar": 3,
+        "vocabulary": 3
+      },
+      "computedLevel": {
+        "level": "intermediate-mid",
+        "avg": 3,
+        "reason": "Intermediate Mid: all five criteria are 3 or higher, average 3.0"
+      },
+      "aiCriteria": {
+        "learningGoal": [
+          "conversation"
+        ],
+        "focusArea": [
+          "speaking"
+        ],
+        "learningStyle": [
+          "conversational",
+          "interactive"
+        ],
+        "pace": [
+          "slow",
+          "balanced",
+          "fast"
+        ]
+      },
+      "assessment": "Can learn through several styles and paces.",
+      "trialNotes": ""
+    },
+    {
+      "fixtureId": "S08",
+      "firstName": "Isla",
+      "lastName": "Demo",
+      "email": "alpha.student8@example.com",
+      "country": "Philippines",
+      "birthDate": "2000-01-15",
+      "courseName": "Business English",
+      "levelScores": {
+        "speakingPronunciation": 5,
+        "readingComprehension": 5,
+        "structure": 4,
+        "sentenceGrammar": 5,
+        "vocabulary": 4
+      },
+      "computedLevel": {
+        "level": "advanced",
+        "avg": 4.6,
+        "reason": "Advanced: all five criteria are 4 or higher, average 4.6"
+      },
+      "aiCriteria": {
+        "learningGoal": [
+          "business"
+        ],
+        "focusArea": [
+          "vocabulary"
+        ],
+        "learningStyle": [
+          "visual"
+        ],
+        "pace": [
+          "slow"
+        ]
+      },
+      "assessment": "Wants slow visual vocabulary work for business; the available business pool has limited fit.",
+      "trialNotes": ""
+    }
+  ],
+  "cases": [
+    {
+      "id": "TC01",
+      "title": "Novice conversation and slow pace",
+      "student": "S01",
+      "mode": "rules-only",
+      "purpose": "Novice conversation and slow pace",
+      "studentInput": {
+        "fixtureId": "S01",
+        "firstName": "Lea",
+        "lastName": "Demo",
+        "email": "alpha.student1@example.com",
+        "country": "Philippines",
+        "birthDate": "2000-01-15",
+        "courseName": "Conversational English",
+        "levelScores": {
+          "speakingPronunciation": 2,
+          "readingComprehension": 1,
+          "structure": 2,
+          "sentenceGrammar": 1,
+          "vocabulary": 2
+        },
+        "computedLevel": {
+          "level": "novice-low",
+          "avg": 1.6,
+          "reason": "Novice: Reading & Comprehension is 1"
+        },
+        "aiCriteria": {
+          "learningGoal": [
+            "conversation"
+          ],
+          "focusArea": [
+            "speaking"
+          ],
+          "learningStyle": [
+            "conversational"
+          ],
+          "pace": [
+            "slow"
+          ]
+        },
+        "assessment": "Uses short phrases and needs guided everyday speaking practice.",
+        "trialNotes": ""
+      },
+      "pool": [
+        "T01",
+        "T03",
+        "T04",
+        "T06",
+        "T07"
+      ],
+      "expected": {
+        "teacher": "T01",
+        "name": "Jamie Demo",
+        "score": 66,
+        "strength": {
+          "level": "strong",
+          "matched": 4,
+          "total": 4,
+          "ratio": 1
+        },
+        "leastLoadedFallback": false,
+        "preferredHonouredOverLimit": false,
+        "childConflict": false
+      },
+      "ranking": [
+        {
+          "teacher": "T01",
+          "name": "Jamie Demo",
+          "score": 66,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "6 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T04",
+          "name": "Sam Demo",
+          "score": 50,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "7 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T06",
+          "name": "Casey Demo",
+          "score": 44,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "4 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T07",
+          "name": "Riley Demo",
+          "score": 42,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "3 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T03",
+          "name": "Alex Demo",
+          "score": 24,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "5 years experience",
+            "teaches the selected course"
+          ]
+        }
+      ],
+      "executionStatus": "Not run"
+    },
+    {
+      "id": "TC02",
+      "title": "Intermediate grammar and structured lessons",
+      "student": "S02",
+      "mode": "rules-only",
+      "purpose": "Intermediate grammar and structured lessons",
+      "studentInput": {
+        "fixtureId": "S02",
+        "firstName": "Noah",
+        "lastName": "Demo",
+        "email": "alpha.student2@example.com",
+        "country": "Philippines",
+        "birthDate": "2000-01-15",
+        "courseName": "Online English",
+        "levelScores": {
+          "speakingPronunciation": 2,
+          "readingComprehension": 2,
+          "structure": 2,
+          "sentenceGrammar": 2,
+          "vocabulary": 2
+        },
+        "computedLevel": {
+          "level": "intermediate-low",
+          "avg": 2,
+          "reason": "Intermediate Low: average 2.0"
+        },
+        "aiCriteria": {
+          "learningGoal": [
+            "confidence"
+          ],
+          "focusArea": [
+            "grammar"
+          ],
+          "learningStyle": [
+            "structured"
+          ],
+          "pace": [
+            "review-heavy"
+          ]
+        },
+        "assessment": "Wants clearer sentences and confidence through structured grammar review.",
+        "trialNotes": ""
+      },
+      "pool": [
+        "T01",
+        "T02",
+        "T03",
+        "T05",
+        "T06",
+        "T07",
+        "T08"
+      ],
+      "expected": {
+        "teacher": "T07",
+        "name": "Riley Demo",
+        "score": 66,
+        "strength": {
+          "level": "strong",
+          "matched": 4,
+          "total": 4,
+          "ratio": 1
+        },
+        "leastLoadedFallback": false,
+        "preferredHonouredOverLimit": false,
+        "childConflict": false
+      },
+      "ranking": [
+        {
+          "teacher": "T07",
+          "name": "Riley Demo",
+          "score": 66,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "3 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T05",
+          "name": "Morgan Demo",
+          "score": 56,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": false
+          },
+          "reasons": [
+            "8 years experience",
+            "teaches the selected course",
+            "specialisation matches the focus areas",
+            "teaching style matches"
+          ]
+        },
+        {
+          "teacher": "T01",
+          "name": "Jamie Demo",
+          "score": 44,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "6 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "experience suits Intermediate Low students"
+          ]
+        },
+        {
+          "teacher": "T02",
+          "name": "Taylor Demo",
+          "score": 44,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": false
+          },
+          "reasons": [
+            "2 years experience",
+            "teaches the selected course",
+            "specialisation matches the focus areas",
+            "teaching style matches"
+          ]
+        },
+        {
+          "teacher": "T06",
+          "name": "Casey Demo",
+          "score": 40,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "4 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "experience suits Intermediate Low students"
+          ]
+        },
+        {
+          "teacher": "T08",
+          "name": "Jordan Demo",
+          "score": 34,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "7 years experience",
+            "teaches the selected course",
+            "experience suits Intermediate Low students"
+          ]
+        },
+        {
+          "teacher": "T03",
+          "name": "Alex Demo",
+          "score": 30,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "5 years experience",
+            "teaches the selected course",
+            "experience suits Intermediate Low students"
+          ]
+        }
+      ],
+      "executionStatus": "Not run"
+    },
+    {
+      "id": "TC03",
+      "title": "Advanced business writing",
+      "student": "S03",
+      "mode": "rules-only",
+      "purpose": "Advanced business writing",
+      "studentInput": {
+        "fixtureId": "S03",
+        "firstName": "Mia",
+        "lastName": "Demo",
+        "email": "alpha.student3@example.com",
+        "country": "Philippines",
+        "birthDate": "2000-01-15",
+        "courseName": "Business English",
+        "levelScores": {
+          "speakingPronunciation": 5,
+          "readingComprehension": 5,
+          "structure": 4,
+          "sentenceGrammar": 5,
+          "vocabulary": 4
+        },
+        "computedLevel": {
+          "level": "advanced",
+          "avg": 4.6,
+          "reason": "Advanced: all five criteria are 4 or higher, average 4.6"
+        },
+        "aiCriteria": {
+          "learningGoal": [
+            "business"
+          ],
+          "focusArea": [
+            "writing"
+          ],
+          "learningStyle": [
+            "structured"
+          ],
+          "pace": [
+            "fast"
+          ]
+        },
+        "assessment": "An experienced professional improving concise business writing.",
+        "trialNotes": ""
+      },
+      "pool": [
+        "T02",
+        "T05"
+      ],
+      "expected": {
+        "teacher": "T05",
+        "name": "Morgan Demo",
+        "score": 76,
+        "strength": {
+          "level": "strong",
+          "matched": 4,
+          "total": 4,
+          "ratio": 1
+        },
+        "leastLoadedFallback": false,
+        "preferredHonouredOverLimit": false,
+        "childConflict": false
+      },
+      "ranking": [
+        {
+          "teacher": "T05",
+          "name": "Morgan Demo",
+          "score": 76,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "8 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T02",
+          "name": "Taylor Demo",
+          "score": 40,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "2 years experience",
+            "teaches the selected course",
+            "specialisation matches the focus areas",
+            "teaching style matches"
+          ]
+        }
+      ],
+      "executionStatus": "Not run"
+    },
+    {
+      "id": "TC04",
+      "title": "Interactive speaking",
+      "student": "S04",
+      "mode": "rules-only",
+      "purpose": "Interactive speaking",
+      "studentInput": {
+        "fixtureId": "S04",
+        "firstName": "Ethan",
+        "lastName": "Demo",
+        "email": "alpha.student4@example.com",
+        "country": "Philippines",
+        "birthDate": "2000-01-15",
+        "courseName": "Conversational English",
+        "levelScores": {
+          "speakingPronunciation": 3,
+          "readingComprehension": 3,
+          "structure": 3,
+          "sentenceGrammar": 3,
+          "vocabulary": 3
+        },
+        "computedLevel": {
+          "level": "intermediate-mid",
+          "avg": 3,
+          "reason": "Intermediate Mid: all five criteria are 3 or higher, average 3.0"
+        },
+        "aiCriteria": {
+          "learningGoal": [
+            "conversation"
+          ],
+          "focusArea": [
+            "speaking"
+          ],
+          "learningStyle": [
+            "interactive"
+          ],
+          "pace": [
+            "fast"
+          ]
+        },
+        "assessment": "Wants active speaking practice through fast-paced activities.",
+        "trialNotes": ""
+      },
+      "pool": [
+        "T01",
+        "T03",
+        "T04",
+        "T06",
+        "T07"
+      ],
+      "expected": {
+        "teacher": "T06",
+        "name": "Casey Demo",
+        "score": 68,
+        "strength": {
+          "level": "strong",
+          "matched": 4,
+          "total": 4,
+          "ratio": 1
+        },
+        "leastLoadedFallback": false,
+        "preferredHonouredOverLimit": false,
+        "childConflict": false
+      },
+      "ranking": [
+        {
+          "teacher": "T06",
+          "name": "Casey Demo",
+          "score": 68,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "4 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T04",
+          "name": "Sam Demo",
+          "score": 66,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": false
+          },
+          "reasons": [
+            "7 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T01",
+          "name": "Jamie Demo",
+          "score": 54,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "6 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T07",
+          "name": "Riley Demo",
+          "score": 48,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "3 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T03",
+          "name": "Alex Demo",
+          "score": 30,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "5 years experience",
+            "teaches the selected course",
+            "experience suits Intermediate Mid students"
+          ]
+        }
+      ],
+      "executionStatus": "Not run"
+    },
+    {
+      "id": "TC05",
+      "title": "IELTS reading and independent learning",
+      "student": "S05",
+      "mode": "rules-only",
+      "purpose": "IELTS reading and independent learning",
+      "studentInput": {
+        "fixtureId": "S05",
+        "firstName": "Zoe",
+        "lastName": "Demo",
+        "email": "alpha.student5@example.com",
+        "country": "Philippines",
+        "birthDate": "2000-01-15",
+        "courseName": "IELTS",
+        "levelScores": {
+          "speakingPronunciation": 4,
+          "readingComprehension": 4,
+          "structure": 3,
+          "sentenceGrammar": 4,
+          "vocabulary": 3
+        },
+        "computedLevel": {
+          "level": "intermediate-high",
+          "avg": 3.6,
+          "reason": "Intermediate High: all five criteria are 3 or higher, average 3.6"
+        },
+        "aiCriteria": {
+          "learningGoal": [
+            "exam-prep"
+          ],
+          "focusArea": [
+            "reading"
+          ],
+          "learningStyle": [
+            "independent"
+          ],
+          "pace": [
+            "balanced"
+          ]
+        },
+        "assessment": "Preparing for IELTS with independent reading practice.",
+        "trialNotes": ""
+      },
+      "pool": [
+        "T02",
+        "T03",
+        "T08"
+      ],
+      "expected": {
+        "teacher": "T08",
+        "name": "Jordan Demo",
+        "score": 74,
+        "strength": {
+          "level": "strong",
+          "matched": 4,
+          "total": 4,
+          "ratio": 1
+        },
+        "leastLoadedFallback": false,
+        "preferredHonouredOverLimit": false,
+        "childConflict": false
+      },
+      "ranking": [
+        {
+          "teacher": "T08",
+          "name": "Jordan Demo",
+          "score": 74,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "7 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T03",
+          "name": "Alex Demo",
+          "score": 38,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": true
+          },
+          "reasons": [
+            "5 years experience",
+            "teaches the selected course",
+            "best student pace matches",
+            "experience suits Intermediate High students"
+          ]
+        },
+        {
+          "teacher": "T02",
+          "name": "Taylor Demo",
+          "score": 16,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "2 years experience",
+            "teaches the selected course",
+            "limited experience for Intermediate High students"
+          ]
+        }
+      ],
+      "executionStatus": "Not run"
+    },
+    {
+      "id": "TC06",
+      "title": "Visual pronunciation with partial fit",
+      "student": "S06",
+      "mode": "rules-only",
+      "purpose": "Visual pronunciation with partial fit",
+      "studentInput": {
+        "fixtureId": "S06",
+        "firstName": "Ava",
+        "lastName": "Demo",
+        "email": "alpha.student6@example.com",
+        "country": "Philippines",
+        "birthDate": "2000-01-15",
+        "courseName": "Online English",
+        "levelScores": {
+          "speakingPronunciation": 4,
+          "readingComprehension": 4,
+          "structure": 3,
+          "sentenceGrammar": 4,
+          "vocabulary": 3
+        },
+        "computedLevel": {
+          "level": "intermediate-high",
+          "avg": 3.6,
+          "reason": "Intermediate High: all five criteria are 3 or higher, average 3.6"
+        },
+        "aiCriteria": {
+          "learningGoal": [
+            "confidence"
+          ],
+          "focusArea": [
+            "pronunciation"
+          ],
+          "learningStyle": [
+            "visual"
+          ],
+          "pace": [
+            "balanced"
+          ]
+        },
+        "assessment": "Needs visual pronunciation support while building confidence.",
+        "trialNotes": ""
+      },
+      "pool": [
+        "T01",
+        "T02",
+        "T03",
+        "T05",
+        "T06",
+        "T07",
+        "T08"
+      ],
+      "expected": {
+        "teacher": "T03",
+        "name": "Alex Demo",
+        "score": 58,
+        "strength": {
+          "level": "partial",
+          "matched": 3,
+          "total": 4,
+          "ratio": 0.75
+        },
+        "leastLoadedFallback": false,
+        "preferredHonouredOverLimit": false,
+        "childConflict": false
+      },
+      "ranking": [
+        {
+          "teacher": "T03",
+          "name": "Alex Demo",
+          "score": 58,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "5 years experience",
+            "teaches the selected course",
+            "specialisation matches the focus areas",
+            "teaching style matches"
+          ]
+        },
+        {
+          "teacher": "T01",
+          "name": "Jamie Demo",
+          "score": 44,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "6 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "experience suits Intermediate High students"
+          ]
+        },
+        {
+          "teacher": "T08",
+          "name": "Jordan Demo",
+          "score": 42,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": true
+          },
+          "reasons": [
+            "7 years experience",
+            "teaches the selected course",
+            "best student pace matches",
+            "experience suits Intermediate High students"
+          ]
+        },
+        {
+          "teacher": "T06",
+          "name": "Casey Demo",
+          "score": 40,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "4 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "experience suits Intermediate High students"
+          ]
+        },
+        {
+          "teacher": "T07",
+          "name": "Riley Demo",
+          "score": 38,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "3 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "experience suits Intermediate High students"
+          ]
+        },
+        {
+          "teacher": "T05",
+          "name": "Morgan Demo",
+          "score": 36,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "8 years experience",
+            "teaches the selected course",
+            "experience suits Intermediate High students"
+          ]
+        },
+        {
+          "teacher": "T02",
+          "name": "Taylor Demo",
+          "score": 16,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "2 years experience",
+            "teaches the selected course",
+            "limited experience for Intermediate High students"
+          ]
+        }
+      ],
+      "executionStatus": "Not run"
+    },
+    {
+      "id": "TC07",
+      "title": "Several suitable teachers",
+      "student": "S07",
+      "mode": "rules-only",
+      "purpose": "Several suitable teachers",
+      "studentInput": {
+        "fixtureId": "S07",
+        "firstName": "Liam",
+        "lastName": "Demo",
+        "email": "alpha.student7@example.com",
+        "country": "Philippines",
+        "birthDate": "2000-01-15",
+        "courseName": "Conversational English",
+        "levelScores": {
+          "speakingPronunciation": 3,
+          "readingComprehension": 3,
+          "structure": 3,
+          "sentenceGrammar": 3,
+          "vocabulary": 3
+        },
+        "computedLevel": {
+          "level": "intermediate-mid",
+          "avg": 3,
+          "reason": "Intermediate Mid: all five criteria are 3 or higher, average 3.0"
+        },
+        "aiCriteria": {
+          "learningGoal": [
+            "conversation"
+          ],
+          "focusArea": [
+            "speaking"
+          ],
+          "learningStyle": [
+            "conversational",
+            "interactive"
+          ],
+          "pace": [
+            "slow",
+            "balanced",
+            "fast"
+          ]
+        },
+        "assessment": "Can learn through several styles and paces.",
+        "trialNotes": ""
+      },
+      "pool": [
+        "T01",
+        "T03",
+        "T04",
+        "T06",
+        "T07"
+      ],
+      "expected": {
+        "teacher": "T04",
+        "name": "Sam Demo",
+        "score": 74,
+        "strength": {
+          "level": "strong",
+          "matched": 4,
+          "total": 4,
+          "ratio": 1
+        },
+        "leastLoadedFallback": false,
+        "preferredHonouredOverLimit": false,
+        "childConflict": false
+      },
+      "ranking": [
+        {
+          "teacher": "T04",
+          "name": "Sam Demo",
+          "score": 74,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "7 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T01",
+          "name": "Jamie Demo",
+          "score": 72,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "6 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T06",
+          "name": "Casey Demo",
+          "score": 68,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "4 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T07",
+          "name": "Riley Demo",
+          "score": 48,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "3 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T03",
+          "name": "Alex Demo",
+          "score": 38,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": true
+          },
+          "reasons": [
+            "5 years experience",
+            "teaches the selected course",
+            "best student pace matches",
+            "experience suits Intermediate Mid students"
+          ]
+        }
+      ],
+      "executionStatus": "Not run"
+    },
+    {
+      "id": "TC08",
+      "title": "No close preference match",
+      "student": "S08",
+      "mode": "rules-only",
+      "purpose": "No close preference match",
+      "studentInput": {
+        "fixtureId": "S08",
+        "firstName": "Isla",
+        "lastName": "Demo",
+        "email": "alpha.student8@example.com",
+        "country": "Philippines",
+        "birthDate": "2000-01-15",
+        "courseName": "Business English",
+        "levelScores": {
+          "speakingPronunciation": 5,
+          "readingComprehension": 5,
+          "structure": 4,
+          "sentenceGrammar": 5,
+          "vocabulary": 4
+        },
+        "computedLevel": {
+          "level": "advanced",
+          "avg": 4.6,
+          "reason": "Advanced: all five criteria are 4 or higher, average 4.6"
+        },
+        "aiCriteria": {
+          "learningGoal": [
+            "business"
+          ],
+          "focusArea": [
+            "vocabulary"
+          ],
+          "learningStyle": [
+            "visual"
+          ],
+          "pace": [
+            "slow"
+          ]
+        },
+        "assessment": "Wants slow visual vocabulary work for business; the available business pool has limited fit.",
+        "trialNotes": ""
+      },
+      "pool": [
+        "T02",
+        "T05"
+      ],
+      "expected": {
+        "teacher": "T05",
+        "name": "Morgan Demo",
+        "score": 48,
+        "strength": {
+          "level": "weak",
+          "matched": 1,
+          "total": 4,
+          "ratio": 0.25
+        },
+        "leastLoadedFallback": false,
+        "preferredHonouredOverLimit": false,
+        "childConflict": false
+      },
+      "ranking": [
+        {
+          "teacher": "T05",
+          "name": "Morgan Demo",
+          "score": 48,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "8 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "experience suits Advanced students"
+          ]
+        },
+        {
+          "teacher": "T02",
+          "name": "Taylor Demo",
+          "score": 12,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": false,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "2 years experience",
+            "teaches the selected course",
+            "limited experience for Advanced students"
+          ]
+        }
+      ],
+      "executionStatus": "Not run"
+    },
+    {
+      "id": "TC09",
+      "title": "Proficiency isolation: Novice",
+      "student": "S01",
+      "courseName": "Online English",
+      "pool": [
+        "T01",
+        "T02"
+      ],
+      "criteria": {
+        "learningGoal": [],
+        "focusArea": [
+          "grammar"
+        ],
+        "learningStyle": [],
+        "pace": []
+      },
+      "scores": [
+        2,
+        1,
+        2,
+        1,
+        2
+      ],
+      "purpose": "Hold course, teachers and grammar focus fixed; isolate proficiency. Compare with TC10.",
+      "mode": "rules-only",
+      "studentInput": {
+        "fixtureId": "S01",
+        "firstName": "Lea",
+        "lastName": "Demo",
+        "email": "alpha.student1@example.com",
+        "country": "Philippines",
+        "birthDate": "2000-01-15",
+        "courseName": "Online English",
+        "levelScores": {
+          "speakingPronunciation": 2,
+          "readingComprehension": 1,
+          "structure": 2,
+          "sentenceGrammar": 1,
+          "vocabulary": 2
+        },
+        "computedLevel": {
+          "level": "novice-low",
+          "avg": 1.6,
+          "reason": "Novice: Reading & Comprehension is 1"
+        },
+        "aiCriteria": {
+          "learningGoal": [],
+          "focusArea": [
+            "grammar"
+          ],
+          "learningStyle": [],
+          "pace": []
+        },
+        "assessment": "Uses short phrases and needs guided everyday speaking practice.",
+        "trialNotes": ""
+      },
+      "expected": {
+        "teacher": "T02",
+        "name": "Taylor Demo",
+        "score": 28,
+        "strength": {
+          "level": "strong",
+          "matched": 1,
+          "total": 1,
+          "ratio": 1
+        },
+        "leastLoadedFallback": false,
+        "preferredHonouredOverLimit": false,
+        "childConflict": false
+      },
+      "ranking": [
+        {
+          "teacher": "T02",
+          "name": "Taylor Demo",
+          "score": 28,
+          "load": 0,
+          "criterionMatches": {
+            "focusArea": true
+          },
+          "reasons": [
+            "2 years experience",
+            "teaches the selected course",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T01",
+          "name": "Jamie Demo",
+          "score": 26,
+          "load": 0,
+          "criterionMatches": {
+            "focusArea": false
+          },
+          "reasons": [
+            "6 years experience",
+            "teaches the selected course"
+          ]
+        }
+      ],
+      "executionStatus": "Not run"
+    },
+    {
+      "id": "TC10",
+      "title": "Proficiency isolation: Advanced",
+      "student": "S01",
+      "courseName": "Online English",
+      "pool": [
+        "T01",
+        "T02"
+      ],
+      "criteria": {
+        "learningGoal": [],
+        "focusArea": [
+          "grammar"
+        ],
+        "learningStyle": [],
+        "pace": []
+      },
+      "scores": [
+        5,
+        5,
+        4,
+        5,
+        4
+      ],
+      "purpose": "Only rubric scores change from TC09. The scorer rewards sufficient experience; the selected teacher can have weaker focus coverage.",
+      "mode": "rules-only",
+      "studentInput": {
+        "fixtureId": "S01",
+        "firstName": "Lea",
+        "lastName": "Demo",
+        "email": "alpha.student1@example.com",
+        "country": "Philippines",
+        "birthDate": "2000-01-15",
+        "courseName": "Online English",
+        "levelScores": {
+          "speakingPronunciation": 5,
+          "readingComprehension": 5,
+          "structure": 4,
+          "sentenceGrammar": 5,
+          "vocabulary": 4
+        },
+        "computedLevel": {
+          "level": "advanced",
+          "avg": 4.6,
+          "reason": "Advanced: all five criteria are 4 or higher, average 4.6"
+        },
+        "aiCriteria": {
+          "learningGoal": [],
+          "focusArea": [
+            "grammar"
+          ],
+          "learningStyle": [],
+          "pace": []
+        },
+        "assessment": "Uses short phrases and needs guided everyday speaking practice.",
+        "trialNotes": ""
+      },
+      "expected": {
+        "teacher": "T01",
+        "name": "Jamie Demo",
+        "score": 32,
+        "strength": {
+          "level": "weak",
+          "matched": 0,
+          "total": 1,
+          "ratio": 0
+        },
+        "leastLoadedFallback": false,
+        "preferredHonouredOverLimit": false,
+        "childConflict": false
+      },
+      "ranking": [
+        {
+          "teacher": "T01",
+          "name": "Jamie Demo",
+          "score": 32,
+          "load": 0,
+          "criterionMatches": {
+            "focusArea": false
+          },
+          "reasons": [
+            "6 years experience",
+            "teaches the selected course",
+            "experience suits Advanced students"
+          ]
+        },
+        {
+          "teacher": "T02",
+          "name": "Taylor Demo",
+          "score": 22,
+          "load": 0,
+          "criterionMatches": {
+            "focusArea": true
+          },
+          "reasons": [
+            "2 years experience",
+            "teaches the selected course",
+            "specialisation matches the focus areas",
+            "limited experience for Advanced students"
+          ]
+        }
+      ],
+      "executionStatus": "Not run"
+    },
+    {
+      "id": "TC11",
+      "title": "Workload preference",
+      "student": "S01",
+      "pool": [
+        "T01",
+        "T06"
+      ],
+      "loads": {
+        "T01": 2,
+        "T06": 0
+      },
+      "purpose": "A better-fit teacher reaches the load target; automatic selection prefers an under-target alternative.",
+      "mode": "rules-only",
+      "studentInput": {
+        "fixtureId": "S01",
+        "firstName": "Lea",
+        "lastName": "Demo",
+        "email": "alpha.student1@example.com",
+        "country": "Philippines",
+        "birthDate": "2000-01-15",
+        "courseName": "Conversational English",
+        "levelScores": {
+          "speakingPronunciation": 2,
+          "readingComprehension": 1,
+          "structure": 2,
+          "sentenceGrammar": 1,
+          "vocabulary": 2
+        },
+        "computedLevel": {
+          "level": "novice-low",
+          "avg": 1.6,
+          "reason": "Novice: Reading & Comprehension is 1"
+        },
+        "aiCriteria": {
+          "learningGoal": [
+            "conversation"
+          ],
+          "focusArea": [
+            "speaking"
+          ],
+          "learningStyle": [
+            "conversational"
+          ],
+          "pace": [
+            "slow"
+          ]
+        },
+        "assessment": "Uses short phrases and needs guided everyday speaking practice.",
+        "trialNotes": ""
+      },
+      "expected": {
+        "teacher": "T06",
+        "name": "Casey Demo",
+        "score": 44,
+        "strength": {
+          "level": "partial",
+          "matched": 2,
+          "total": 4,
+          "ratio": 0.5
+        },
+        "leastLoadedFallback": false,
+        "preferredHonouredOverLimit": false,
+        "childConflict": false
+      },
+      "ranking": [
+        {
+          "teacher": "T01",
+          "name": "Jamie Demo",
+          "score": 62,
+          "load": 2,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "6 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T06",
+          "name": "Casey Demo",
+          "score": 44,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "4 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        }
+      ],
+      "executionStatus": "Not run"
+    },
+    {
+      "id": "TC12",
+      "title": "No teachers for selected course",
+      "student": "S01",
+      "courseName": "OPIc",
+      "purpose": "No sample teacher is assigned to OPIc; expect specific course feedback and no invented teacher.",
+      "mode": "rules-only",
+      "studentInput": {
+        "fixtureId": "S01",
+        "firstName": "Lea",
+        "lastName": "Demo",
+        "email": "alpha.student1@example.com",
+        "country": "Philippines",
+        "birthDate": "2000-01-15",
+        "courseName": "OPIc",
+        "levelScores": {
+          "speakingPronunciation": 2,
+          "readingComprehension": 1,
+          "structure": 2,
+          "sentenceGrammar": 1,
+          "vocabulary": 2
+        },
+        "computedLevel": {
+          "level": "novice-low",
+          "avg": 1.6,
+          "reason": "Novice: Reading & Comprehension is 1"
+        },
+        "aiCriteria": {
+          "learningGoal": [
+            "conversation"
+          ],
+          "focusArea": [
+            "speaking"
+          ],
+          "learningStyle": [
+            "conversational"
+          ],
+          "pace": [
+            "slow"
+          ]
+        },
+        "assessment": "Uses short phrases and needs guided everyday speaking practice.",
+        "trialNotes": ""
+      },
+      "pool": [],
+      "expected": {
+        "teacher": null,
+        "noTeacherReason": "no-teacher-for-course"
+      },
+      "ranking": [],
+      "executionStatus": "Not run"
+    },
+    {
+      "id": "TC13",
+      "title": "Availability preference",
+      "student": "S01",
+      "pool": [
+        "T01",
+        "T06"
+      ],
+      "available": [
+        "T06"
+      ],
+      "purpose": "Use a facilitator-specified upcoming Monday morning, duration 25 minutes: Jamie unavailable, Casey available 08:00–10:00, no bookings or breaks. Other dates have no availability. Casey is moved first.",
+      "mode": "rules-only",
+      "studentInput": {
+        "fixtureId": "S01",
+        "firstName": "Lea",
+        "lastName": "Demo",
+        "email": "alpha.student1@example.com",
+        "country": "Philippines",
+        "birthDate": "2000-01-15",
+        "courseName": "Conversational English",
+        "levelScores": {
+          "speakingPronunciation": 2,
+          "readingComprehension": 1,
+          "structure": 2,
+          "sentenceGrammar": 1,
+          "vocabulary": 2
+        },
+        "computedLevel": {
+          "level": "novice-low",
+          "avg": 1.6,
+          "reason": "Novice: Reading & Comprehension is 1"
+        },
+        "aiCriteria": {
+          "learningGoal": [
+            "conversation"
+          ],
+          "focusArea": [
+            "speaking"
+          ],
+          "learningStyle": [
+            "conversational"
+          ],
+          "pace": [
+            "slow"
+          ]
+        },
+        "assessment": "Uses short phrases and needs guided everyday speaking practice.",
+        "trialNotes": ""
+      },
+      "expected": {
+        "teacher": "T06",
+        "name": "Casey Demo",
+        "score": 44,
+        "strength": {
+          "level": "partial",
+          "matched": 2,
+          "total": 4,
+          "ratio": 0.5
+        },
+        "leastLoadedFallback": false,
+        "preferredHonouredOverLimit": false,
+        "childConflict": false
+      },
+      "ranking": [
+        {
+          "teacher": "T06",
+          "name": "Casey Demo",
+          "score": 44,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "4 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T01",
+          "name": "Jamie Demo",
+          "score": 66,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "6 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        }
+      ],
+      "executionStatus": "Not run"
+    },
+    {
+      "id": "TC14",
+      "title": "Child-teaching preference",
+      "student": "S01",
+      "pool": [
+        "T01",
+        "T06"
+      ],
+      "child": true,
+      "childOptOut": [
+        "T01"
+      ],
+      "purpose": "Use an age-10 birth date supplied by facilitator. Jamie opted out of children; Casey accepts children. Observe prioritization and any warnings.",
+      "mode": "rules-only",
+      "studentInput": {
+        "fixtureId": "S01",
+        "firstName": "Lea",
+        "lastName": "Demo",
+        "email": "alpha.student1@example.com",
+        "country": "Philippines",
+        "birthDate": "2000-01-15",
+        "courseName": "Conversational English",
+        "levelScores": {
+          "speakingPronunciation": 2,
+          "readingComprehension": 1,
+          "structure": 2,
+          "sentenceGrammar": 1,
+          "vocabulary": 2
+        },
+        "computedLevel": {
+          "level": "novice-low",
+          "avg": 1.6,
+          "reason": "Novice: Reading & Comprehension is 1"
+        },
+        "aiCriteria": {
+          "learningGoal": [
+            "conversation"
+          ],
+          "focusArea": [
+            "speaking"
+          ],
+          "learningStyle": [
+            "conversational"
+          ],
+          "pace": [
+            "slow"
+          ]
+        },
+        "assessment": "Uses short phrases and needs guided everyday speaking practice.",
+        "trialNotes": ""
+      },
+      "expected": {
+        "teacher": "T06",
+        "name": "Casey Demo",
+        "score": 44,
+        "strength": {
+          "level": "partial",
+          "matched": 2,
+          "total": 4,
+          "ratio": 0.5
+        },
+        "leastLoadedFallback": false,
+        "preferredHonouredOverLimit": false,
+        "childConflict": false
+      },
+      "ranking": [
+        {
+          "teacher": "T06",
+          "name": "Casey Demo",
+          "score": 44,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "4 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T01",
+          "name": "Jamie Demo",
+          "score": 66,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "6 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        }
+      ],
+      "executionStatus": "Not run"
+    },
+    {
+      "id": "TC15",
+      "title": "All teachers reach the load target",
+      "student": "S01",
+      "pool": [
+        "T01",
+        "T06"
+      ],
+      "loads": {
+        "T01": 4,
+        "T06": 2
+      },
+      "purpose": "Everyone has at least two assigned students; expect least-loaded fallback, not refusal.",
+      "mode": "rules-only",
+      "studentInput": {
+        "fixtureId": "S01",
+        "firstName": "Lea",
+        "lastName": "Demo",
+        "email": "alpha.student1@example.com",
+        "country": "Philippines",
+        "birthDate": "2000-01-15",
+        "courseName": "Conversational English",
+        "levelScores": {
+          "speakingPronunciation": 2,
+          "readingComprehension": 1,
+          "structure": 2,
+          "sentenceGrammar": 1,
+          "vocabulary": 2
+        },
+        "computedLevel": {
+          "level": "novice-low",
+          "avg": 1.6,
+          "reason": "Novice: Reading & Comprehension is 1"
+        },
+        "aiCriteria": {
+          "learningGoal": [
+            "conversation"
+          ],
+          "focusArea": [
+            "speaking"
+          ],
+          "learningStyle": [
+            "conversational"
+          ],
+          "pace": [
+            "slow"
+          ]
+        },
+        "assessment": "Uses short phrases and needs guided everyday speaking practice.",
+        "trialNotes": ""
+      },
+      "expected": {
+        "teacher": "T06",
+        "name": "Casey Demo",
+        "score": 40,
+        "strength": {
+          "level": "partial",
+          "matched": 2,
+          "total": 4,
+          "ratio": 0.5
+        },
+        "leastLoadedFallback": true,
+        "preferredHonouredOverLimit": false,
+        "childConflict": false
+      },
+      "ranking": [
+        {
+          "teacher": "T01",
+          "name": "Jamie Demo",
+          "score": 58,
+          "load": 4,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "6 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T06",
+          "name": "Casey Demo",
+          "score": 40,
+          "load": 2,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "4 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        }
+      ],
+      "executionStatus": "Not run"
+    },
+    {
+      "id": "TC16",
+      "title": "Explicit administrator selection over load target",
+      "student": "S01",
+      "pool": [
+        "T01",
+        "T06"
+      ],
+      "loads": {
+        "T01": 0,
+        "T06": 3
+      },
+      "preferred": "T06",
+      "purpose": "Select Casey explicitly before analyzing. The route honors the manual choice over the load target and warns.",
+      "mode": "rules-only",
+      "studentInput": {
+        "fixtureId": "S01",
+        "firstName": "Lea",
+        "lastName": "Demo",
+        "email": "alpha.student1@example.com",
+        "country": "Philippines",
+        "birthDate": "2000-01-15",
+        "courseName": "Conversational English",
+        "levelScores": {
+          "speakingPronunciation": 2,
+          "readingComprehension": 1,
+          "structure": 2,
+          "sentenceGrammar": 1,
+          "vocabulary": 2
+        },
+        "computedLevel": {
+          "level": "novice-low",
+          "avg": 1.6,
+          "reason": "Novice: Reading & Comprehension is 1"
+        },
+        "aiCriteria": {
+          "learningGoal": [
+            "conversation"
+          ],
+          "focusArea": [
+            "speaking"
+          ],
+          "learningStyle": [
+            "conversational"
+          ],
+          "pace": [
+            "slow"
+          ]
+        },
+        "assessment": "Uses short phrases and needs guided everyday speaking practice.",
+        "trialNotes": ""
+      },
+      "expected": {
+        "teacher": "T06",
+        "name": "Casey Demo",
+        "score": 38,
+        "strength": {
+          "level": "partial",
+          "matched": 2,
+          "total": 4,
+          "ratio": 0.5
+        },
+        "leastLoadedFallback": false,
+        "preferredHonouredOverLimit": true,
+        "childConflict": false
+      },
+      "ranking": [
+        {
+          "teacher": "T01",
+          "name": "Jamie Demo",
+          "score": 66,
+          "load": 0,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "6 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        {
+          "teacher": "T06",
+          "name": "Casey Demo",
+          "score": 38,
+          "load": 3,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": false,
+            "pace": false
+          },
+          "reasons": [
+            "4 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        }
+      ],
+      "executionStatus": "Not run"
+    }
+  ],
+  "manualCases": [
+    {
+      "id": "TC17",
+      "title": "Live AI ranking",
+      "student": "S01",
+      "mode": "live AI",
+      "executionStatus": "Not run",
+      "expected": "Course-eligible teacher with profile-supported explanation; advisor.used true. No exact ranking requirement. Known adapter gap must not waive acceptance."
+    },
+    {
+      "id": "TC18",
+      "title": "AI interpretation of trial notes",
+      "student": "S01",
+      "mode": "live AI insights",
+      "executionStatus": "Not run",
+      "expected": "At least one supported allowed criterion inferred from the supplied everyday-speaking / conversational / guided-pace note; record inference and ranking status separately."
+    },
+    {
+      "id": "TC19",
+      "title": "Select, save and reopen the assigned teacher",
+      "student": "S01",
+      "mode": "authorized non-production persistence",
+      "executionStatus": "Not run",
+      "expected": "Final selected teacher, recomputed proficiency and course are persisted; criteria and rubric scores appear in stored notes. Coordinator supplies a unique disposable email."
+    }
+  ],
+  "advisorContractAudit": {
+    "scorerProvidesNestedProfile": false,
+    "advisorReceives": {
+      "id": 901,
+      "name": "Jamie Demo",
+      "specialization": [],
+      "teachingStyle": [],
+      "bestStudentPace": [],
+      "experienceYears": null,
+      "bioExcerpt": "",
+      "activeStudents": 0,
+      "availableAtPreferredTime": null
+    },
+    "expectedFromTeacher": {
+      "specialization": "speaking and conversation",
+      "teachingStyle": [
+        "conversational"
+      ],
+      "bestStudentPace": [
+        "slow"
+      ],
+      "experienceYears": 6
+    },
+    "scope": "Pure local data-contract reproduction, not a deployed AI execution."
+  },
+  "sourceIndex": {
+    "backend/teacherMatching.js": [
+      {
+        "line": 207,
+        "text": "export function scoreTeacherForStudent("
+      },
+      {
+        "line": 369,
+        "text": "export function assessMatchStrength({ criterionMatched = 0, criterionTotal = 0 } = {}) {"
+      },
+      {
+        "line": 383,
+        "text": "export function rankTeachers(scored) {"
+      },
+      {
+        "line": 400,
+        "text": "export function preferAvailable(ranked, availability = null) {"
+      },
+      {
+        "line": 444,
+        "text": "export function selectTeacherFromRanking(ranked, preferredTeacherId = null, { honourPreferred = false } = {}) {"
+      },
+      {
+        "line": 580,
+        "text": "export function preferTeachesChildren(ranked, studentIsChild = false) {"
+      },
+      {
+        "line": 671,
+        "text": "export function evaluateAvailability({"
+      }
+    ],
+    "backend/teacherAdvisor.js": [
+      {
+        "line": 144,
+        "text": "function describeCandidates(scored, availability) {"
+      },
+      {
+        "line": 218,
+        "text": "function buildPrompt({ criteria, trialNotes, courseName, shortlisted, preferredLabel }) {"
+      },
+      {
+        "line": 274,
+        "text": "export async function adviseTeacherRanking({"
+      }
+    ],
+    "backend/matchInsights.js": [
+      {
+        "line": 127,
+        "text": "function buildPrompt(trialNotes, criteria) {"
+      },
+      {
+        "line": 166,
+        "text": "export async function deriveMatchInsights({ trialNotes = \"\", criteria = {} }) {"
+      }
+    ],
+    "backend/proficiencyEvaluation.js": [
+      {
+        "line": 149,
+        "text": "export function computeProficiencyLevel(scores) {"
+      }
+    ],
+    "backend/server.js": [
+      {
+        "line": 3780,
+        "text": "function buildCriteriaNotes(criteria) {"
+      },
+      {
+        "line": 3788,
+        "text": "function buildTeacherAiBio({ bio, teachingStyle, idealStudentPace }) {"
+      },
+      {
+        "line": 3983,
+        "text": "async function recommendTeacher({ criteria = {}, insightsPromise = null, trialNotes = \"\", courseId = null, courseName = \"\", proficiencyLevel = \"\", studentBirthDate = null, preferredTeacherId = null, baselineCriteria = null, preferredSchedule = null, honourPreferredTeacher = false, useAdvisor = true, db = pool }) {"
+      },
+      {
+        "line": 6091,
+        "text": "app.post(\"/api/admin/recommend-teacher\", requireAdminSession, limitMatchInsights, async (req, res) => {"
+      },
+      {
+        "line": 6262,
+        "text": "app.post(\"/api/admin/users\", requireAdminSession, async (req, res) => {"
+      }
+    ],
+    "backend/Database.sql": [],
+    "frontend/src/pages/AdminDashboard.jsx": [
+      {
+        "line": 1072,
+        "text": "async function createStudent(payloadSource = sForm) {"
+      },
+      {
+        "line": 1418,
+        "text": "async function analyzeStudentMatch() {"
+      }
+    ],
+    "frontend/src/utils/matchingCriteria.js": [],
+    "frontend/src/utils/proficiencyEvaluation.js": [
+      {
+        "line": 134,
+        "text": "export function computeProficiencyLevel(scores) {"
+      }
+    ]
+  },
+  "options": {
+    "student": {
+      "learningGoal": [
+        [
+          "school-support",
+          "School Support",
+          [
+            "Online English",
+            "OPIc"
+          ]
+        ],
+        [
+          "conversation",
+          "Conversation",
+          [
+            "Conversational English",
+            "Travel English",
+            "Online English",
+            "OPIc"
+          ]
+        ],
+        [
+          "exam-prep",
+          "Exam Preparation",
+          [
+            "IELTS",
+            "TOEIC",
+            "OPIc"
+          ]
+        ],
+        [
+          "business",
+          "Business English",
+          [
+            "Business English",
+            "Job Interview",
+            "TOEIC"
+          ]
+        ],
+        [
+          "confidence",
+          "Confidence Building",
+          [
+            "Conversational English",
+            "Travel English",
+            "Online English"
+          ]
+        ],
+        [
+          "interview-readiness",
+          "Interview Readiness",
+          [
+            "Job Interview",
+            "Business English"
+          ]
+        ],
+        [
+          "news-discussion",
+          "News Discussion",
+          [
+            "News",
+            "Conversational English"
+          ]
+        ]
+      ],
+      "learningStyle": [
+        [
+          "structured",
+          "Structured Lessons"
+        ],
+        [
+          "conversational",
+          "Conversational Practice"
+        ],
+        [
+          "visual",
+          "Visual Activities"
+        ],
+        [
+          "interactive",
+          "Interactive Activities"
+        ],
+        [
+          "independent",
+          "Independent Practice"
+        ]
+      ],
+      "focusArea": [
+        [
+          "speaking",
+          "Speaking",
+          [
+            "Conversational English",
+            "Travel English",
+            "Online English",
+            "OPIc",
+            "Job Interview"
+          ]
+        ],
+        [
+          "grammar",
+          "Grammar",
+          [
+            "Online English",
+            "IELTS",
+            "TOEIC",
+            "Business English"
+          ]
+        ],
+        [
+          "reading",
+          "Reading",
+          [
+            "IELTS",
+            "TOEIC",
+            "News",
+            "Online English"
+          ]
+        ],
+        [
+          "writing",
+          "Writing",
+          [
+            "IELTS",
+            "Business English",
+            "Online English",
+            "Job Interview"
+          ]
+        ],
+        [
+          "listening",
+          "Listening",
+          [
+            "IELTS",
+            "TOEIC",
+            "Conversational English",
+            "OPIc",
+            "News"
+          ]
+        ],
+        [
+          "vocabulary",
+          "Vocabulary",
+          [
+            "Business English",
+            "Travel English",
+            "News",
+            "TOEIC",
+            "IELTS"
+          ]
+        ],
+        [
+          "pronunciation",
+          "Pronunciation",
+          [
+            "Conversational English",
+            "OPIc",
+            "Travel English",
+            "Online English"
+          ]
+        ],
+        [
+          "interview-answers",
+          "Interview Answers",
+          [
+            "Job Interview",
+            "Business English"
+          ]
+        ]
+      ],
+      "pace": [
+        [
+          "slow",
+          "Slow and Guided"
+        ],
+        [
+          "balanced",
+          "Balanced"
+        ],
+        [
+          "fast",
+          "Fast-paced"
+        ],
+        [
+          "review-heavy",
+          "Review-heavy"
+        ]
+      ]
+    },
+    "teacher": {
+      "specialization": [
+        [
+          "speaking and conversation",
+          "Speaking and Conversation",
+          [
+            "Conversational English",
+            "Travel English",
+            "Online English",
+            "OPIc"
+          ]
+        ],
+        [
+          "grammar and writing",
+          "Grammar and Writing",
+          [
+            "Online English",
+            "IELTS",
+            "TOEIC",
+            "Business English"
+          ]
+        ],
+        [
+          "reading and vocabulary",
+          "Reading and Vocabulary",
+          [
+            "IELTS",
+            "TOEIC",
+            "News",
+            "Online English"
+          ]
+        ],
+        [
+          "listening and pronunciation",
+          "Listening and Pronunciation",
+          [
+            "IELTS",
+            "TOEIC",
+            "Conversational English",
+            "OPIc",
+            "Travel English"
+          ]
+        ],
+        [
+          "exam preparation",
+          "Exam Preparation",
+          [
+            "IELTS",
+            "TOEIC",
+            "OPIc"
+          ]
+        ],
+        [
+          "business english",
+          "Business English",
+          [
+            "Business English",
+            "Job Interview",
+            "TOEIC"
+          ]
+        ],
+        [
+          "job interview coaching",
+          "Job Interview Coaching",
+          [
+            "Job Interview",
+            "Business English"
+          ]
+        ],
+        [
+          "news discussion",
+          "News Discussion",
+          [
+            "News",
+            "Conversational English"
+          ]
+        ],
+        [
+          "kids and novice english",
+          "Kids and Novice English",
+          [
+            "Online English"
+          ]
+        ]
+      ],
+      "teachingStyle": [
+        [
+          "structured",
+          "Structured"
+        ],
+        [
+          "conversational",
+          "Conversational"
+        ],
+        [
+          "visual",
+          "Visual"
+        ],
+        [
+          "interactive",
+          "Interactive"
+        ],
+        [
+          "independent",
+          "Independent Practice"
+        ]
+      ],
+      "idealStudentPace": [
+        [
+          "slow",
+          "Slow and Guided"
+        ],
+        [
+          "balanced",
+          "Balanced"
+        ],
+        [
+          "fast",
+          "Fast-paced"
+        ],
+        [
+          "review-heavy",
+          "Review-heavy"
+        ]
+      ]
+    }
+  },
+  "scoreWeights": {
+    "courseMatch": 14,
+    "experiencePerYear": 2,
+    "experienceYearCap": 10,
+    "learningGoalMatch": 12,
+    "focusAreaMatch": 10,
+    "learningStyleMatch": 10,
+    "paceMatch": 8,
+    "proficiencyFit": 6,
+    "proficiencyGapPenaltyPerYear": 2,
+    "freeTextSignal": 3,
+    "loadPenaltyPerStudent": 2,
+    "maxMatchesPerCriterion": 2,
+    "maxReasons": 4
+  },
+  "levelExperience": {
+    "novice-low": 0,
+    "novice-mid": 0,
+    "novice-high": 0,
+    "intermediate-low": 1,
+    "intermediate-mid": 2,
+    "intermediate-high": 3,
+    "advanced": 5
+  },
+  "levelRubric": [
+    {
+      "key": "speakingPronunciation",
+      "label": "Speaking & Pronunciation",
+      "hint": "Judged on whether the student is understandable. An accent is fine, perfection is not required."
+    },
+    {
+      "key": "readingComprehension",
+      "label": "Reading & Comprehension",
+      "hint": "Can they read a passage and explain what it means?"
+    },
+    {
+      "key": "structure",
+      "label": "Structure",
+      "hint": "Can they organise their ideas in a logical order?"
+    },
+    {
+      "key": "sentenceGrammar",
+      "label": "Sentence / Grammar",
+      "hint": "Grammar mistakes are acceptable at Intermediate as long as the meaning gets across."
+    },
+    {
+      "key": "vocabulary",
+      "label": "Vocabulary",
+      "hint": "Range and accuracy of the words they use."
+    }
+  ]
+}

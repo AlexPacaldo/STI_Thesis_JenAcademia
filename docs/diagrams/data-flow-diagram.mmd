@@ -1,0 +1,45 @@
+%%{init: {'theme':'base','themeVariables': {'background':'#ffffff','primaryColor':'#eaf3ff','primaryTextColor':'#18324b','primaryBorderColor':'#5980a8','lineColor':'#52708f','secondaryColor':'#edf8f1','tertiaryColor':'#fff7e8'}}}%%
+flowchart LR
+  Student[Student]
+  Teacher[Teacher]
+  Admin[Administrator]
+
+  Auth((1.0 Account and access))
+  Booking((2.0 Classes and bookings))
+  Learning((3.0 Coursework and content))
+  Notify((4.0 Notifications))
+
+  D1[(D1 Users and sessions)]
+  D2[(D2 Application records)]
+  D3[(D3 Uploaded files and recordings)]
+  Services["Configured external services"]
+
+  Student -->|Credentials and profile| Auth
+  Teacher -->|Credentials and profile| Auth
+  Admin -->|Credentials and profile| Auth
+  Auth <-->|User and session data| D1
+
+  Student -->|Booking and class actions| Booking
+  Teacher -->|Availability and class actions| Booking
+  Admin -->|Administrative actions| Booking
+  Booking <-->|Class and booking records| D2
+
+  Student -->|Submissions and content requests| Learning
+  Teacher -->|Assignments and learning materials| Learning
+  Admin -->|Content administration| Learning
+  Learning <-->|Coursework and content records| D2
+  Learning <-->|Upload and retrieve files| D3
+
+  Auth -->|Setup and recovery events| Notify
+  Booking -->|Class and request updates| Notify
+  Learning -->|Submission and content events| Notify
+  Notify -.->|Messages and integration requests| Services
+
+  classDef entity fill:#eaf3ff,stroke:#5980a8,color:#18324b
+  classDef process fill:#eaf3ff,stroke:#5980a8,color:#18324b
+  classDef store fill:#edf8f1,stroke:#5b9871,color:#18324b
+  classDef external fill:#fff7e8,stroke:#be9450,color:#18324b
+  class Student,Teacher,Admin entity
+  class Auth,Booking,Learning,Notify process
+  class D1,D2,D3 store
+  class Services external

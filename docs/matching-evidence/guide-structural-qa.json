@@ -1,0 +1,10 @@
+{
+  "screenshots": 6,
+  "tables": 12,
+  "teacherProfiles": 8,
+  "baselineScenarios": 5,
+  "realWordNumbering": true,
+  "tableGeometry": "pass",
+  "visualRendering": "unavailable: LibreOffice/soffice not installed",
+  "workflow": "deployed site with facilitator-provisioned accounts"
+}

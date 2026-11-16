@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="850" viewBox="0 0 1500 850" role="img" aria-labelledby="title description">
+  <title id="title">JEN Academia Data Flow Diagram</title>
+  <desc id="description">Level 1 data flow diagram for account access, classes and bookings, coursework, stored records, uploaded files, and notifications.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#52708f"/>
+    </marker>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; fill: #18324b; }
+      .title { font-size: 30px; font-weight: 700; }
+      .subtitle { font-size: 15px; fill: #52677b; }
+      .entity { fill: #edf4ff; stroke: #5980a8; stroke-width: 2; }
+      .process { fill: #eaf3ff; stroke: #5980a8; stroke-width: 2; }
+      .store { fill: #edf8f1; stroke: #5b9871; stroke-width: 2; }
+      .external { fill: #fff7e8; stroke: #be9450; stroke-width: 2; }
+      .label { font-size: 16px; font-weight: 700; }
+      .small { font-size: 13px; fill: #42586c; }
+      .edge { stroke: #52708f; stroke-width: 2.2; fill: none; marker-end: url(#arrow); }
+      .edge-label { font-size: 12px; fill: #42586c; }
+      .optional { stroke-dasharray: 8 6; }
+    </style>
+  </defs>
+  <rect width="1500" height="850" fill="#ffffff"/>
+  <text class="title" x="45" y="52">JEN Academia — Data Flow Diagram</text>
+  <text class="subtitle" x="45" y="80">Level 1: requests move through application processes to records, files, and configured services</text>
+
+  <rect class="entity" x="45" y="165" width="190" height="72" rx="12"/>
+  <text class="label" x="140" y="208" text-anchor="middle">Student</text>
+  <rect class="entity" x="45" y="355" width="190" height="72" rx="12"/>
+  <text class="label" x="140" y="398" text-anchor="middle">Teacher</text>
+  <rect class="entity" x="45" y="545" width="190" height="72" rx="12"/>
+  <text class="label" x="140" y="588" text-anchor="middle">Administrator</text>
+
+  <circle class="process" cx="465" cy="205" r="80"/>
+  <text class="label" x="465" y="198" text-anchor="middle">1.0</text>
+  <text class="small" x="465" y="220" text-anchor="middle">Accounts and access</text>
+  <circle class="process" cx="465" cy="410" r="80"/>
+  <text class="label" x="465" y="403" text-anchor="middle">2.0</text>
+  <text class="small" x="465" y="425" text-anchor="middle">Classes and bookings</text>
+  <circle class="process" cx="465" cy="615" r="80"/>
+  <text class="label" x="465" y="608" text-anchor="middle">3.0</text>
+  <text class="small" x="465" y="630" text-anchor="middle">Coursework and content</text>
+  <circle class="process" cx="905" cy="410" r="80"/>
+  <text class="label" x="905" y="403" text-anchor="middle">4.0</text>
+  <text class="small" x="905" y="425" text-anchor="middle">Notifications</text>
+
+  <path class="edge" d="M235 190 H377"/>
+  <text class="edge-label" x="300" y="178" text-anchor="middle">Login / profile</text>
+  <path class="edge" d="M235 210 H330 V365 H395"/>
+  <text class="edge-label" x="310" y="305" text-anchor="middle">Booking request</text>
+  <path class="edge" d="M235 225 H345 V565 H395"/>
+  <text class="edge-label" x="315" y="505" text-anchor="middle">Submission / content</text>
+  <path class="edge" d="M235 385 H345 V235 H395"/>
+  <text class="edge-label" x="315" y="300" text-anchor="middle">Account / session</text>
+  <path class="edge" d="M235 395 H377"/>
+  <text class="edge-label" x="305" y="383" text-anchor="middle">Availability / classes</text>
+  <path class="edge" d="M235 410 H325 V570 H395"/>
+  <text class="edge-label" x="310" y="500" text-anchor="middle">Assignments / materials</text>
+  <path class="edge" d="M235 570 H315 V225 H395"/>
+  <text class="edge-label" x="300" y="450" text-anchor="middle">Account / access</text>
+  <path class="edge" d="M235 580 H377"/>
+  <text class="edge-label" x="305" y="568" text-anchor="middle">Admin operations</text>
+  <path class="edge" d="M235 600 H345 V665 H395"/>
+
+  <path class="edge" d="M545 205 H705 V340 H845"/>
+  <text class="edge-label" x="690" y="255" text-anchor="middle">Setup / recovery events</text>
+  <path class="edge" d="M545 410 H825"/>
+  <text class="edge-label" x="685" y="398" text-anchor="middle">Class and request updates</text>
+  <path class="edge" d="M545 615 H705 V480 H845"/>
+  <text class="edge-label" x="690" y="550" text-anchor="middle">Assignment / content events</text>
+
+  <path class="edge" d="M545 185 H1095 V185"/>
+  <path class="edge" d="M545 430 H1080 V240"/>
+  <path class="edge" d="M545 640 H1065 V295"/>
+  <ellipse class="store" cx="1195" cy="185" rx="150" ry="55"/>
+  <text class="label" x="1195" y="180" text-anchor="middle">D1: Identity and sessions</text>
+  <text class="small" x="1195" y="203" text-anchor="middle">User and security records</text>
+  <ellipse class="store" cx="1195" cy="350" rx="150" ry="55"/>
+  <text class="label" x="1195" y="345" text-anchor="middle">D2: Application records</text>
+  <text class="small" x="1195" y="368" text-anchor="middle">Classes, bookings, coursework</text>
+  <ellipse class="store" cx="1195" cy="515" rx="150" ry="55"/>
+  <text class="label" x="1195" y="510" text-anchor="middle">D3: File storage</text>
+  <text class="small" x="1195" y="533" text-anchor="middle">Uploads and recordings</text>
+  <path class="edge" d="M545 410 H1055 V350 H1045"/>
+  <path class="edge" d="M545 615 H1015 V370 H1045"/>
+  <path class="edge" d="M545 640 H1010 V515 H1045"/>
+  <path class="edge" d="M985 410 H1055 V665 H1095"/>
+  <rect class="external" x="1095" y="625" width="200" height="88" rx="12"/>
+  <text class="label" x="1195" y="660" text-anchor="middle">Configured services</text>
+  <text class="small" x="1195" y="684" text-anchor="middle">Email, SMS, LINE, Drive, AI</text>
+  <text class="subtitle" x="45" y="790">D1–D3 are logical data stores. Integrations are optional and depend on deployment configuration.</text>
+</svg>

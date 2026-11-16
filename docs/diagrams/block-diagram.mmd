@@ -1,0 +1,39 @@
+%%{init: {'theme':'base','themeVariables': {'background':'#ffffff','primaryColor':'#eaf3ff','primaryTextColor':'#18324b','primaryBorderColor':'#5980a8','lineColor':'#52708f','secondaryColor':'#edf8f1','tertiaryColor':'#fff7e8'}}}%%
+flowchart LR
+  Student[Student]
+  Teacher[Teacher]
+  Admin[Administrator]
+
+  subgraph Client["Client"]
+    Browser[Web browser]
+    UI[React web frontend]
+    Session[Browser session and user state]
+    Browser --> UI
+    UI <--> Session
+  end
+
+  subgraph Server["Application server"]
+    API[Express API]
+    Security[Authentication, role checks, rate limits, validation]
+    Features[Accounts, classes, booking, coursework, learning content, admin]
+    API --> Security --> Features
+  end
+
+  DB[(MySQL database)]
+  Files[(Server file storage)]
+  Services["Optional services: email, SMS, LINE, Turnstile, Google Drive, AI"]
+
+  Student --> Browser
+  Teacher --> Browser
+  Admin --> Browser
+  UI <-->|HTTPS requests and responses| API
+  Features <-->|Read and write records| DB
+  Features <-->|Upload and retrieve files| Files
+  Features -.->|Configured integrations| Services
+
+  classDef client fill:#eaf3ff,stroke:#5980a8,color:#18324b
+  classDef store fill:#edf8f1,stroke:#5b9871,color:#18324b
+  classDef external fill:#fff7e8,stroke:#be9450,color:#18324b
+  class Student,Teacher,Admin,Browser,UI,Session,API,Security,Features client
+  class DB,Files store
+  class Services external

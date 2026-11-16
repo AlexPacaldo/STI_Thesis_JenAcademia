@@ -1,0 +1,34 @@
+%%{init: {'theme':'base','themeVariables': {'background':'#ffffff','primaryColor':'#eaf3ff','primaryTextColor':'#18324b','primaryBorderColor':'#5980a8','lineColor':'#52708f','secondaryColor':'#edf8f1','tertiaryColor':'#fff7e8'}}}%%
+flowchart LR
+  Start([Open web app]) --> Public{"Public page or<br/>account setup?"}
+  Public -->|Yes| Account["Sign in, set up,<br/>or reset password"]
+  Public -->|No| Session["Check stored<br/>user and session"]
+  Account --> Submit["Submit credentials<br/>or setup data"]
+  Session --> Request["Choose feature and<br/>send API request"]
+  Submit --> Validate["API validates identity,<br/>role, and request"]
+  Request --> Validate
+  Validate --> Authorized{Authorized?}
+
+  Authorized -->|No| Error["Show error or<br/>lockout message"]
+  Error --> Retry{Try again?}
+  Retry -->|Yes| Submit
+  Retry -->|No| End([End])
+
+  Authorized -->|Yes| Role{"Determine user role"}
+  Role -->|Student, teacher,<br/>or administrator| Dashboard["Open role-specific<br/>dashboard"]
+  Dashboard --> Feature["Choose a feature"]
+  Feature --> Action["Read or update MySQL<br/>and, if needed, files"]
+  Action --> Notify["Return result and send<br/>configured notifications"]
+  Notify --> Continue{"Continue using<br/>the system?"}
+  Continue -->|Yes| Feature
+  Continue -->|No| Logout["Log out or let the<br/>session expire"]
+  Logout --> End
+
+  classDef process fill:#eaf3ff,stroke:#5980a8,color:#18324b
+  classDef decision fill:#fff7e8,stroke:#be9450,color:#18324b
+  classDef success fill:#edf8f1,stroke:#5b9871,color:#18324b
+  classDef error fill:#fff0ef,stroke:#c97770,color:#18324b
+  class Start,Student,Teacher,Admin,Logout,End success
+  class Public,Authorized,Retry,Role,Continue decision
+  class Account,Session,Submit,Request,Validate,Feature,Action,Notify process
+  class Error error

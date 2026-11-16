@@ -1,0 +1,13 @@
+{
+  "document": "AI_Teacher_Matching_Alpha_Testing_Manual.docx",
+  "sourceParts": 4,
+  "tables": 7,
+  "teacherProfiles": 8,
+  "studentProfiles": 8,
+  "testCases": 19,
+  "linkedContents": true,
+  "numbering": "remapped per source document",
+  "questionnaire": "excluded",
+  "structuralCheck": "pass",
+  "visualRendering": "unavailable: LibreOffice/soffice not installed"
+}

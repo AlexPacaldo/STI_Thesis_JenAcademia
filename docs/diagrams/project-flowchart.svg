@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2350" height="1000" viewBox="0 0 2350 1000" role="img" aria-labelledby="title description">
+  <title id="title">JEN Academia Project Flowchart</title>
+  <desc id="description">Landscape flowchart showing account access, authorization, role-specific use, application requests, and logout.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#52708f"/>
+    </marker>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; fill: #18324b; }
+      .title { font-size: 32px; font-weight: 700; }
+      .subtitle { font-size: 16px; fill: #52677b; }
+      .step { fill: #eaf3ff; stroke: #5980a8; stroke-width: 2; }
+      .decision { fill: #fff7e8; stroke: #be9450; stroke-width: 2; }
+      .success { fill: #edf8f1; stroke: #5b9871; stroke-width: 2; }
+      .error { fill: #fff0ef; stroke: #c97770; stroke-width: 2; }
+      .label { font-size: 17px; font-weight: 700; }
+      .small { font-size: 14px; fill: #42586c; }
+      .edge { stroke: #52708f; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .edge-label { font-size: 14px; fill: #42586c; font-weight: 600; }
+    </style>
+  </defs>
+  <rect width="2350" height="1000" fill="#ffffff"/>
+  <text class="title" x="48" y="52">JEN Academia — Project Flowchart</text>
+  <text class="subtitle" x="48" y="82">Typical user session and application request flow</text>
+
+  <rect class="success" x="40" y="456" width="145" height="68" rx="30"/>
+  <text class="label" x="112" y="497" text-anchor="middle">Open app</text>
+  <path class="edge" d="M185 490 H220"/>
+  <polygon class="decision" points="300,425 390,490 300,555 210,490"/>
+  <text class="label" x="300" y="484" text-anchor="middle">Public page or</text>
+  <text class="label" x="300" y="508" text-anchor="middle">account setup?</text>
+  <path class="edge" d="M300 425 V270 H425"/>
+  <text class="edge-label" x="312" y="405">Yes</text>
+  <rect class="step" x="425" y="220" width="190" height="92" rx="12"/>
+  <text class="label" x="520" y="257" text-anchor="middle">Sign in, set up,</text>
+  <text class="label" x="520" y="281" text-anchor="middle">or reset password</text>
+  <path class="edge" d="M300 555 V720 H425"/>
+  <text class="edge-label" x="312" y="587">No</text>
+  <rect class="step" x="425" y="674" width="190" height="92" rx="12"/>
+  <text class="label" x="520" y="711" text-anchor="middle">Check stored</text>
+  <text class="small" x="520" y="737" text-anchor="middle">user and session</text>
+
+  <rect class="step" x="660" y="220" width="190" height="92" rx="12"/>
+  <text class="label" x="755" y="257" text-anchor="middle">Submit credentials</text>
+  <text class="small" x="755" y="281" text-anchor="middle">or setup data</text>
+  <path class="edge" d="M615 266 H660"/>
+  <rect class="step" x="660" y="674" width="190" height="92" rx="12"/>
+  <text class="label" x="755" y="711" text-anchor="middle">Choose a feature</text>
+  <text class="small" x="755" y="737" text-anchor="middle">and send API request</text>
+  <path class="edge" d="M615 720 H660"/>
+
+  <rect class="step" x="900" y="440" width="205" height="100" rx="12"/>
+  <text class="label" x="1002" y="480" text-anchor="middle">API validates</text>
+  <text class="small" x="1002" y="507" text-anchor="middle">identity, role, and request</text>
+  <path class="edge" d="M850 266 H875 V470 H900"/>
+  <path class="edge" d="M850 720 H875 V510 H900"/>
+  <path class="edge" d="M1105 490 H1140"/>
+  <polygon class="decision" points="1215,425 1290,490 1215,555 1140,490"/>
+  <text class="label" x="1215" y="496" text-anchor="middle">Authorized?</text>
+
+  <path class="edge" d="M1215 425 V220 H1315"/>
+  <text class="edge-label" x="1227" y="405">No</text>
+  <rect class="error" x="1315" y="180" width="190" height="82" rx="12"/>
+  <text class="label" x="1410" y="215" text-anchor="middle">Show error or</text>
+  <text class="small" x="1410" y="239" text-anchor="middle">lockout message</text>
+  <path class="edge" d="M1505 221 H1540"/>
+  <polygon class="decision" points="1620,170 1700,221 1620,272 1540,221"/>
+  <text class="label" x="1620" y="227" text-anchor="middle">Retry?</text>
+  <path class="edge" d="M1620 272 V335 H755 V312"/>
+  <text class="edge-label" x="1633" y="305">Yes</text>
+  <path class="edge" d="M1700 221 H1800"/>
+  <text class="edge-label" x="1730" y="207">No</text>
+  <rect class="success" x="1800" y="192" width="130" height="58" rx="28"/>
+  <text class="label" x="1865" y="228" text-anchor="middle">End</text>
+
+  <path class="edge" d="M1290 490 H1320"/>
+  <text class="edge-label" x="1295" y="473">Yes</text>
+  <rect class="success" x="1320" y="440" width="210" height="100" rx="12"/>
+  <text class="label" x="1425" y="477" text-anchor="middle">Open role-specific</text>
+  <text class="small" x="1425" y="505" text-anchor="middle">student / teacher / admin</text>
+  <path class="edge" d="M1530 490 H1560"/>
+  <rect class="step" x="1560" y="440" width="160" height="100" rx="12"/>
+  <text class="label" x="1640" y="480" text-anchor="middle">Choose a</text>
+  <text class="label" x="1640" y="505" text-anchor="middle">feature</text>
+  <path class="edge" d="M1720 490 H1750"/>
+  <rect class="step" x="1750" y="440" width="215" height="100" rx="12"/>
+  <text class="label" x="1857" y="478" text-anchor="middle">Read or update</text>
+  <text class="small" x="1857" y="505" text-anchor="middle">MySQL and, if needed, files</text>
+  <path class="edge" d="M1965 490 H1990"/>
+  <rect class="step" x="1990" y="440" width="185" height="100" rx="12"/>
+  <text class="label" x="2082" y="478" text-anchor="middle">Return result and</text>
+  <text class="small" x="2082" y="505" text-anchor="middle">send notifications</text>
+
+  <path class="edge" d="M2082 540 V650"/>
+  <polygon class="decision" points="2082,650 2160,700 2082,750 2004,700"/>
+  <text class="label" x="2082" y="706" text-anchor="middle">Continue?</text>
+  <path class="edge" d="M2004 700 H1640 V540"/>
+  <text class="edge-label" x="1940" y="686">Yes</text>
+  <path class="edge" d="M2082 750 V815"/>
+  <text class="edge-label" x="2095" y="788">No</text>
+  <rect class="step" x="1990" y="815" width="185" height="70" rx="12"/>
+  <text class="label" x="2082" y="857" text-anchor="middle">Log out / expire</text>
+  <path class="edge" d="M2175 850 H2205"/>
+  <rect class="success" x="2205" y="821" width="130" height="58" rx="28"/>
+  <text class="label" x="2270" y="857" text-anchor="middle">End</text>
+</svg>

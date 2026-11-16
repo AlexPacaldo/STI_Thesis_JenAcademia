@@ -1,0 +1,87 @@
+[
+  {
+    "name": "visitor-home",
+    "route": "/",
+    "finalPath": "/",
+    "errors": []
+  },
+  {
+    "name": "sign-in",
+    "route": "/login",
+    "finalPath": "/login",
+    "errors": []
+  },
+  {
+    "name": "password-recovery",
+    "route": "/forgot-password",
+    "finalPath": "/forgot-password",
+    "errors": []
+  },
+  {
+    "name": "student-home",
+    "route": "/StudentDashboard",
+    "finalPath": "/StudentDashboard",
+    "errors": []
+  },
+  {
+    "name": "student-calendar",
+    "route": "/Calendar",
+    "finalPath": "/Calendar",
+    "errors": []
+  },
+  {
+    "name": "student-assignments",
+    "route": "/assignments",
+    "finalPath": "/assignments",
+    "errors": []
+  },
+  {
+    "name": "teacher-calendar",
+    "route": "/Calendar",
+    "finalPath": "/Calendar",
+    "errors": []
+  },
+  {
+    "name": "teacher-students",
+    "route": "/teacherStudents",
+    "finalPath": "/teacherStudents",
+    "errors": []
+  },
+  {
+    "name": "teacher-assignments",
+    "route": "/teacherAssignment",
+    "finalPath": "/teacherAssignment",
+    "errors": []
+  },
+  {
+    "name": "admin-create-teacher",
+    "route": "/AdminDashboard?tab=createTeacher",
+    "finalPath": "/AdminDashboard",
+    "errors": []
+  },
+  {
+    "name": "admin-create-student",
+    "route": "/AdminDashboard?tab=createStudent",
+    "finalPath": "/AdminDashboard",
+    "errors": []
+  },
+  {
+    "name": "admin-contracts",
+    "route": "/AdminDashboard?tab=contracts",
+    "finalPath": "/AdminDashboard",
+    "errors": []
+  },
+  {
+    "name": "admin-library",
+    "route": "/AdminDashboard?tab=books",
+    "finalPath": "/AdminDashboard",
+    "errors": []
+  },
+  {
+    "name": "super-admin-create",
+    "route": "/AdminDashboard?tab=createAdmin",
+    "finalPath": "/AdminDashboard",
+    "finalSearch": "?tab=createAdmin",
+    "errors": []
+  }
+]

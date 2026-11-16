@@ -1,0 +1,10 @@
+{
+  "teachers": 8,
+  "learnerScenarios": 5,
+  "passedScenarios": 5,
+  "embeddedScreenshots": 6,
+  "editableTables": 9,
+  "tableGeometry": "pass",
+  "plannedPages": 12,
+  "visualRendering": "unavailable: LibreOffice/soffice is not installed; render_docx.py returned WinError 2"
+}

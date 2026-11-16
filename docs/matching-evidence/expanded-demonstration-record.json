@@ -1,0 +1,1850 @@
+{
+  "stamp": "17 November 2026 at 01:41 (Asia/Singapore)",
+  "teachers": [
+    {
+      "user_id": 901,
+      "first_name": "Jamie",
+      "last_name": "Demo",
+      "specialization": "speaking and conversation",
+      "bio": "AI matching profile:\nTeaching style: conversational\nBest student pace: slow",
+      "style": "conversational",
+      "pace": "slow",
+      "experience_years": 6,
+      "assigned_student_count": 0,
+      "selected_course_match": 1,
+      "role": "teacher",
+      "status": "active",
+      "profile_completed": 1,
+      "email": "teacher901@example.com"
+    },
+    {
+      "user_id": 902,
+      "first_name": "Taylor",
+      "last_name": "Demo",
+      "specialization": "grammar and writing",
+      "bio": "AI matching profile:\nTeaching style: structured\nBest student pace: fast",
+      "style": "structured",
+      "pace": "fast",
+      "experience_years": 2,
+      "assigned_student_count": 0,
+      "selected_course_match": 1,
+      "role": "teacher",
+      "status": "active",
+      "profile_completed": 1,
+      "email": "teacher902@example.com"
+    },
+    {
+      "user_id": 903,
+      "first_name": "Alex",
+      "last_name": "Demo",
+      "specialization": "listening and pronunciation",
+      "bio": "AI matching profile:\nTeaching style: visual\nBest student pace: balanced",
+      "style": "visual",
+      "pace": "balanced",
+      "experience_years": 5,
+      "assigned_student_count": 1,
+      "selected_course_match": 1,
+      "role": "teacher",
+      "status": "active",
+      "profile_completed": 1,
+      "email": "teacher903@example.com"
+    },
+    {
+      "user_id": 904,
+      "first_name": "Sam",
+      "last_name": "Demo",
+      "specialization": "news discussion, speaking and conversation",
+      "bio": "AI matching profile:\nTeaching style: interactive\nBest student pace: balanced",
+      "style": "interactive",
+      "pace": "balanced",
+      "experience_years": 7,
+      "assigned_student_count": 0,
+      "selected_course_match": 1,
+      "role": "teacher",
+      "status": "active",
+      "profile_completed": 1,
+      "email": "teacher904@example.com"
+    },
+    {
+      "user_id": 905,
+      "first_name": "Morgan",
+      "last_name": "Demo",
+      "specialization": "speaking and conversation",
+      "bio": "AI matching profile:\nTeaching style: conversational\nBest student pace: fast",
+      "style": "conversational",
+      "pace": "fast",
+      "experience_years": 8,
+      "assigned_student_count": 3,
+      "selected_course_match": 1,
+      "role": "teacher",
+      "status": "active",
+      "profile_completed": 1,
+      "email": "teacher905@example.com"
+    },
+    {
+      "user_id": 906,
+      "first_name": "Casey",
+      "last_name": "Demo",
+      "specialization": "speaking and conversation",
+      "bio": "AI matching profile:\nTeaching style: interactive\nBest student pace: fast",
+      "style": "interactive",
+      "pace": "fast",
+      "experience_years": 4,
+      "assigned_student_count": 0,
+      "selected_course_match": 1,
+      "role": "teacher",
+      "status": "active",
+      "profile_completed": 1,
+      "email": "teacher906@example.com"
+    },
+    {
+      "user_id": 907,
+      "first_name": "Riley",
+      "last_name": "Demo",
+      "specialization": "listening and pronunciation",
+      "bio": "AI matching profile:\nTeaching style: structured\nBest student pace: review-heavy",
+      "style": "structured",
+      "pace": "review-heavy",
+      "experience_years": 3,
+      "assigned_student_count": 0,
+      "selected_course_match": 1,
+      "role": "teacher",
+      "status": "active",
+      "profile_completed": 1,
+      "email": "teacher907@example.com"
+    },
+    {
+      "user_id": 908,
+      "first_name": "Jordan",
+      "last_name": "Demo",
+      "specialization": "reading and vocabulary",
+      "bio": "AI matching profile:\nTeaching style: independent\nBest student pace: balanced",
+      "style": "independent",
+      "pace": "balanced",
+      "experience_years": 2,
+      "assigned_student_count": 1,
+      "selected_course_match": 1,
+      "role": "teacher",
+      "status": "active",
+      "profile_completed": 1,
+      "email": "teacher908@example.com"
+    }
+  ],
+  "records": [
+    {
+      "id": "DEMO-01",
+      "studentId": 1101,
+      "student": "Lea Demo",
+      "title": "Guided conversation",
+      "goal": "conversation",
+      "focus": "speaking",
+      "style": "conversational",
+      "pace": "slow",
+      "expected": 901,
+      "why": "Jamie matches all four selected criteria and has no assigned students.",
+      "request": {
+        "trialNotes": "Lea Demo (DEMO-01): Guided conversation. Fictional demonstration learner; criteria are selected above.",
+        "criteria": {
+          "learningGoal": [
+            "conversation"
+          ],
+          "learningStyle": [
+            "conversational"
+          ],
+          "focusArea": [
+            "speaking"
+          ],
+          "pace": [
+            "slow"
+          ]
+        },
+        "courseId": "1",
+        "courseName": "Conversational English",
+        "proficiencyLevel": "",
+        "teacherId": "",
+        "preferredSchedule": {
+          "days": [],
+          "period": ""
+        },
+        "studentBirthDate": ""
+      },
+      "result": {
+        "teacher": {
+          "user_id": 901,
+          "first_name": "Jamie",
+          "last_name": "Demo",
+          "specialization": "speaking and conversation",
+          "bio": "AI matching profile:\nTeaching style: conversational\nBest student pace: slow",
+          "style": "conversational",
+          "pace": "slow",
+          "experience_years": 6,
+          "assigned_student_count": 0,
+          "selected_course_match": 1,
+          "role": "teacher",
+          "status": "active",
+          "profile_completed": 1,
+          "email": "teacher901@example.com",
+          "score": 66,
+          "criterionTotal": 4,
+          "criterionMatched": 4,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "6 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        "ranked": [
+          {
+            "user_id": 901,
+            "first_name": "Jamie",
+            "last_name": "Demo",
+            "specialization": "speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: conversational\nBest student pace: slow",
+            "style": "conversational",
+            "pace": "slow",
+            "experience_years": 6,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher901@example.com",
+            "score": 66,
+            "criterionTotal": 4,
+            "criterionMatched": 4,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": true,
+              "learningStyle": true,
+              "pace": true
+            },
+            "reasons": [
+              "6 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal",
+              "specialisation matches the focus areas"
+            ]
+          },
+          {
+            "user_id": 905,
+            "first_name": "Morgan",
+            "last_name": "Demo",
+            "specialization": "speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: conversational\nBest student pace: fast",
+            "style": "conversational",
+            "pace": "fast",
+            "experience_years": 8,
+            "assigned_student_count": 3,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher905@example.com",
+            "score": 56,
+            "criterionTotal": 4,
+            "criterionMatched": 3,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": true,
+              "learningStyle": true,
+              "pace": false
+            },
+            "reasons": [
+              "8 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal",
+              "specialisation matches the focus areas"
+            ]
+          },
+          {
+            "user_id": 904,
+            "first_name": "Sam",
+            "last_name": "Demo",
+            "specialization": "news discussion, speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: interactive\nBest student pace: balanced",
+            "style": "interactive",
+            "pace": "balanced",
+            "experience_years": 7,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher904@example.com",
+            "score": 50,
+            "criterionTotal": 4,
+            "criterionMatched": 2,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": true,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "7 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal",
+              "specialisation matches the focus areas"
+            ]
+          },
+          {
+            "user_id": 906,
+            "first_name": "Casey",
+            "last_name": "Demo",
+            "specialization": "speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: interactive\nBest student pace: fast",
+            "style": "interactive",
+            "pace": "fast",
+            "experience_years": 4,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher906@example.com",
+            "score": 44,
+            "criterionTotal": 4,
+            "criterionMatched": 2,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": true,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "4 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal",
+              "specialisation matches the focus areas"
+            ]
+          },
+          {
+            "user_id": 903,
+            "first_name": "Alex",
+            "last_name": "Demo",
+            "specialization": "listening and pronunciation",
+            "bio": "AI matching profile:\nTeaching style: visual\nBest student pace: balanced",
+            "style": "visual",
+            "pace": "balanced",
+            "experience_years": 5,
+            "assigned_student_count": 1,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher903@example.com",
+            "score": 22,
+            "criterionTotal": 4,
+            "criterionMatched": 0,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "5 years experience",
+              "teaches the selected course"
+            ]
+          },
+          {
+            "user_id": 907,
+            "first_name": "Riley",
+            "last_name": "Demo",
+            "specialization": "listening and pronunciation",
+            "bio": "AI matching profile:\nTeaching style: structured\nBest student pace: review-heavy",
+            "style": "structured",
+            "pace": "review-heavy",
+            "experience_years": 3,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher907@example.com",
+            "score": 20,
+            "criterionTotal": 4,
+            "criterionMatched": 0,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "3 years experience",
+              "teaches the selected course"
+            ]
+          },
+          {
+            "user_id": 902,
+            "first_name": "Taylor",
+            "last_name": "Demo",
+            "specialization": "grammar and writing",
+            "bio": "AI matching profile:\nTeaching style: structured\nBest student pace: fast",
+            "style": "structured",
+            "pace": "fast",
+            "experience_years": 2,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher902@example.com",
+            "score": 18,
+            "criterionTotal": 4,
+            "criterionMatched": 0,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "2 years experience",
+              "teaches the selected course"
+            ]
+          },
+          {
+            "user_id": 908,
+            "first_name": "Jordan",
+            "last_name": "Demo",
+            "specialization": "reading and vocabulary",
+            "bio": "AI matching profile:\nTeaching style: independent\nBest student pace: balanced",
+            "style": "independent",
+            "pace": "balanced",
+            "experience_years": 2,
+            "assigned_student_count": 1,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher908@example.com",
+            "score": 16,
+            "criterionTotal": 4,
+            "criterionMatched": 0,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "2 years experience",
+              "teaches the selected course"
+            ]
+          }
+        ],
+        "matchStrength": {
+          "level": "strong",
+          "matched": 4,
+          "total": 4,
+          "ratio": 1
+        },
+        "usedLeastLoadedFallback": false,
+        "advisor": {
+          "used": false,
+          "configured": false,
+          "reason": "controlled-demo-no-live-ai"
+        },
+        "aiInsights": {
+          "added": {},
+          "unavailable": true,
+          "reason": "not-configured"
+        }
+      },
+      "observed": {
+        "disclosed": true,
+        "selected": true,
+        "candidateOptions": 8
+      },
+      "errors": [],
+      "inputs": "images/expanded/DEMO-01-inputs.png",
+      "output": "images/expanded/DEMO-01-result.png",
+      "outcome": "PASS (controlled demonstration)"
+    },
+    {
+      "id": "DEMO-02",
+      "studentId": 1102,
+      "student": "Noah Demo",
+      "title": "Visual listening practice",
+      "goal": "confidence",
+      "focus": "listening",
+      "style": "visual",
+      "pace": "balanced",
+      "expected": 903,
+      "why": "Alex matches listening, visual instruction and balanced pace. Confidence is not matched by this teacher’s specialization, so partial coverage is expected.",
+      "request": {
+        "trialNotes": "Noah Demo (DEMO-02): Visual listening practice. Fictional demonstration learner; criteria are selected above.",
+        "criteria": {
+          "learningGoal": [
+            "confidence"
+          ],
+          "learningStyle": [
+            "visual"
+          ],
+          "focusArea": [
+            "listening"
+          ],
+          "pace": [
+            "balanced"
+          ]
+        },
+        "courseId": "1",
+        "courseName": "Conversational English",
+        "proficiencyLevel": "",
+        "teacherId": "",
+        "preferredSchedule": {
+          "days": [],
+          "period": ""
+        },
+        "studentBirthDate": ""
+      },
+      "result": {
+        "teacher": {
+          "user_id": 903,
+          "first_name": "Alex",
+          "last_name": "Demo",
+          "specialization": "listening and pronunciation",
+          "bio": "AI matching profile:\nTeaching style: visual\nBest student pace: balanced",
+          "style": "visual",
+          "pace": "balanced",
+          "experience_years": 5,
+          "assigned_student_count": 1,
+          "selected_course_match": 1,
+          "role": "teacher",
+          "status": "active",
+          "profile_completed": 1,
+          "email": "teacher903@example.com",
+          "score": 50,
+          "criterionTotal": 4,
+          "criterionMatched": 3,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "5 years experience",
+            "teaches the selected course",
+            "specialisation matches the focus areas",
+            "teaching style matches"
+          ]
+        },
+        "ranked": [
+          {
+            "user_id": 903,
+            "first_name": "Alex",
+            "last_name": "Demo",
+            "specialization": "listening and pronunciation",
+            "bio": "AI matching profile:\nTeaching style: visual\nBest student pace: balanced",
+            "style": "visual",
+            "pace": "balanced",
+            "experience_years": 5,
+            "assigned_student_count": 1,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher903@example.com",
+            "score": 50,
+            "criterionTotal": 4,
+            "criterionMatched": 3,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": true,
+              "learningStyle": true,
+              "pace": true
+            },
+            "reasons": [
+              "5 years experience",
+              "teaches the selected course",
+              "specialisation matches the focus areas",
+              "teaching style matches"
+            ]
+          },
+          {
+            "user_id": 904,
+            "first_name": "Sam",
+            "last_name": "Demo",
+            "specialization": "news discussion, speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: interactive\nBest student pace: balanced",
+            "style": "interactive",
+            "pace": "balanced",
+            "experience_years": 7,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher904@example.com",
+            "score": 48,
+            "criterionTotal": 4,
+            "criterionMatched": 2,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": true
+            },
+            "reasons": [
+              "7 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal",
+              "best student pace matches"
+            ]
+          },
+          {
+            "user_id": 901,
+            "first_name": "Jamie",
+            "last_name": "Demo",
+            "specialization": "speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: conversational\nBest student pace: slow",
+            "style": "conversational",
+            "pace": "slow",
+            "experience_years": 6,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher901@example.com",
+            "score": 38,
+            "criterionTotal": 4,
+            "criterionMatched": 1,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "6 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal"
+            ]
+          },
+          {
+            "user_id": 905,
+            "first_name": "Morgan",
+            "last_name": "Demo",
+            "specialization": "speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: conversational\nBest student pace: fast",
+            "style": "conversational",
+            "pace": "fast",
+            "experience_years": 8,
+            "assigned_student_count": 3,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher905@example.com",
+            "score": 36,
+            "criterionTotal": 4,
+            "criterionMatched": 1,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "8 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal"
+            ]
+          },
+          {
+            "user_id": 906,
+            "first_name": "Casey",
+            "last_name": "Demo",
+            "specialization": "speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: interactive\nBest student pace: fast",
+            "style": "interactive",
+            "pace": "fast",
+            "experience_years": 4,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher906@example.com",
+            "score": 34,
+            "criterionTotal": 4,
+            "criterionMatched": 1,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "4 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal"
+            ]
+          },
+          {
+            "user_id": 907,
+            "first_name": "Riley",
+            "last_name": "Demo",
+            "specialization": "listening and pronunciation",
+            "bio": "AI matching profile:\nTeaching style: structured\nBest student pace: review-heavy",
+            "style": "structured",
+            "pace": "review-heavy",
+            "experience_years": 3,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher907@example.com",
+            "score": 30,
+            "criterionTotal": 4,
+            "criterionMatched": 1,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": true,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "3 years experience",
+              "teaches the selected course",
+              "specialisation matches the focus areas"
+            ]
+          },
+          {
+            "user_id": 908,
+            "first_name": "Jordan",
+            "last_name": "Demo",
+            "specialization": "reading and vocabulary",
+            "bio": "AI matching profile:\nTeaching style: independent\nBest student pace: balanced",
+            "style": "independent",
+            "pace": "balanced",
+            "experience_years": 2,
+            "assigned_student_count": 1,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher908@example.com",
+            "score": 24,
+            "criterionTotal": 4,
+            "criterionMatched": 1,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": true
+            },
+            "reasons": [
+              "2 years experience",
+              "teaches the selected course",
+              "best student pace matches"
+            ]
+          },
+          {
+            "user_id": 902,
+            "first_name": "Taylor",
+            "last_name": "Demo",
+            "specialization": "grammar and writing",
+            "bio": "AI matching profile:\nTeaching style: structured\nBest student pace: fast",
+            "style": "structured",
+            "pace": "fast",
+            "experience_years": 2,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher902@example.com",
+            "score": 18,
+            "criterionTotal": 4,
+            "criterionMatched": 0,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "2 years experience",
+              "teaches the selected course"
+            ]
+          }
+        ],
+        "matchStrength": {
+          "level": "partial",
+          "matched": 3,
+          "total": 4,
+          "ratio": 0.75
+        },
+        "usedLeastLoadedFallback": false,
+        "advisor": {
+          "used": false,
+          "configured": false,
+          "reason": "controlled-demo-no-live-ai"
+        },
+        "aiInsights": {
+          "added": {},
+          "unavailable": true,
+          "reason": "not-configured"
+        }
+      },
+      "observed": {
+        "disclosed": true,
+        "selected": true,
+        "candidateOptions": 8
+      },
+      "errors": [],
+      "inputs": "images/expanded/DEMO-02-inputs.png",
+      "output": "images/expanded/DEMO-02-result.png",
+      "outcome": "PASS (controlled demonstration)"
+    },
+    {
+      "id": "DEMO-03",
+      "studentId": 1103,
+      "student": "Mia Demo",
+      "title": "Interactive news discussion",
+      "goal": "news-discussion",
+      "focus": "speaking",
+      "style": "interactive",
+      "pace": "balanced",
+      "expected": 904,
+      "why": "Sam covers news discussion and speaking, with the requested interactive style and balanced pace.",
+      "request": {
+        "trialNotes": "Mia Demo (DEMO-03): Interactive news discussion. Fictional demonstration learner; criteria are selected above.",
+        "criteria": {
+          "learningGoal": [
+            "news-discussion"
+          ],
+          "learningStyle": [
+            "interactive"
+          ],
+          "focusArea": [
+            "speaking"
+          ],
+          "pace": [
+            "balanced"
+          ]
+        },
+        "courseId": "1",
+        "courseName": "Conversational English",
+        "proficiencyLevel": "",
+        "teacherId": "",
+        "preferredSchedule": {
+          "days": [],
+          "period": ""
+        },
+        "studentBirthDate": ""
+      },
+      "result": {
+        "teacher": {
+          "user_id": 904,
+          "first_name": "Sam",
+          "last_name": "Demo",
+          "specialization": "news discussion, speaking and conversation",
+          "bio": "AI matching profile:\nTeaching style: interactive\nBest student pace: balanced",
+          "style": "interactive",
+          "pace": "balanced",
+          "experience_years": 7,
+          "assigned_student_count": 0,
+          "selected_course_match": 1,
+          "role": "teacher",
+          "status": "active",
+          "profile_completed": 1,
+          "email": "teacher904@example.com",
+          "score": 68,
+          "criterionTotal": 4,
+          "criterionMatched": 4,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "7 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        "ranked": [
+          {
+            "user_id": 904,
+            "first_name": "Sam",
+            "last_name": "Demo",
+            "specialization": "news discussion, speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: interactive\nBest student pace: balanced",
+            "style": "interactive",
+            "pace": "balanced",
+            "experience_years": 7,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher904@example.com",
+            "score": 68,
+            "criterionTotal": 4,
+            "criterionMatched": 4,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": true,
+              "learningStyle": true,
+              "pace": true
+            },
+            "reasons": [
+              "7 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal",
+              "specialisation matches the focus areas"
+            ]
+          },
+          {
+            "user_id": 906,
+            "first_name": "Casey",
+            "last_name": "Demo",
+            "specialization": "speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: interactive\nBest student pace: fast",
+            "style": "interactive",
+            "pace": "fast",
+            "experience_years": 4,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher906@example.com",
+            "score": 42,
+            "criterionTotal": 4,
+            "criterionMatched": 2,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": true,
+              "learningStyle": true,
+              "pace": false
+            },
+            "reasons": [
+              "4 years experience",
+              "teaches the selected course",
+              "specialisation matches the focus areas",
+              "teaching style matches"
+            ]
+          },
+          {
+            "user_id": 901,
+            "first_name": "Jamie",
+            "last_name": "Demo",
+            "specialization": "speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: conversational\nBest student pace: slow",
+            "style": "conversational",
+            "pace": "slow",
+            "experience_years": 6,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher901@example.com",
+            "score": 36,
+            "criterionTotal": 4,
+            "criterionMatched": 1,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": true,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "6 years experience",
+              "teaches the selected course",
+              "specialisation matches the focus areas"
+            ]
+          },
+          {
+            "user_id": 905,
+            "first_name": "Morgan",
+            "last_name": "Demo",
+            "specialization": "speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: conversational\nBest student pace: fast",
+            "style": "conversational",
+            "pace": "fast",
+            "experience_years": 8,
+            "assigned_student_count": 3,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher905@example.com",
+            "score": 34,
+            "criterionTotal": 4,
+            "criterionMatched": 1,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": true,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "8 years experience",
+              "teaches the selected course",
+              "specialisation matches the focus areas"
+            ]
+          },
+          {
+            "user_id": 903,
+            "first_name": "Alex",
+            "last_name": "Demo",
+            "specialization": "listening and pronunciation",
+            "bio": "AI matching profile:\nTeaching style: visual\nBest student pace: balanced",
+            "style": "visual",
+            "pace": "balanced",
+            "experience_years": 5,
+            "assigned_student_count": 1,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher903@example.com",
+            "score": 30,
+            "criterionTotal": 4,
+            "criterionMatched": 1,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": true
+            },
+            "reasons": [
+              "5 years experience",
+              "teaches the selected course",
+              "best student pace matches"
+            ]
+          },
+          {
+            "user_id": 908,
+            "first_name": "Jordan",
+            "last_name": "Demo",
+            "specialization": "reading and vocabulary",
+            "bio": "AI matching profile:\nTeaching style: independent\nBest student pace: balanced",
+            "style": "independent",
+            "pace": "balanced",
+            "experience_years": 2,
+            "assigned_student_count": 1,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher908@example.com",
+            "score": 24,
+            "criterionTotal": 4,
+            "criterionMatched": 1,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": true
+            },
+            "reasons": [
+              "2 years experience",
+              "teaches the selected course",
+              "best student pace matches"
+            ]
+          },
+          {
+            "user_id": 907,
+            "first_name": "Riley",
+            "last_name": "Demo",
+            "specialization": "listening and pronunciation",
+            "bio": "AI matching profile:\nTeaching style: structured\nBest student pace: review-heavy",
+            "style": "structured",
+            "pace": "review-heavy",
+            "experience_years": 3,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher907@example.com",
+            "score": 20,
+            "criterionTotal": 4,
+            "criterionMatched": 0,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "3 years experience",
+              "teaches the selected course"
+            ]
+          },
+          {
+            "user_id": 902,
+            "first_name": "Taylor",
+            "last_name": "Demo",
+            "specialization": "grammar and writing",
+            "bio": "AI matching profile:\nTeaching style: structured\nBest student pace: fast",
+            "style": "structured",
+            "pace": "fast",
+            "experience_years": 2,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher902@example.com",
+            "score": 18,
+            "criterionTotal": 4,
+            "criterionMatched": 0,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "2 years experience",
+              "teaches the selected course"
+            ]
+          }
+        ],
+        "matchStrength": {
+          "level": "strong",
+          "matched": 4,
+          "total": 4,
+          "ratio": 1
+        },
+        "usedLeastLoadedFallback": false,
+        "advisor": {
+          "used": false,
+          "configured": false,
+          "reason": "controlled-demo-no-live-ai"
+        },
+        "aiInsights": {
+          "added": {},
+          "unavailable": true,
+          "reason": "not-configured"
+        }
+      },
+      "observed": {
+        "disclosed": true,
+        "selected": true,
+        "candidateOptions": 8
+      },
+      "errors": [],
+      "inputs": "images/expanded/DEMO-03-inputs.png",
+      "output": "images/expanded/DEMO-03-result.png",
+      "outcome": "PASS (controlled demonstration)"
+    },
+    {
+      "id": "DEMO-04",
+      "studentId": 1104,
+      "student": "Ethan Demo",
+      "title": "Fast interactive speaking",
+      "goal": "conversation",
+      "focus": "speaking",
+      "style": "interactive",
+      "pace": "fast",
+      "expected": 906,
+      "why": "Casey matches the conversation goal, speaking focus, interactive style and fast pace, while staying below the load preference.",
+      "request": {
+        "trialNotes": "Ethan Demo (DEMO-04): Fast interactive speaking. Fictional demonstration learner; criteria are selected above.",
+        "criteria": {
+          "learningGoal": [
+            "conversation"
+          ],
+          "learningStyle": [
+            "interactive"
+          ],
+          "focusArea": [
+            "speaking"
+          ],
+          "pace": [
+            "fast"
+          ]
+        },
+        "courseId": "1",
+        "courseName": "Conversational English",
+        "proficiencyLevel": "",
+        "teacherId": "",
+        "preferredSchedule": {
+          "days": [],
+          "period": ""
+        },
+        "studentBirthDate": ""
+      },
+      "result": {
+        "teacher": {
+          "user_id": 906,
+          "first_name": "Casey",
+          "last_name": "Demo",
+          "specialization": "speaking and conversation",
+          "bio": "AI matching profile:\nTeaching style: interactive\nBest student pace: fast",
+          "style": "interactive",
+          "pace": "fast",
+          "experience_years": 4,
+          "assigned_student_count": 0,
+          "selected_course_match": 1,
+          "role": "teacher",
+          "status": "active",
+          "profile_completed": 1,
+          "email": "teacher906@example.com",
+          "score": 62,
+          "criterionTotal": 4,
+          "criterionMatched": 4,
+          "criterionMatches": {
+            "learningGoal": true,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "4 years experience",
+            "teaches the selected course",
+            "specialisation matches the learning goal",
+            "specialisation matches the focus areas"
+          ]
+        },
+        "ranked": [
+          {
+            "user_id": 906,
+            "first_name": "Casey",
+            "last_name": "Demo",
+            "specialization": "speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: interactive\nBest student pace: fast",
+            "style": "interactive",
+            "pace": "fast",
+            "experience_years": 4,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher906@example.com",
+            "score": 62,
+            "criterionTotal": 4,
+            "criterionMatched": 4,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": true,
+              "learningStyle": true,
+              "pace": true
+            },
+            "reasons": [
+              "4 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal",
+              "specialisation matches the focus areas"
+            ]
+          },
+          {
+            "user_id": 904,
+            "first_name": "Sam",
+            "last_name": "Demo",
+            "specialization": "news discussion, speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: interactive\nBest student pace: balanced",
+            "style": "interactive",
+            "pace": "balanced",
+            "experience_years": 7,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher904@example.com",
+            "score": 60,
+            "criterionTotal": 4,
+            "criterionMatched": 3,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": true,
+              "learningStyle": true,
+              "pace": false
+            },
+            "reasons": [
+              "7 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal",
+              "specialisation matches the focus areas"
+            ]
+          },
+          {
+            "user_id": 905,
+            "first_name": "Morgan",
+            "last_name": "Demo",
+            "specialization": "speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: conversational\nBest student pace: fast",
+            "style": "conversational",
+            "pace": "fast",
+            "experience_years": 8,
+            "assigned_student_count": 3,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher905@example.com",
+            "score": 54,
+            "criterionTotal": 4,
+            "criterionMatched": 3,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": true,
+              "learningStyle": false,
+              "pace": true
+            },
+            "reasons": [
+              "8 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal",
+              "specialisation matches the focus areas"
+            ]
+          },
+          {
+            "user_id": 901,
+            "first_name": "Jamie",
+            "last_name": "Demo",
+            "specialization": "speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: conversational\nBest student pace: slow",
+            "style": "conversational",
+            "pace": "slow",
+            "experience_years": 6,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher901@example.com",
+            "score": 48,
+            "criterionTotal": 4,
+            "criterionMatched": 2,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": true,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "6 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal",
+              "specialisation matches the focus areas"
+            ]
+          },
+          {
+            "user_id": 902,
+            "first_name": "Taylor",
+            "last_name": "Demo",
+            "specialization": "grammar and writing",
+            "bio": "AI matching profile:\nTeaching style: structured\nBest student pace: fast",
+            "style": "structured",
+            "pace": "fast",
+            "experience_years": 2,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher902@example.com",
+            "score": 26,
+            "criterionTotal": 4,
+            "criterionMatched": 1,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": true
+            },
+            "reasons": [
+              "2 years experience",
+              "teaches the selected course",
+              "best student pace matches"
+            ]
+          },
+          {
+            "user_id": 903,
+            "first_name": "Alex",
+            "last_name": "Demo",
+            "specialization": "listening and pronunciation",
+            "bio": "AI matching profile:\nTeaching style: visual\nBest student pace: balanced",
+            "style": "visual",
+            "pace": "balanced",
+            "experience_years": 5,
+            "assigned_student_count": 1,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher903@example.com",
+            "score": 22,
+            "criterionTotal": 4,
+            "criterionMatched": 0,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "5 years experience",
+              "teaches the selected course"
+            ]
+          },
+          {
+            "user_id": 907,
+            "first_name": "Riley",
+            "last_name": "Demo",
+            "specialization": "listening and pronunciation",
+            "bio": "AI matching profile:\nTeaching style: structured\nBest student pace: review-heavy",
+            "style": "structured",
+            "pace": "review-heavy",
+            "experience_years": 3,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher907@example.com",
+            "score": 20,
+            "criterionTotal": 4,
+            "criterionMatched": 0,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "3 years experience",
+              "teaches the selected course"
+            ]
+          },
+          {
+            "user_id": 908,
+            "first_name": "Jordan",
+            "last_name": "Demo",
+            "specialization": "reading and vocabulary",
+            "bio": "AI matching profile:\nTeaching style: independent\nBest student pace: balanced",
+            "style": "independent",
+            "pace": "balanced",
+            "experience_years": 2,
+            "assigned_student_count": 1,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher908@example.com",
+            "score": 16,
+            "criterionTotal": 4,
+            "criterionMatched": 0,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "2 years experience",
+              "teaches the selected course"
+            ]
+          }
+        ],
+        "matchStrength": {
+          "level": "strong",
+          "matched": 4,
+          "total": 4,
+          "ratio": 1
+        },
+        "usedLeastLoadedFallback": false,
+        "advisor": {
+          "used": false,
+          "configured": false,
+          "reason": "controlled-demo-no-live-ai"
+        },
+        "aiInsights": {
+          "added": {},
+          "unavailable": true,
+          "reason": "not-configured"
+        }
+      },
+      "observed": {
+        "disclosed": true,
+        "selected": true,
+        "candidateOptions": 8
+      },
+      "errors": [],
+      "inputs": "images/expanded/DEMO-04-inputs.png",
+      "output": "images/expanded/DEMO-04-result.png",
+      "outcome": "PASS (controlled demonstration)"
+    },
+    {
+      "id": "DEMO-05",
+      "studentId": 1105,
+      "student": "Zoe Demo",
+      "title": "Structured pronunciation review",
+      "goal": "confidence",
+      "focus": "pronunciation",
+      "style": "structured",
+      "pace": "review-heavy",
+      "expected": 907,
+      "why": "Riley matches pronunciation, structured instruction and review-heavy pace. Confidence is not matched by this specialization, so partial coverage is expected.",
+      "request": {
+        "trialNotes": "Zoe Demo (DEMO-05): Structured pronunciation review. Fictional demonstration learner; criteria are selected above.",
+        "criteria": {
+          "learningGoal": [
+            "confidence"
+          ],
+          "learningStyle": [
+            "structured"
+          ],
+          "focusArea": [
+            "pronunciation"
+          ],
+          "pace": [
+            "review-heavy"
+          ]
+        },
+        "courseId": "1",
+        "courseName": "Conversational English",
+        "proficiencyLevel": "",
+        "teacherId": "",
+        "preferredSchedule": {
+          "days": [],
+          "period": ""
+        },
+        "studentBirthDate": ""
+      },
+      "result": {
+        "teacher": {
+          "user_id": 907,
+          "first_name": "Riley",
+          "last_name": "Demo",
+          "specialization": "listening and pronunciation",
+          "bio": "AI matching profile:\nTeaching style: structured\nBest student pace: review-heavy",
+          "style": "structured",
+          "pace": "review-heavy",
+          "experience_years": 3,
+          "assigned_student_count": 0,
+          "selected_course_match": 1,
+          "role": "teacher",
+          "status": "active",
+          "profile_completed": 1,
+          "email": "teacher907@example.com",
+          "score": 48,
+          "criterionTotal": 4,
+          "criterionMatched": 3,
+          "criterionMatches": {
+            "learningGoal": false,
+            "focusArea": true,
+            "learningStyle": true,
+            "pace": true
+          },
+          "reasons": [
+            "3 years experience",
+            "teaches the selected course",
+            "specialisation matches the focus areas",
+            "teaching style matches"
+          ]
+        },
+        "ranked": [
+          {
+            "user_id": 907,
+            "first_name": "Riley",
+            "last_name": "Demo",
+            "specialization": "listening and pronunciation",
+            "bio": "AI matching profile:\nTeaching style: structured\nBest student pace: review-heavy",
+            "style": "structured",
+            "pace": "review-heavy",
+            "experience_years": 3,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher907@example.com",
+            "score": 48,
+            "criterionTotal": 4,
+            "criterionMatched": 3,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": true,
+              "learningStyle": true,
+              "pace": true
+            },
+            "reasons": [
+              "3 years experience",
+              "teaches the selected course",
+              "specialisation matches the focus areas",
+              "teaching style matches"
+            ]
+          },
+          {
+            "user_id": 904,
+            "first_name": "Sam",
+            "last_name": "Demo",
+            "specialization": "news discussion, speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: interactive\nBest student pace: balanced",
+            "style": "interactive",
+            "pace": "balanced",
+            "experience_years": 7,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher904@example.com",
+            "score": 40,
+            "criterionTotal": 4,
+            "criterionMatched": 1,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "7 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal"
+            ]
+          },
+          {
+            "user_id": 901,
+            "first_name": "Jamie",
+            "last_name": "Demo",
+            "specialization": "speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: conversational\nBest student pace: slow",
+            "style": "conversational",
+            "pace": "slow",
+            "experience_years": 6,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher901@example.com",
+            "score": 38,
+            "criterionTotal": 4,
+            "criterionMatched": 1,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "6 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal"
+            ]
+          },
+          {
+            "user_id": 905,
+            "first_name": "Morgan",
+            "last_name": "Demo",
+            "specialization": "speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: conversational\nBest student pace: fast",
+            "style": "conversational",
+            "pace": "fast",
+            "experience_years": 8,
+            "assigned_student_count": 3,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher905@example.com",
+            "score": 36,
+            "criterionTotal": 4,
+            "criterionMatched": 1,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "8 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal"
+            ]
+          },
+          {
+            "user_id": 906,
+            "first_name": "Casey",
+            "last_name": "Demo",
+            "specialization": "speaking and conversation",
+            "bio": "AI matching profile:\nTeaching style: interactive\nBest student pace: fast",
+            "style": "interactive",
+            "pace": "fast",
+            "experience_years": 4,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher906@example.com",
+            "score": 34,
+            "criterionTotal": 4,
+            "criterionMatched": 1,
+            "criterionMatches": {
+              "learningGoal": true,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "4 years experience",
+              "teaches the selected course",
+              "specialisation matches the learning goal"
+            ]
+          },
+          {
+            "user_id": 903,
+            "first_name": "Alex",
+            "last_name": "Demo",
+            "specialization": "listening and pronunciation",
+            "bio": "AI matching profile:\nTeaching style: visual\nBest student pace: balanced",
+            "style": "visual",
+            "pace": "balanced",
+            "experience_years": 5,
+            "assigned_student_count": 1,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher903@example.com",
+            "score": 32,
+            "criterionTotal": 4,
+            "criterionMatched": 1,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": true,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "5 years experience",
+              "teaches the selected course",
+              "specialisation matches the focus areas"
+            ]
+          },
+          {
+            "user_id": 902,
+            "first_name": "Taylor",
+            "last_name": "Demo",
+            "specialization": "grammar and writing",
+            "bio": "AI matching profile:\nTeaching style: structured\nBest student pace: fast",
+            "style": "structured",
+            "pace": "fast",
+            "experience_years": 2,
+            "assigned_student_count": 0,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher902@example.com",
+            "score": 28,
+            "criterionTotal": 4,
+            "criterionMatched": 1,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": false,
+              "learningStyle": true,
+              "pace": false
+            },
+            "reasons": [
+              "2 years experience",
+              "teaches the selected course",
+              "teaching style matches"
+            ]
+          },
+          {
+            "user_id": 908,
+            "first_name": "Jordan",
+            "last_name": "Demo",
+            "specialization": "reading and vocabulary",
+            "bio": "AI matching profile:\nTeaching style: independent\nBest student pace: balanced",
+            "style": "independent",
+            "pace": "balanced",
+            "experience_years": 2,
+            "assigned_student_count": 1,
+            "selected_course_match": 1,
+            "role": "teacher",
+            "status": "active",
+            "profile_completed": 1,
+            "email": "teacher908@example.com",
+            "score": 16,
+            "criterionTotal": 4,
+            "criterionMatched": 0,
+            "criterionMatches": {
+              "learningGoal": false,
+              "focusArea": false,
+              "learningStyle": false,
+              "pace": false
+            },
+            "reasons": [
+              "2 years experience",
+              "teaches the selected course"
+            ]
+          }
+        ],
+        "matchStrength": {
+          "level": "partial",
+          "matched": 3,
+          "total": 4,
+          "ratio": 0.75
+        },
+        "usedLeastLoadedFallback": false,
+        "advisor": {
+          "used": false,
+          "configured": false,
+          "reason": "controlled-demo-no-live-ai"
+        },
+        "aiInsights": {
+          "added": {},
+          "unavailable": true,
+          "reason": "not-configured"
+        }
+      },
+      "observed": {
+        "disclosed": true,
+        "selected": true,
+        "candidateOptions": 8
+      },
+      "errors": [],
+      "inputs": "images/expanded/DEMO-05-inputs.png",
+      "output": "images/expanded/DEMO-05-result.png",
+      "outcome": "PASS (controlled demonstration)"
+    }
+  ],
+  "suites": [
+    {
+      "name": "test-teacher-matching",
+      "exit": 0,
+      "summary": "102/102 checks passed."
+    },
+    {
+      "name": "test-match-insights",
+      "exit": 0,
+      "summary": "33/33 checks passed."
+    },
+    {
+      "name": "test-fallback",
+      "exit": 0,
+      "summary": "35/35 checks passed."
+    }
+  ],
+  "scope": "Real React frontend; intercepted API executes imported deterministic scoring and selection. Eight fixed eligible candidates, five independent fictional learners. No database writes or live AI calls. Not beta tester evidence."
+}
