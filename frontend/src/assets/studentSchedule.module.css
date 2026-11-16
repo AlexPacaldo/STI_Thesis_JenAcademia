@@ -228,6 +228,22 @@
 }
 
 /* The window a request is sent from. */
+.rescheduleOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1800;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(15, 25, 20, 0.45);
+}
+
+.dialog.rescheduleDialog {
+  max-width: 720px;
+  max-height: calc(100dvh - 32px);
+  overscroll-behavior: contain;
+}
+
 .dialog {
   width: 100%;
   max-width: 620px;

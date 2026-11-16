@@ -313,6 +313,69 @@ const addMonthsClamped = (date, months) => {
  * !! the viewport, so an in-place overlay covers the page but not the sidebar -
  * !! which is exactly the window this is supposed to escape.
  */
+function RescheduleDialog({ onClose, busy, confirming, children }) {
+  const dialogRef = useRef(null);
+  const closeRef = useRef(null);
+
+  useEffect(() => {
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeRef.current?.focus({ preventScroll: true });
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      const trigger = previousFocus?.isConnected ? previousFocus
+        : document.querySelector('[aria-controls="reschedule-request-dialog"]');
+      trigger?.focus({ preventScroll: true });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (confirming) return;
+    if (!dialogRef.current?.contains(document.activeElement)) closeRef.current?.focus({ preventScroll: true });
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape" && !busy) {
+        event.preventDefault();
+        onClose();
+      }
+      if (event.key !== "Tab") return;
+      const controls = Array.from(dialogRef.current?.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], [tabindex="0"]'
+      ) || []).filter(element => element.getClientRects().length);
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, busy, confirming]);
+
+  return (
+    <ModalPortal>
+      <div className={styles.rescheduleOverlay} onClick={event => {
+        if (event.target === event.currentTarget && !busy && !confirming) onClose();
+      }}>
+        <section ref={dialogRef} id="reschedule-request-dialog" role="dialog"
+          aria-modal={!confirming} aria-labelledby="reschedule-request-title"
+          inert={confirming} className={`${styles.dialog} ${styles.rescheduleDialog}`}>
+          <div className={kid.filterHead}>
+            <h3 id="reschedule-request-title" className={kid.filterTitle}>Request for Reschedule</h3>
+            <button ref={closeRef} type="button" className={kid.filterClose}
+              onClick={onClose} disabled={busy} aria-label="Close reschedule request">×</button>
+          </div>
+          {children}
+        </section>
+      </div>
+    </ModalPortal>
+  );
+}
+
 function RequestDialog({ title, onClose, children, maxWidth = 620 }) {
   return (
     <ModalPortal>
@@ -2270,7 +2333,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     }
     const duration = normalizeClassDuration(durationOverride ?? studentPackage?.class_duration ?? studentProfile?.course_duration);
     const finalSlots = records.flatMap(record => bookableSlots(record, {
-      duration, occupied: classes, viewerTimezone, excludeClassId,
+      duration, occupied: classes, viewerTimezone, excludeClassId, targetDate: dateKey,
       endKey: localRole === "student" ? studentBookingEndKey : scheduleWindowEndKey,
       expiresAt: localRole === "student" ? studentPackage?.expires_at : null,
     })).filter(slot => slot.date === dateKey).map(slot => slot.time);
@@ -2888,12 +2951,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   };
 
   const simpleRescheduleSlots = useMemo(() => {
-    if (!requestMode || !selectedClass || !bookingAvailabilitySnapshot) return [];
+    if (!isSimpleStudentView || !requestMode || !requestDate || !selectedClass || !bookingAvailabilitySnapshot) return [];
     return bookingAvailabilitySnapshot.records.flatMap(record => bookableSlots(record, {
       duration: selectedClassDuration,
       occupied: [...bookingAvailabilitySnapshot.classes, ...Object.values(classesCache).flatMap(classes => classes || [])],
       viewerTimezone, endKey: studentBookingEndKey, expiresAt: studentPackage?.expires_at,
-      excludeClassId: selectedClass.id,
+      excludeClassId: selectedClass.id, targetDate: requestDate,
     })).filter(slot => {
       const currentDate = String(selectedClass.scheduled_date || "").slice(0, 10);
       const currentTime = normalizeTime(selectedClass.start_time || selectedClass.time);
@@ -2905,14 +2968,19 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         return range && rangesOverlap(start, start + selectedClassDuration, range.start, range.end);
       });
     });
-  }, [requestMode, selectedClass, selectedClassDuration, bookingAvailabilitySnapshot, classesCache,
+  }, [isSimpleStudentView, requestMode, requestDate, selectedClass, selectedClassDuration, bookingAvailabilitySnapshot, classesCache,
     viewerTimezone, studentBookingEndKey, studentPackage?.expires_at, counterpartyBookedDates]);
 
   const rescheduleTimeSlots = useMemo(() => {
     if (!requestMode || !requestDate) return [];
     if (isSimpleStudentView) return [...new Set(simpleRescheduleSlots.filter(slot => slot.date === requestDate).map(slot => slot.time))].sort();
     if (!availableTimeSlots?.length) return [];
-    return availableTimeSlots.filter((time) => isRescheduleTimeSlotBookable(requestDate, time));
+    // These slots already passed duration, break, availability and timezone
+    // checks in bookableSlots. Only the other participant and original time
+    // need checking here; validate the chosen slot again when it is picked.
+    return availableTimeSlots.filter(time => !isRescheduleToSameDateTime(requestDate, time)
+      && !isTimeBookedForReschedule(requestDate, time)
+      && !isCounterpartyDateTimeBooked(requestDate, time));
   }, [requestMode, requestDate, availableTimeSlots, selectedClass, selectedClassDuration, localRole, classesCache, teacherClassesCache, counterpartyBookedDates, teacherAvailabilityList, availability, isSimpleStudentView, simpleRescheduleSlots]);
 
   useEffect(() => {
@@ -6445,6 +6513,9 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                   ) }
                   { canShowRescheduleAction && (
                     <button
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-controls="reschedule-request-dialog"
                       className={`${cal.actionCard} ${cal.actionWarn}`}
                       onClick={() => {
                         // Fetch counterparty's booked dates
@@ -6505,24 +6576,21 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     </div>
                   ) }
                   { requestMode && !selectedClassHasAttendance && !selectedClassEnded && (
+                    <RescheduleDialog busy={isSubmittingRequest} confirming={requestConfirmOpen}
+                      onClose={() => { setRequestMode(false); setRequestError(""); }}>
                     <div className={cal.panelCard} style={{ marginTop: 12 }}>
                       <div>
-                        <h4 style={{ margin: "0 0 6px 0", fontSize: "1.05rem", fontWeight: 800, color: "var(--primary)" }}>
-                          Request Reschedule
-                        </h4>
                         <p className={cal.formHint}>
                           Required before sending: choose a new date, pick an available time, and add a short reason (minimum 5 characters).
                         </p>
                       </div>
                       {requestError && <div className={cal.errorBox}>{requestError}</div>}
                       <div>
-                        <label className={cal.formLabel}>New Date *</label>
-                        <div className={cal.formInput} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", minHeight: "42px", cursor: "default" }}>
-                          <span style={{ color: requestDate ? "var(--text)" : "var(--muted-light)" }}>
-                            {requestDate ? new Date(requestDate + "T00:00:00").toLocaleDateString() : "Select a date on the calendar"}
-                          </span>
-                        </div>
-                        <p className={cal.formHint} style={{ marginTop: 6 }}>Step 1: click a day on the calendar to choose the new date.</p>
+                        <label className={cal.formLabel} htmlFor="reschedule-request-date">New Date *</label>
+                        <input id="reschedule-request-date" type="date" className={cal.formInput}
+                          value={requestDate} min={viewerTodayKey} max={studentBookingEndKey}
+                          onChange={event => chooseRequestDate(event.target.value)} />
+                        <p className={cal.formHint} style={{ marginTop: 6 }}>Step 1: choose a new date above.</p>
                         {requestDate && (
                           <div style={{ marginTop: 6 }}>
                             {getRescheduleAvailabilityStatus(requestDate) === "unavailable" ? (
@@ -6575,7 +6643,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                           onChange={e => { setRequestReason(e.target.value); setRequestError(""); }}
                         />
                         <p className={cal.formHint} style={{ marginTop: 6 }}>
-                          Step 3: add a short reason so your teacher understands the request.
+                          Step 3: add a short reason so {localRole === "teacher" ? "your student" : "your teacher"} understands the request.
                         </p>
                       </div>
                       <div style={{ display: "grid", gap: 8 }}>
@@ -6599,6 +6667,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         </button>
                       </div>
                     </div>
+                    </RescheduleDialog>
                   ) }
                   <button
                     type="button"
@@ -7105,6 +7174,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     {canShowRescheduleAction && (
                       <button
                         type="button"
+                        aria-haspopup="dialog"
+                        aria-controls="reschedule-request-dialog"
                         className={`${cal.actionCard} ${cal.actionWarn}`}
                         onClick={() => {
                         // Fetch counterparty's booked dates
@@ -7170,9 +7241,10 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                       </div>
                     )}
                     { requestMode && !selectedClassHasAttendance && !selectedClassEnded && (
+                      <RescheduleDialog busy={isSubmittingRequest} confirming={requestConfirmOpen}
+                        onClose={() => { setRequestMode(false); setRequestError(""); }}>
                       <div style={{ marginTop: 12, padding: 14, border: "1px solid #e0e0e0", borderRadius: 8, background: "#fafafa" }}>
                       <div style={{ marginBottom: 12 }}>
-                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.9rem", color: "#333" }}>{CLASS_INFO.changeTimeTitle}</h4>
                         <p style={{ margin: 0, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
                           {CLASS_INFO.changeTimeHelp}
                         </p>
@@ -7183,20 +7255,11 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         </div>
                       )}
                       <div style={{ marginBottom: 10 }}>
-                        <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 700, marginBottom: 6, color: "#333" }}>{CLASS_INFO.newDay}</label>
-                        {/* A strip of days, not a calendar.
-                            !!
-                            !! A student has no month grid on their page, so
-                            !! the old "click a day on the calendar" had
-                            !! nothing to click. The strip says what each day
-                            !! is, and the only thing to do is press one. */}
-                        <DayPicker
-                          days={simpleRescheduleDays}
-                          statusFor={getRescheduleAvailabilityStatus}
-                          selected={requestDate}
-                          onPick={chooseRequestDate}
-                          emptyMessage="No days to choose from."
-                        />
+                        <label htmlFor="reschedule-request-date" className={cal.formLabel}>{CLASS_INFO.newDay}</label>
+                        <input id="reschedule-request-date" type="date" className={cal.formInput}
+                          value={requestDate} min={viewerTodayKey}
+                          max={simpleRescheduleDays.at(-1)?.key || studentBookingEndKey}
+                          onChange={event => chooseRequestDate(event.target.value)} />
                         {simpleAvailabilityError && <p role="alert" className={cal.fieldError}>{simpleAvailabilityError}</p>}
                         {requestDate && (
                           <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#666", lineHeight: 1.4 }}>
@@ -7253,6 +7316,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         </button>
                       </div>
                     </div>
+                      </RescheduleDialog>
                     ) }
                     <button
                       type="button"

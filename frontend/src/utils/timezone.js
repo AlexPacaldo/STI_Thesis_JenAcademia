@@ -2,6 +2,21 @@ import { readStoredUser } from "./sessionUser.js";
 
 export const DEFAULT_TIMEZONE = "Asia/Manila";
 
+// Slot generation calls these helpers thousands of times. Intl formatters are
+// expensive to construct, but can safely format many different dates.
+const formatterCache = new Map();
+const timezoneValidityCache = new Map();
+const MAX_CACHED_FORMATTERS = 128;
+
+function dateTimeFormatter(locale, options) {
+  const key = JSON.stringify([locale, options]);
+  if (formatterCache.has(key)) return formatterCache.get(key);
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  if (formatterCache.size >= MAX_CACHED_FORMATTERS) formatterCache.delete(formatterCache.keys().next().value);
+  formatterCache.set(key, formatter);
+  return formatter;
+}
+
 const TIMEZONE_OPTIONS = [
   "Asia/Manila",
   "Asia/Ho_Chi_Minh",
@@ -45,12 +60,17 @@ export function getStoredUserTimezone(fallback = DEFAULT_TIMEZONE) {
 
 export function isValidTimezone(timezone) {
   if (!timezone || typeof timezone !== "string") return false;
+  if (timezoneValidityCache.has(timezone)) return timezoneValidityCache.get(timezone);
+  let valid;
   try {
-    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(new Date());
-    return true;
+    dateTimeFormatter("en-US", { timeZone: timezone });
+    valid = true;
   } catch {
-    return false;
+    valid = false;
   }
+  if (timezoneValidityCache.size >= MAX_CACHED_FORMATTERS) timezoneValidityCache.delete(timezoneValidityCache.keys().next().value);
+  timezoneValidityCache.set(timezone, valid);
+  return valid;
 }
 
 export function normalizeDateKey(value) {
@@ -105,7 +125,7 @@ export function convertDateTime(dateValue, timeValue, sourceTimezone, targetTime
 }
 
 export function formatDateInTimezone(date, timezone = DEFAULT_TIMEZONE, options) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
+  const parts = dateTimeFormatter("en-CA", {
     timeZone: isValidTimezone(timezone) ? timezone : DEFAULT_TIMEZONE,
     year: "numeric",
     month: "2-digit",
@@ -184,7 +204,7 @@ export function formatServerTimestamp(value, timezone = DEFAULT_TIMEZONE, option
   const instant = parseServerTimestamp(value);
   if (!instant) return "";
 
-  return new Intl.DateTimeFormat("en-US", {
+  return dateTimeFormatter("en-US", {
     timeZone: isValidTimezone(timezone) ? timezone : DEFAULT_TIMEZONE,
     year: "numeric",
     month: "short",
@@ -201,7 +221,7 @@ export function humanDate(dateValue, timezone = DEFAULT_TIMEZONE) {
   if (!dateKey) return "";
   const date = zonedDateTimeToDate(dateKey, "00:00", timezone);
   if (!date) return dateKey;
-  return new Intl.DateTimeFormat("en-US", {
+  return dateTimeFormatter("en-US", {
     timeZone: isValidTimezone(timezone) ? timezone : DEFAULT_TIMEZONE,
     month: "short",
     day: "numeric",
@@ -227,7 +247,7 @@ function getTimezoneOffsetMs(date, timezone) {
 }
 
 function getZonedParts(date, timezone) {
-  const parts = new Intl.DateTimeFormat("en-US", {
+  const parts = dateTimeFormatter("en-US", {
     timeZone: isValidTimezone(timezone) ? timezone : DEFAULT_TIMEZONE,
     hour12: false,
     year: "numeric",

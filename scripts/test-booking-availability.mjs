@@ -39,6 +39,27 @@ assert.deepEqual(bookableSlots(boundary, { ...boundaryOptions, occupied: [confli
 const convertedRecord = { ...boundary, source_available_date: "2026-10-31", source_start_time: "23:30", source_end_time: "23:59", source_timezone: "UTC", available_date: "2026-11-01", start_time: "07:30", end_time: "07:59" };
 assert.deepEqual(bookableSlots(convertedRecord, boundaryOptions), boundarySlots);
 
+// Restrict work to the selected viewer day without losing cross-midnight slots.
+for (const row of [boundary, convertedRecord, {
+  ...record, start_time: "15:30", end_time: "17:00", teacher_timezone: "UTC",
+}]) {
+  const allSlots = bookableSlots(row, boundaryOptions);
+  for (const targetDate of ["2026-10-31", "2026-11-01", "2026-11-16", "2026-11-17"]) {
+    assert.deepEqual(bookableSlots(row, { ...boundaryOptions, targetDate }),
+      allSlots.filter(slot => slot.date === targetDate));
+  }
+}
+
+// Cached timezone formatters must still reject local times skipped by DST.
+const springDay = { ...record, available_date: "2026-03-08", teacher_timezone: "America/New_York",
+  start_time: "01:00", end_time: "04:00" };
+const springOptions = { ...options, now: Date.parse("2026-03-01T00:00:00Z"), viewerTimezone: "America/New_York" };
+const springSlots = bookableSlots(springDay, springOptions);
+assert(springSlots.some(slot => slot.time === "01:00"));
+assert(springSlots.some(slot => slot.time === "03:00"));
+assert(springSlots.every(slot => !slot.time.startsWith("02:")));
+assert.deepEqual(bookableSlots(springDay, { ...springOptions, targetDate: "2026-03-08" }), springSlots);
+
 const days = [{ key: day }, { key: "2026-11-17" }];
 assert.deepEqual(bookingDayAvailability(days, bookableSlots(record, options)), { [day]: "available", "2026-11-17": "unavailable" });
 assert.deepEqual(bookingDayAvailability(days, bookableSlots(record, { ...options, occupied: [{ ...reservation, duration: 60 }] })), { [day]: "unavailable", "2026-11-17": "unavailable" });

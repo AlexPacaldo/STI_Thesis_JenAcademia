@@ -6,7 +6,7 @@ import { DEFAULT_TIMEZONE, convertDateTime, zonedDateTimeToDate } from "./timezo
 // are compared as instants so lessons crossing a viewer's midnight still block.
 export function bookableSlots(record, {
   duration, occupied = [], viewerTimezone = DEFAULT_TIMEZONE,
-  now = Date.now(), endKey = "", expiresAt = null, excludeClassId = null,
+  now = Date.now(), endKey = "", expiresAt = null, excludeClassId = null, targetDate = "",
 } = {}) {
   if (record?.status !== "available" || !Number.isFinite(duration) || duration <= 0) return [];
   const date = record.source_available_date || record.available_date;
@@ -15,6 +15,12 @@ export function bookableSlots(record, {
   const end = timeToMinutes(record.source_end_time || record.end_time);
   const breakStart = timeToMinutes(record.source_break_start || record.break_start);
   const breakEnd = timeToMinutes(record.source_break_end || record.break_end);
+  if (targetDate) {
+    if (start == null || end == null || end <= start) return [];
+    const firstDate = convertDateTime(date, minutesToTime(start), zone, viewerTimezone).date;
+    const lastDate = convertDateTime(date, minutesToTime(end), zone, viewerTimezone).date;
+    if (targetDate < firstDate || targetDate > lastDate) return [];
+  }
   const midnight = zonedDateTimeToDate(date, "00:00", zone)?.getTime();
   if (!Number.isFinite(midnight)) return [];
   const busy = [];
@@ -49,6 +55,7 @@ export function bookableSlots(record, {
       if (local.date !== date || local.time !== time) return [];
       const converted = convertDateTime(date, time, zone, viewerTimezone);
       if (!Number.isFinite(instant) || instant <= now || finish > expiry
+        || (targetDate && converted.date !== targetDate)
         || (endKey && converted.date > endKey)
         || busy.some(range => instant < range.instant + range.length * 60000 && finish > range.instant)) return [];
       return [{ date: converted.date, time: converted.time, teacher_timezone: zone }];
