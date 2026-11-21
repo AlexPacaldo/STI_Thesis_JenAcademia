@@ -20,10 +20,10 @@ export default function Notification({ id, message, type = "info", duration = 40
       className={`${styles.notification} ${styles[type]} ${!isVisible ? styles.exit : ""}`}>
       <div className={styles.content}>
         <span className={styles.icon}>
-          {type === "success" && "✓"}
-          {type === "error" && "✕"}
+          {type === "success" && <i className="bi bi-check2" aria-hidden="true" />}
+          {type === "error" && <i className="bi bi-x-lg" aria-hidden="true" />}
           {type === "warning" && "!"}
-          {type === "info" && "ℹ"}
+          {type === "info" && <i className="bi bi-info-circle" aria-hidden="true" />}
         </span>
         <span className={styles.message}>{message}</span>
       </div>

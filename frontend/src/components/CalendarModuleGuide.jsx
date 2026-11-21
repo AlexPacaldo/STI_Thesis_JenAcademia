@@ -9,7 +9,7 @@ import {
 
 const STUDENT_STEPS = [
   {
-    icon: "🗓️",
+    icon: "bi-calendar3",
     title: "Use your Calendar",
     text: "Here is how to find your classes:",
     instructions: [
@@ -20,7 +20,7 @@ const STUDENT_STEPS = [
     target: "calendar",
   },
   {
-    icon: "📅",
+    icon: "bi-calendar-plus",
     title: "Book a class",
     text: "Follow these steps to book a class:",
     instructions: [
@@ -32,7 +32,7 @@ const STUDENT_STEPS = [
     target: "book-class",
   },
   {
-    icon: "🔁",
+    icon: "bi-arrow-repeat",
     title: "Reschedule a class",
     text: "Follow these steps to ask for a new class time:",
     instructions: [
@@ -48,7 +48,7 @@ const STUDENT_STEPS = [
 
 const TEACHER_STEPS = [
   {
-    icon: "🗓️",
+    icon: "bi-calendar3",
     title: "Use your Calendar",
     text: "Follow these steps to find classes in your Calendar:",
     instructions: [
@@ -59,7 +59,7 @@ const TEACHER_STEPS = [
     target: "calendar",
   },
   {
-    icon: "🟢",
+    icon: "bi-calendar-check",
     title: "Set your availability",
     text: "Follow these steps to add your available teaching times:",
     instructions: [
@@ -72,7 +72,7 @@ const TEACHER_STEPS = [
     action: "Set availability",
   },
   {
-    icon: "🔁",
+    icon: "bi-arrow-repeat",
     title: "Reschedule a class",
     text: "Follow these steps to ask for a different class time:",
     instructions: [
@@ -149,7 +149,7 @@ export default function CalendarModuleGuide({ role, userId, isReady }) {
       <div className={styles.helpRow}>
         <p>Need help with the calendar?</p>
         <button type="button" className={styles.helpButton} onClick={replay}>
-          <span aria-hidden="true">💡</span> Show me how
+          <i className="bi bi-lightbulb" aria-hidden="true" /> Show me how
         </button>
       </div>
 
@@ -171,7 +171,9 @@ export default function CalendarModuleGuide({ role, userId, isReady }) {
                 <span style={{ width: `${((stepIndex + 1) / steps.length) * 100}%` }} />
               </div>
               <div className={styles.content}>
-                <span className={styles.icon} aria-hidden="true">{step.icon}</span>
+                <span className={styles.icon} aria-hidden="true">
+                  <i className={`bi ${step.icon}`} />
+                </span>
                 <h2 id="calendar-guide-title">{step.title}</h2>
                 {step.text && <p id="calendar-guide-description">{step.text}</p>}
                 {step.instructions && (

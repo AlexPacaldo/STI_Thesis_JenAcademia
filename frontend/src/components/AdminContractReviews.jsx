@@ -9,7 +9,7 @@
  * including every criterion and the comments they left.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 
 import styles from "../assets/adminContractReviews.module.css";
@@ -21,6 +21,7 @@ import {
   LEVEL_EVALUATION_CRITERIA,
 } from "../utils/proficiencyEvaluation.js";
 import { STUDENT_REVIEW_CRITERIA } from "../utils/contractReview.js";
+import useLiveRefresh from "../hooks/useLiveRefresh.js";
 
 const API = API_BASE_URL;
 
@@ -175,30 +176,33 @@ export default function AdminContractReviews() {
   const [filter, setFilter] = useState("all");
   const [selected, setSelected] = useState(null);
 
-  async function loadReports() {
-    setLoading(true);
-    setError("");
+  const loadReports = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     try {
       const response = await axios.get(`${API}/api/admin/contract-reviews`);
+      setError("");
       setReviews(Array.isArray(response.data?.reviews) ? response.data.reviews : []);
     } catch (err) {
-      console.error("Error loading contract review reports:", err);
       const message =
         err?.response?.data?.message || "Could not load the contract review reports.";
-      setError(message);
-      notify?.(message, "error");
-      setReviews([]);
+      if (showLoading) {
+        console.error("Error loading contract review reports:", err);
+        setError(message);
+        notify?.(message, "error");
+        setReviews([]);
+      } else {
+        console.warn("Could not update contract review reports:", err);
+      }
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
-  }
+  }, [notify]);
 
   useEffect(() => {
-    loadReports();
-    // loadReports is intentionally not in the dependency list: it closes over
-    // notify, and including it would refetch on every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void loadReports(true);
+  }, [loadReports]);
+
+  useLiveRefresh(() => loadReports(false));
 
   useEffect(() => {
     if (!selected) return undefined;
@@ -266,15 +270,6 @@ export default function AdminContractReviews() {
             evaluation of the student, and the student&apos;s rating of the teacher.
           </p>
         </div>
-        <button
-          type="button"
-          className={styles.refreshButton}
-          onClick={loadReports}
-          disabled={loading}
-        >
-          <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-          {loading ? "Refreshing..." : "Refresh"}
-        </button>
       </div>
 
       <div className={styles.statGrid}>
@@ -351,7 +346,7 @@ export default function AdminContractReviews() {
           <div>
             <strong>Reports could not load</strong>
             <p>{error}</p>
-            <button type="button" className={styles.linkButton} onClick={loadReports}>
+            <button type="button" className={styles.linkButton} onClick={() => loadReports(true)}>
               Try again
             </button>
           </div>

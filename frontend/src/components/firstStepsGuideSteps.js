@@ -23,7 +23,7 @@ export function getGuideSteps(role) {
 const TEACHER_STEPS = [
   {
     id: "home",
-    icon: "👋",
+    icon: "bi-hand-wave",
     title: "Hello, teacher!",
     module: "Home",
     text: "Home is your starting place. It shows the classes you have today, then two shortcuts.",
@@ -40,7 +40,7 @@ const TEACHER_STEPS = [
         text: "Each card is one class today: the student and the subject. Tap a card to open that day in your calendar.",
       },
       example: {
-        emoji: "🌤️",
+        icon: "bi-sun",
         title: "A quick check before teaching",
         body: "It is 3:50 PM and your first class starts in ten minutes. You open Home instead of searching through the calendar.",
         flow: [
@@ -53,7 +53,7 @@ const TEACHER_STEPS = [
   },
   {
     id: "availability",
-    icon: "🗓️",
+    icon: "bi-calendar3",
     title: "Set your teaching times",
     module: "Calendar",
     text: "Tell the calendar when you are free to teach. Students can only book inside these hours.",
@@ -71,7 +71,7 @@ const TEACHER_STEPS = [
         text: "Nothing is saved until you press this button. After that, students see only the hours you chose.",
       },
       example: {
-        emoji: "☕",
+        icon: "bi-cup-hot",
         title: "Your Tuesday teaching hours",
         body: "You are free after school on Tuesdays, but you stop for a snack at 5:30.",
         flow: [
@@ -86,7 +86,7 @@ const TEACHER_STEPS = [
   },
   {
     id: "reschedule",
-    icon: "🔁",
+    icon: "bi-arrow-repeat",
     title: "Change a class time",
     module: "Calendar",
     text: "Use the calendar when you or a student needs a different class time.",
@@ -105,7 +105,7 @@ const TEACHER_STEPS = [
         text: "This opens the request form. The class stays where it is until the other person approves the new time.",
       },
       example: {
-        emoji: "🏫",
+        icon: "bi-building",
         title: "Emma’s class needs a new time",
         body: "Emma has a school event on Tuesday. You find a free slot on Thursday and send the request.",
         flow: [
@@ -120,7 +120,7 @@ const TEACHER_STEPS = [
   },
   {
     id: "students",
-    icon: "🧒",
+    icon: "bi-person",
     title: "Find your students",
     module: "My students",
     text: "My students is your list of everyone you teach.",
@@ -137,7 +137,7 @@ const TEACHER_STEPS = [
         text: "Each row is one student: their course, their package, and how many classes are left.",
       },
       example: {
-        emoji: "🔎",
+        icon: "bi-search",
         title: "Finding one student quickly",
         body: "You need Emma’s next class time before your lesson starts.",
         flow: [
@@ -152,7 +152,7 @@ const TEACHER_STEPS = [
   },
   {
     id: "history",
-    icon: "🕰️",
+    icon: "bi-clock",
     title: "Look at class history",
     module: "Class history",
     text: "Class history shows classes that have already happened.",
@@ -169,7 +169,7 @@ const TEACHER_STEPS = [
         text: "Each card is one finished class: when it was, who came, and the proof that it happened.",
       },
       example: {
-        emoji: "📝",
+        icon: "bi-journal-text",
         title: "Remembering last week’s lesson",
         body: "Before Emma’s next class, you check what you covered last time.",
         flow: [
@@ -184,7 +184,7 @@ const TEACHER_STEPS = [
   },
   {
     id: "reviews",
-    icon: "⭐",
+    icon: "bi-star",
     title: "Review a student’s progress",
     module: "Contract reviews",
     text: "Contract reviews close a finished contract. You score five skills and the level is worked out for you.",
@@ -202,7 +202,7 @@ const TEACHER_STEPS = [
         text: "Score each skill on its own. JEN Academia adds them up and shows the level — nobody picks the level by hand.",
       },
       example: {
-        emoji: "🎓",
+        icon: "bi-mortarboard",
         title: "Closing Emma’s contract",
         body: "Emma has finished all her classes. You score what you actually saw in class.",
         flow: [
@@ -217,7 +217,7 @@ const TEACHER_STEPS = [
   },
   {
     id: "remarks",
-    icon: "💬",
+    icon: "bi-chat-dots",
     title: "Leave a remark",
     module: "Calendar",
     text: "A class note tells the student what you noticed. You write it in the class panel.",
@@ -234,7 +234,7 @@ const TEACHER_STEPS = [
         text: "Write what the student did well and what to practise next. Keep it short and encouraging.",
       },
       example: {
-        emoji: "💚",
+        icon: "bi-heart-fill",
         title: "A note after Tuesday’s class",
         body: "Emma finally used the past tense without help. You want her to remember that.",
         flow: [
@@ -249,7 +249,7 @@ const TEACHER_STEPS = [
   },
   {
     id: "assignments",
-    icon: "✏️",
+    icon: "bi-pencil",
     title: "Give and check assignments",
     module: "Assignments",
     text: "Use Assignments to give work and read what students send back.",
@@ -268,7 +268,7 @@ const TEACHER_STEPS = [
         text: "Write the instructions, add a due date or a file, then press this to give the task to the student.",
       },
       example: {
-        emoji: "📚",
+        icon: "bi-book",
         title: "One task, sent to Emma",
         body: "You want Emma to practise reading before Friday.",
         flow: [
@@ -283,7 +283,7 @@ const TEACHER_STEPS = [
   },
   {
     id: "books",
-    icon: "📚",
+    icon: "bi-book",
     title: "Open your books",
     module: "My books",
     text: "My books has the lesson books shared with you.",
@@ -300,7 +300,7 @@ const TEACHER_STEPS = [
         text: "Each card is a book the admin shared with you. Open it to read the lessons and see how far a student has got.",
       },
       example: {
-        emoji: "📖",
+        icon: "bi-book-half",
         title: "Checking Emma’s reading",
         body: "Emma has finished three of the five lessons in her book.",
         flow: [
@@ -318,7 +318,7 @@ const TEACHER_STEPS = [
 const STUDENT_STEPS = [
   {
     id: "home",
-    icon: "👋",
+    icon: "bi-hand-wave",
     title: "Hello, learner!",
     module: "Home",
     text: "Home is your starting place. It shows what is happening today.",
@@ -335,7 +335,7 @@ const STUDENT_STEPS = [
         text: "Each card is a class you have today: the subject and your teacher. Tap it to see the time in your calendar.",
       },
       example: {
-        emoji: "⏰",
+        icon: "bi-alarm",
         title: "Getting ready for class",
         body: "It is 3:50 PM. You open Home to check where your next class is.",
         flow: [
@@ -348,7 +348,7 @@ const STUDENT_STEPS = [
   },
   {
     id: "booking",
-    icon: "🗓️",
+    icon: "bi-calendar3",
     title: "Book a class",
     module: "Calendar",
     text: "Pick one day and one time with your teacher.",
@@ -366,7 +366,7 @@ const STUDENT_STEPS = [
         text: "Green days are the days your teacher can teach. Pick one, then pick a time, then press Book it.",
       },
       example: {
-        emoji: "🎒",
+        icon: "bi-backpack",
         title: "Booking after school",
         body: "You want a class on Tuesday. Your teacher is free at 4:00 and 4:30.",
         flow: [
@@ -381,7 +381,7 @@ const STUDENT_STEPS = [
   },
   {
     id: "reschedule",
-    icon: "🔁",
+    icon: "bi-arrow-repeat",
     title: "Ask to change a class",
     module: "Calendar",
     text: "If you cannot come, ask your teacher for a new time.",
@@ -400,7 +400,7 @@ const STUDENT_STEPS = [
         text: "This starts your request. Your old time stays on the calendar until your teacher approves the new one.",
       },
       example: {
-        emoji: "⚽",
+        icon: "bi-dribbble",
         title: "You have a football game",
         body: "Your match is on Tuesday at the same time as your English class.",
         flow: [
@@ -415,7 +415,7 @@ const STUDENT_STEPS = [
   },
   {
     id: "history",
-    icon: "🕰️",
+    icon: "bi-clock",
     title: "Look at class history",
     module: "Class history",
     text: "Class history shows classes you have already had.",
@@ -432,7 +432,7 @@ const STUDENT_STEPS = [
         text: "Each card is one class you had: when it was, how long, and what you did together.",
       },
       example: {
-        emoji: "🗂️",
+        icon: "bi-folder2-open",
         title: "Finding last week’s class",
         body: "You want to check when you learned about animals in English.",
         flow: [
@@ -447,7 +447,7 @@ const STUDENT_STEPS = [
   },
   {
     id: "reviews",
-    icon: "⭐",
+    icon: "bi-star",
     title: "Share a contract review",
     module: "Contract reviews",
     text: "When a contract is finished, you rate your classes.",
@@ -465,7 +465,7 @@ const STUDENT_STEPS = [
         text: "Tap a number from 1 to 5 for each question. Five means your teacher was brilliant at it.",
       },
       example: {
-        emoji: "🌟",
+        icon: "bi-star-fill",
         title: "Rating Ms. Ana’s classes",
         body: "You finished all your classes. Now you can say what helped you most.",
         flow: [
@@ -480,7 +480,7 @@ const STUDENT_STEPS = [
   },
   {
     id: "assignments",
-    icon: "✏️",
+    icon: "bi-pencil",
     title: "Do your assignments",
     module: "Assignments",
     text: "Assignments shows the work your teacher gave you.",
@@ -499,7 +499,7 @@ const STUDENT_STEPS = [
         text: "Open a task to read the instructions, write your answer, and send it back to your teacher.",
       },
       example: {
-        emoji: "✅",
+        icon: "bi-check-circle",
         title: "Reading homework for Friday",
         body: "Your teacher asked you to read pages 12–14 and answer one question.",
         flow: [
@@ -514,7 +514,7 @@ const STUDENT_STEPS = [
   },
   {
     id: "remarks",
-    icon: "💬",
+    icon: "bi-chat-dots",
     title: "Read your remarks",
     module: "Remarks",
     text: "Remarks are notes your teacher has shared with you.",
@@ -531,7 +531,7 @@ const STUDENT_STEPS = [
         text: "These are kind notes from after class. Read them before your next lesson.",
       },
       example: {
-        emoji: "🌱",
+        icon: "bi-flower1",
         title: "A note after Tuesday’s class",
         body: "Your teacher noticed something you did all by yourself.",
         flow: [
@@ -546,7 +546,7 @@ const STUDENT_STEPS = [
   },
   {
     id: "books",
-    icon: "📚",
+    icon: "bi-book",
     title: "Read a lesson",
     module: "Books/Lessons",
     text: "Open Books/Lessons to find your books and lessons.",
@@ -565,7 +565,7 @@ const STUDENT_STEPS = [
         text: "Tap this when you finish a lesson. It saves your place and opens the next lesson.",
       },
       example: {
-        emoji: "🚀",
+        icon: "bi-rocket",
         title: "Finishing lesson 3",
         body: "You have read the whole lesson and answered the last question.",
         flow: [

@@ -32,12 +32,12 @@ const FILTER_OPTIONS = [
 ];
 
 const TYPE_META = {
-  reschedule: { label: "New time", emoji: "📅", accent: "#9a5a05", tint: "#fdf1df" },
-  assignment: { label: "Homework", emoji: "📋", accent: "#245394", tint: "#eaf1ff" },
-  remark: { label: "Teacher note", emoji: "⭐", accent: "#816200", tint: "#fff7dd" },
-  announcement: { label: "School news", emoji: "📢", accent: "#2f7a3d", tint: "#edf7e9" },
-  class_reminder: { label: "Reminder", emoji: "🔔", accent: "#1f6b66", tint: "#e7f5f3" },
-  general: { label: "Update", emoji: "📌", accent: "#5e7268", tint: "#f1f4f2" },
+  reschedule: { label: "New time", icon: "bi-calendar-event", accent: "#9a5a05", tint: "#fdf1df" },
+  assignment: { label: "Homework", icon: "bi-clipboard", accent: "#245394", tint: "#eaf1ff" },
+  remark: { label: "Teacher note", icon: "bi-star", accent: "#816200", tint: "#fff7dd" },
+  announcement: { label: "School news", icon: "bi-megaphone", accent: "#2f7a3d", tint: "#edf7e9" },
+  class_reminder: { label: "Reminder", icon: "bi-bell", accent: "#1f6b66", tint: "#e7f5f3" },
+  general: { label: "Update", icon: "bi-pin-angle", accent: "#5e7268", tint: "#f1f4f2" },
 };
 
 const getTypeMeta = (type) => TYPE_META[type] || TYPE_META.general;
@@ -412,7 +412,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
       >
         <header className={styles.header}>
           <div className={styles.headerMain}>
-            <span className={styles.headerIcon} aria-hidden="true">🔔</span>
+            <span className={styles.headerIcon} aria-hidden="true"><i className="bi bi-bell-fill" /></span>
             <div className={styles.headerText}>
               <div className={styles.titleRow}>
                 <h2 id="notifications-title" className={styles.title}>Notifications</h2>
@@ -422,7 +422,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                 {unreadCount > 0
                   ? "Here's what's new!"
                   : notifications.length > 0
-                    ? "You're all caught up! 🎉"
+                    ? "You're all caught up!"
                     : "New notes will show up here"}
               </p>
             </div>
@@ -469,7 +469,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
             </div>
           ) : notifications.length === 0 ? (
             <div className={styles.emptyState}>
-              <div className={styles.emptyIcon} aria-hidden="true">🎉</div>
+              <div className={styles.emptyIcon} aria-hidden="true"><i className="bi bi-check2-circle" /></div>
               <h3 className={styles.emptyTitle}>
                 {selectedType === "all" ? "Nothing here yet" : `No ${selectedFilter.label.toLowerCase()} right now`}
               </h3>
@@ -508,11 +508,11 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                       }
                     }}
                   >
-                    <div className={styles.notifIcon} aria-hidden="true">{meta.emoji}</div>
+                    <div className={styles.notifIcon} aria-hidden="true"><i className={`bi ${meta.icon}`} /></div>
 
                     <div className={styles.notifContent}>
                       <div className={styles.notifMeta}>
-                        {!notif.is_read && <span className={styles.newBadge}>✨ New</span>}
+                        {!notif.is_read && <span className={styles.newBadge}>New</span>}
                         <span className={styles.notifType}>{meta.label}</span>
                         {timestamp && <span className={styles.notifTime}>{timestamp}</span>}
                       </div>
@@ -532,7 +532,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                               }}
                               disabled={actionInProgress === notif.notification_id}
                             >
-                              <span aria-hidden="true">✅</span>
+                              <i className="bi bi-check-circle" aria-hidden="true" />
                               {actionInProgress === notif.notification_id ? "Sending…" : "Approve"}
                             </button>
                             <button
@@ -544,7 +544,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                               }}
                               disabled={actionInProgress === notif.notification_id}
                             >
-                              <span aria-hidden="true">✖️</span>
+                              <i className="bi bi-x-lg" aria-hidden="true" />
                               {actionInProgress === notif.notification_id ? "Sending…" : "Decline"}
                             </button>
                             <button
@@ -555,7 +555,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                                 requestDeleteNotification(notif.notification_id);
                               }}
                             >
-                              <span aria-hidden="true">🗑️</span>
+                              <i className="bi bi-trash" aria-hidden="true" />
                               Delete
                             </button>
                           </>
@@ -569,7 +569,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                                 handleNotificationClick(notif);
                               }}
                             >
-                              <span aria-hidden="true">👀</span>
+                              <i className="bi bi-eye" aria-hidden="true" />
                               Open
                             </button>
                             <button
@@ -580,7 +580,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                                 requestDeleteNotification(notif.notification_id);
                               }}
                             >
-                              <span aria-hidden="true">🗑️</span>
+                              <i className="bi bi-trash" aria-hidden="true" />
                               Delete
                             </button>
                           </>
@@ -631,7 +631,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                   className={styles.footerBtnPrimary}
                   onClick={requestMarkAllAsRead}
                 >
-                  <span aria-hidden="true">✅</span>
+                  <i className="bi bi-check-circle" aria-hidden="true" />
                   Mark all as read
                 </button>
               )}
@@ -640,7 +640,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                 className={styles.footerBtnGhost}
                 onClick={requestClearAllNotifications}
               >
-                <span aria-hidden="true">🧹</span>
+                <i className="bi bi-brush" aria-hidden="true" />
                 Clear all
               </button>
             </div>

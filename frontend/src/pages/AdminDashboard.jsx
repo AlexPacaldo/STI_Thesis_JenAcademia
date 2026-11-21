@@ -45,6 +45,7 @@ import { openClassRecording } from "../utils/classRecording.js";
 import { formatRecordingDuration } from "../utils/recordingDuration.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { openAuthenticatedFile } from "../utils/authenticatedFile.js";
+import useLiveRefresh from "../hooks/useLiveRefresh.js";
 
 const API = API_BASE_URL;
 const VERIFICATIONS_PER_PAGE = 10;
@@ -305,13 +306,13 @@ const getVerificationDisplayStatus = (row) =>
     : "missing";
 
 const VERIFICATION_STATUS_ICONS = {
-  verified: "✅",
-  needs_review: "🔔",
-  student_confirmed: "🙋",
-  in_progress: "⏳",
-  pending: "🕓",
-  incomplete: "⚠️",
-  missing: "📭",
+  verified: "bi-check-circle",
+  needs_review: "bi-bell",
+  student_confirmed: "bi-person-check",
+  in_progress: "bi-hourglass-split",
+  pending: "bi-clock",
+  incomplete: "bi-exclamation-triangle",
+  missing: "bi-inbox",
 };
 
 // Upload paths come back both with and without a leading slash, and Windows
@@ -524,6 +525,7 @@ export default function AdminDashboard() {
   const [courses, setCourses] = useState([]);
   const [teacherCourses, setTeacherCourses] = useState([]);
   const [teacherCourseDrafts, setTeacherCourseDrafts] = useState({});
+  const dirtyTeacherCourseIds = useRef(new Set());
   const [teacherCourseSearch, setTeacherCourseSearch] = useState("");
   const [expandedTeacherCourses, setExpandedTeacherCourses] = useState({});
   const [savingTeacherCoursesId, setSavingTeacherCoursesId] = useState(null);
@@ -555,6 +557,7 @@ export default function AdminDashboard() {
   const [contractSearch, setContractSearch] = useState("");
   const [contractsLoading, setContractsLoading] = useState(false);
   const [savingContractId, setSavingContractId] = useState(null);
+  const dirtyContractIds = useRef(new Set());
   const [contractRequests, setContractRequests] = useState([]);
   const [contractRequestSearch, setContractRequestSearch] = useState("");
   const [contractRequestsLoading, setContractRequestsLoading] = useState(false);
@@ -667,7 +670,7 @@ export default function AdminDashboard() {
    }, []);
 
   // ---- fetchers ----
-  async function loadUsers() {
+  async function loadUsers(showLoading = true) {
     try {
       const [s, t, tc] = await Promise.all([
         axios.get(`${API}/api/admin/users?role=student&status=active`),
@@ -678,10 +681,14 @@ export default function AdminDashboard() {
       setTeachers(t.data || []);
       setTeacherCourses(tc.data?.teacherCourses || []);
     } catch (e) {
-      console.error(e);
-      setStudents([]);
-      setTeachers([]);
-      setTeacherCourses([]);
+      if (showLoading) {
+        console.error(e);
+        setStudents([]);
+        setTeachers([]);
+        setTeacherCourses([]);
+      } else {
+        console.warn("Could not update teacher and student lists:", e);
+      }
     }
   }
 
@@ -722,6 +729,20 @@ export default function AdminDashboard() {
       loadBooks();
     }
   }, [active]);
+
+  useLiveRefresh(() => {
+    if (active === "requests") return loadRequests(false);
+    if (active === "verifications") return loadClassVerifications(false);
+    if (active === "contracts") {
+      return contractSubTab === "packages"
+        ? loadContracts(false)
+        : loadContractRequests(false);
+    }
+    if (active === "teacherCourses") return loadUsers(false);
+    return undefined;
+  }, {
+    enabled: ["requests", "verifications", "contracts", "teacherCourses"].includes(active),
+  });
 
   // ===== BOOK LIBRARY =====
   // Books are authored here and handed out to teachers. Teachers get read-only
@@ -1020,14 +1041,18 @@ export default function AdminDashboard() {
   }, [verificationSearch]);
 
   useEffect(() => {
-    const nextDrafts = {};
-    teachers.forEach((teacher) => {
-      const teacherId = String(teacher.user_id);
-      nextDrafts[teacherId] = teacherCourses
-        .filter((item) => String(item.teacher_id) === teacherId)
-        .map((item) => String(item.course_id));
+    setTeacherCourseDrafts((current) => {
+      const nextDrafts = {};
+      teachers.forEach((teacher) => {
+        const teacherId = String(teacher.user_id);
+        nextDrafts[teacherId] = dirtyTeacherCourseIds.current.has(teacherId)
+          ? current[teacherId] || []
+          : teacherCourses
+            .filter((item) => String(item.teacher_id) === teacherId)
+            .map((item) => String(item.course_id));
+      });
+      return nextDrafts;
     });
-    setTeacherCourseDrafts(nextDrafts);
   }, [teachers, teacherCourses]);
 
   // ---- actions: create teacher ----
@@ -1374,6 +1399,7 @@ export default function AdminDashboard() {
   function toggleManagedTeacherCourse(teacherId, courseId) {
     const teacherKey = String(teacherId);
     const courseKey = String(courseId);
+    dirtyTeacherCourseIds.current.add(teacherKey);
     setTeacherCourseDrafts((current) => {
       const selected = current[teacherKey] || [];
       const exists = selected.includes(courseKey);
@@ -1406,7 +1432,8 @@ export default function AdminDashboard() {
     try {
       await axios.put(`${API}/api/admin/teachers/${teacherId}/courses`, { courseIds });
       notify("Teacher courses updated successfully.", "success");
-      loadUsers();
+      await loadUsers(false);
+      dirtyTeacherCourseIds.current.delete(teacherKey);
     } catch (e) {
       console.error(e);
       notify(e?.response?.data?.message || "Failed to update teacher courses", "error");
@@ -1658,16 +1685,20 @@ export default function AdminDashboard() {
   }
 
   // ---- actions: requests ----
-  async function loadRequests() {
-    setRequestsLoading(true);
+  async function loadRequests(showLoading = true) {
+    if (showLoading) setRequestsLoading(true);
     try {
       const r = await axios.get(`${API}/api/admin/reschedule-requests`);
       setRequests(r.data.requests.sort((a, b) => new Date(b.requested_at) - new Date(a.requested_at)) || []);
     } catch (e) {
-      console.error(e);
-      setRequests([]);
+      if (showLoading) {
+        console.error(e);
+        setRequests([]);
+      } else {
+        console.warn("Could not update reschedule requests:", e);
+      }
     } finally {
-      setRequestsLoading(false);
+      if (showLoading) setRequestsLoading(false);
     }
   }
 
@@ -1740,11 +1771,11 @@ export default function AdminDashboard() {
     }
   }
 
-  async function loadContracts() {
-    setContractsLoading(true);
+  async function loadContracts(showLoading = true) {
+    if (showLoading) setContractsLoading(true);
     try {
       const r = await axios.get(`${API}/api/admin/student-contracts`);
-      setContracts((r.data.contracts || []).map((item) => ({
+      const updatedContracts = (r.data.contracts || []).map((item) => ({
         ...item,
         course_id: item.course_id || "",
         assigned_teacher_id: item.assigned_teacher_id || "",
@@ -1752,17 +1783,32 @@ export default function AdminDashboard() {
         classes_used: item.classes_used ?? 0,
         class_duration: item.class_duration ?? 50,
         package_status: item.package_status || "active",
-      })));
+      }));
+      setContracts((current) => {
+        const currentById = new Map(current.map((row) => [String(row.user_id), row]));
+        return updatedContracts.map((row) => {
+          const userId = String(row.user_id);
+          const localDraft = currentById.get(userId);
+          return dirtyContractIds.current.has(userId) && localDraft
+            ? { ...row, ...localDraft }
+            : row;
+        });
+      });
     } catch (e) {
-      console.error(e);
-      setContracts([]);
-      notify("Failed to load student contracts", "error");
+      if (showLoading) {
+        console.error(e);
+        setContracts([]);
+        notify("Failed to load student contracts", "error");
+      } else {
+        console.warn("Could not update student contracts:", e);
+      }
     } finally {
-      setContractsLoading(false);
+      if (showLoading) setContractsLoading(false);
     }
   }
 
   function updateContractRow(studentId, field, value) {
+    dirtyContractIds.current.add(String(studentId));
     setContracts((prev) => prev.map((row) => {
       if (row.user_id !== studentId) return row;
       const next = { ...row, [field]: value };
@@ -1792,7 +1838,8 @@ export default function AdminDashboard() {
         status: row.package_status || "active",
       });
       notify("Student contract updated", "success");
-      loadContracts();
+      await loadContracts(false);
+      dirtyContractIds.current.delete(String(row.user_id));
     } catch (e) {
       console.error(e);
       notify(e?.response?.data?.message || "Failed to update contract", "error");
@@ -1801,20 +1848,24 @@ export default function AdminDashboard() {
     }
   }
 
-  async function loadContractRequests() {
-    setContractRequestsLoading(true);
+  async function loadContractRequests(showLoading = true) {
+    if (showLoading) setContractRequestsLoading(true);
     try {
       const r = await axios.get(`${API}/api/admin/contract-requests`);
       const requests = r.data.requests || [];
       setContractRequests(requests);
       return requests;
     } catch (e) {
-      console.error(e);
-      setContractRequests([]);
-      notify("Failed to load contract requests", "error");
+      if (showLoading) {
+        console.error(e);
+        setContractRequests([]);
+        notify("Failed to load contract requests", "error");
+      } else {
+        console.warn("Could not update contract requests:", e);
+      }
       return null;
     } finally {
-      setContractRequestsLoading(false);
+      if (showLoading) setContractRequestsLoading(false);
     }
   }
 
@@ -1943,19 +1994,23 @@ export default function AdminDashboard() {
     }
   }
 
-  async function loadClassVerifications() {
-    setVerificationsLoading(true);
+  async function loadClassVerifications(showLoading = true) {
+    if (showLoading) setVerificationsLoading(true);
     try {
       const response = await axios.get(`${API}/api/admin/class-verifications`, {
         params: { status: "all", limit: 300 },
       });
       setVerifications(response.data?.verifications || []);
     } catch (e) {
-      console.error(e);
-      setVerifications([]);
-      notify("Failed to load class verifications", "error");
+      if (showLoading) {
+        console.error(e);
+        setVerifications([]);
+        notify("Failed to load class verifications", "error");
+      } else {
+        console.warn("Could not update class verifications:", e);
+      }
     } finally {
-      setVerificationsLoading(false);
+      if (showLoading) setVerificationsLoading(false);
     }
   }
 
@@ -2140,7 +2195,7 @@ export default function AdminDashboard() {
     "incomplete",
   ];
   const verificationQuickFilters = [
-    { key: "all", label: "All classes", icon: "🗂️", count: verificationCounts.all || 0 },
+    { key: "all", label: "All classes", icon: "bi-folder2-open", count: verificationCounts.all || 0 },
     ...verificationQuickFilterOrder
       .filter((status) => ["needs_review", "missing", "verified", "incomplete"].includes(status) || (verificationCounts[status] || 0) > 0)
       .map((status) => ({
@@ -2161,17 +2216,17 @@ export default function AdminDashboard() {
     return styles.verifyToneWarn;
   };
   const requestStatusMeta = (status) => ({
-    pending: { label: "Waiting", icon: "⏳" },
-    approved: { label: "Approved", icon: "✅" },
-    declined: { label: "Declined", icon: "🚫" },
-    cancelled: { label: "Cancelled", icon: "↩️" },
-  }[status] || { label: status || "Waiting", icon: "⏳" });
+    pending: { label: "Waiting", icon: "bi-hourglass-split" },
+    approved: { label: "Approved", icon: "bi-check-circle" },
+    declined: { label: "Declined", icon: "bi-ban" },
+    cancelled: { label: "Cancelled", icon: "bi-arrow-counterclockwise" },
+  }[status] || { label: status || "Waiting", icon: "bi-hourglass-split" });
   const requestQuickFilters = [
-    { key: "all", label: "All requests", icon: "🗂️", tone: styles.verifyToneNeutral },
-    { key: "pending", label: "Waiting", icon: "⏳", tone: styles.verifyToneWarn },
-    { key: "approved", label: "Approved", icon: "✅", tone: styles.verifyToneSuccess },
-    { key: "declined", label: "Declined", icon: "🚫", tone: styles.verifyToneDanger },
-    { key: "cancelled", label: "Cancelled", icon: "↩️", tone: styles.verifyToneNeutral },
+    { key: "all", label: "All requests", icon: "bi-folder2-open", tone: styles.verifyToneNeutral },
+    { key: "pending", label: "Waiting", icon: "bi-hourglass-split", tone: styles.verifyToneWarn },
+    { key: "approved", label: "Approved", icon: "bi-check-circle", tone: styles.verifyToneSuccess },
+    { key: "declined", label: "Declined", icon: "bi-ban", tone: styles.verifyToneDanger },
+    { key: "cancelled", label: "Cancelled", icon: "bi-arrow-counterclockwise", tone: styles.verifyToneNeutral },
   ].map((filter) => ({
     ...filter,
     count: filter.key === "all"
@@ -2631,7 +2686,7 @@ export default function AdminDashboard() {
         {active === "verifications" && (
           <section className={`${styles.card} ${styles.verifyPage}`}>
             <div className={styles.verifyHero}>
-              <div className={styles.verifyHeroMark} aria-hidden="true">📋</div>
+              <div className={styles.verifyHeroMark} aria-hidden="true"><i className="bi bi-clipboard-check" /></div>
               <div className={styles.verifyHeroText}>
                 <span className={styles.verifyKicker}>Admin check-in</span>
                 <h2>Class Verifications</h2>
@@ -2639,21 +2694,13 @@ export default function AdminDashboard() {
               </div>
               <div className={styles.verifyHeroActions}>
                 <button
-                  className={styles.verifyHeroBtn}
-                  type="button"
-                  onClick={() => loadClassVerifications()}
-                  disabled={verificationsLoading}
-                >
-                  <span aria-hidden="true">↻</span> {verificationsLoading ? "Refreshing..." : "Refresh"}
-                </button>
-                <button
                   className={`${styles.verifyHeroBtn} ${styles.verifyHeroBtnDanger}`}
                   type="button"
                   onClick={requestClearVerifications}
                   disabled={!clearableVerificationCount || verificationsLoading}
                   title="Clears only verified and incomplete records"
                 >
-                  <span aria-hidden="true">🧹</span> Clear done
+                  <i className="bi bi-brush" aria-hidden="true" /> Clear done
                 </button>
               </div>
             </div>
@@ -2668,7 +2715,7 @@ export default function AdminDashboard() {
                   aria-pressed={verificationFilter === filter.key}
                 >
                   <span className={styles.verifyFilterTop}>
-                    <span className={styles.verifyFilterIcon} aria-hidden="true">{filter.icon}</span>
+                    <span className={styles.verifyFilterIcon} aria-hidden="true"><i className={`bi ${filter.icon}`} /></span>
                     <span className={styles.verifyFilterCount}>{filter.count}</span>
                   </span>
                   <span className={styles.verifyFilterLabel}>{filter.label}</span>
@@ -2678,7 +2725,7 @@ export default function AdminDashboard() {
 
             <div className={styles.verifyToolbar}>
               <div className={styles.verifySearchWrap}>
-                <span className={styles.verifySearchIcon} aria-hidden="true">🔍</span>
+                <span className={styles.verifySearchIcon} aria-hidden="true"><i className="bi bi-search" /></span>
                 <input
                   type="search"
                   value={verificationSearch}
@@ -2705,19 +2752,19 @@ export default function AdminDashboard() {
             <div className={styles.verifyList} aria-busy={verificationsLoading}>
               {verificationsLoading ? (
                 <div className={styles.verifyEmpty}>
-                  <span className={styles.verifyEmptyIcon} aria-hidden="true">⏳</span>
+                  <span className={styles.verifyEmptyIcon} aria-hidden="true"><i className="bi bi-hourglass-split" /></span>
                   <h3>Checking the classes...</h3>
                   <p>This will only take a moment.</p>
                 </div>
               ) : verifications.length === 0 ? (
                 <div className={styles.verifyEmpty}>
-                  <span className={styles.verifyEmptyIcon} aria-hidden="true">🌱</span>
+                  <span className={styles.verifyEmptyIcon} aria-hidden="true"><i className="bi bi-flower1" /></span>
                   <h3>No classes to check yet</h3>
                   <p>Scheduled classes will show up here once they happen.</p>
                 </div>
               ) : filteredVerifications.length === 0 ? (
                 <div className={styles.verifyEmpty}>
-                  <span className={styles.verifyEmptyIcon} aria-hidden="true">🔎</span>
+                  <span className={styles.verifyEmptyIcon} aria-hidden="true"><i className="bi bi-search" /></span>
                   <h3>Nothing matches that search</h3>
                   <p>Try a different class, teacher, student, or status.</p>
                 </div>
@@ -2725,7 +2772,7 @@ export default function AdminDashboard() {
                 pagedVerifications.map((row) => {
                   const displayStatus = getVerificationDisplayStatus(row);
                   const statusLabel = VERIFICATION_STATUS_LABELS[displayStatus] || displayStatus;
-                  const statusIcon = VERIFICATION_STATUS_ICONS[displayStatus] || "🕓";
+                  const statusIcon = VERIFICATION_STATUS_ICONS[displayStatus] || "bi-clock";
                   const toneClass = verificationToneClass(displayStatus);
                   const teacherName = `${row.teacher_first_name || ""} ${row.teacher_last_name || ""}`.trim() || "Teacher";
                   const studentName = `${row.student_first_name || ""} ${row.student_last_name || ""}`.trim() || "Student";
@@ -2757,11 +2804,11 @@ export default function AdminDashboard() {
                   return (
                     <article key={row.class_id} className={`${styles.verifyCard} ${toneClass}`}>
                       <div className={styles.verifyCardHead}>
-                        <span className={styles.verifyStatusIcon} aria-hidden="true">{statusIcon}</span>
+                        <span className={styles.verifyStatusIcon} aria-hidden="true"><i className={`bi ${statusIcon}`} /></span>
                         <div className={styles.verifyCardTitle}>
                           <h3>{row.class_name || "Untitled Class"}</h3>
                           <p className={styles.verifyWhen}>
-                            <span aria-hidden="true">📅</span> {formatDate(row.scheduled_date)}
+                            <i className="bi bi-calendar3" aria-hidden="true" /> {formatDate(row.scheduled_date)}
                             <span aria-hidden="true"> · </span>
                             {formatTime(row.start_time)} – {formatTime(row.end_time)}
                             <span aria-hidden="true"> · </span>
@@ -2794,14 +2841,14 @@ export default function AdminDashboard() {
                             key={step.label}
                             className={`${styles.verifyStep} ${step.done ? styles.verifyStepDone : styles.verifyStepMissing}`}
                           >
-                            <span aria-hidden="true">{step.done ? "✓" : "○"}</span> {step.label}
+                            <i className={`bi ${step.done ? "bi-check-circle" : "bi-circle"}`} aria-hidden="true" /> {step.label}
                           </span>
                         ))}
                       </div>
 
                       <div className={styles.verifyFacts}>
                         <div className={styles.verifyFact}>
-                          <span className={styles.verifyFactIcon} aria-hidden="true">⏱️</span>
+                          <span className={styles.verifyFactIcon} aria-hidden="true"><i className="bi bi-stopwatch" /></span>
                           <div>
                             <span>Class length</span>
                             <strong>{Number(row.duration_minutes || 0)} min</strong>
@@ -2809,7 +2856,7 @@ export default function AdminDashboard() {
                         </div>
                         <div className={styles.verifyFact}>
                           <span className={styles.verifyFactIcon} aria-hidden="true">
-                            {row.evidence_mode === "recording" ? "🎬" : row.evidence_mode === "screenshots" ? "🖼️" : "📎"}
+                            <i className={`bi ${row.evidence_mode === "recording" ? "bi-camera-video" : row.evidence_mode === "screenshots" ? "bi-image" : "bi-paperclip"}`} />
                           </span>
                           <div>
                             <span>Proof</span>
@@ -2821,7 +2868,7 @@ export default function AdminDashboard() {
                       {showEvidenceNotice && (
                         <div className={`${styles.verifyNotice} ${needsAdminReview ? styles.verifyNoticeReview : styles.verifyNoticeMissing}`}>
                           <div className={styles.verifyNoticeHead}>
-                            <span aria-hidden="true">{needsAdminReview ? "🔔" : "📭"}</span>
+                            <i className={`bi ${needsAdminReview ? "bi-bell" : "bi-inbox"}`} aria-hidden="true" />
                             <strong>{needsAdminReview ? "Needs your review" : "Some proof is missing"}</strong>
                           </div>
                           <ul className={styles.verifyNoticeList}>
@@ -2834,7 +2881,7 @@ export default function AdminDashboard() {
 
                       <details className={styles.verifyDetails}>
                         <summary>
-                          <span aria-hidden="true">📝</span>
+                          <i className="bi bi-journal-text" aria-hidden="true" />
                           <span>Attendance and notes</span>
                           <span className={styles.verifyChevron} aria-hidden="true">⌄</span>
                         </summary>
@@ -2859,7 +2906,7 @@ export default function AdminDashboard() {
                             className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`}
                             onClick={() => openAuthenticatedFile(row.start_proof_url)}
                           >
-                            <span aria-hidden="true">🖼️</span> Start photo
+                            <i className="bi bi-image" aria-hidden="true" /> Start photo
                           </button>
                         )}
                         {row.recording_url ? (
@@ -2868,7 +2915,7 @@ export default function AdminDashboard() {
                             className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`}
                             onClick={() => openClassRecording({ classId: row.class_id, notify })}
                           >
-                            <span aria-hidden="true">▶</span> Watch recording
+                            <i className="bi bi-play-fill" aria-hidden="true" /> Watch recording
                           </button>
                         ) : row.proof_url ? (
                           <button
@@ -2882,7 +2929,7 @@ export default function AdminDashboard() {
                               schedule: `${formatDate(row.scheduled_date)} ${formatTime(row.start_time)}`,
                             })}
                           >
-                            <span aria-hidden="true">🖼️</span> End photo
+                            <i className="bi bi-image" aria-hidden="true" /> End photo
                           </button>
                         ) : null}
 
@@ -2893,14 +2940,14 @@ export default function AdminDashboard() {
                               className={`${styles.verifyActionBtn} ${styles.verifyActionPrimary}`}
                               onClick={() => requestApproveVerification(row)}
                             >
-                              <span aria-hidden="true">✅</span> Approve verified
+                              <i className="bi bi-check-circle" aria-hidden="true" /> Approve verified
                             </button>
                             <button
                               type="button"
                               className={`${styles.verifyActionBtn} ${styles.verifyActionWarn}`}
                               onClick={() => requestMarkVerificationIncomplete(row)}
                             >
-                              <span aria-hidden="true">⚠️</span> Mark incomplete
+                              <i className="bi bi-exclamation-triangle" aria-hidden="true" /> Mark incomplete
                             </button>
                           </>
                         )}
@@ -2911,7 +2958,7 @@ export default function AdminDashboard() {
                             className={`${styles.verifyActionBtn} ${styles.verifyActionDanger}`}
                             onClick={() => requestRemoveVerification(row)}
                           >
-                            <span aria-hidden="true">🗑️</span> Remove record
+                            <i className="bi bi-trash" aria-hidden="true" /> Remove record
                           </button>
                         )}
                       </div>
@@ -2956,9 +3003,6 @@ export default function AdminDashboard() {
                   Edit which courses each active teacher can teach.
                 </p>
               </div>
-              <button className={styles.linkBtn} type="button" onClick={loadUsers}>
-                Refresh
-              </button>
             </div>
 
             <div className={styles.compactSearch}>
@@ -3273,7 +3317,7 @@ export default function AdminDashboard() {
               <br />
               <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
                 <div style={{ display: "flex", alignItems: "center", marginBottom: "8px" }}>
-                  <span style={{ fontSize: "1.3em", marginRight: "8px" }}>📝</span>
+                  <span style={{ fontSize: "1.3em", marginRight: "8px" }}><i className="bi bi-journal-text" aria-hidden="true" /></span>
                   <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>Trial Class Assessment</h3>
                 </div>
                 <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
@@ -3735,7 +3779,7 @@ export default function AdminDashboard() {
               <br />
               <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
                 <div style={{ display: "flex", alignItems: "center", marginBottom: "8px" }}>
-                  <span style={{ fontSize: "1.3em", marginRight: "8px" }}>🎯</span>
+                  <span style={{ fontSize: "1.3em", marginRight: "8px" }}><i className="bi bi-bullseye" aria-hidden="true" /></span>
                   <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>AI Recommendations</h3>
                 </div>
                 <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
@@ -3778,7 +3822,7 @@ export default function AdminDashboard() {
               <br />
               <div style={{ borderTop: "1px solid #e0e0e0", paddingTop: "20px", marginTop: "20px" }}>
                 <div style={{ display: "flex", alignItems: "center", marginBottom: "8px" }}>
-                  <span style={{ fontSize: "1.3em", marginRight: "8px" }}>📊</span>
+                  <span style={{ fontSize: "1.3em", marginRight: "8px" }}><i className="bi bi-bar-chart" aria-hidden="true" /></span>
                   <h3 style={{ margin: "0", fontSize: "1.1em", color: "#333", fontWeight: "600" }}>Class Package Information</h3>
                 </div>
                 <p style={{ margin: "0 0 12px 0", fontSize: "0.9em", color: "#666", lineHeight: "1.5" }}>
@@ -3902,21 +3946,11 @@ export default function AdminDashboard() {
         {active === "contracts" && (
           <section className={`${styles.card} ${styles.verifyPage}`}>
             <div className={styles.verifyHero}>
-              <div className={styles.verifyHeroMark} aria-hidden="true">📦</div>
+              <div className={styles.verifyHeroMark} aria-hidden="true"><i className="bi bi-box-seam" /></div>
               <div className={styles.verifyHeroText}>
                 <span className={styles.verifyKicker}>Class packages</span>
                 <h2>Manage Class Contracts</h2>
                 <p>Every student's course, teacher, and class balance in one place. Green means the package is healthy, amber is running out, and red needs a fix.</p>
-              </div>
-              <div className={styles.verifyHeroActions}>
-                <button
-                  className={styles.verifyHeroBtn}
-                  type="button"
-                  onClick={contractSubTab === "packages" ? loadContracts : loadContractRequests}
-                  disabled={contractsLoading || contractRequestsLoading}
-                >
-                  <span aria-hidden="true">↻</span> {contractsLoading || contractRequestsLoading ? "Refreshing..." : "Refresh"}
-                </button>
               </div>
             </div>
 
@@ -3928,7 +3962,7 @@ export default function AdminDashboard() {
                 className={`${styles.contractTab} ${contractSubTab === "packages" ? styles.contractTabActive : ""}`}
                 onClick={() => setContractSubTab("packages")}
               >
-                <span aria-hidden="true">📦</span>
+                <i className="bi bi-box-seam" aria-hidden="true" />
                 <span className={styles.contractTabLabel}>Class Packages</span>
                 <span className={styles.contractTabCount}>{contracts.length}</span>
               </button>
@@ -3939,7 +3973,7 @@ export default function AdminDashboard() {
                 className={`${styles.contractTab} ${contractSubTab === "requests" ? styles.contractTabActive : ""}`}
                 onClick={() => setContractSubTab("requests")}
               >
-                <span aria-hidden="true">📨</span>
+                <i className="bi bi-inbox" aria-hidden="true" />
                 <span className={styles.contractTabLabel}>Contract Requests</span>
                 <span className={styles.contractTabCount}>
                   {contractRequests.length}
@@ -3951,7 +3985,7 @@ export default function AdminDashboard() {
               <>
                 <div className={styles.verifyToolbar}>
                   <div className={styles.verifySearchWrap}>
-                    <span className={styles.verifySearchIcon} aria-hidden="true">🔍</span>
+                    <span className={styles.verifySearchIcon} aria-hidden="true"><i className="bi bi-search" /></span>
                     <input
                       type="search"
                       value={contractSearch}
@@ -3979,19 +4013,19 @@ export default function AdminDashboard() {
                 <div className={styles.contractList} aria-busy={contractsLoading}>
                   {contractsLoading ? (
                     <div className={styles.verifyEmpty}>
-                      <span className={styles.verifyEmptyIcon} aria-hidden="true">⏳</span>
+                      <span className={styles.verifyEmptyIcon} aria-hidden="true"><i className="bi bi-hourglass-split" /></span>
                       <h3>Checking the packages...</h3>
                       <p>This will only take a moment.</p>
                     </div>
                   ) : contracts.length === 0 ? (
                     <div className={styles.verifyEmpty}>
-                      <span className={styles.verifyEmptyIcon} aria-hidden="true">🌱</span>
+                      <span className={styles.verifyEmptyIcon} aria-hidden="true"><i className="bi bi-flower1" /></span>
                       <h3>No class packages yet</h3>
                       <p>Active students will show up here once they are enrolled.</p>
                     </div>
                   ) : filteredContracts.length === 0 ? (
                     <div className={styles.verifyEmpty}>
-                      <span className={styles.verifyEmptyIcon} aria-hidden="true">🔎</span>
+                      <span className={styles.verifyEmptyIcon} aria-hidden="true"><i className="bi bi-search" /></span>
                       <h3>Nothing matches that search</h3>
                       <p>Try a different student, course, teacher, or status.</p>
                     </div>
@@ -4005,12 +4039,12 @@ export default function AdminDashboard() {
                       const initials = studentName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "S";
                       const packageStatus = row.package_status || "active";
                       const statusMeta = packageStatus === "expired"
-                        ? { label: "Expired", icon: "⏰", tone: styles.verifyToneDanger }
+                        ? { label: "Expired", icon: "bi-alarm", tone: styles.verifyToneDanger }
                         : packageStatus === "cancelled"
-                          ? { label: "Cancelled", icon: "🚫", tone: styles.verifyToneNeutral }
+                          ? { label: "Cancelled", icon: "bi-ban", tone: styles.verifyToneNeutral }
                           : classesLeft <= 0
-                            ? { label: "No classes left", icon: "📭", tone: styles.verifyToneDanger }
-                            : { label: "Active", icon: "✅", tone: styles.verifyToneSuccess };
+                            ? { label: "No classes left", icon: "bi-inbox", tone: styles.verifyToneDanger }
+                            : { label: "Active", icon: "bi-check-circle", tone: styles.verifyToneSuccess };
 
                       return (
                         <article key={row.user_id} className={`${styles.verifyCard} ${styles.contractCard} ${statusMeta.tone}`}>
@@ -4019,11 +4053,11 @@ export default function AdminDashboard() {
                             <div className={styles.verifyCardTitle}>
                               <h3>{studentName}</h3>
                               <p className={styles.verifyWhen}>
-                                <span aria-hidden="true">✉️</span> {row.email || "No email on file"}
+                                <i className="bi bi-envelope" aria-hidden="true" /> {row.email || "No email on file"}
                               </p>
                             </div>
                             <span className={`${styles.verifyBadge} ${styles.contractBadge} ${statusMeta.tone}`}>
-                              <span aria-hidden="true">{statusMeta.icon}</span> {statusMeta.label}
+                              <span aria-hidden="true"><i className={`bi ${statusMeta.icon}`} /></span> {statusMeta.label}
                             </span>
                           </div>
 
@@ -4045,7 +4079,7 @@ export default function AdminDashboard() {
                             </div>
                             <div className={styles.contractProgressMeta}>
                               <span className={styles.contractProgressLabel}>
-                                <span aria-hidden="true">📅</span> Expires
+                                <i className="bi bi-calendar3" aria-hidden="true" /> Expires
                               </span>
                               <ContractExpiryBadge expiresAt={row.expires_at} showDate />
                             </div>
@@ -4131,7 +4165,7 @@ export default function AdminDashboard() {
                               onClick={() => requestSaveContract(row)}
                               disabled={savingContractId === row.user_id}
                             >
-                              <span aria-hidden="true">💾</span>{" "}
+                              <i className="bi bi-floppy" aria-hidden="true" />{" "}
                               {savingContractId === row.user_id
                                 ? "Saving..."
                                 : row.package_id
@@ -4151,7 +4185,7 @@ export default function AdminDashboard() {
               <>
                 <div className={styles.verifyToolbar}>
                   <div className={styles.verifySearchWrap}>
-                    <span className={styles.verifySearchIcon} aria-hidden="true">🔍</span>
+                    <span className={styles.verifySearchIcon} aria-hidden="true"><i className="bi bi-search" /></span>
                     <input
                       type="search"
                       value={contractRequestSearch}
@@ -4179,19 +4213,19 @@ export default function AdminDashboard() {
                 <div className={styles.contractList} aria-busy={contractRequestsLoading}>
                   {contractRequestsLoading ? (
                     <div className={styles.verifyEmpty}>
-                      <span className={styles.verifyEmptyIcon} aria-hidden="true">⏳</span>
+                      <span className={styles.verifyEmptyIcon} aria-hidden="true"><i className="bi bi-hourglass-split" /></span>
                       <h3>Checking the requests...</h3>
                       <p>This will only take a moment.</p>
                     </div>
                   ) : contractRequests.length === 0 ? (
                     <div className={styles.verifyEmpty}>
-                      <span className={styles.verifyEmptyIcon} aria-hidden="true">🌱</span>
+                      <span className={styles.verifyEmptyIcon} aria-hidden="true"><i className="bi bi-flower1" /></span>
                       <h3>No contract requests yet</h3>
                       <p>When a student asks for more classes, the request will show up here.</p>
                     </div>
                   ) : filteredContractRequests.length === 0 ? (
                     <div className={styles.verifyEmpty}>
-                      <span className={styles.verifyEmptyIcon} aria-hidden="true">🔎</span>
+                      <span className={styles.verifyEmptyIcon} aria-hidden="true"><i className="bi bi-search" /></span>
                       <h3>Nothing matches that search</h3>
                       <p>Try a different student, course, or status.</p>
                     </div>
@@ -4201,11 +4235,11 @@ export default function AdminDashboard() {
                       const studentName = `${request.first_name || ""} ${request.last_name || ""}`.trim() || "Student";
                       const initials = studentName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "S";
                       const statusMeta = {
-                        pending: { label: "Waiting", icon: "⏳", tone: styles.verifyToneWarn },
-                        approved: { label: "Approved", icon: "✅", tone: styles.verifyToneSuccess },
-                        declined: { label: "Declined", icon: "🚫", tone: styles.verifyToneDanger },
-                        cancelled: { label: "Cancelled", icon: "⚪", tone: styles.verifyToneNeutral },
-                      }[request.status] || { label: request.status || "Waiting", icon: "⏳", tone: styles.verifyToneWarn };
+                        pending: { label: "Waiting", icon: "bi-hourglass-split", tone: styles.verifyToneWarn },
+                        approved: { label: "Approved", icon: "bi-check-circle", tone: styles.verifyToneSuccess },
+                        declined: { label: "Declined", icon: "bi-ban", tone: styles.verifyToneDanger },
+                        cancelled: { label: "Cancelled", icon: "bi-circle", tone: styles.verifyToneNeutral },
+                      }[request.status] || { label: request.status || "Waiting", icon: "bi-hourglass-split", tone: styles.verifyToneWarn };
                       const revisionHistory = Array.isArray(request.revisions) ? request.revisions : [];
 
                       return (
@@ -4215,17 +4249,17 @@ export default function AdminDashboard() {
                             <div className={styles.verifyCardTitle}>
                               <h3>{studentName}</h3>
                               <p className={styles.verifyWhen}>
-                                <span aria-hidden="true">✉️</span> {request.email || "No email on file"}
+                                <i className="bi bi-envelope" aria-hidden="true" /> {request.email || "No email on file"}
                               </p>
                             </div>
                             <span className={`${styles.verifyBadge} ${styles.contractBadge} ${statusMeta.tone}`}>
-                              <span aria-hidden="true">{statusMeta.icon}</span> {statusMeta.label}
+                              <span aria-hidden="true"><i className={`bi ${statusMeta.icon}`} /></span> {statusMeta.label}
                             </span>
                           </div>
 
                           <div className={styles.verifyFacts}>
                             <div className={styles.verifyFact}>
-                              <span className={styles.verifyFactIcon} aria-hidden="true">📦</span>
+                              <span className={styles.verifyFactIcon} aria-hidden="true"><i className="bi bi-box-seam" /></span>
                               <div>
                                 <span>Type</span>
                                 <strong>{isExtension ? "Extension" : "New contract"}</strong>
@@ -4234,21 +4268,21 @@ export default function AdminDashboard() {
                             {isExtension ? (
                               <>
                                 <div className={styles.verifyFact}>
-                                  <span className={styles.verifyFactIcon} aria-hidden="true">🧮</span>
+                                  <span className={styles.verifyFactIcon} aria-hidden="true"><i className="bi bi-calculator" /></span>
                                   <div>
                                     <span>Unused at request</span>
                                     <strong>{request.classes_left_at_request ?? "?"} classes</strong>
                                   </div>
                                 </div>
                                 <div className={styles.verifyFact}>
-                                  <span className={styles.verifyFactIcon} aria-hidden="true">📦</span>
+                                  <span className={styles.verifyFactIcon} aria-hidden="true"><i className="bi bi-box-seam" /></span>
                                   <div>
                                     <span>Left now</span>
                                     <strong>{request.package_classes_left ?? "?"} classes</strong>
                                   </div>
                                 </div>
                                 <div className={styles.verifyFact}>
-                                  <span className={styles.verifyFactIcon} aria-hidden="true">📅</span>
+                                  <span className={styles.verifyFactIcon} aria-hidden="true"><i className="bi bi-calendar3" /></span>
                                   <div>
                                     <span>Contract ended</span>
                                     <strong>{formatDate(request.package_expires_at)}</strong>
@@ -4258,21 +4292,21 @@ export default function AdminDashboard() {
                             ) : (
                               <>
                                 <div className={styles.verifyFact}>
-                                  <span className={styles.verifyFactIcon} aria-hidden="true">🎓</span>
+                                  <span className={styles.verifyFactIcon} aria-hidden="true"><i className="bi bi-mortarboard" /></span>
                                   <div>
                                     <span>Course</span>
                                     <strong>{request.course_name || "Course not set"}</strong>
                                   </div>
                                 </div>
                                 <div className={styles.verifyFact}>
-                                  <span className={styles.verifyFactIcon} aria-hidden="true">🧮</span>
+                                  <span className={styles.verifyFactIcon} aria-hidden="true"><i className="bi bi-calculator" /></span>
                                   <div>
                                     <span>Classes</span>
                                     <strong>{request.requested_classes} classes</strong>
                                   </div>
                                 </div>
                                 <div className={styles.verifyFact}>
-                                  <span className={styles.verifyFactIcon} aria-hidden="true">⏱️</span>
+                                  <span className={styles.verifyFactIcon} aria-hidden="true"><i className="bi bi-stopwatch" /></span>
                                   <div>
                                     <span>Duration</span>
                                     <strong>{request.class_duration || 50} min</strong>
@@ -4283,12 +4317,12 @@ export default function AdminDashboard() {
                           </div>
 
                           <p className={styles.requestMeta}>
-                            <span aria-hidden="true">📨</span> Requested {formatDate(request.requested_at)}
+                            <i className="bi bi-inbox" aria-hidden="true" /> Requested {formatDate(request.requested_at)}
                             {isExtension && request.package_status ? ` · package ${request.package_status}` : ""}
                           </p>
 
                           <div className={styles.requestReason}>
-                            <span className={styles.requestReasonIcon} aria-hidden="true">💬</span>
+                            <span className={styles.requestReasonIcon} aria-hidden="true"><i className="bi bi-chat-dots" /></span>
                             <div>
                               <span className={styles.requestReasonLabel}>Why they are asking</span>
                               <strong>{request.trial_notes || "No reason given."}</strong>
@@ -4298,7 +4332,7 @@ export default function AdminDashboard() {
                           {revisionHistory.length > 0 && (
                             <details className={styles.verifyDetails}>
                               <summary>
-                                <span aria-hidden="true">🕘</span>
+                                <i className="bi bi-clock-history" aria-hidden="true" />
                                 <span>{request.revision_label || `${revisionHistory.length} earlier version${revisionHistory.length === 1 ? "" : "s"}`}</span>
                                 <span className={styles.verifyChevron} aria-hidden="true">⌄</span>
                               </summary>
@@ -4331,7 +4365,7 @@ export default function AdminDashboard() {
                                 }
                                 disabled={updatingContractRequestId === request.request_id}
                               >
-                                <span aria-hidden="true">✅</span>{" "}
+                                <i className="bi bi-check-circle" aria-hidden="true" />{" "}
                                 {updatingContractRequestId === request.request_id
                                   ? "Working..."
                                   : isExtension
@@ -4344,14 +4378,14 @@ export default function AdminDashboard() {
                                 onClick={() => requestUpdateContractRequest(request.request_id, "declined", request)}
                                 disabled={updatingContractRequestId === request.request_id}
                               >
-                                <span aria-hidden="true">✋</span> Decline
+                                <i className="bi bi-hand-thumbs-down" aria-hidden="true" /> Decline
                               </button>
                             </div>
                           ) : (
                             <>
                               {request.resolved_at && (
                                 <p className={styles.requestMeta}>
-                                  <span aria-hidden="true">✔</span> Resolved {formatDate(request.resolved_at)}
+                                  <i className="bi bi-check2" aria-hidden="true" /> Resolved {formatDate(request.resolved_at)}
                                 </p>
                               )}
                               <div className={styles.verifyActions}>
@@ -4361,7 +4395,7 @@ export default function AdminDashboard() {
                                   onClick={() => requestArchiveContractRequest(request)}
                                   disabled={updatingContractRequestId === request.request_id}
                                 >
-                                  <span aria-hidden="true">🗂️</span> Remove from list
+                                  <i className="bi bi-folder2-open" aria-hidden="true" /> Remove from list
                                 </button>
                               </div>
                             </>
@@ -4490,7 +4524,7 @@ export default function AdminDashboard() {
         {active === "requests" && (
           <section className={`${styles.card} ${styles.verifyPage}`}>
             <div className={styles.verifyHero}>
-              <div className={styles.verifyHeroMark} aria-hidden="true">🔁</div>
+              <div className={styles.verifyHeroMark} aria-hidden="true"><i className="bi bi-arrow-repeat" /></div>
               <div className={styles.verifyHeroText}>
                 <span className={styles.verifyKicker}>Schedule helpers</span>
                 <h2>Reschedule Requests</h2>
@@ -4498,21 +4532,13 @@ export default function AdminDashboard() {
               </div>
               <div className={styles.verifyHeroActions}>
                 <button
-                  className={styles.verifyHeroBtn}
-                  type="button"
-                  onClick={() => loadRequests()}
-                  disabled={requestsLoading}
-                >
-                  <span aria-hidden="true">↻</span> {requestsLoading ? "Refreshing..." : "Refresh"}
-                </button>
-                <button
                   className={`${styles.verifyHeroBtn} ${styles.verifyHeroBtnDanger}`}
                   type="button"
                   onClick={requestDeleteAllRequests}
                   disabled={!requests.length || requestsLoading}
                   title="Deletes every reschedule request"
                 >
-                  <span aria-hidden="true">🧹</span> Clear all
+                  <i className="bi bi-brush" aria-hidden="true" /> Clear all
                 </button>
               </div>
             </div>
@@ -4527,7 +4553,7 @@ export default function AdminDashboard() {
                   aria-pressed={requestFilter === filter.key}
                 >
                   <span className={styles.verifyFilterTop}>
-                    <span className={styles.verifyFilterIcon} aria-hidden="true">{filter.icon}</span>
+                    <span className={styles.verifyFilterIcon} aria-hidden="true"><i className={`bi ${filter.icon}`} /></span>
                     <span className={styles.verifyFilterCount}>{filter.count}</span>
                   </span>
                   <span className={styles.verifyFilterLabel}>{filter.label}</span>
@@ -4543,19 +4569,19 @@ export default function AdminDashboard() {
             <div className={styles.requestList} aria-busy={requestsLoading}>
               {requestsLoading ? (
                 <div className={styles.verifyEmpty}>
-                  <span className={styles.verifyEmptyIcon} aria-hidden="true">⏳</span>
+                  <span className={styles.verifyEmptyIcon} aria-hidden="true"><i className="bi bi-hourglass-split" /></span>
                   <h3>Checking the requests...</h3>
                   <p>This will only take a moment.</p>
                 </div>
               ) : requests.length === 0 ? (
                 <div className={styles.verifyEmpty}>
-                  <span className={styles.verifyEmptyIcon} aria-hidden="true">🌱</span>
+                  <span className={styles.verifyEmptyIcon} aria-hidden="true"><i className="bi bi-flower1" /></span>
                   <h3>No reschedule requests yet</h3>
                   <p>When a class needs a new time, the request will show up here.</p>
                 </div>
               ) : filteredRequests.length === 0 ? (
                 <div className={styles.verifyEmpty}>
-                  <span className={styles.verifyEmptyIcon} aria-hidden="true">🔎</span>
+                  <span className={styles.verifyEmptyIcon} aria-hidden="true"><i className="bi bi-search" /></span>
                   <h3>No {requestQuickFilters.find((filter) => filter.key === requestFilter)?.label.toLowerCase() || "matching"} requests</h3>
                   <p>Try another filter to see the rest.</p>
                 </div>
@@ -4572,11 +4598,11 @@ export default function AdminDashboard() {
                   return (
                     <article className={`${styles.verifyCard} ${toneClass}`} key={request.request_id}>
                       <div className={styles.verifyCardHead}>
-                        <span className={styles.verifyStatusIcon} aria-hidden="true">{statusMeta.icon}</span>
+                        <span className={styles.verifyStatusIcon} aria-hidden="true"><i className={`bi ${statusMeta.icon}`} /></span>
                         <div className={styles.verifyCardTitle}>
                           <h3>{request.class_name || "Untitled class"}</h3>
                           <p className={styles.verifyWhen}>
-                            <span aria-hidden="true">📨</span> Requested by {requesterName}
+                            <i className="bi bi-inbox" aria-hidden="true" /> Requested by {requesterName}
                             {request.requested_at && (
                               <>
                                 <span aria-hidden="true"> · </span>
@@ -4627,7 +4653,7 @@ export default function AdminDashboard() {
 
                       {request.reason && (
                         <div className={styles.requestReason}>
-                          <span className={styles.requestReasonIcon} aria-hidden="true">💬</span>
+                          <span className={styles.requestReasonIcon} aria-hidden="true"><i className="bi bi-chat-dots" /></span>
                           <div>
                             <span className={styles.requestReasonLabel}>Why they want a change</span>
                             <strong>{request.reason}</strong>
@@ -4638,7 +4664,7 @@ export default function AdminDashboard() {
                       {request.status === "declined" && request.decline_reason && (
                         <div className={`${styles.verifyNotice} ${styles.verifyNoticeMissing}`}>
                           <div className={styles.verifyNoticeHead}>
-                            <span aria-hidden="true">🚫</span>
+                            <i className="bi bi-ban" aria-hidden="true" />
                             <strong>Why it was declined</strong>
                           </div>
                           <p className={styles.requestNoticeText}>{request.decline_reason}</p>
@@ -4647,11 +4673,11 @@ export default function AdminDashboard() {
 
                       {request.status === "pending" ? (
                         <p className={styles.requestMeta}>
-                          <span aria-hidden="true">⏳</span> Still waiting for a decision
+                          <i className="bi bi-hourglass-split" aria-hidden="true" /> Still waiting for a decision
                         </p>
                       ) : request.resolved_at ? (
                         <p className={styles.requestMeta}>
-                          <span aria-hidden="true">✔</span> Resolved {formatDate(request.resolved_at)}
+                          <i className="bi bi-check2" aria-hidden="true" /> Resolved {formatDate(request.resolved_at)}
                         </p>
                       ) : null}
 
@@ -4661,7 +4687,7 @@ export default function AdminDashboard() {
                           className={`${styles.verifyActionBtn} ${styles.verifyActionDanger}`}
                           onClick={() => requestDeleteRequest(request.request_id)}
                         >
-                          <span aria-hidden="true">🗑️</span> Remove request
+                          <i className="bi bi-trash" aria-hidden="true" /> Remove request
                         </button>
                       </div>
                     </article>

@@ -1,5 +1,5 @@
 // src/pages/AssignmentDetail.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import styles from "../assets/assignmentsDropbox.module.css";
 import teacherPic from "../assets/img/Navbar/user.jpg";
@@ -7,6 +7,7 @@ import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
+import useLiveRefresh from "../hooks/useLiveRefresh.js";
 import { apiFetch } from "../utils/apiAuth.js";
 import {
   getSubmissionFilePreviewUrl,
@@ -169,7 +170,7 @@ function AssignmentAttachment({ url, name, onError }) {
       onClick={() => openAssignmentFile(url).catch(onError)}
       title={`Open ${label} in a new tab`}
     >
-      <span className={styles.cardAttachmentIcon} aria-hidden="true">📎</span>
+      <span className={styles.cardAttachmentIcon} aria-hidden="true"><i className="bi bi-paperclip" /></span>
       {label}
     </button>
   );
@@ -287,7 +288,9 @@ export default function AssignmentsDropbox() {
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok) {
-          throw new Error(data.message || "Could not load assignment");
+          const error = new Error(data.message || "Could not load assignment");
+          error.status = res.status;
+          throw error;
         }
         return data.assignment;
       })
@@ -299,6 +302,11 @@ export default function AssignmentsDropbox() {
         console.error("Load assignment detail error:", err);
         if (!ignore) {
           setSelectedAssignment(null);
+          if (currentUser.role === "student" && [403, 404].includes(err.status)) {
+            notify?.("This assignment is no longer available.", "info");
+            navigate("/assignments", { replace: true });
+            return;
+          }
           setSubmitMessage(err.message || "Could not load assignment.");
         }
       })
@@ -309,7 +317,21 @@ export default function AssignmentsDropbox() {
     return () => {
       ignore = true;
     };
-  }, [assignmentId]);
+  }, [assignmentId, currentUser.role, navigate, notify]);
+
+  const checkAssignmentAvailability = useCallback(async () => {
+    if (!assignmentId || currentUser.role !== "student") return;
+
+    const response = await apiFetch(`${API}/api/assignments/${assignmentId}`);
+    if (response.status === 403 || response.status === 404) {
+      notify?.("This assignment is no longer available.", "info");
+      navigate("/assignments", { replace: true });
+    }
+  }, [assignmentId, currentUser.role, navigate, notify]);
+
+  useLiveRefresh(checkAssignmentAvailability, {
+    enabled: Boolean(assignmentId && selectedAssignment && currentUser.role === "student"),
+  });
 
   const assignmentInstructions =
     selectedAssignment?.instructions ||
@@ -610,12 +632,12 @@ export default function AssignmentsDropbox() {
 
         {selectedAssignment && isAssignmentPastDue() ? (
           <div className={styles.alertCard}>
-            <span className={styles.alertIcon} aria-hidden="true">⏰</span>
+            <span className={styles.alertIcon} aria-hidden="true"><i className="bi bi-alarm" /></span>
             This assignment is past due and cannot be submitted.
           </div>
         ) : selectedAssignment && isAttemptLimitReached ? (
           <div className={styles.alertCard}>
-            <span className={styles.alertIcon} aria-hidden="true">🚫</span>
+            <span className={styles.alertIcon} aria-hidden="true"><i className="bi bi-ban" /></span>
             You have used all your tries for this assignment.
           </div>
         ) : null}
@@ -626,7 +648,7 @@ export default function AssignmentsDropbox() {
               {selectedAssignment ? (
                 <>
                   <div className={styles.instructionSheet}>
-                    <span className={styles.instructionIcon} aria-hidden="true">📝</span>
+                    <span className={styles.instructionIcon} aria-hidden="true"><i className="bi bi-journal-text" /></span>
                     <h2 className={styles.instructionHead}>Assignment Instructions</h2>
                     <div className={styles.instructionText}>
                       {assignmentInstructions || "No instructions were provided for this assignment."}
@@ -669,7 +691,7 @@ export default function AssignmentsDropbox() {
                         }}
                       />
                       <label className={styles.fileLabel}>
-                        <span className={styles.fileIcon} aria-hidden="true">📎</span>
+                        <span className={styles.fileIcon} aria-hidden="true"><i className="bi bi-paperclip" /></span>
                         Attach files
                       </label>
                       <input
@@ -759,7 +781,7 @@ export default function AssignmentsDropbox() {
                         </p>
                       ) : null}
                       <label className={styles.fileLabel}>
-                        <span className={styles.fileIcon} aria-hidden="true">📎</span>
+                        <span className={styles.fileIcon} aria-hidden="true"><i className="bi bi-paperclip" /></span>
                         {submittedFiles.length
                           ? "Replace attached files (optional; leave blank to keep current files)"
                           : "Attach files"}
@@ -851,7 +873,7 @@ export default function AssignmentsDropbox() {
                 </div>
               ) : (
                 <div className={styles.emptySubmission}>
-                  <span className={styles.emptyIcon} aria-hidden="true">📭</span>
+                  <span className={styles.emptyIcon} aria-hidden="true"><i className="bi bi-inbox" /></span>
                   <p className={styles.emptyText}>No submission yet.</p>
                 </div>
               )}

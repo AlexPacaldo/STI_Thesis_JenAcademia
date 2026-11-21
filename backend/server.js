@@ -41,6 +41,10 @@ import {
   normalizeRequestType,
 } from "./contractRequestFlow.js";
 import { createRateLimiter } from "./rateLimit.js";
+import {
+  formatLoginLockoutDuration,
+  getLoginLockoutSeconds,
+} from "./loginLockout.js";
 import { verifyTurnstileToken } from "./turnstile.js";
 import {
   STUDENT_REVIEW_CRITERIA,
@@ -1598,15 +1602,10 @@ const limitResumeParsingTotal = createRateLimiter({
   message: "Resume uploads are temporarily paused for everyone. Try again shortly.",
 });
 
-// Login has no rate limit at all today, so credentials can be guessed without
-// bound (bcrypt makes each guess slow, not impossible). Keyed by address rather
-// than by the submitted email, since an attacker varies the email to spread
-// attempts. Deliberately high: a whole campus can share one NAT address, so
-// this must not lock out a morning of students signing in together.
+// The IP limit bounds request volume without locking out a campus that shares a
+// NAT address. Per-account wrong-password lockouts are staged below.
 const LOGIN_WINDOW_MS = Math.max(1, Number(process.env.LOGIN_RATE_WINDOW_MS) || 15 * 60 * 1000);
 const LOGIN_MAX = Math.max(1, Number(process.env.LOGIN_RATE_MAX) || 100);
-const LOGIN_FAILURE_LIMIT = Math.max(1, Number(process.env.LOGIN_FAILURE_LIMIT) || 5);
-const LOGIN_LOCK_MINUTES = Math.max(1, Number(process.env.LOGIN_LOCK_MINUTES) || 15);
 const CONTACT_RATE_WINDOW_MS = Math.max(1, Number(process.env.CONTACT_RATE_WINDOW_MS) || 15 * 60 * 1000);
 const CONTACT_RATE_MAX = Math.max(1, Number(process.env.CONTACT_RATE_MAX) || 10);
 const limitContactSubmissions = createRateLimiter({
@@ -1643,6 +1642,58 @@ async function revokeUserSessions(userId, { activeOnly = true } = {}) {
     [userId]
   );
   return rows;
+}
+
+async function recordFailedLogin(userId) {
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query(
+      "SELECT failed_login_count FROM users WHERE user_id = ? LIMIT 1 FOR UPDATE",
+      [userId]
+    );
+    if (!rows.length) {
+      await connection.commit();
+      return null;
+    }
+
+    const failedAttempts = Number(rows[0].failed_login_count || 0) + 1;
+    const lockoutSeconds = getLoginLockoutSeconds(failedAttempts);
+    if (lockoutSeconds) {
+      await connection.query(
+        `UPDATE users
+         SET failed_login_count = ?, last_failed_login_at = NOW(),
+             locked_until = DATE_ADD(NOW(), INTERVAL ? SECOND)
+         WHERE user_id = ?`,
+        [failedAttempts, lockoutSeconds, userId]
+      );
+    } else {
+      await connection.query(
+        `UPDATE users
+         SET failed_login_count = ?, last_failed_login_at = NOW()
+         WHERE user_id = ?`,
+        [failedAttempts, userId]
+      );
+    }
+
+    await connection.commit();
+    return lockoutSeconds;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+function respondWithLoginLockout(res, remainingSeconds) {
+  const retryAfter = Math.max(1, Math.ceil(remainingSeconds));
+  res.setHeader("Retry-After", String(retryAfter));
+  return res.status(429).json({
+    message: `Too many sign-in attempts. Please try again in ${formatLoginLockoutDuration(retryAfter)}.`,
+    retryAfterSeconds: retryAfter,
+  });
 }
 
 // Guessing the password behind the "save my details" form.
@@ -5014,25 +5065,13 @@ app.post("/api/login", limitLoginAttempts, async (req, res) => {
     const user = rows[0];
     if (user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
       const remainingMs = new Date(user.locked_until).getTime() - Date.now();
-      const remainingMinutes = Math.max(1, Math.ceil(remainingMs / 60000));
-      return res.status(429).json({
-        message: `Too many sign-in attempts. Please try again in ${remainingMinutes} minute${remainingMinutes === 1 ? "" : "s"}.`,
-      });
+      return respondWithLoginLockout(res, remainingMs / 1000);
     }
 
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) {
-      await pool.query(
-        `UPDATE users
-         SET failed_login_count = failed_login_count + 1,
-             last_failed_login_at = NOW(),
-             locked_until = CASE
-               WHEN failed_login_count + 1 >= ? THEN DATE_ADD(NOW(), INTERVAL ? MINUTE)
-               ELSE locked_until
-             END
-         WHERE user_id = ?`,
-        [LOGIN_FAILURE_LIMIT, LOGIN_LOCK_MINUTES, user.user_id]
-      );
+      const lockoutSeconds = await recordFailedLogin(user.user_id);
+      if (lockoutSeconds) return respondWithLoginLockout(res, lockoutSeconds);
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
@@ -7010,6 +7049,15 @@ app.put("/api/admin/student-contracts/:student_id", requireAdminSession, async (
        WHERE user_id = ?`,
       [courseIdValue, teacherIdValue, student_id]
     );
+
+    if (teacherIdValue) {
+      await connection.query(
+        `UPDATE assignments
+         SET teacher_id = ?
+         WHERE student_id = ? AND teacher_id <> ?`,
+        [teacherIdValue, student_id, teacherIdValue]
+      );
+    }
 
     let reviewPackageId = package_id ? parseInt(package_id, 10) : null;
 
@@ -12610,7 +12658,7 @@ async function replyLineSafely(replyToken, text) {
 }
 
 const LINE_LINK_INSTRUCTIONS =
-  "Welcome to JEN Academia! 👋\n\n" +
+  "Welcome to JEN Academia.\n\n" +
   "To get class reminders here:\n" +
   "1. Open JEN Academia and go to Account.\n" +
   "2. Tap \"Connect LINE\".\n" +
@@ -12693,7 +12741,7 @@ async function handleLineWebhookEvent(event) {
     lineLinkFailures.delete(lineUserId);
     await replyLineSafely(
       event.replyToken,
-      `✅ Connected to JEN Academia as ${accountName}.\n\n` +
+      `Connected to JEN Academia as ${accountName}.\n\n` +
         "You will get class reminders and reschedule updates here.\n" +
         "Send \"unlink\" at any time to stop."
     );
@@ -13169,7 +13217,7 @@ app.get("/api/student/:student_id/assignments", requireSession, async (req, res)
     }
     const [rows] = await pool.query(
       `${assignmentSelect}
-       WHERE a.student_id = ?
+       WHERE a.student_id = ? AND a.is_archived = 0
        ORDER BY a.due_date ASC, a.due_time ASC, a.created_at DESC`,
       [student_id]
     );

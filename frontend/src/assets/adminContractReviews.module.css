@@ -34,7 +34,6 @@
   line-height: 1.65;
 }
 
-.refreshButton,
 .reportButton,
 .linkButton,
 .filterButton {
@@ -47,27 +46,11 @@
   transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
-.refreshButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  min-height: 40px;
-  padding: 9px 14px;
-}
-
-.refreshButton:hover,
 .reportButton:hover,
 .linkButton:hover,
 .filterButton:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
-}
-
-.refreshButton:disabled {
-  opacity: 0.62;
-  cursor: not-allowed;
-  transform: none;
 }
 
 .statGrid {
@@ -648,7 +631,6 @@
   font-size: clamp(1.55rem, 2.6vw, 2.1rem);
 }
 
-.refreshButton,
 .reportButton,
 .linkButton,
 .filterButton {
@@ -730,7 +712,6 @@
   border-radius: 24px;
 }
 
-.refreshButton:focus-visible,
 .reportButton:focus-visible,
 .linkButton:focus-visible,
 .filterButton:focus-visible,
@@ -755,6 +736,11 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.reportHead > div {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .reportHead h3 {
@@ -782,6 +768,7 @@
   font-size: 1.15rem;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .averageBadge small {
@@ -818,10 +805,10 @@
 }
 
 .levelBox {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   padding: 11px 13px;
   border: 1px solid rgba(121, 168, 71, 0.28);
   border-radius: 12px;
@@ -832,6 +819,7 @@
 }
 
 .levelBox strong {
+  white-space: nowrap;
   font-size: 0.9rem;
   font-weight: 900;
 }

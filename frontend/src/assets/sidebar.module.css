@@ -252,6 +252,8 @@
     transform: translateX(-110%);
     transition: transform 260ms var(--ease-out, cubic-bezier(0.22,1,0.36,1));
     z-index: 109;
+    padding-top: max(20px, env(safe-area-inset-top, 0px));
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     border-top-right-radius: 28px;
     border-bottom-right-radius: 28px;
     box-shadow:
@@ -266,7 +268,7 @@
   .closeButton {
     display: inline-flex;
     position: absolute;
-    top: 14px;
+    top: max(14px, env(safe-area-inset-top, 0px));
     right: 14px;
     width: 44px;
     height: 44px;

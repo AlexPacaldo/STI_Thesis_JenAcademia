@@ -103,7 +103,7 @@ export default function SetupAccount() {
           <div className={styles.messageState} role="status">Opening your invite...</div>
         ) : error && !invite ? (
           <div className={styles.messageState} role="alert">
-            <span className={styles.bigIcon} aria-hidden="true">💌</span>
+            <span className={styles.bigIcon} aria-hidden="true"><i className="bi bi-envelope" /></span>
             <h1 id="setup-title">We couldn’t open your invite</h1>
             <p>{error}</p>
             <Link className={styles.primaryButton} to="/login">Go to sign in</Link>
@@ -117,7 +117,7 @@ export default function SetupAccount() {
                   className={`${styles.progressStep} ${index <= step ? styles.progressActive : ""}`}
                   aria-current={index === step ? "step" : undefined}
                 >
-                  <span>{index < step ? "✓" : index + 1}</span>
+                  <span>{index < step ? <i className="bi bi-check2" aria-hidden="true" /> : index + 1}</span>
                   <small>{label}</small>
                 </div>
               ))}
@@ -125,7 +125,7 @@ export default function SetupAccount() {
 
             {step === 0 && (
               <div className={styles.stepContent}>
-                <span className={styles.bigIcon} aria-hidden="true">🌟</span>
+                <span className={styles.bigIcon} aria-hidden="true"><i className="bi bi-star" /></span>
                 <p className={styles.eyebrow}>Your new JEN Academia account</p>
                 <h1 id="setup-title">Hi{fullName ? `, ${fullName}` : ""}!</h1>
                 <p className={styles.description}>
@@ -142,7 +142,7 @@ export default function SetupAccount() {
 
             {step === 1 && (
               <form className={styles.stepContent} onSubmit={handleSubmit}>
-                <span className={styles.bigIcon} aria-hidden="true">🔐</span>
+                <span className={styles.bigIcon} aria-hidden="true"><i className="bi bi-shield-lock" /></span>
                 <p className={styles.eyebrow}>Step 1</p>
                 <h1 id="setup-title">Make a secret password</h1>
                 <p className={styles.description}>Choose a password with at least 8 characters. Use something memorable but unique, then confirm it below.</p>
@@ -207,7 +207,7 @@ export default function SetupAccount() {
 
             {step === 2 && (
               <div className={styles.stepContent}>
-                <span className={styles.bigIcon} aria-hidden="true">🎉</span>
+                <span className={styles.bigIcon} aria-hidden="true"><i className="bi bi-check-circle" /></span>
                 <p className={styles.eyebrow}>Password saved</p>
                 <h1 id="setup-title">You did it!</h1>
                 <p className={styles.description}>

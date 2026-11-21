@@ -357,7 +357,7 @@ function App() {
   if (studentLineGatePending || studentLineSetupRedirecting) {
     return (
       <main className="line-setup-gate" role="status">
-        <span aria-hidden="true">💬</span>
+        <i className="bi bi-chat-dots-fill" aria-hidden="true" />
         <h1>{studentLineSetupRedirecting ? "Let’s set up LINE first!" : "Getting your account ready…"}</h1>
         <p>
           {studentLineSetupRedirecting

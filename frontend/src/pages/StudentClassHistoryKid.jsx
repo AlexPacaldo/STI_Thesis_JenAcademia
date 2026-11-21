@@ -17,7 +17,7 @@
  * !! class again, and it is the one thing on this screen they can press.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 
 import kid from "../assets/studentKid.module.css";
@@ -29,6 +29,7 @@ import ModalPortal from "../utils/ModalPortal.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { dateKeyToLocalDate, daysBetween } from "../utils/studentSchedule.js";
 import { HISTORY, HOME } from "../utils/studentCopy.js";
+import useLiveRefresh from "../hooks/useLiveRefresh.js";
 
 /** How many classes are on the screen at once. */
 const PAGE_SIZE = 6;
@@ -56,22 +57,22 @@ function describeOutcome(row) {
   const started = Boolean(row.teacher_started_at || row.student_joined_at || row.teacher_ended_at);
 
   if (!started) {
-    return { word: HISTORY.notFinished, tone: "pastStatusWaiting", icon: "⏳" };
+    return { word: HISTORY.notFinished, tone: "pastStatusWaiting", icon: "bi-hourglass-split" };
   }
 
   switch (row.verification_status) {
     case "verified":
-      return { word: HISTORY.done, tone: "pastStatusDone", icon: "🎉" };
+      return { word: HISTORY.done, tone: "pastStatusDone", icon: "bi-check-circle" };
     case "student_confirmed":
-      return { word: HISTORY.joined, tone: "pastStatusDone", icon: "🙋" };
+      return { word: HISTORY.joined, tone: "pastStatusDone", icon: "bi-person-check" };
     case "needs_review":
-      return { word: HISTORY.checking, tone: "pastStatusChecking", icon: "🔎" };
+      return { word: HISTORY.checking, tone: "pastStatusChecking", icon: "bi-search" };
     case "in_progress":
-      return { word: HISTORY.goingOn, tone: "pastStatusAlmost", icon: "⏳" };
+      return { word: HISTORY.goingOn, tone: "pastStatusAlmost", icon: "bi-hourglass-split" };
     case "pending":
-      return { word: HISTORY.waiting, tone: "pastStatusWaiting", icon: "🕒" };
+      return { word: HISTORY.waiting, tone: "pastStatusWaiting", icon: "bi-clock" };
     default:
-      return { word: HISTORY.almost, tone: "pastStatusAlmost", icon: "⏳" };
+      return { word: HISTORY.almost, tone: "pastStatusAlmost", icon: "bi-hourglass-split" };
   }
 }
 
@@ -101,24 +102,28 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
   const userRole = String(user?.role || "").toLowerCase();
   const isTeacherMode = mode === "teacher";
 
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async (showLoading = false) => {
     if (!currentUserId) return;
-    setLoading(true);
+    if (showLoading) setLoading(true);
     try {
       const response = await axios.get(
         `${API_BASE_URL}/api/${isTeacherMode ? "teacher" : "student"}/${currentUserId}/class-history`,
         { params: { limit: 200 } }
       );
       setHistory(response.data?.history || []);
-      setVisible(PAGE_SIZE);
+      if (showLoading) setVisible(PAGE_SIZE);
     } catch (err) {
-      console.error(err);
-      setHistory([]);
-      notify?.(err?.response?.data?.message || "Could not load class history", "error");
+      if (showLoading) {
+        console.error(err);
+        setHistory([]);
+        notify?.(err?.response?.data?.message || "Could not load class history", "error");
+      } else {
+        console.warn("Could not update class history:", err);
+      }
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
-  };
+  }, [currentUserId, isTeacherMode, notify]);
 
   useEffect(() => {
     if (!user) {
@@ -130,9 +135,12 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
       window.location.href = userRole === "teacher" ? "/TeacherDashboard" : userRole === "student" ? "/StudentDashboard" : "/AdminDashboard";
       return;
     }
-    loadHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUserId, userRole, isTeacherMode]);
+    void loadHistory(true);
+  }, [currentUserId, loadHistory, user, userRole, isTeacherMode]);
+
+  useLiveRefresh(() => loadHistory(false), {
+    enabled: Boolean(currentUserId && userRole === (isTeacherMode ? "teacher" : "student")),
+  });
 
   const todayKey = useMemo(() => {
     const today = new Date();
@@ -248,14 +256,6 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
           <h1 className={kid.historyTitle}>{pageTitle}</h1>
           <p className={kid.historySubtitle}>{pageSubtitle}</p>
         </div>
-        <button
-          type="button"
-          className={kid.refreshBtn}
-          onClick={loadHistory}
-          disabled={loading}
-        >
-          {HISTORY.refresh}
-        </button>
       </header>
 
       {loading ? (
@@ -269,7 +269,7 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
       ) : history.length === 0 ? (
         <div className={kid.historyEmpty}>
           <span className={kid.historyEmptyIcon} aria-hidden="true">
-            🗓️
+            <i className="bi bi-calendar3" />
           </span>
           <p className={kid.historyEmptyTitle}>{emptyTitle}</p>
           <p className={kid.historyEmptyHelp}>{emptyHelp}</p>
@@ -294,7 +294,7 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
             {filtered.length === 0 ? (
               <div className={kid.historyEmpty}>
                 <span className={kid.historyEmptyIcon} aria-hidden="true">
-                  🗓️
+                  <i className="bi bi-calendar3" />
                 </span>
                 <p className={kid.historyEmptyTitle}>{HISTORY.noneInThisClass}</p>
               </div>
@@ -317,7 +317,7 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
                 <article key={row.class_id} className={kid.pastCard}>
                   <div className={kid.pastHead}>
                     <span className={kid.pastIcon} aria-hidden="true">
-                    {isTeacherMode ? "🎓" : "📘"}
+                    <i className={`bi ${isTeacherMode ? "bi-mortarboard" : "bi-book"}`} />
                     </span>
                     <div>
                       <h2 className={kid.pastName}>{row.class_name || HISTORY.title}</h2>
@@ -329,14 +329,14 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
                   </div>
 
                   <span className={`${kid.pastStatus} ${kid[outcome.tone]}`}>
-                    <span aria-hidden="true">{outcome.icon}</span>
+                    <span aria-hidden="true"><i className={`bi ${outcome.icon}`} /></span>
                     {outcome.word}
                   </span>
 
                   <div className={kid.pastFacts}>
                     <div className={kid.pastFact}>
                       <span className={kid.pastFactIcon} aria-hidden="true">
-                        👩‍🏫
+                        <i className="bi bi-person-workspace" />
                       </span>
                       <div>
                         <div className={kid.pastFactLabel}>{otherPartyLabel}</div>
@@ -346,7 +346,7 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
 
                     <div className={kid.pastFact}>
                       <span className={kid.pastFactIcon} aria-hidden="true">
-                        ⏱️
+                        <i className="bi bi-stopwatch" />
                       </span>
                       <div>
                         <div className={kid.pastFactLabel}>{HISTORY.howLong}</div>
@@ -359,7 +359,7 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
                     {row.summary ? (
                       <div className={kid.pastFact}>
                         <span className={kid.pastFactIcon} aria-hidden="true">
-                          📝
+                          <i className="bi bi-journal-text" />
                         </span>
                         <div>
                           <div className={kid.pastFactLabel}>{HISTORY.whatYouDid}</div>
@@ -375,7 +375,7 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
                       className={kid.watchBtn}
                       onClick={() => openClassRecording({ classId: row.class_id, notify })}
                     >
-                      <span aria-hidden="true">▶️</span> {HISTORY.watchAgain}
+                      <i className="bi bi-play-fill" aria-hidden="true" /> {HISTORY.watchAgain}
                     </button>
                   ) : null}
                 </article>

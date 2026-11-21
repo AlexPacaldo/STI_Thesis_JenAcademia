@@ -186,7 +186,7 @@ export default function LineConnectCard({
     >
       {showHeader ? (
         <header className={styles.head}>
-          <span className={styles.headIcon} aria-hidden="true">💬</span>
+          <span className={styles.headIcon} aria-hidden="true"><i className="bi bi-chat-dots-fill" /></span>
           <div className={styles.headText}>
             <h2 id={headingId} className={styles.title}>
               {required ? "Connect LINE" : "LINE messages"}
@@ -195,7 +195,7 @@ export default function LineConnectCard({
               We send your class reminders here. It is free, and it takes one minute.
             </p>
           </div>
-          {status.linked ? <span className={styles.connectedBadge}>✅ Connected</span> : null}
+          {status.linked ? <span className={styles.connectedBadge}><i className="bi bi-check-circle-fill" aria-hidden="true" /> Connected</span> : null}
         </header>
       ) : null}
 
@@ -378,7 +378,7 @@ export default function LineConnectCard({
                   className={styles.copyButton}
                   onClick={copyCode}
                 >
-                  {copied ? "Copied! ✅" : "Copy the number"}
+                  {copied ? "Copied!" : "Copy the number"}
                 </button>
                 <p className={styles.stepHint}>
                   Tap the chat with {botName}. Paste the number, then tap Send.

@@ -51,3 +51,20 @@
   font-weight: 400;
   opacity: 0.85;
 }
+
+@media (max-width: 640px) {
+  .badge {
+    width: fit-content;
+    max-width: 100%;
+    min-width: 0;
+    justify-self: start;
+    flex-wrap: wrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .date {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}

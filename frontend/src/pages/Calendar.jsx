@@ -131,12 +131,12 @@ const SCHEDULE_WINDOW_MONTHS = 3;
  */
 const MAX_WEEKLY_SUGGESTIONS = 30;
 const NEW_PLAN_STEPS = [
-  { icon: "📚", title: "Select a course", prompt: "Choose a course, class duration, and number of classes." },
-  { icon: "⭐", title: "Set learning objectives", prompt: "Select one or more objectives for your learning plan." },
-  { icon: "🎯", title: "Select your skill focus", prompt: "Choose the skills you would like to develop." },
-  { icon: "🎨", title: "Set learning preferences", prompt: "Select the approaches that support your learning." },
-  { icon: "🐢", title: "Set your learning pace", prompt: "Choose the pace that best supports your progress." },
-  { icon: "🗓️", title: "Review your plan", prompt: "Review your selections. Adding your availability is optional." },
+  { icon: "bi-book", title: "Select a course", prompt: "Choose a course, class duration, and number of classes." },
+  { icon: "bi-star", title: "Set learning objectives", prompt: "Select one or more objectives for your learning plan." },
+  { icon: "bi-bullseye", title: "Select your skill focus", prompt: "Choose the skills you would like to develop." },
+  { icon: "bi-palette", title: "Set learning preferences", prompt: "Select the approaches that support your learning." },
+  { icon: "bi-speedometer", title: "Set your learning pace", prompt: "Choose the pace that best supports your progress." },
+  { icon: "bi-calendar3", title: "Review your plan", prompt: "Review your selections. Adding your availability is optional." },
 ];
 
 const normalizeClassDuration = (value) => {
@@ -785,7 +785,7 @@ function AvailabilityAvailabilities({
             </div>
           ) : (
             <div className={kid.empty}>
-              <span className={kid.emptyIcon} aria-hidden="true">🔍</span>
+              <span className={kid.emptyIcon} aria-hidden="true"><i className="bi bi-search" /></span>
               <span>No days match this filter.</span>
             </div>
           )}
@@ -794,7 +794,7 @@ function AvailabilityAvailabilities({
 
       {records.length === 0 && (
         <div className={kid.empty}>
-          <span className={kid.emptyIcon} aria-hidden="true">📅</span>
+          <span className={kid.emptyIcon} aria-hidden="true"><i className="bi bi-calendar-x" /></span>
           <span>You have not set any days yet.</span>
         </div>
       )}
@@ -907,7 +907,7 @@ function DayPicker({ days, selected, onPick, emptyMessage, statusFor }) {
   if (!days.length) {
     return (
       <div className={kid.empty}>
-        <span className={kid.emptyIcon} aria-hidden="true">📅</span>
+        <span className={kid.emptyIcon} aria-hidden="true"><i className="bi bi-calendar-x" /></span>
         <span>{emptyMessage}</span>
       </div>
     );
@@ -5608,7 +5608,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
           {checklistItems.map((item) => (
             <div key={item.label} className={styles.verificationCheckRow}>
               <span className={`${styles.verificationCheckIcon} ${item.done ? styles.verificationCheckDone : ""}`}>
-                {item.done ? "✓" : ""}
+                {item.done && <i className="bi bi-check2" aria-hidden="true" />}
               </span>
               <span className={styles.verificationCheckLabel}>{item.label}</span>
               <span className={styles.verificationCheckValue}>{item.value}</span>
@@ -5706,7 +5706,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
             )}
             {hasVerificationRecording && (
               <div style={{ display: "grid", gap: 8 }}>
-                <strong style={{ color: "#166534", fontSize: "0.85rem" }}>Recording uploaded ✓</strong>
+                <strong style={{ color: "#166534", fontSize: "0.85rem" }}><i className="bi bi-check-circle" aria-hidden="true" /> Recording uploaded</strong>
                 <button
                   type="button"
                   onClick={() => openClassRecording({ classId: selectedClass.id, notify })}
@@ -5766,7 +5766,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                   padding: "12px 14px",
                 }}
               >
-                <strong style={{ color: "#8a5a1f" }}>⚠️ Screen sharing stopped, so the recording ended early</strong>
+                <strong style={{ color: "#8a5a1f" }}><i className="bi bi-exclamation-triangle" aria-hidden="true" /> Screen sharing stopped, so the recording ended early</strong>
                 <span style={{ fontSize: "0.85rem", color: "#8a5a1f", lineHeight: 1.5 }}>
                   Only {formatRecordingDuration(recording.earlyStop.durationSeconds)} was captured. The class is still
                   running, so record again to cover the rest — otherwise the admin has to reject this as incomplete.
@@ -6135,7 +6135,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                 className={`${cal.viewSwitchBtn} ${calendarView === "month" ? cal.viewSwitchBtnActive : ""}`}
                 onClick={() => setCalendarView("month")}
               >
-                <span aria-hidden="true">📅</span>
+                <i className="bi bi-calendar3" aria-hidden="true" />
                 {VIEW.month}
               </button>
               <button
@@ -6145,7 +6145,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                 className={`${cal.viewSwitchBtn} ${calendarView === "list" ? cal.viewSwitchBtnActive : ""}`}
                 onClick={() => setCalendarView("list")}
               >
-                <span aria-hidden="true">📋</span>
+                <i className="bi bi-list-ul" aria-hidden="true" />
                 {VIEW.list}
               </button>
             </div>
@@ -6338,7 +6338,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                 </div>
               ) : (
                 <div className={kid.empty} style={{ marginTop: 16 }}>
-                  <span className={kid.emptyIcon} aria-hidden="true">📅</span>
+                  <span className={kid.emptyIcon} aria-hidden="true"><i className="bi bi-calendar-x" /></span>
                   <span>{HOME.noClassesThisMonth}</span>
                 </div>
               )}
@@ -6382,7 +6382,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     )}
                     {(selectedClass.studentProficiencyLevel || selectedClass.student_proficiency_level) && (
                       <div className={kid.detailRow}>
-                        <span className={kid.pastFactIcon} aria-hidden="true">📊</span>
+                        <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-bar-chart" /></span>
                         <div>
                           <div className={kid.detailLabel}>Proficiency level</div>
                           <div className={kid.detailValue}>
@@ -6393,7 +6393,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     )}
                     {selectedClass.studentEmail && (
                       <div className={kid.detailRow}>
-                        <span className={kid.pastFactIcon} aria-hidden="true">✉️</span>
+                        <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-envelope" /></span>
                         <div>
                           <div className={kid.detailLabel}>Email</div>
                           <div className={kid.detailValue}>{selectedClass.studentEmail}</div>
@@ -6402,7 +6402,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     )}
                     {isAdmin && selectedClass.teacherName && (
                       <div className={kid.detailRow}>
-                        <span className={kid.pastFactIcon} aria-hidden="true">👩‍🏫</span>
+                        <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-person-workspace" /></span>
                         <div>
                           <div className={kid.detailLabel}>Teacher</div>
                           <div className={kid.detailValue}>{selectedClass.teacherName}</div>
@@ -6411,7 +6411,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     )}
                     {isAdmin && selectedClass.teacherEmail && (
                       <div className={kid.detailRow}>
-                        <span className={kid.pastFactIcon} aria-hidden="true">✉️</span>
+                        <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-envelope" /></span>
                         <div>
                           <div className={kid.detailLabel}>Teacher email</div>
                           <div className={kid.detailValue}>{selectedClass.teacherEmail}</div>
@@ -6419,14 +6419,14 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                       </div>
                     )}
                     <div className={kid.detailRow}>
-                      <span className={kid.pastFactIcon} aria-hidden="true">📚</span>
+                      <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-book" /></span>
                       <div>
                         <div className={kid.detailLabel}>Class</div>
                         <div className={kid.detailValue}>{selectedClass.className}</div>
                       </div>
                     </div>
                     <div className={kid.detailRow}>
-                      <span className={kid.pastFactIcon} aria-hidden="true">🕐</span>
+                      <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-clock" /></span>
                       <div>
                         <div className={kid.detailLabel}>Time</div>
                         <div className={kid.detailValue}>
@@ -6446,7 +6446,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                     {latestRemark ? (
                       <>
                         <div className={kid.pastFact}>
-                          <span className={kid.pastFactIcon} aria-hidden="true">📝</span>
+                          <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-journal-text" /></span>
                           <div>
                             <div className={kid.detailLabel}>{latestRemark.class_name || "Class"}</div>
                             <div className={kid.detailValue}>
@@ -6457,7 +6457,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                           </div>
                         </div>
                         <div className={kid.pastFact}>
-                          <span className={kid.pastFactIcon} aria-hidden="true">💬</span>
+                          <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-chat-dots" /></span>
                           <div>
                             <div className={kid.detailLabel}>Remark</div>
                             <div className={kid.detailValue}>
@@ -6468,7 +6468,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                       </>
                     ) : (
                       <div className={kid.empty}>
-                        <span className={kid.emptyIcon} aria-hidden="true">💬</span>
+                        <span className={kid.emptyIcon} aria-hidden="true"><i className="bi bi-chat-dots" /></span>
                         <span>{CLASS_INFO.noNoteYet}</span>
                       </div>
                     )}
@@ -6629,7 +6629,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         />
                         {requestError && (
                           <div className={cal.fieldError}>
-                            ✕ {requestError}
+                            <i className="bi bi-x-circle" aria-hidden="true" /> {requestError}
                           </div>
                         )}
                       </div>
@@ -6786,7 +6786,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                             color: "#6c757d",
                             fontSize: "0.9em"
                           }}>
-                            <span style={{ fontSize: "2em", marginBottom: "12px", display: "block" }}>📅</span>
+                            <span style={{ fontSize: "2em", marginBottom: "12px", display: "block" }}><i className="bi bi-calendar-x" aria-hidden="true" /></span>
                             <p style={{ margin: "0", fontWeight: "500" }}>No available time slots for this day</p>
                             <p style={{ margin: "8px 0 0 0", fontSize: "0.8em", opacity: 0.8 }}>
                               The teacher may be unavailable or all slots are booked
@@ -6911,7 +6911,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                     className={cal.formInput}
                                   />
                                   <div className={cal.formHint}>
-                                    <span>🕐</span>
+                                    <i className="bi bi-clock" aria-hidden="true" />
                                     Start: {humanTime(selectedTimeSlot)} • Duration: {bookingEndTime ? (() => {
                                       const start = new Date(`2000-01-01T${selectedTimeSlot}`);
                                       const end = new Date(`2000-01-01T${bookingEndTime}`);
@@ -7033,12 +7033,12 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                           }
                         }}
                       >
-                        <span className={cal.actionIcon} aria-hidden="true">🗓️</span>
+                        <span className={cal.actionIcon} aria-hidden="true"><i className="bi bi-calendar-check" /></span>
                         <span>{setAvailabilityMode ? "Close Availability Manager" : "Set Availability"}</span>
                       </button>
                     )}
                     <button type="button" className={cal.actionCard} onClick={jumpToToday}>
-                      <span className={cal.actionIcon} aria-hidden="true">📅</span>
+                      <span className={cal.actionIcon} aria-hidden="true"><i className="bi bi-calendar-day" /></span>
                       <span>Jump to Today</span>
                     </button>
                   </div>
@@ -7097,7 +7097,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         )}
                         {selectedClass.teacherEmail && (
                           <div className={kid.detailRow}>
-                            <span className={kid.detailIcon} aria-hidden="true">✉️</span>
+                            <span className={kid.detailIcon} aria-hidden="true"><i className="bi bi-envelope" /></span>
                             <div>
                               <div className={kid.detailLabel}>{CLASS_INFO.email}</div>
                               <div className={kid.detailValue}>{selectedClass.teacherEmail}</div>
@@ -7299,7 +7299,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         />
                         {requestError && (
                           <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#f44336" }}>
-                            ✕ {requestError}
+                            <i className="bi bi-x-circle" aria-hidden="true" /> {requestError}
                           </div>
                         )}
                       </div>
@@ -7500,7 +7500,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                           onClick={openMonthlyBooking}
                           disabled={!assignedTeacherId || hasNoClassesLeft}
                         >
-                          <span aria-hidden="true">📅</span>
+                          <i className="bi bi-calendar-plus" aria-hidden="true" />
                           {PLAN.bookAClass}
                         </button>
 
@@ -7510,7 +7510,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
 
                         {studentUpcomingLoading && studentUpcomingClasses.length === 0 ? (
                           <div className={kid.empty}>
-                            <span className={kid.emptyIcon} aria-hidden="true">📅</span>
+                            <span className={kid.emptyIcon} aria-hidden="true"><i className="bi bi-calendar-x" /></span>
                             <span>{HOME.loadingClasses}</span>
                           </div>
                         ) : simpleStudentClasses.length > 0 ? (
@@ -7536,7 +7536,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                              the same words with opposite meanings, and
                              only one of them is fixed by booking a class. */
                           <div className={kid.empty}>
-                            <span className={kid.emptyIcon} aria-hidden="true">📅</span>
+                            <span className={kid.emptyIcon} aria-hidden="true"><i className="bi bi-calendar-x" /></span>
                             <span>
                               {hasNoClassesLeft ? HOME.noClassesLeft : HOME.noClassesYet}
                             </span>
@@ -7567,7 +7567,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         ends up pressing the wrong one. */}
                     {!studentPackageLoaded ? (
                       <div className={kid.empty}>
-                        <span className={kid.emptyIcon} aria-hidden="true">📅</span>
+                        <span className={kid.emptyIcon} aria-hidden="true"><i className="bi bi-calendar-x" /></span>
                         <span>{HOME.loadingPlan}</span>
                       </div>
                     ) : (
@@ -8336,7 +8336,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                           onClick={openMonthlyBooking}
                           disabled={!assignedTeacherId || hasNoClassesLeft}
                         >
-                          <span aria-hidden="true">📅</span>
+                          <i className="bi bi-calendar-plus" aria-hidden="true" />
                           {PLAN.bookAClass}
                         </button>
                       </div>
@@ -8748,7 +8748,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                           !! is a screen of its own - every day the teacher has set, in
                           !! order, with a way to edit or delete each one. */}
                       <button type="button" className={cal.seeBtn} onClick={openAvailabilityList}>
-                        <span aria-hidden="true">📅</span>
+                        <i className="bi bi-calendar3" aria-hidden="true" />
                         See my availabilities ({teacherAvailabilityAll.length})
                       </button>
                     </div>
@@ -8995,7 +8995,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
           <div className={kid.filterBody}>
             <div className={kid.pastCard}>
               <div className={kid.pastFact}>
-                <span className={kid.pastFactIcon} aria-hidden="true">📚</span>
+                <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-book" /></span>
                 <div>
                   <div className={kid.detailLabel}>{selectedClass.className || "Selected class"}</div>
                   <div className={kid.detailValue}>
@@ -9006,7 +9006,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                 </div>
               </div>
               <div className={kid.pastFact}>
-                <span className={kid.pastFactIcon} aria-hidden="true">🕐</span>
+                <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-clock" /></span>
                 <div>
                   <div className={kid.detailLabel}>
                     {localRole === "teacher" ? "Requested" : CONFIRM.new}
@@ -9017,14 +9017,14 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                 </div>
               </div>
               <div className={kid.pastFact}>
-                <span className={kid.pastFactIcon} aria-hidden="true">⏱️</span>
+                <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-stopwatch" /></span>
                 <div>
                   <div className={kid.detailLabel}>Duration</div>
                   <div className={kid.detailValue}>{CONFIRM.minutesEach(selectedClassDuration)}</div>
                 </div>
               </div>
               <div className={kid.pastFact}>
-                <span className={kid.pastFactIcon} aria-hidden="true">👩‍🏫</span>
+                <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-person-workspace" /></span>
                 <div>
                   <div className={kid.detailLabel}>
                     {localRole === "teacher" ? "Student" : CLASS_INFO.teacher}
@@ -9037,7 +9037,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                 </div>
               </div>
               <div className={kid.pastFact}>
-                <span className={kid.pastFactIcon} aria-hidden="true">💬</span>
+                <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-chat-dots" /></span>
                 <div>
                   <div className={kid.detailLabel}>
                     {localRole === "teacher" ? "Reason" : CONFIRM.why}

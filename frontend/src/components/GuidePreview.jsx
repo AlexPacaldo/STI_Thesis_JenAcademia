@@ -238,7 +238,7 @@ function HomeScene({ role, focus }) {
 
           {!isTeacher && (
             <div className={styles.bookBig}>
-              <span aria-hidden="true">📅</span> Book a class
+              <i className="bi bi-calendar-plus" aria-hidden="true" /> Book a class
             </div>
           )}
 
@@ -251,14 +251,14 @@ function HomeScene({ role, focus }) {
                     <span className={styles.className}>{isTeacher ? "Emma Santos" : "English"}</span>
                     <span className={styles.classMeta}>{isTeacher ? "English" : STUDENT.teacher}</span>
                   </div>
-                  <span className={styles.classArrow} aria-hidden="true">▶</span>
+                  <span className={styles.classArrow} aria-hidden="true"><i className="bi bi-chevron-right" /></span>
                 </div>
                 <div className={styles.classRow}>
                   <div className={styles.classInfo}>
                     <span className={styles.className}>{isTeacher ? "Liam Cruz" : "Reading"}</span>
                     <span className={styles.classMeta}>{isTeacher ? "Reading" : STUDENT.teacher}</span>
                   </div>
-                  <span className={styles.classArrow} aria-hidden="true">▶</span>
+                  <span className={styles.classArrow} aria-hidden="true"><i className="bi bi-chevron-right" /></span>
                 </div>
               </div>
             </Spotlight>
@@ -267,10 +267,10 @@ function HomeScene({ role, focus }) {
           {isTeacher ? (
             <div className={styles.actionStack}>
               <div className={styles.panelAction}>
-                <span aria-hidden="true">📅</span> Open calendar
+                <i className="bi bi-calendar3" aria-hidden="true" /> Open calendar
               </div>
               <div className={styles.panelAction}>
-                <span aria-hidden="true">👤</span> My students
+                <i className="bi bi-people" aria-hidden="true" /> My students
               </div>
             </div>
           ) : (
@@ -281,7 +281,7 @@ function HomeScene({ role, focus }) {
                   <span className={styles.className}>Reading practice</span>
                   <span className={styles.classMeta}>English</span>
                 </div>
-                <span className={styles.classArrow} aria-hidden="true">▶</span>
+                <span className={styles.classArrow} aria-hidden="true"><i className="bi bi-chevron-right" /></span>
               </div>
             </div>
           )}
@@ -296,8 +296,8 @@ function HomeScene({ role, focus }) {
 function ViewSwitch() {
   return (
     <div className={styles.viewSwitch}>
-      <span className={styles.viewOn}>📅 Month</span>
-      <span className={styles.viewOff}>📋 List</span>
+      <span className={styles.viewOn}><i className="bi bi-calendar3" aria-hidden="true" /> Month</span>
+      <span className={styles.viewOff}><i className="bi bi-list-ul" aria-hidden="true" /> List</span>
     </div>
   );
 }
@@ -370,7 +370,7 @@ function AvailabilityModal({ spotlight }) {
             </Spotlight>
           </div>
           <span className={styles.seeBtn}>
-            <span aria-hidden="true">📅</span> See my availabilities (12)
+            <i className="bi bi-calendar3" aria-hidden="true" /> See my availabilities (12)
           </span>
         </div>
       </div>
@@ -394,10 +394,10 @@ function AvailabilityScene({ role, focus }) {
         <aside className={styles.panel}>
           <span className={styles.panelTitle}>Actions</span>
           <div className={styles.panelAction}>
-            <span aria-hidden="true">🗓️</span> Set Availability
+            <i className="bi bi-calendar-check" aria-hidden="true" /> Set Availability
           </div>
           <div className={styles.panelAction}>
-            <span aria-hidden="true">📅</span> Jump to Today
+            <i className="bi bi-calendar-day" aria-hidden="true" /> Jump to Today
           </div>
           <span className={styles.panelTitle}>Sunday, October 25, 2026</span>
           <div className={styles.dayClass}>
@@ -604,7 +604,6 @@ function StudentsScene({ role, focus }) {
               Track your assigned students, course details, and remaining class package balance.
             </p>
           </div>
-          <span className={styles.btnGhost}>Refresh</span>
         </div>
 
         <div className={styles.statusTabs}>
@@ -710,7 +709,6 @@ function HistoryScene({ role, focus }) {
               <h1 className={styles.pageTitle}>My classes</h1>
               <p className={styles.pageSub}>Every class you have had.</p>
             </div>
-            <span className={styles.btnGhost}>Refresh</span>
           </div>
           <div className={styles.toolbarRow}>
             <span className={styles.pillGhost}>Filter</span>
@@ -720,20 +718,20 @@ function HistoryScene({ role, focus }) {
           <Spotlight active={focus === "row"}>
             <div className={styles.kidList}>
               <div className={styles.kidHistoryCard}>
-                <span className={styles.kidIcon} aria-hidden="true">📘</span>
+                <span className={styles.kidIcon} aria-hidden="true"><i className="bi bi-book" /></span>
                 <div className={styles.kidHistoryBody}>
                   <strong className={styles.kidTitle}>English with {STUDENT.teacher}</strong>
                   <span className={styles.kidWhen}>Wednesday, October 21 · Morning</span>
-                  <em className={`${styles.chip} ${styles.chipGreen}`}>All done! 🎉</em>
+                  <em className={`${styles.chip} ${styles.chipGreen}`}>All done!</em>
                   <div className={styles.kidFacts}>
-                    <span>🧑‍🏫</span>
+                    <i className="bi bi-person-workspace" aria-hidden="true" />
                     <div><em>Your teacher</em><strong>{STUDENT.teacher}</strong></div>
-                    <span>⏱️</span>
+                    <i className="bi bi-stopwatch" aria-hidden="true" />
                     <div><em>How long</em><strong>50 minutes</strong></div>
-                    <span>📝</span>
+                    <i className="bi bi-journal-text" aria-hidden="true" />
                     <div><em>What you did</em><strong>Past tense and new animal words.</strong></div>
                   </div>
-                  <div className={styles.btnPrimaryWide}>▶️ Watch the class again</div>
+                  <div className={styles.btnPrimaryWide}><i className="bi bi-play-fill" aria-hidden="true" /> Watch the class again</div>
                 </div>
               </div>
             </div>
@@ -754,7 +752,6 @@ function HistoryScene({ role, focus }) {
               class summary, and recording proof.
             </p>
           </div>
-          <span className={styles.btnGhost}>Refresh</span>
         </div>
 
         <div className={styles.statusTabs}>
@@ -878,7 +875,7 @@ function Stars({ value }) {
   return (
     <span className={styles.stars} aria-hidden="true">
       {[1, 2, 3, 4, 5].map((star) => (
-        <span key={star} className={star <= value ? styles.starOn : styles.starOff}>★</span>
+        <span key={star} className={star <= value ? styles.starOn : styles.starOff}><i className="bi bi-star-fill" /></span>
       ))}
     </span>
   );
@@ -1038,7 +1035,7 @@ function RemarksScene({ role, focus }) {
                 <strong>{STUDENT.teacher}</strong>
                 <span>Oct 21, 2026</span>
               </div>
-              <p>“You used the past tense all by yourself today. Brilliant!” 🌟</p>
+              <p>“You used the past tense all by yourself today. Brilliant!”</p>
             </div>
             <div className={styles.remarkCard}>
               <div className={styles.remarkWho}>
@@ -1075,7 +1072,7 @@ function ClassNoteScene({ focus }) {
         <aside className={styles.panel}>
           <div className={styles.classPanelCard}>
             <div className={styles.classPanelHead}>
-              <span className={styles.classPanelIcon} aria-hidden="true">👩‍🏫</span>
+              <span className={styles.classPanelIcon} aria-hidden="true"><i className="bi bi-person-workspace" /></span>
               <strong>Class info</strong>
             </div>
             <div className={styles.classPanelRow}>
@@ -1086,14 +1083,14 @@ function ClassNoteScene({ focus }) {
               </span>
             </div>
             <div className={styles.classPanelRow}>
-              <span className={styles.classPanelIcon} aria-hidden="true">📚</span>
+              <span className={styles.classPanelIcon} aria-hidden="true"><i className="bi bi-book" /></span>
               <span>
                 <em className={styles.classPanelLabel}>Class</em>
                 <strong className={styles.classPanelValue}>English · Intermediate</strong>
               </span>
             </div>
             <div className={styles.classPanelRow}>
-              <span className={styles.classPanelIcon} aria-hidden="true">🕐</span>
+              <span className={styles.classPanelIcon} aria-hidden="true"><i className="bi bi-clock" /></span>
               <span>
                 <em className={styles.classPanelLabel}>Time</em>
                 <strong className={styles.classPanelValue}>4:00 PM - 4:50 PM</strong>
@@ -1104,7 +1101,7 @@ function ClassNoteScene({ focus }) {
           <Spotlight active={focus === "note"}>
             <div className={styles.classNoteCard}>
               <div className={styles.classNoteHead}>
-                <span className={styles.classPanelIcon} aria-hidden="true">📝</span>
+                <span className={styles.classPanelIcon} aria-hidden="true"><i className="bi bi-journal-text" /></span>
                 <span>
                   <strong className={styles.classNoteTitle}>Say something about this class</strong>
                   <em className={styles.classNoteName}>Emma Santos</em>
@@ -1141,7 +1138,7 @@ function AssignmentsScene({ role, focus }) {
                 <span className={styles.assignDue}>Due date: Oct 28, 2026</span>
                 <span className={styles.assignState}>Not done yet</span>
               </div>
-              <span className={styles.openBtn}>Open ▶</span>
+              <span className={styles.openBtn}>Open <i className="bi bi-arrow-right" aria-hidden="true" /></span>
             </div>
           </Spotlight>
           <div className={styles.assignCard}>
@@ -1151,7 +1148,7 @@ function AssignmentsScene({ role, focus }) {
               <span className={styles.assignDue}>Due date: Oct 18, 2026</span>
               <span className={styles.assignDone}>Done</span>
             </div>
-            <span className={styles.openBtn}>Open ▶</span>
+            <span className={styles.openBtn}>Open <i className="bi bi-arrow-right" aria-hidden="true" /></span>
           </div>
         </div>
       </AppFrame>
@@ -1389,7 +1386,7 @@ export default function GuidePreview({ preview, role, module }) {
       </div>
       {preview.highlight && (
         <div className={styles.annotation}>
-          <span className={styles.annotationIcon} aria-hidden="true">👀</span>
+          <span className={styles.annotationIcon} aria-hidden="true"><i className="bi bi-eye" /></span>
           <div>
             <span className={styles.annotationKicker}>Look here</span>
             <strong>{preview.highlight.title}</strong>
@@ -1414,7 +1411,7 @@ export function ExampleSituation({ example }) {
       <div className={styles.exampleIntro}>
         <span className={styles.exampleKicker}>Example situation</span>
         <h3>
-          <span aria-hidden="true">{example.emoji}</span> {example.title}
+          <i className={`bi ${example.icon}`} aria-hidden="true" /> {example.title}
         </h3>
         <p>{example.body}</p>
       </div>
@@ -1433,7 +1430,7 @@ export function ExampleSituation({ example }) {
         </div>
         {example.outcome && (
           <p className={styles.outcome}>
-            <span aria-hidden="true">✅</span> {example.outcome}
+            <i className="bi bi-check-circle" aria-hidden="true" /> {example.outcome}
           </p>
         )}
       </div>

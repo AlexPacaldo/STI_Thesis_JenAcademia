@@ -269,7 +269,7 @@ export default function StudentBookingWizard({
         <>
           {renderMonthBar()}
           <div className={styles.empty}>
-            <span className={styles.emptyIcon} aria-hidden="true">📅</span>
+            <span className={styles.emptyIcon} aria-hidden="true"><i className="bi bi-calendar-x" /></span>
             <span>{BOOKING.noDaysInThisMonth}</span>
           </div>
         </>
@@ -283,7 +283,7 @@ export default function StudentBookingWizard({
         <>
           {renderMonthBar()}
           <div className={styles.empty}>
-            <span className={styles.emptyIcon} aria-hidden="true">🔍</span>
+            <span className={styles.emptyIcon} aria-hidden="true"><i className="bi bi-search" /></span>
             <span>{BOOKING.noFreeDaysThisMonth}</span>
           </div>
         </>
@@ -344,7 +344,7 @@ export default function StudentBookingWizard({
     if (status === "busy") {
       return (
         <div className={styles.empty}>
-          <span className={styles.emptyIcon} aria-hidden="true">🚫</span>
+          <span className={styles.emptyIcon} aria-hidden="true"><i className="bi bi-ban" /></span>
           <span>{BOOKING.teacherBusyDay}</span>
         </div>
       );
@@ -363,7 +363,7 @@ export default function StudentBookingWizard({
     if (!timeSlots.length) {
       return (
         <div className={styles.empty}>
-          <span className={styles.emptyIcon} aria-hidden="true">⏰</span>
+          <span className={styles.emptyIcon} aria-hidden="true"><i className="bi bi-alarm" /></span>
           <span>{status === "none" ? BOOKING.noTimesThatDay : BOOKING.noFreeTimes}</span>
         </div>
       );
@@ -438,7 +438,7 @@ export default function StudentBookingWizard({
             className={`${styles.weekdayCard} ${active ? styles.weekdayCardActive : ""}`}
           >
             <span className={styles.weekdayName}>{weekday.label}</span>
-            <span className={styles.weekdayTick}>{active ? "✓" : ""}</span>
+            <span className={styles.weekdayTick}>{active && <i className="bi bi-check2" aria-hidden="true" />}</span>
           </button>
         );
       })}
@@ -481,7 +481,7 @@ export default function StudentBookingWizard({
     if (!suggestions.length) {
       return (
         <div className={styles.empty}>
-          <span className={styles.emptyIcon} aria-hidden="true">🔍</span>
+          <span className={styles.emptyIcon} aria-hidden="true"><i className="bi bi-search" /></span>
           <span>{BOOKING.noTimesFound}</span>
         </div>
       );
@@ -542,7 +542,7 @@ export default function StudentBookingWizard({
     if (!selections.length) {
       return (
         <div className={styles.empty}>
-          <span className={styles.emptyIcon} aria-hidden="true">📝</span>
+          <span className={styles.emptyIcon} aria-hidden="true"><i className="bi bi-journal-text" /></span>
           <span>{BOOKING.pickTimeFirst}</span>
         </div>
       );
@@ -553,14 +553,14 @@ export default function StudentBookingWizard({
         {selections.length === 1 ? (
           <>
             <div className={styles.summaryRow}>
-              <span className={styles.summaryIcon} aria-hidden="true">📅</span>
+              <span className={styles.summaryIcon} aria-hidden="true"><i className="bi bi-calendar3" /></span>
               <div>
                 <div className={styles.summaryLabel}>{BOOKING.dayLabel}</div>
                 <div className={styles.summaryValue}>{formatLongDate(selections[0].date)}</div>
               </div>
             </div>
             <div className={styles.summaryRow}>
-              <span className={styles.summaryIcon} aria-hidden="true">⏰</span>
+              <span className={styles.summaryIcon} aria-hidden="true"><i className="bi bi-alarm" /></span>
               <div>
                 <div className={styles.summaryLabel}>{BOOKING.timeLabel}</div>
                 <div className={styles.summaryValue}>
@@ -600,7 +600,7 @@ export default function StudentBookingWizard({
 
         {teacherName && (
           <div className={styles.summaryRow}>
-            <span className={styles.summaryIcon} aria-hidden="true">📚</span>
+            <span className={styles.summaryIcon} aria-hidden="true"><i className="bi bi-book" /></span>
             <div>
               <div className={styles.summaryLabel}>{CONFIRM.teacher}</div>
               <div className={styles.summaryValue}>{teacherName}</div>
@@ -610,7 +610,7 @@ export default function StudentBookingWizard({
 
         {courseName && (
           <div className={styles.summaryRow}>
-            <span className={styles.summaryIcon} aria-hidden="true">🎯</span>
+            <span className={styles.summaryIcon} aria-hidden="true"><i className="bi bi-bullseye" /></span>
             <div>
               <div className={styles.summaryLabel}>{BOOKING.course}</div>
               <div className={styles.summaryValue}>
@@ -638,7 +638,7 @@ export default function StudentBookingWizard({
           aria-pressed={applyMode === "manual"}
           className={`${styles.choiceCard} ${applyMode === "manual" ? styles.choiceCardActive : ""}`}
         >
-          <span className={styles.choiceIcon} aria-hidden="true">📅</span>
+          <span className={styles.choiceIcon} aria-hidden="true"><i className="bi bi-calendar3" /></span>
           <span className={styles.choiceTitle}>{BOOKING.oneTime}</span>
           <span className={styles.choiceText}>{BOOKING.oneTimeHelp}</span>
         </button>
@@ -648,7 +648,7 @@ export default function StudentBookingWizard({
           aria-pressed={applyMode === "weekly"}
           className={`${styles.choiceCard} ${applyMode === "weekly" ? styles.choiceCardActive : ""}`}
         >
-          <span className={styles.choiceIcon} aria-hidden="true">🔁</span>
+          <span className={styles.choiceIcon} aria-hidden="true"><i className="bi bi-arrow-repeat" /></span>
           <span className={styles.choiceTitle}>{BOOKING.everyWeek}</span>
           <span className={styles.choiceText}>{BOOKING.everyWeekHelp}</span>
         </button>
@@ -664,7 +664,7 @@ export default function StudentBookingWizard({
     body = (
       <>
         <div className={styles.pickedDay}>
-          <span className={styles.pickedDayText}>📅 {formatLongDate(selectedDate)}</span>
+          <span className={styles.pickedDayText}><i className="bi bi-calendar3" aria-hidden="true" /> {formatLongDate(selectedDate)}</span>
           <button type="button" className={styles.changeBtn} onClick={() => goTo("day")}>
             {BOOKING.change}
           </button>
@@ -784,7 +784,7 @@ export default function StudentBookingWizard({
                         : ""
                   }`}
                 >
-                  {index + 1 < stepNumber ? "✓" : index + 1}
+                  {index + 1 < stepNumber ? <i className="bi bi-check2" aria-hidden="true" /> : index + 1}
                 </span>
                 {index + 1 < stepTotal && (
                   <span className={`${styles.stepLine} ${index + 1 < stepNumber ? styles.stepLineDone : ""}`} />
@@ -805,7 +805,7 @@ export default function StudentBookingWizard({
 
       {error && (
         <div className={styles.error}>
-          <span aria-hidden="true">⚠️</span>
+          <i className="bi bi-exclamation-triangle" aria-hidden="true" />
           <span>{error}</span>
         </div>
       )}

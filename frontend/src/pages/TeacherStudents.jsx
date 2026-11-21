@@ -1,11 +1,12 @@
 import axios from "axios";
 import ContractExpiryBadge from "../components/ContractExpiryBadge.jsx";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import kid from "../assets/studentKid.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { API_BASE_URL } from "../utils/api.js";
 import { formatProficiencyLevel } from "../utils/proficiencyLevels.js";
 import { readStoredUser } from "../utils/sessionUser.js";
+import useLiveRefresh from "../hooks/useLiveRefresh.js";
 
 const API = API_BASE_URL;
 const STUDENTS_PER_PAGE = 10;
@@ -33,6 +34,7 @@ export default function TeacherStudents() {
   const { notify } = useNotification() || {};
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
@@ -40,24 +42,45 @@ export default function TeacherStudents() {
   const user = readStoredUser();
   const teacherId = user?.id || user?.user_id || user?.userId;
   const userRole = String(user?.role || "").toLowerCase();
+  const hasUser = Boolean(user);
 
-  const loadStudents = async () => {
-    if (!teacherId) return;
-    setLoading(true);
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  const loadStudents = useCallback(async (showLoading = false) => {
+    if (!teacherId) {
+      if (showLoading) {
+        setLoadError("Unable to identify your teacher account. Please sign in again.");
+        setLoading(false);
+      }
+      return;
+    }
+    if (showLoading) {
+      setLoading(true);
+      setLoadError("");
+    }
     try {
       const response = await axios.get(`${API}/api/teacher/${teacherId}/students`);
       setStudents(response.data?.students || []);
+      setLoadError("");
     } catch (err) {
-      console.error(err);
-      setStudents([]);
-      notify?.(err?.response?.data?.message || "Failed to load students", "error");
+      if (showLoading) {
+        console.error(err);
+        setStudents([]);
+        const message = err?.response?.data?.message || "Failed to load students";
+        setLoadError(message);
+        notify?.(message, "error");
+      } else {
+        console.warn("Could not update assigned students:", err);
+      }
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
-  };
+  }, [teacherId, notify]);
 
   useEffect(() => {
-    if (!user) {
+    if (!hasUser) {
       window.location.href = "/";
       return;
     }
@@ -65,8 +88,10 @@ export default function TeacherStudents() {
       window.location.href = userRole === "student" ? "/StudentDashboard" : "/AdminDashboard";
       return;
     }
-    loadStudents();
-  }, [teacherId, userRole]);
+    void loadStudents(true);
+  }, [hasUser, loadStudents, userRole]);
+
+  useLiveRefresh(() => loadStudents(false), { enabled: Boolean(teacherId && userRole === "teacher") });
 
   useEffect(() => {
     setPage(1);
@@ -123,9 +148,6 @@ export default function TeacherStudents() {
             Review your assigned students, learning plans, and class balances.
           </p>
         </div>
-        <button className={kid.refreshBtn} type="button" onClick={loadStudents} disabled={loading}>
-          {loading ? "Refreshing..." : "Refresh"}
-        </button>
       </header>
 
       <div className={kid.filterPills} role="group" aria-label="Filter students by package status">
@@ -155,15 +177,23 @@ export default function TeacherStudents() {
         <div className={kid.historyList}>
           {[0, 1, 2].map((index) => <div key={index} className={kid.loadingCard} />)}
         </div>
+      ) : loadError ? (
+        <div className={kid.historyEmpty} role="alert">
+          <p className={kid.historyEmptyTitle}>Could not load students</p>
+          <p className={kid.historyEmptyHelp}>{loadError}</p>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void loadStudents(true)}>
+            Try again
+          </button>
+        </div>
       ) : students.length === 0 ? (
         <div className={kid.historyEmpty}>
-          <span className={kid.historyEmptyIcon} aria-hidden="true">👩‍🎓</span>
+          <span className={kid.historyEmptyIcon} aria-hidden="true"><i className="bi bi-mortarboard" /></span>
           <p className={kid.historyEmptyTitle}>No assigned students yet</p>
           <p className={kid.historyEmptyHelp}>Students assigned to you will appear here.</p>
         </div>
       ) : filteredStudents.length === 0 ? (
         <div className={kid.historyEmpty}>
-          <span className={kid.historyEmptyIcon} aria-hidden="true">🔎</span>
+          <span className={kid.historyEmptyIcon} aria-hidden="true"><i className="bi bi-search" /></span>
           <p className={kid.historyEmptyTitle}>No students match your search</p>
         </div>
       ) : (
@@ -181,7 +211,7 @@ export default function TeacherStudents() {
               return (
                 <article key={student.user_id} className={kid.pastCard}>
                   <div className={kid.pastHead}>
-                    <span className={kid.pastIcon} aria-hidden="true">👩‍🎓</span>
+                    <span className={kid.pastIcon} aria-hidden="true"><i className="bi bi-mortarboard" /></span>
                     <div>
                       <h2 className={kid.pastName}>{getStudentName(student)}</h2>
                       <p className={kid.pastWhen}>{student.email || "No email provided"}</p>
@@ -192,28 +222,28 @@ export default function TeacherStudents() {
                   </span>
                   <div className={`${kid.pastFacts} ${kid.teacherStudentFacts}`}>
                     <div className={kid.pastFact}>
-                      <span className={kid.pastFactIcon} aria-hidden="true">📚</span>
+                      <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-book" /></span>
                       <div>
                         <div className={kid.pastFactLabel}>Course and level</div>
                         <div className={kid.pastFactValue}>{student.course_name || "No course assigned"} · {formatProficiencyLevel(student.proficiency_level)}</div>
                       </div>
                     </div>
                     <div className={kid.pastFact}>
-                      <span className={kid.pastFactIcon} aria-hidden="true">🎟️</span>
+                      <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-ticket-perforated" /></span>
                       <div>
                         <div className={kid.pastFactLabel}>Class balance</div>
                         <div className={kid.pastFactValue}>{classesLeft} of {totalClasses} classes remaining</div>
                       </div>
                     </div>
                     <div className={kid.pastFact}>
-                      <span className={kid.pastFactIcon} aria-hidden="true">⏱️</span>
+                      <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-stopwatch" /></span>
                       <div>
                         <div className={kid.pastFactLabel}>Class duration</div>
                         <div className={kid.pastFactValue}>{student.class_duration ? `${student.class_duration} minutes per class` : "Not set"}</div>
                       </div>
                     </div>
                     <div className={kid.pastFact}>
-                      <span className={kid.pastFactIcon} aria-hidden="true">📞</span>
+                      <span className={kid.pastFactIcon} aria-hidden="true"><i className="bi bi-telephone" /></span>
                       <div>
                         <div className={kid.pastFactLabel}>Contact</div>
                         <div className={kid.pastFactValue}>{student.contact || "No contact provided"}</div>

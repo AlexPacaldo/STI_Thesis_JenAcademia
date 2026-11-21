@@ -438,7 +438,7 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
   const emptyText = hasSearch
     ? "Try another name."
     : filter === "unread"
-      ? "You're all caught up! 🎉"
+      ? "You're all caught up!"
       : filter === "teachers"
         ? "Your teacher chats will show up here."
         : "When someone says hello, they will show up here.";
@@ -530,7 +530,7 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
       <aside className={`${styles.drawer} ${isOpen ? styles.drawerOpen : ""}`} aria-hidden={!isOpen} inert={!isOpen}>
         <div className={styles.drawerHeader}>
           <div className={styles.drawerHeaderMain}>
-            <span className={styles.headerIcon} aria-hidden="true">💬</span>
+            <span className={styles.headerIcon} aria-hidden="true"><i className="bi bi-chat-dots-fill" /></span>
             <div className={styles.headerText}>
               <div className={styles.headerTitleRow}>
                 <h3>Chats</h3>
@@ -545,7 +545,7 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
         </div>
 
         <label className={styles.searchField}>
-          <span className={styles.searchIcon} aria-hidden="true">🔎</span>
+          <span className={styles.searchIcon} aria-hidden="true"><i className="bi bi-search" /></span>
           <input
             type="text"
             value={search}
@@ -598,7 +598,9 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
             </div>
           ) : filteredChats.length === 0 ? (
             <div className={styles.emptyState}>
-              <span className={styles.emptyIcon} aria-hidden="true">{hasSearch ? "🔎" : "💬"}</span>
+              <span className={styles.emptyIcon} aria-hidden="true">
+                <i className={`bi ${hasSearch ? "bi-search" : "bi-chat-dots"}`} />
+              </span>
               <strong className={styles.emptyTitle}>{emptyTitle}</strong>
               <span className={styles.emptyText}>{emptyText}</span>
             </div>
@@ -719,12 +721,12 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
                     </div>}
                     {loadingMessagesByChat[chatId] && !messages.length ? (
                       <div className={styles.windowEmpty}>
-                        <span className={styles.windowEmptyIcon} aria-hidden="true">⏳</span>
+                        <span className={styles.windowEmptyIcon} aria-hidden="true"><i className="bi bi-hourglass-split" /></span>
                         <strong>Loading messages…</strong>
                       </div>
                     ) : messages.length === 0 ? (
                       <div className={styles.windowEmpty}>
-                        <span className={styles.windowEmptyIcon} aria-hidden="true">💬</span>
+                        <span className={styles.windowEmptyIcon} aria-hidden="true"><i className="bi bi-chat-dots" /></span>
                         <strong>Say hello!</strong>
                         <span>Send the first message to start your chat.</span>
                       </div>
@@ -754,7 +756,7 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
                             )}
                             <div className={styles.messageBubble}>
                               <span>{message.text}</span>
-                              <small>{showSeen ? "Seen ✓" : message.time}</small>
+                              <small>{showSeen ? <>Seen <i className="bi bi-check2" aria-hidden="true" /></> : message.time}</small>
                             </div>
                           </div>
                         );
@@ -783,7 +785,7 @@ export default function ChatPanel({ user, userId, isOpen, onClose }) {
                     </label>
                     <button type="button" className={styles.sendButton} disabled={sendingByChat[chatId] || !drafts[chatId]?.trim()}
                       onClick={() => sendMessage(chatId)}>
-                      <span aria-hidden="true">➤</span>
+                      <i className="bi bi-send-fill" aria-hidden="true" />
                       Send
                     </button>
                   </footer>

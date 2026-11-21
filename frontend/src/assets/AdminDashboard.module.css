@@ -96,7 +96,7 @@
   font-weight: 800;
 }
 
-/* Right-hand button group in a card head (e.g. Refresh + Add Book).
+/* Right-hand button group in a card head.
    flex-shrink:0 keeps the buttons at their natural width, so a long title
    shrinks instead of the buttons wrapping one letter per line. */
 .cardHeadActions {
@@ -131,19 +131,14 @@
    stop crowding a single table cell. */
 
 .bookGrid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
   align-items: stretch;
   gap: 18px;
 }
 
 .bookCard {
-  /* Caps the column width once several books are listed, so cards stay a
-     readable size instead of growing with the viewport. The lone-card rule
-     below lifts the cap. */
-  flex: 1 1 300px;
   min-width: 0;
-  max-width: 400px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -376,14 +371,10 @@
 }
 
 /* ===== LONE CARD =====
-   With a single book the 400px cap leaves the card marooned at the left of a
-   wide row. It then spans the full width and lays out sideways - cover beside
-   the content, actions in one row - which is what the student and teacher book
-   views already do (see teacherBooksLessons.module.css). If :has() is
-   unsupported the card simply falls back to the normal stacked layout. */
+   Use the available row width for a single book, with the cover beside its
+   content and actions. If :has() is unsupported, the card stays stacked. */
 
 .bookGrid:has(> .bookCard:only-child) .bookCard {
-  max-width: none;
   flex-direction: row;
   align-items: stretch;
   gap: 20px;

@@ -57,14 +57,14 @@ export default function Remarks() {
     <div className={styles.page}>
       {loading ? (
         <div className={styles.loadingCard}>
-          <span className={styles.loadingIcon} aria-hidden="true">⏳</span>
+          <span className={styles.loadingIcon} aria-hidden="true"><i className="bi bi-hourglass-split" /></span>
           <span className={styles.loadingText}>Loading your remarks...</span>
         </div>
       ) : error ? (
         <div className={styles.errorBanner}>{error}</div>
       ) : remarks.length === 0 ? (
         <div className={styles.emptyCard}>
-          <span className={styles.emptyIcon} aria-hidden="true">💬</span>
+          <span className={styles.emptyIcon} aria-hidden="true"><i className="bi bi-chat-dots" /></span>
           <h2 className={styles.emptyTitle}>No remarks yet</h2>
           <p className={styles.emptyText}>
             When your teacher leaves you a note, it will show up here.

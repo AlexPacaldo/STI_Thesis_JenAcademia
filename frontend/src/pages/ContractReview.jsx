@@ -77,7 +77,7 @@ function Stars({ value, label }) {
           className={star <= rounded ? styles.starOn : styles.starOff}
           aria-hidden="true"
         >
-          ★
+          <i className="bi bi-star-fill" />
         </span>
       ))}
     </span>
@@ -312,7 +312,7 @@ export default function ContractReview() {
           <div className={styles.loadingCard}>Loading contract reviews...</div>
         ) : loadError ? null : reviews.length === 0 ? (
           <section className={styles.emptyCard}>
-            <span className={styles.emptyIcon} aria-hidden="true">📝</span>
+            <span className={styles.emptyIcon} aria-hidden="true"><i className="bi bi-journal-text" /></span>
             <h2>No completed contracts yet</h2>
             <p>
               This page opens when every class in a contract has been used. The

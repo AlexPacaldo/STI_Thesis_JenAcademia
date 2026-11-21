@@ -273,10 +273,10 @@ export function buildClassReminderMessage({
   actionUrl = "",
 }) {
   const lines = [
-    `⏰ Class starts in about ${pluralMinutes(minutesUntil)}`,
+    `Class starts in about ${pluralMinutes(minutesUntil)}`,
     "",
-    `📚 ${className || "Your class"}`,
-    `🕒 ${startMoment || "See your calendar"}`,
+    `Class: ${className || "Your class"}`,
+    `Time: ${startMoment || "See your calendar"}`,
   ];
 
   if (otherPartyName) {
@@ -295,7 +295,7 @@ export function buildRescheduleRequestMessage({
   actionUrl = "",
 }) {
   const lines = [
-    "🔄 Reschedule request",
+    "Reschedule request",
     "",
     `${requesterName || "Someone"} wants to move "${className || "a class"}".`,
     `Now: ${originalMoment || "see your calendar"}`,
@@ -313,7 +313,7 @@ export function buildRescheduleApprovedMessage({
   actionUrl = "",
 }) {
   const lines = [
-    "✅ Reschedule approved",
+    "Reschedule approved",
     "",
     `"${className || "Your class"}" has been moved to ${newMoment || "the new time"}.`,
   ];
@@ -328,7 +328,7 @@ export function buildRescheduleDeclinedMessage({
   actionUrl = "",
 }) {
   const lines = [
-    "❌ Reschedule declined",
+    "Reschedule declined",
     "",
     `${declinerName || "The other party"} declined the reschedule request for "${className || "your class"}".`,
   ];
@@ -347,7 +347,7 @@ export function buildPendingRescheduleMessage({
   actionUrl = "",
 }) {
   const lines = [
-    "⏳ A reschedule request is waiting for you",
+    "A reschedule request is waiting for you",
     "",
     `${requesterName || "The other party"} asked to move "${className || "a class"}".`,
     `Now: ${originalMoment || "see your calendar"}`,
@@ -365,7 +365,7 @@ export function buildContractExpiryMessage({
   actionUrl = "",
 }) {
   const lines = [
-    "📅 Your contract expires soon",
+    "Your contract expires soon",
     "",
     `It ends on ${expiresOn || "a date very soon"}.`,
     `You have ${Math.max(0, Number(classesLeft) || 0)} of ${Math.max(0, Number(totalClasses) || 0)} classes left to book.`,

@@ -276,7 +276,7 @@
   .header {
     height: 66px;
     min-height: 66px;
-    padding: 0 12px;
+    padding: 0 max(12px, env(safe-area-inset-right, 0px)) 0 max(12px, env(safe-area-inset-left, 0px));
   }
 
   .headerContainer {

@@ -702,7 +702,7 @@ export default function AssignTask() {
                       />
                       <div className={styles.Attachment}>
                         <label htmlFor="attachment" className={styles.fileLabel}>
-                          <span className={styles.fileIcon} aria-hidden="true">📎</span>
+                          <span className={styles.fileIcon} aria-hidden="true"><i className="bi bi-paperclip" /></span>
                           Attach files
                         </label>
                         <input
@@ -950,7 +950,7 @@ export default function AssignTask() {
                   </p>
                 ) : null}
                 <label className={styles.fileLabel} htmlFor="editAssignmentAttachment">
-                  <span className={styles.fileIcon} aria-hidden="true">📎</span>
+                  <span className={styles.fileIcon} aria-hidden="true"><i className="bi bi-paperclip" /></span>
                   {getAssignmentFiles(editingAssignment).length
                     ? "Replace attached files (optional; leave blank to keep current files)"
                     : "Attach files"}

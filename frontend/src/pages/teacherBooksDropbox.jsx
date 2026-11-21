@@ -180,7 +180,7 @@ export default function TeacherBooksDropbox() {
               onChange={handleFileChange}
             />
             {lessonData.file && (
-              <p className={styles.fileName}>📎 {lessonData.file.name}</p>
+              <p className={styles.fileName}><i className="bi bi-paperclip" aria-hidden="true" /> {lessonData.file.name}</p>
             )}
             <br />
 
@@ -210,7 +210,7 @@ export default function TeacherBooksDropbox() {
             <br />
 
             <div className={styles.infoBox}>
-              <h3>📋 Instructions:</h3>
+              <h3><i className="bi bi-clipboard" aria-hidden="true" /> Instructions:</h3>
               <ul>
                 <li>Select a book from the dropdown</li>
                 <li>Enter the lesson number</li>

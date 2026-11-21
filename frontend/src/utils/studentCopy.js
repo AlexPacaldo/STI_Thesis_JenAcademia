@@ -91,7 +91,7 @@ export const NEW_PLAN_WINDOW = {
   classStartHelp: "Choose at least one day and a time of day, or leave availability blank.",
   seeMyTeacher: "Preview teacher match",
   findingTeacher: "Finding a teacher match...",
-  checkAgain: "Refresh teacher match",
+  checkAgain: "Check again",
   checkTeacherRequired: "Preview a teacher match before submitting your request.",
   sending: "Sending...",
   send: "Submit request",
@@ -270,7 +270,6 @@ export const LEGEND = {
 export const HISTORY = {
   title: "My classes",
   subtitle: "Every class you have had.",
-  refresh: "Refresh",
   looking: "Looking for your classes...",
   emptyTitle: "You have not had a class yet.",
   emptyHelp: "Your classes will show up here.",

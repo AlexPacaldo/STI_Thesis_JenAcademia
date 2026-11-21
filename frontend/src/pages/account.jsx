@@ -6,6 +6,7 @@ import kid from "../assets/studentKid.module.css";
 import pfp from "../assets/img/Navbar/user.jpg";
 import LineConnectCard from "../components/LineConnectCard.jsx";
 import { useNotification } from "../components/NotificationContainer.jsx";
+import useLiveRefresh from "../hooks/useLiveRefresh.js";
 import { describeStudentContract } from "../utils/contractExpiry.js";
 import { clearStoredUser, readStoredUser, writeStoredUser } from "../utils/sessionUser.js";
 import { formatTimezoneLabel, getTimezoneOptions, getUserTimezone, parseServerTimestamp } from "../utils/timezone.js";
@@ -392,6 +393,44 @@ export default function Account() {
     window.dispatchEvent(new CustomEvent("userProfileUpdated", { detail: refreshed }));
     return refreshed;
   }
+
+  const refreshAssignedTeacher = useCallback(async () => {
+    if (!user?.id || user.role !== "student") return;
+
+    const response = await axios.get(`${API}/api/users/${user.id}`);
+    const refreshed = mapUser(response.data?.user ?? response.data);
+    const nextRoleDetails = refreshed.roleDetails || {};
+    const teacherChanged =
+      String(user.assignedTeacherId ?? "") !== String(refreshed.assignedTeacherId ?? "") ||
+      user.roleDetails?.teacher_first_name !== nextRoleDetails.teacher_first_name ||
+      user.roleDetails?.teacher_last_name !== nextRoleDetails.teacher_last_name;
+
+    if (!teacherChanged) return;
+
+    setUser((current) => {
+      if (!current || String(current.id) !== String(user.id)) return current;
+      return {
+        ...current,
+        assignedTeacherId: refreshed.assignedTeacherId,
+        roleDetails: nextRoleDetails,
+      };
+    });
+
+    const stored = readStoredUser();
+    if (stored && String(stored.id) === String(user.id)) {
+      writeStoredUser({ ...stored, assignedTeacherId: refreshed.assignedTeacherId });
+    }
+  }, [
+    user?.id,
+    user?.role,
+    user?.assignedTeacherId,
+    user?.roleDetails?.teacher_first_name,
+    user?.roleDetails?.teacher_last_name,
+  ]);
+
+  useLiveRefresh(refreshAssignedTeacher, {
+    enabled: Boolean(user?.id && user.role === "student"),
+  });
 
   useEffect(() => {
     if (!storedUser?.id) {
@@ -849,7 +888,7 @@ export default function Account() {
     if (firstSetupFinished) {
       return (
         <section className={styles.firstSetupCard} aria-labelledby="first-setup-ready">
-          <span className={styles.firstSetupIcon} aria-hidden="true">🎉</span>
+          <span className={styles.firstSetupIcon} aria-hidden="true"><i className="bi bi-check-circle" /></span>
           <p className={styles.firstSetupStep}>All done!</p>
           <h1 id="first-setup-ready">You’re ready, {firstName}!</h1>
           <p>
@@ -872,7 +911,7 @@ export default function Account() {
         {!lineOnlySetup && (
           <div className={styles.firstSetupProgress} aria-label={`Step ${progressStep + 1} of ${totalSteps}`}>
             <span className={progressStep === 0 ? styles.firstSetupCurrent : styles.firstSetupDone}>
-              {progressStep > 0 ? "✓" : "1"}
+              {progressStep > 0 ? <i className="bi bi-check2" aria-hidden="true" /> : "1"}
             </span>
             {totalSteps > 1 && <i />}
             <span
@@ -884,7 +923,7 @@ export default function Account() {
                     : ""
               }
             >
-              {progressStep > 1 ? "✓" : "2"}
+              {progressStep > 1 ? <i className="bi bi-check2" aria-hidden="true" /> : "2"}
             </span>
             {isStudent && (
               <>
@@ -903,7 +942,7 @@ export default function Account() {
 
         {firstSetupStep === 0 && !lineOnlySetup ? (
           <div className={styles.firstSetupContent}>
-            <span className={styles.firstSetupIcon} aria-hidden="true">📸</span>
+            <span className={styles.firstSetupIcon} aria-hidden="true"><i className="bi bi-camera" /></span>
             <h2>First, add your picture</h2>
             <p>
               {isStudent
@@ -931,7 +970,7 @@ export default function Account() {
           </div>
         ) : isStudent && (lineOnlySetup || firstSetupStep === 1) ? (
           <div className={styles.firstSetupContent}>
-            <span className={styles.firstSetupIcon} aria-hidden="true">💬</span>
+            <span className={styles.firstSetupIcon} aria-hidden="true"><i className="bi bi-chat-dots" /></span>
             <h2>Connect LINE</h2>
             <p>
               Follow the pictures. Ask a grown-up to help if you need it.
@@ -971,7 +1010,7 @@ export default function Account() {
         ) : (
           <form className={styles.firstSetupForm} onSubmit={saveProfile}>
             <span className={styles.firstSetupIcon} aria-hidden="true">
-              {isStudent ? "🧑‍🎓" : user.role === "teacher" ? "📚" : "🏫"}
+              <i className={`bi ${isStudent ? "bi-mortarboard" : user.role === "teacher" ? "bi-book" : "bi-building"}`} />
             </span>
             <h2>Now, check your name and time zone</h2>
             <label>
@@ -1388,7 +1427,7 @@ export default function Account() {
             <ul className={kid.kidNoticeList}>
               <li className={kid.kidNoticeItem}>
                 <span className={kid.kidNoticeTick} aria-hidden="true">
-                  {user?.profileImageUrl ? "✓" : "•"}
+                  <i className={`bi ${user?.profileImageUrl ? "bi-check2" : "bi-circle"}`} />
                 </span>
                 {ACCOUNT.needPicture}
               </li>

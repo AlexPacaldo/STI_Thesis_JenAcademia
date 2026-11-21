@@ -1,6 +1,6 @@
 import { isStartScreenshotTimely, attendanceMinutes } from "../utils/classSession.js";
 import axios from "axios";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "../assets/AdminDashboard.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { API_BASE_URL } from "../utils/api.js";
@@ -9,6 +9,7 @@ import { formatRecordingDuration } from "../utils/recordingDuration.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
 import { openAuthenticatedFile } from "../utils/authenticatedFile.js";
 import { readStoredUser } from "../utils/sessionUser.js";
+import useLiveRefresh from "../hooks/useLiveRefresh.js";
 import ModalPortal from "../utils/ModalPortal.jsx";
 
 const API = API_BASE_URL;
@@ -147,9 +148,9 @@ export default function StudentClassHistory({ mode = "student" }) {
     ? "Review your conducted classes, student attendance, verified duration, class summary, and recording proof."
     : "Review your past class attendance, verified duration, teacher summary, and recording proof.";
 
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async (showLoading = false) => {
     if (!currentUserId) return;
-    setLoading(true);
+    if (showLoading) setLoading(true);
     try {
       const response = await axios.get(
         `${API}/${isTeacherMode ? "api/teacher" : "api/student"}/${currentUserId}/class-history`,
@@ -159,13 +160,17 @@ export default function StudentClassHistory({ mode = "student" }) {
       );
       setHistory(response.data?.history || []);
     } catch (err) {
-      console.error(err);
-      setHistory([]);
-      notify?.(err?.response?.data?.message || "Failed to load class history", "error");
+      if (showLoading) {
+        console.error(err);
+        setHistory([]);
+        notify?.(err?.response?.data?.message || "Failed to load class history", "error");
+      } else {
+        console.warn("Could not update class history:", err);
+      }
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
-  };
+  }, [currentUserId, isTeacherMode, notify]);
 
   useEffect(() => {
     if (!user) {
@@ -176,8 +181,10 @@ export default function StudentClassHistory({ mode = "student" }) {
       window.location.href = userRole === "teacher" ? "/TeacherDashboard" : userRole === "student" ? "/StudentDashboard" : "/AdminDashboard";
       return;
     }
-    loadHistory();
-  }, [currentUserId, expectedRole, isTeacherMode, userRole]);
+    void loadHistory(true);
+  }, [currentUserId, expectedRole, isTeacherMode, loadHistory, user, userRole]);
+
+  useLiveRefresh(() => loadHistory(false), { enabled: Boolean(currentUserId) });
 
   useEffect(() => {
     setPage(1);
@@ -289,9 +296,6 @@ export default function StudentClassHistory({ mode = "student" }) {
                   {description}
                 </p>
               </div>
-              <button className={styles.linkBtn} type="button" onClick={loadHistory}>
-                Refresh
-              </button>
             </div>
 
             <div className={styles.filterTabs} style={{ marginBottom: 14 }}>

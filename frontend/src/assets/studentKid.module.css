@@ -1503,31 +1503,6 @@
   color: var(--muted);
 }
 
-/* A button a child can hit. The Refresh button is not the biggest thing on
-   the page, but it is still a finger-sized target. */
-.refreshBtn {
-  min-height: 60px;
-  padding: 14px 24px;
-  border-radius: var(--control-radius);
-  border: 2px solid var(--border-mid);
-  background: var(--surface);
-  color: var(--primary);
-  font-size: 1.1rem;
-  font-weight: 800;
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
-}
-
-.refreshBtn:hover:not(:disabled) {
-  background: var(--bg-alt);
-  transform: translateY(-1px);
-}
-
-.refreshBtn:active:not(:disabled) {
-  transform: scale(0.97);
-}
-
 .historyList {
   display: grid;
   gap: var(--space-4);
@@ -2656,6 +2631,18 @@
     font-size: clamp(2.4rem, 12vw, 2.8rem);
   }
 
+  .kidListRow {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 4px;
+  }
+
+  .kidListValue {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
   .empty {
     padding: clamp(20px, 6vw, var(--space-5)) var(--space-3);
     overflow-wrap: anywhere;
@@ -2762,13 +2749,6 @@
     font-size: 1.45rem;
   }
 
-  /* Still a finger-sized button, but not a full-width slab under the
-     title - it pushes the classes down the screen for no reason.
-     margin-left, not align-self: the button wraps onto its own line, and
-     align-self is the cross axis, which in a row is the vertical one. */
-  .refreshBtn {
-    margin-left: auto;
-  }
 }
 
 @media (min-width: 641px) and (max-width: 900px) {

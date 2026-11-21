@@ -162,7 +162,7 @@ export default function FirstStepsGuide() {
     <>
       {guideCompleted !== null && (
         <button type="button" ref={helpButtonRef} className={styles.helpButton} onClick={showGuideAgain}>
-          <span aria-hidden="true">💡</span>
+          <i className="bi bi-lightbulb" aria-hidden="true" />
           Show me how
         </button>
       )}
@@ -187,7 +187,7 @@ export default function FirstStepsGuide() {
             >
               <div className={styles.dialogTop}>
                 <span className={styles.stepCount} aria-live="polite">
-                  <span aria-hidden="true">🧭</span> Step {stepIndex + 1} of {steps.length}
+                  <i className="bi bi-compass" aria-hidden="true" /> Step {stepIndex + 1} of {steps.length}
                 </span>
                 <button type="button" className={styles.skipButton} onClick={finishGuide}>
                   Skip for now
@@ -206,7 +206,9 @@ export default function FirstStepsGuide() {
               </div>
 
               <div className={styles.stepHead}>
-                <span className={styles.bigIcon} aria-hidden="true">{step.icon}</span>
+                <span className={styles.bigIcon} aria-hidden="true">
+                  <i className={`bi ${step.icon}`} />
+                </span>
                 <div className={styles.stepTitleGroup}>
                   <span className={styles.moduleBadge}>{step.module}</span>
                   <h2 id="first-steps-title">{step.title}</h2>

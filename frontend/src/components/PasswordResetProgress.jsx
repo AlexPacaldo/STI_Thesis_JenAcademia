@@ -14,7 +14,7 @@ export default function PasswordResetProgress({ steps, currentStep }) {
           aria-current={index === currentStep ? "step" : undefined}
         >
           <span className={styles.stepNumber} aria-hidden="true">
-            {index < currentStep ? "✓" : index + 1}
+            {index < currentStep ? <i className="bi bi-check2" /> : index + 1}
           </span>
           <span>{label}</span>
         </li>

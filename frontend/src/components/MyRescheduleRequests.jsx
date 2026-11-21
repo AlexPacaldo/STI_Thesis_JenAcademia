@@ -7,6 +7,7 @@ import {
   DEFAULT_TIMEZONE,
   humanTime,
 } from "../utils/timezone.js";
+import useLiveRefresh from "../hooks/useLiveRefresh.js";
 import styles from "./MyRescheduleRequests.module.css";
 
 const API = API_BASE_URL;
@@ -61,7 +62,6 @@ export default function MyRescheduleRequests({
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [manualRefreshToken, setManualRefreshToken] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const [confirmingAction, setConfirmingAction] = useState(null);
   const [workingRequestId, setWorkingRequestId] = useState(null);
@@ -101,24 +101,9 @@ export default function MyRescheduleRequests({
     return () => {
       requestVersion.current += 1;
     };
-  }, [fetchRequests, refreshToken, manualRefreshToken]);
+  }, [fetchRequests, refreshToken]);
 
-  useEffect(() => {
-    if (!requests.some((request) => request.status === "pending")) return undefined;
-
-    const intervalId = window.setInterval(() => {
-      void fetchRequests(false);
-    }, 30_000);
-    const handleVisibilityChange = () => {
-      if (!document.hidden) void fetchRequests(false);
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      window.clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [fetchRequests, requests]);
+  useLiveRefresh(() => fetchRequests(false), { enabled: Boolean(userId) });
 
   const pendingCount = requests.filter((request) => request.status === "pending").length;
   const latestStatus = STATUS_META[requests[0]?.status]?.label;
@@ -253,14 +238,6 @@ export default function MyRescheduleRequests({
                   </p>
                 </div>
                 <div className={styles.headingActions}>
-                  <button
-                    type="button"
-                    className={styles.refreshButton}
-                    onClick={() => setManualRefreshToken((value) => value + 1)}
-                    disabled={loading}
-                  >
-                    {loading ? "Refreshing…" : "Refresh"}
-                  </button>
                   <button
                     ref={closeButtonRef}
                     type="button"

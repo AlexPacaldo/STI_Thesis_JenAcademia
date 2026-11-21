@@ -34,7 +34,6 @@
 }
 
 .trigger:focus-visible,
-.refreshButton:focus-visible,
 .closeButton:focus-visible {
   outline: 3px solid var(--brand-lime);
   outline-offset: 3px;
@@ -141,7 +140,6 @@
   gap: 8px;
 }
 
-.refreshButton,
 .closeButton {
   display: grid;
   min-height: 40px;
@@ -156,19 +154,9 @@
   cursor: pointer;
 }
 
-.refreshButton {
-  padding: 8px 14px;
-}
-
-.refreshButton:hover:not(:disabled),
 .closeButton:hover {
   border-color: var(--brand-green);
   background: var(--surface-soft);
-}
-
-.refreshButton:disabled {
-  cursor: wait;
-  opacity: 0.65;
 }
 
 .closeButton {
@@ -380,10 +368,6 @@
     gap: 6px;
   }
 
-  .refreshButton {
-    padding: 7px 9px;
-    font-size: 0.8rem;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

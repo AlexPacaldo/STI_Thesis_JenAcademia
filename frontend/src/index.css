@@ -269,6 +269,7 @@ input[type="password"]::-ms-clear { display: none; }
 .app-container {
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh;
   min-width: 0;
   width: 100%;
   flex-direction: row;
@@ -287,6 +288,7 @@ input[type="password"]::-ms-clear { display: none; }
   min-width: 0;
   margin-left: var(--sidebar-width);
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--bg);
   transition: margin-left var(--duration-base) var(--ease-out);
 }
@@ -587,6 +589,18 @@ input[type="password"]::-ms-clear { display: none; }
 }
 
 @media (max-width: 640px) {
+  .content-area {
+    padding-left: max(8px, env(safe-area-inset-left, 0px));
+    padding-right: max(8px, env(safe-area-inset-right, 0px));
+    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .content-inner {
+    padding: 12px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+  }
+
   :where(
     button,
     [role="button"],

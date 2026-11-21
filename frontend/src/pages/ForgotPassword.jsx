@@ -45,7 +45,7 @@ export default function ForgotPassword() {
 
         {!sent ? (
           <div className={styles.content}>
-            <span className={styles.bigIcon} aria-hidden="true">🔑</span>
+            <span className={styles.bigIcon} aria-hidden="true"><i className="bi bi-key" /></span>
             <p className={styles.eyebrow}>A little password help</p>
             <h1 id="reset-title">Let’s get you back in!</h1>
             <p className={styles.description}>
@@ -81,7 +81,7 @@ export default function ForgotPassword() {
           </div>
         ) : (
           <div className={styles.content} role="status" aria-live="polite">
-            <span className={styles.bigIcon} aria-hidden="true">📬</span>
+            <span className={styles.bigIcon} aria-hidden="true"><i className="bi bi-envelope" /></span>
             <p className={styles.eyebrow}>Step 2 · Check your email</p>
             <h1 id="reset-title">Your next step is in your inbox!</h1>
             <p className={styles.description}>

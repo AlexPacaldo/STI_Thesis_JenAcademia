@@ -1,7 +1,8 @@
 // src/pages/Assignments.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import styles from "../assets/assignments.module.css";
+import useLiveRefresh from "../hooks/useLiveRefresh.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { apiFetch } from "../utils/apiAuth.js";
@@ -53,39 +54,42 @@ export default function Assignments() {
     return user.id ?? user.user_id ?? null;
   }, []);
 
-  useEffect(() => {
+  const loadAssignments = useCallback(async (showLoading = false) => {
     if (!currentStudentId) return;
+    if (showLoading) {
+      setIsLoading(true);
+      setError("");
+    }
 
-    let ignore = false;
-    setIsLoading(true);
-    setError("");
+    try {
+      const response = await apiFetch(`${API}/api/student/${currentStudentId}/assignments`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Could not load assignments");
+      }
 
-    apiFetch(`${API}/api/student/${currentStudentId}/assignments`)
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.message || "Could not load assignments");
-        }
-        return data;
-      })
-      .then((data) => {
-        if (!ignore) setRows(data.assignments || []);
-      })
-      .catch((err) => {
+      setRows((data.assignments || []).filter(
+        (assignment) => Number(assignment.isArchived ?? assignment.is_archived) !== 1
+      ));
+      setError("");
+    } catch (err) {
+      if (showLoading) {
         console.error("Load assignments error:", err);
-        if (!ignore) {
-          setRows([]);
-          setError(err.message || "Could not load assignments.");
-        }
-      })
-      .finally(() => {
-        if (!ignore) setIsLoading(false);
-      });
-
-    return () => {
-      ignore = true;
-    };
+        setRows([]);
+        setError(err.message || "Could not load assignments.");
+      } else {
+        console.warn("Could not update student assignments:", err);
+      }
+    } finally {
+      if (showLoading) setIsLoading(false);
+    }
   }, [currentStudentId]);
+
+  useEffect(() => {
+    void loadAssignments(true);
+  }, [loadAssignments]);
+
+  useLiveRefresh(() => loadAssignments(false), { enabled: Boolean(currentStudentId) });
 
   return (
     <div className={styles.page}>
@@ -97,7 +101,7 @@ export default function Assignments() {
         <div className={styles.errorBanner}>{error}</div>
       ) : rows.length === 0 ? (
         <div className={styles.emptyCard}>
-          <span className={styles.emptyIcon} aria-hidden="true">📭</span>
+          <span className={styles.emptyIcon} aria-hidden="true"><i className="bi bi-inbox" /></span>
           <h2 className={styles.emptyTitle}>No assignments yet</h2>
           <p className={styles.emptyText}>
             When your teacher gives you homework, it will show up here.
@@ -106,37 +110,39 @@ export default function Assignments() {
       ) : (
         <>
           <h2 className={styles.sectionTitle}>Your assignments</h2>
-          {rows.map((r) => (
-            <article key={r.id} className={styles.assignmentCard}>
-              <div className={styles.cardInfo}>
-                <span className={styles.cardTitle}>{getAssignmentDisplayText(r)}</span>
-                {r.subject && (
-                  <span className={styles.cardSubject}>{r.subject}</span>
-                )}
-                <div className={styles.cardDates}>
-                  <span>
-                    <strong>Date given:</strong> {formatDateGiven(r.postedAt)}
-                  </span>
-                  <span>
-                    <strong>Due date:</strong> {formatDueDate(r.dueDate, r.dueTime)}
+          <div className={styles.assignmentGrid}>
+            {rows.map((r) => (
+              <article key={r.id} className={styles.assignmentCard}>
+                <div className={styles.cardInfo}>
+                  <span className={styles.cardTitle}>{getAssignmentDisplayText(r)}</span>
+                  {r.subject && (
+                    <span className={styles.cardSubject}>{r.subject}</span>
+                  )}
+                  <div className={styles.cardDates}>
+                    <span>
+                      <strong>Date given:</strong> {formatDateGiven(r.postedAt)}
+                    </span>
+                    <span>
+                      <strong>Due date:</strong> {formatDueDate(r.dueDate, r.dueTime)}
+                    </span>
+                  </div>
+                  <span className={styles.cardStatus}>
+                    {r.submissionId ? "Done" : "Not done yet"}
                   </span>
                 </div>
-                <span className={styles.cardStatus}>
-                  {r.submissionId ? "Done" : "Not done yet"}
-                </span>
-              </div>
-              <div className={styles.actions}>
-                <Link
-                  to={`/assignmentsDropbox?assignmentId=${r.id}`}
-                  className={styles.cardButton}
-                  aria-label={`Open ${getAssignmentDisplayText(r)}`}
-                >
-                  Open
-                  <span className={styles.cardArrow} aria-hidden="true">&#9654;</span>
-                </Link>
-              </div>
-            </article>
-          ))}
+                <div className={styles.actions}>
+                  <Link
+                    to={`/assignmentsDropbox?assignmentId=${r.id}`}
+                    className={styles.cardButton}
+                    aria-label={`Open ${getAssignmentDisplayText(r)}`}
+                  >
+                    Open
+                    <span className={styles.cardArrow} aria-hidden="true">&#9654;</span>
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </div>
         </>
       )}
     </div>

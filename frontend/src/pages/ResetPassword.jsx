@@ -91,14 +91,14 @@ export default function ResetPassword() {
 
         {validating ? (
           <div className={styles.content} role="status" aria-live="polite">
-            <span className={styles.bigIcon} aria-hidden="true">🔎</span>
+            <span className={styles.bigIcon} aria-hidden="true"><i className="bi bi-search" /></span>
             <p className={styles.eyebrow}>One moment</p>
             <h1 id="reset-title">Checking your link…</h1>
             <p className={styles.description}>We’re making sure it’s safe to set a new password.</p>
           </div>
         ) : tokenError ? (
           <div className={styles.content} role="alert">
-            <span className={styles.bigIcon} aria-hidden="true">📭</span>
+            <span className={styles.bigIcon} aria-hidden="true"><i className="bi bi-inbox" /></span>
             <p className={styles.eyebrow}>Let’s try again</p>
             <h1 id="reset-title">This link needs a fresh start</h1>
             <p className={styles.description}>{tokenError}</p>
@@ -106,7 +106,7 @@ export default function ResetPassword() {
           </div>
         ) : complete ? (
           <div className={styles.content} role="status" aria-live="polite">
-            <span className={styles.bigIcon} aria-hidden="true">🎉</span>
+            <span className={styles.bigIcon} aria-hidden="true"><i className="bi bi-check-circle" /></span>
             <p className={styles.eyebrow}>Step 2 · All done</p>
             <h1 id="reset-title">You did it!</h1>
             <p className={styles.description}>
@@ -122,7 +122,7 @@ export default function ResetPassword() {
           </div>
         ) : (
           <div className={styles.content}>
-            <span className={styles.bigIcon} aria-hidden="true">🔐</span>
+            <span className={styles.bigIcon} aria-hidden="true"><i className="bi bi-shield-lock" /></span>
             <p className={styles.eyebrow}>Step 1 · Make a new password</p>
             <h1 id="reset-title">Choose your new password</h1>
             <p className={styles.description}>
@@ -180,7 +180,7 @@ export default function ResetPassword() {
 
               <p id="password-hint" className={styles.passwordHint}>
                 {form.password.length >= 8
-                  ? "✓ Password meets the minimum length requirement."
+                  ? <><i className="bi bi-check2" aria-hidden="true" /> Password meets the minimum length requirement.</>
                   : "Password requirement: 8 or more characters."}
               </p>
               {formError && <p className={styles.errorMessage} role="alert">{formError}</p>}
