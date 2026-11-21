@@ -98,6 +98,7 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
   const [filterOpen, setFilterOpen] = useState(false);
 
   const user = readStoredUser();
+  const hasUser = Boolean(user);
   const currentUserId = user?.id || user?.user_id || user?.userId;
   const userRole = String(user?.role || "").toLowerCase();
   const isTeacherMode = mode === "teacher";
@@ -126,7 +127,7 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
   }, [currentUserId, isTeacherMode, notify]);
 
   useEffect(() => {
-    if (!user) {
+    if (!hasUser) {
       window.location.href = "/";
       return;
     }
@@ -136,7 +137,7 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
       return;
     }
     void loadHistory(true);
-  }, [currentUserId, loadHistory, user, userRole, isTeacherMode]);
+  }, [currentUserId, hasUser, loadHistory, userRole, isTeacherMode]);
 
   useLiveRefresh(() => loadHistory(false), {
     enabled: Boolean(currentUserId && userRole === (isTeacherMode ? "teacher" : "student")),
