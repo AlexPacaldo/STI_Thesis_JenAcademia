@@ -35,6 +35,7 @@ function App() {
   const { notify } = useNotification() || {};
   // footer visibility will be computed after hideHeaderPaths
   const idleTimerRef = useRef(null);
+  const sessionRevokedRef = useRef(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [lineGate, setLineGate] = useState(null);
 
@@ -138,6 +139,26 @@ function App() {
     window.dispatchEvent(new Event("userLoggedOut"));
   }, []);
 
+  const handleSessionRevoked = useCallback((message) => {
+    if (sessionRevokedRef.current) return;
+    sessionRevokedRef.current = true;
+    clearSession();
+    notify?.(
+      message || "You were signed out because your account was signed in elsewhere.",
+      "warning"
+    );
+    navigate("/login", { replace: true });
+  }, [clearSession, navigate, notify]);
+
+  useEffect(() => {
+    const onSessionRevoked = (event) => {
+      handleSessionRevoked(event.detail?.message);
+    };
+
+    window.addEventListener("sessionRevoked", onSessionRevoked);
+    return () => window.removeEventListener("sessionRevoked", onSessionRevoked);
+  }, [handleSessionRevoked]);
+
   const logoutDueToInactivity = useCallback(() => {
     clearSession();
     notify?.("You have been logged out due to inactivity.", "info");
@@ -201,6 +222,13 @@ function App() {
         try {
           const response = await apiFetch(`${API_BASE_URL}/api/users/${currentUserId}`);
           if (!response.ok) {
+            if (response.status === 401) {
+              const data = await response.json().catch(() => ({}));
+              if (data?.code === "SESSION_REVOKED") {
+                handleSessionRevoked(data.message);
+              }
+              return;
+            }
             if (response.status === 404) {
               clearSession();
               notify?.("Your account could not be verified. Please sign in again or contact the administrator.", "warning");
@@ -318,7 +346,7 @@ function App() {
     }
 
     return undefined;
-  }, [clearSession, location.pathname, logoutDueToInactivity, navigate, notify, resetIdleTimer]);
+  }, [clearSession, handleSessionRevoked, location.pathname, logoutDueToInactivity, navigate, notify, resetIdleTimer]);
 
   useEffect(() => {
     setIsSidebarOpen(false);

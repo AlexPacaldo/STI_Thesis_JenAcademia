@@ -964,12 +964,12 @@ export const pool = mysql.createPool(poolConfig);
  * admin_id in the request body and requireAdmin believed it.
  */
 //! Must stay below the `pool` declaration above.
-async function findActiveSessionRecord(userId, sessionId) {
+async function findSessionRecord(userId, sessionId) {
   if (!sessionId) return null;
   const [rows] = await pool.query(
-    `SELECT session_id
+    `SELECT session_id, revoked_at, expires_at > NOW() AS is_unexpired
      FROM user_sessions
-     WHERE user_id = ? AND session_id = ? AND revoked_at IS NULL AND expires_at > NOW()
+     WHERE user_id = ? AND session_id = ?
      LIMIT 1`,
     [userId, sessionId]
   );
@@ -1005,8 +1005,16 @@ async function authenticateSession(req, res) {
     }
 
     if (claims.sid) {
-      const activeSession = await findActiveSessionRecord(account.user_id, claims.sid);
-      if (!activeSession) {
+      const sessionRecord = await findSessionRecord(account.user_id, claims.sid);
+      if (sessionRecord?.revoked_at) {
+        res.status(401).json({
+          code: "SESSION_REVOKED",
+          message: "You were signed out because your account was signed in elsewhere.",
+        });
+        return null;
+      }
+
+      if (!sessionRecord || !Number(sessionRecord.is_unexpired)) {
         res.status(401).json({ message: "Your session has expired. Please sign in again" });
         return null;
       }

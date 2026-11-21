@@ -68,7 +68,12 @@ export function installAuthInterceptor({ onUnauthorized } = {}) {
     (error) => {
       if (error?.response?.status === 401) {
         clearSessionToken();
-        if (typeof onUnauthorized === "function") onUnauthorized();
+        if (typeof onUnauthorized === "function") {
+          onUnauthorized({
+            code: error.response.data?.code,
+            message: error.response.data?.message,
+          });
+        }
       }
       return Promise.reject(error);
     }

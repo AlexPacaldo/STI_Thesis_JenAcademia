@@ -89,8 +89,12 @@ const router = createBrowserRouter([
 // because it answers 401 for a wrong password, which is not an expired session
 // - redirecting there would log the user out in the middle of signing in.
 installAuthInterceptor({
-  onUnauthorized: () => {
+  onUnauthorized: ({ code, message } = {}) => {
     if (window.location.pathname === "/login") return;
+    if (code === "SESSION_REVOKED") {
+      window.dispatchEvent(new CustomEvent("sessionRevoked", { detail: { message } }));
+      return;
+    }
     clearStoredUser();
     router.navigate("/login");
   },
