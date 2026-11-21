@@ -2684,7 +2684,7 @@ export default function AdminDashboard() {
         )}
 
         {active === "verifications" && (
-          <section className={`${styles.card} ${styles.verifyPage}`}>
+          <section className={`${styles.card} ${styles.verifyPage} ${styles.requestsPage}`}>
             <div className={styles.verifyHero}>
               <div className={styles.verifyHeroMark} aria-hidden="true"><i className="bi bi-clipboard-check" /></div>
               <div className={styles.verifyHeroText}>
