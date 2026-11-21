@@ -1659,10 +1659,13 @@
 }
 
 .filterDialog {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   max-width: 660px;
   max-height: calc(100vh - 40px);
-  overflow-y: auto;
+  max-height: calc(100dvh - 40px);
+  overflow: hidden;
   background: var(--surface);
   border-radius: var(--radius-xl);
   border: 1px solid var(--border);
@@ -1672,6 +1675,7 @@
 
 .filterHead {
   display: flex;
+  flex: 0 0 auto;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
@@ -1722,8 +1726,12 @@
 
 .filterBody {
   display: grid;
+  flex: 0 1 auto;
+  min-height: 0;
   gap: var(--space-5);
   padding: var(--space-5) 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .newPlanWizard {
@@ -1854,6 +1862,49 @@
 }
 
 @media (max-width: 520px) {
+  .filterBackdrop {
+    padding: 12px;
+  }
+
+  .filterDialog {
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .filterHead {
+    gap: 12px;
+    padding-bottom: 12px;
+  }
+
+  .filterTitle {
+    font-size: 1.2rem;
+  }
+
+  .filterSub {
+    font-size: 0.9rem;
+  }
+
+  .filterClose {
+    width: 42px;
+    height: 42px;
+  }
+
+  .filterBody {
+    gap: 16px;
+    padding: 16px 0;
+  }
+
+  .filterGroup {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .filterLabel {
+    padding-top: 0;
+  }
+
   .newPlanPrompt {
     padding: var(--space-3);
   }
@@ -1960,6 +2011,31 @@
 
 .filterApply:active:not(:disabled) {
   transform: scale(0.97);
+}
+
+@media (max-width: 520px) {
+  .filterPills {
+    gap: 8px;
+  }
+
+  .filterPill {
+    min-height: 48px;
+    max-width: 100%;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .filterNum {
+    flex: 0 0 auto;
+  }
+
+  .filterApply {
+    flex: 0 0 auto;
+    min-height: 52px;
+    font-size: 1rem;
+  }
 }
 
 /* One class. A picture, the name of the class, one word for how it went,
