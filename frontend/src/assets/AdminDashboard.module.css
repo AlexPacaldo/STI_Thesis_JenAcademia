@@ -4913,3 +4913,30 @@ label.checkboxOption > input[type='checkbox']:disabled {
     font-size: 0.9rem;
   }
 }
+.verifyGroup {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #cbded1;
+  border-radius: 18px;
+  background: #f3f8f4;
+}
+
+.verifyGroupHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: #203d2c;
+}
+
+.verifyGroupHeading p {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+}
+
+.verifyGroupHeading > span {
+  white-space: nowrap;
+  font-size: 0.85rem;
+  font-weight: 600;
+}

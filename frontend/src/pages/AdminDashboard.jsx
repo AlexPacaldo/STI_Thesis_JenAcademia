@@ -2160,9 +2160,22 @@ export default function AdminDashboard() {
       .toLowerCase()
       .includes(verificationSearchTerm);
   });
-  const verificationTotalPages = Math.max(1, Math.ceil(filteredVerifications.length / VERIFICATIONS_PER_PAGE));
+  const verificationGroups = [];
+  const verificationGroupsById = new Map();
+  for (const row of verifications) {
+    const key = row.group_session_id != null ? `group-${row.group_session_id}` : `class-${row.class_id}`;
+    if (!verificationGroupsById.has(key)) {
+      const group = { key, isGroup: row.group_session_id != null, rows: [] };
+      verificationGroupsById.set(key, group);
+      verificationGroups.push(group);
+    }
+    verificationGroupsById.get(key).rows.push(row);
+  }
+  const matchingVerificationIds = new Set(filteredVerifications.map((row) => row.class_id));
+  const filteredVerificationGroups = verificationGroups.filter((group) => group.rows.some((row) => matchingVerificationIds.has(row.class_id)));
+  const verificationTotalPages = Math.max(1, Math.ceil(filteredVerificationGroups.length / VERIFICATIONS_PER_PAGE));
   const safeVerificationPage = Math.min(verificationPage, verificationTotalPages);
-  const pagedVerifications = filteredVerifications.slice(
+  const pagedVerifications = filteredVerificationGroups.slice(
     (safeVerificationPage - 1) * VERIFICATIONS_PER_PAGE,
     safeVerificationPage * VERIFICATIONS_PER_PAGE
   );
@@ -2745,7 +2758,7 @@ export default function AdminDashboard() {
                 )}
               </div>
               <p className={styles.verifyCountLine} aria-live="polite">
-                Showing <strong>{pagedVerifications.length}</strong> of <strong>{filteredVerifications.length}</strong> classes
+                Showing <strong>{pagedVerifications.length}</strong> of <strong>{filteredVerificationGroups.length}</strong> sessions
               </p>
             </div>
 
@@ -2769,7 +2782,15 @@ export default function AdminDashboard() {
                   <p>Try a different class, teacher, student, or status.</p>
                 </div>
               ) : (
-                pagedVerifications.map((row) => {
+                pagedVerifications.map((group) => (
+                  <section key={group.key} className={group.isGroup ? styles.verifyGroup : undefined} aria-label={group.isGroup ? "Group class verification" : undefined}>
+                    {group.isGroup && (
+                      <div className={styles.verifyGroupHeading}>
+                        <div><strong>Group class: {group.rows[0].class_name || "Untitled Class"}</strong><p>{formatDate(group.rows[0].scheduled_date)} · {formatTime(group.rows[0].start_time)} – {formatTime(group.rows[0].end_time)} · Teacher: {`${group.rows[0].teacher_first_name || ""} ${group.rows[0].teacher_last_name || ""}`.trim() || "Teacher"}</p></div>
+                        <span>{group.rows.length} student{group.rows.length === 1 ? "" : "s"}</span>
+                      </div>
+                    )}
+                    {group.rows.map((row) => {
                   const displayStatus = getVerificationDisplayStatus(row);
                   const statusLabel = VERIFICATION_STATUS_LABELS[displayStatus] || displayStatus;
                   const statusIcon = VERIFICATION_STATUS_ICONS[displayStatus] || "bi-clock";
@@ -2806,19 +2827,19 @@ export default function AdminDashboard() {
                       <div className={styles.verifyCardHead}>
                         <span className={styles.verifyStatusIcon} aria-hidden="true"><i className={`bi ${statusIcon}`} /></span>
                         <div className={styles.verifyCardTitle}>
-                          <h3>{row.class_name || "Untitled Class"}</h3>
-                          <p className={styles.verifyWhen}>
+                          <h3>{group.isGroup ? studentName : row.class_name || "Untitled Class"}</h3>
+                          {!group.isGroup && <p className={styles.verifyWhen}>
                             <i className="bi bi-calendar3" aria-hidden="true" /> {formatDate(row.scheduled_date)}
                             <span aria-hidden="true"> · </span>
                             {formatTime(row.start_time)} – {formatTime(row.end_time)}
                             <span aria-hidden="true"> · </span>
                             {row.duration || 0} min
-                          </p>
+                          </p>}
                         </div>
                         <span className={`${styles.verifyBadge} ${toneClass}`}>{statusLabel}</span>
                       </div>
 
-                      <div className={styles.verifyPeople}>
+                      {!group.isGroup && <div className={styles.verifyPeople}>
                         <div className={styles.verifyPerson}>
                           <span className={styles.verifyAvatar} aria-hidden="true">{teacherInitials}</span>
                           <div>
@@ -2833,7 +2854,7 @@ export default function AdminDashboard() {
                             <strong>{studentName}</strong>
                           </div>
                         </div>
-                      </div>
+                      </div>}
 
                       <div className={styles.verifySteps} aria-label="Class evidence checklist">
                         {evidenceSteps.map((step) => (
@@ -2964,11 +2985,13 @@ export default function AdminDashboard() {
                       </div>
                     </article>
                   );
-                })
+                    })}
+                  </section>
+                ))
               )}
             </div>
 
-            {filteredVerifications.length > VERIFICATIONS_PER_PAGE && (
+            {filteredVerificationGroups.length > VERIFICATIONS_PER_PAGE && (
               <div className={styles.verifyPager}>
                 <button
                   type="button"

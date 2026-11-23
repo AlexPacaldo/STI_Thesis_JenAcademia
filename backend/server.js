@@ -9489,6 +9489,7 @@ app.get("/api/admin/class-verifications", requireAdminSession, async (req, res) 
 
     const [rows] = await pool.query(
       `SELECT c.class_id,
+              ${groupClassSchemaReady ? "c.group_session_id" : "NULL AS group_session_id"},
               c.class_name,
               c.status AS class_status,
               DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
