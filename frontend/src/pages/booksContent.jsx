@@ -573,7 +573,8 @@ export default function BooksContent({ mode = "student" }) {
     if (selectedLessonCompleted) return true;
 
     if (lessonRequiresScroll) {
-      return readerContentReady && selectedLessonAtBottom;
+      const savedReaderPosition = Number(progress[selectedLessonId]?.reader_position || 0);
+      return readerContentReady && (selectedLessonAtBottom || savedReaderPosition >= 0.99);
     }
 
     // If lesson does NOT require scrolling, allow readiness only if
@@ -661,9 +662,15 @@ export default function BooksContent({ mode = "student" }) {
     if (!viewport || !selectedLessonId || !lessonRequiresScroll) return;
     if (!readerContentReady) return;
 
+    const atBottom = isReaderAtBottom(viewport);
+
     if (isStudentView) {
       const scrollRange = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
-      const position = scrollRange > 0 ? Math.min(1, Math.max(0, viewport.scrollTop / scrollRange)) : 0;
+      const position = atBottom
+        ? 1
+        : scrollRange > 0
+          ? Math.min(1, Math.max(0, viewport.scrollTop / scrollRange))
+          : 0;
       const localSaved = storeReaderPosition(studentId, selectedLessonId, position);
       pendingReaderPositionRef.current = { lessonId: selectedLessonId, position, localSaved };
       if (positionSaveTimerRef.current) window.clearTimeout(positionSaveTimerRef.current);
@@ -674,8 +681,6 @@ export default function BooksContent({ mode = "student" }) {
         if (pending) void saveReaderPosition(pending.lessonId, pending.position, pending.localSaved);
       }, POSITION_SAVE_DELAY);
     }
-
-    const atBottom = isReaderAtBottom(viewport);
 
     // If at bottom, start a short stability timer before enabling the button.
     if (atBottom) {
@@ -729,10 +734,9 @@ export default function BooksContent({ mode = "student" }) {
   useEffect(() => {
     if (!showPdfFullscreen || !selectedLessonId) return undefined;
 
-    // Reset reader state when opening a lesson in fullscreen.
+    // Reset transient reader state while retaining this lesson's read-to-end state.
     setHasScrolled(false);
     setReaderContentReady(false);
-    setSelectedLessonAtBottom(false);
 
     const resetScroll = window.setTimeout(() => {
       const viewport = fullscreenReaderRef.current;
