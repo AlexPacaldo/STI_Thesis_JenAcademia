@@ -161,14 +161,12 @@
   box-shadow: 0 10px 22px rgba(18, 34, 30, 0.14);
 }
 
-/* Grid rather than flex-wrap. As a flex row a trailing lone card inherited
-   flex-grow and inflated to the full row width, so a 4th book would render twice
-   as wide as the three above it. auto-fill (not auto-fit): auto-fit collapses
-   the empty tracks and brings the stretch back. A genuinely single book is
-   handled by the :only-child rule below, which spans it across every column. */
+/* auto-fit lets a small collection expand to fill the available row instead of
+   reserving empty columns. A genuinely single book is handled by the :only-child
+   rule below, which spans it across every column and lays it out horizontally. */
 .AvailableLessons {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: 18px;
   align-items: stretch;
 }

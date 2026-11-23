@@ -163,7 +163,7 @@
 
 .actions {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
   margin-top: 22px;
 }
@@ -189,6 +189,7 @@
 }
 
 .secondaryButton {
+  margin-right: auto;
   border: 2px solid #d8e3d5;
   background: #fff;
   color: #315e3b;

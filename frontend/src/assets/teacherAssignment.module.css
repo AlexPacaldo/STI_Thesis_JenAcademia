@@ -1028,6 +1028,42 @@
     padding: 12px 12px 28px;
   }
 
+  .searchContainer {
+    margin: 4px 0 10px;
+  }
+
+  .studentList {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    max-height: min(28vh, 220px);
+  }
+
+  .studentList .emptyState {
+    grid-column: 1 / -1;
+  }
+
+  .boxCard {
+    min-height: 60px;
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 14px;
+  }
+
+  .studentSummary {
+    gap: 8px;
+  }
+
+  .studentAvatar {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+  }
+
+  .boxCard h1 {
+    font-size: 0.84rem;
+  }
+
   .rightCardFill {
     height: auto;
     max-height: none;

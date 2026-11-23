@@ -305,7 +305,7 @@ export default function Dashboard({ mode }) {
             {/* The one big action: book a class */}
             {!isTeacher && (
               <Link to="/Calendar" className={styles.bookButton}>
-                <span className={styles.bookIcon} aria-hidden="true">&#128197;</span>
+                <i className={`bi bi-calendar-plus ${styles.bookIcon}`} aria-hidden="true" />
                 Book a class
               </Link>
             )}
