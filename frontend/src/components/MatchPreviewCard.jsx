@@ -48,7 +48,7 @@ const ADVISOR_CAUSE_PHRASE = {
   "bad-key": "its API key was rejected",
   "rate-limited": "it was rate limited",
   "timed-out": "it took too long to answer",
-  unavailable: "Gemini could not be reached",
+  unavailable: "The configured AI providers could not complete the request",
   "not-configured": "it is not set up on this server",
 };
 

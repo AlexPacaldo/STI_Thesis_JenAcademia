@@ -320,7 +320,7 @@ export default function Dashboard({ mode }) {
                 if (classes.length === 0) {
                   return (
                     <div className={styles.emptyCard}>
-                      <span className={styles.emptyIcon} aria-hidden="true">&#128198;</span>
+                      <span className={styles.emptyIcon} aria-hidden="true"><i className="bi bi-calendar-x" /></span>
                       <p className={styles.emptyText}>
                         {isTeacher ? "No classes today." : "No classes today. Press the green button above to book one."}
                       </p>
@@ -351,7 +351,7 @@ export default function Dashboard({ mode }) {
                 <h2 className={styles.sectionTitle}>My assignments</h2>
                 {studentData.assignments.filter((a) => !a.submissionId && a.status !== "submitted").length === 0 ? (
                   <div className={styles.emptyCard}>
-                    <span className={styles.emptyIcon} aria-hidden="true">&#128196;</span>
+                    <span className={styles.emptyIcon} aria-hidden="true"><i className="bi bi-journal-text" /></span>
                     <p className={styles.emptyText}>No assignments waiting for you.</p>
                   </div>
                 ) : (
@@ -382,7 +382,7 @@ export default function Dashboard({ mode }) {
                 <h2 className={styles.sectionTitle}>My remarks</h2>
                 {studentData.remarks.length === 0 ? (
                   <div className={styles.emptyCard}>
-                    <span className={styles.emptyIcon} aria-hidden="true">&#128172;</span>
+                    <span className={styles.emptyIcon} aria-hidden="true"><i className="bi bi-chat-dots" /></span>
                     <p className={styles.emptyText}>No remarks yet.</p>
                   </div>
                 ) : (
@@ -411,11 +411,11 @@ export default function Dashboard({ mode }) {
             {isTeacher && (
               <section className={styles.actionsSection}>
                 <Link to="/Calendar" className={styles.actionButton}>
-                  <span className={styles.actionIcon} aria-hidden="true">&#128197;</span>
+                  <span className={styles.actionIcon} aria-hidden="true"><i className="bi bi-calendar3" /></span>
                   Open calendar
                 </Link>
                 <Link to="/teacherStudents" className={styles.actionButton}>
-                  <span className={styles.actionIcon} aria-hidden="true">&#128100;</span>
+                  <span className={styles.actionIcon} aria-hidden="true"><i className="bi bi-people" /></span>
                   My students
                 </Link>
               </section>

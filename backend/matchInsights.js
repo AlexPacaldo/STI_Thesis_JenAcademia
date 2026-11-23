@@ -35,10 +35,9 @@ import {
 } from "./teacherMatching.js";
 import { IDEAL_STUDENT_PACE_VALUES, TEACHING_STYLE_VALUES } from "./teacherResumeParser.js";
 import {
-  isGeminiConfigured,
   MATCH_REQUEST_TIMEOUT_MS,
-  requestGeminiJson,
 } from "./geminiClient.js";
+import { isAiConfigured, requestAiJson } from "./aiClient.js";
 
 /**
  * What the model may suggest, per criteria field.
@@ -65,7 +64,7 @@ const FIELD_LABELS = {
 };
 
 export function isMatchInsightsConfigured() {
-  return isGeminiConfigured();
+  return isAiConfigured();
 }
 
 export function describeInsightField(field) {
@@ -183,7 +182,7 @@ export async function deriveMatchInsights({ trialNotes = "", criteria = {} }) {
       },
     };
 
-    const response = await requestGeminiJson({
+    const response = await requestAiJson({
       payload,
       timeoutMs: MATCH_REQUEST_TIMEOUT_MS,
       timeoutMessage: "The AI took too long to read the notes.",

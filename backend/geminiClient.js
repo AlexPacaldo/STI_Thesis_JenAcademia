@@ -4,7 +4,7 @@
  *
  * Both language-model features - reading a resume, and reading a student's trial
  * notes - need the same things: an API key read late, a model id that survives
- * being written as `models/gemini-...`, one free retry on the rolling alias when
+ * being written as `models/gemini-...`, fallback models when
  * the configured model 404s, and error messages an admin can act on. That logic
  * was duplicated the moment there was a second caller, and duplicated model
  * handling is exactly how the two drift apart.
@@ -15,7 +15,7 @@
  */
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-export const MATCH_REQUEST_TIMEOUT_MS = 120_000;
+export const MATCH_REQUEST_TIMEOUT_MS = 18_000;
 
 // Google's docs write the model both bare (gemini-2.5-flash) and prefixed
 // (models/gemini-2.5-flash), and this value is interpolated straight into the
@@ -36,8 +36,7 @@ export function normalizeModelId(value) {
 // works; the rest are there so a name that has gone stale heals itself instead of
 // failing every request until someone edits a setting in production.
 //
-// A 404 costs nothing - no generation happens - so each extra candidate is free
-// on the happy path and only paid on the path that was already broken.
+// A 404 means the model was not found; the next candidate may still work.
 //
 // Ordered by what is most likely to be reachable for any given key rather than
 // by capability. gemini-3.8-flash is the current flagship Flash; 3.5-flash-lite
@@ -95,6 +94,12 @@ export function modelCandidates(configured) {
  *   two features can word it for their own context.
  * @param {string} [options.label] Prefix for the failure log line.
  */
+// Remember a working fallback for this process, so a retired configured model
+// does not add a failed network round trip to every request. Changes to either
+// configuration value invalidate the cache.
+let workingModel = null;
+let workingConfig = null;
+
 export async function requestGeminiJson({ payload, timeoutMs = 60_000, timeoutMessage, label = "gemini" }) {
   const apiKey = geminiApiKey();
   if (!apiKey) {
@@ -102,63 +107,69 @@ export async function requestGeminiJson({ payload, timeoutMs = 60_000, timeoutMe
   }
 
   const configured = geminiModel();
-  // De-duplicated, configured first. If GEMINI_MODEL is already one of the
-  // fallbacks it is not tried twice, and a second identical attempt would spend
-  // a round trip to learn exactly what the first one already proved.
+  const config = `${apiKey}\0${configured}`;
   const candidates = modelCandidates(configured);
-
+  if (workingConfig === config && workingModel && candidates.includes(workingModel)) {
+    candidates.splice(candidates.indexOf(workingModel), 1);
+    candidates.unshift(workingModel);
+  }
+  const deadline = Date.now() + timeoutMs;
+  const timeoutError = () => new Error(timeoutMessage || "The AI took too long to respond. Try again.");
   let lastStatus = 0;
   let lastDetail = "";
+  const attempted = [];
 
   for (const model of candidates) {
-    const url = `${GEMINI_API_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-    let response;
-    try {
-      response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(timeoutMs),
-        body: JSON.stringify(payload),
-      });
-    } catch (err) {
-      if (err?.name === "TimeoutError") {
-        throw new Error(timeoutMessage || "The AI took too long to respond. Try again.");
+    attempted.push(model);
+    const url = `${GEMINI_API_BASE}/${encodeURIComponent(model)}:generateContent`;
+    // One short retry for a transient server error, within the overall deadline.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw timeoutError();
+      let response;
+      try {
+        response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+          signal: AbortSignal.timeout(remaining),
+          body: JSON.stringify(payload),
+        });
+        if (response.ok) {
+          const body = await response.json();
+          workingConfig = config;
+          workingModel = model;
+          return body;
+        }
+        try {
+          lastDetail = (await response.json())?.error?.message || "";
+        } catch {
+          lastDetail = "";
+        }
+      } catch (err) {
+        if (err?.name === "TimeoutError" || err?.name === "AbortError") throw timeoutError();
+        throw new Error(`Could not reach Gemini: ${err.message}`);
       }
-      throw new Error(`Could not reach Gemini: ${err.message}`);
+      lastStatus = response.status;
+      console.error(`${label} failed:`, response.status, model, lastDetail);
+      if ((response.status === 400 && /api key/i.test(lastDetail)) || response.status === 401 || response.status === 403) {
+        throw new Error("Gemini rejected the API key or its permissions. Check GOOGLE_GEMINI_API_KEY on the backend.");
+      }
+      if (response.status === 429) {
+        throw new Error("Gemini rate limit reached. Check the project quota and try again later.");
+      }
+      if (response.status === 404) {
+        if (workingConfig === config && workingModel === model) workingModel = null;
+        break;
+      }
+      if ((response.status === 500 || response.status === 502 || response.status === 503 || response.status === 504) && attempt === 0 && deadline - Date.now() > 500) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        continue;
+      }
+      throw new Error(`Gemini could not complete the request (${lastStatus})${lastDetail ? `: ${lastDetail}` : ""}`);
     }
-
-    if (response.ok) {
-      return response.json();
-    }
-
-    try {
-      lastDetail = (await response.json())?.error?.message || "";
-    } catch {
-      lastDetail = "";
-    }
-    lastStatus = response.status;
-    // The model name is in this line deliberately. A 404 on the configured
-    // model is the failure most easily misread from the status alone.
-    console.error(`${label} failed:`, response.status, model, lastDetail);
-
-    if (response.status === 400 && /api key/i.test(lastDetail)) {
-      throw new Error("Gemini rejected the API key. Check GOOGLE_GEMINI_API_KEY on the backend.");
-    }
-    if (response.status === 429) {
-      throw new Error("Gemini rate limit reached. Try again in a moment.");
-    }
-    // Anything else - a 404 above all - is worth one more try on the next model.
   }
-
-  // Gemini's own wording is appended, because the bare status is ambiguous: a
-  // 404 covers both "no such model" and "not available to this key", and only the
-  // detail tells them apart. The model list is appended for the same reason from
-  // the other direction: if every candidate failed, knowing which ones were tried
-  // is the difference between "retired, pick a newer name" and "your key cannot
-  // reach this family at all".
   throw new Error(
     `Gemini could not complete the request (${lastStatus}) after trying ` +
-      `${candidates.join(", ")}${lastDetail ? `: ${lastDetail}` : ""}`
+      `${attempted.join(", ")}${lastDetail ? `: ${lastDetail}` : ""}`
   );
 }

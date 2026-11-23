@@ -6253,7 +6253,7 @@ app.post("/api/admin/parse-resume", requireAdminSession, limitResumeParsingTotal
   try {
     if (!isResumeParserConfigured()) {
       return res.status(503).json({
-        message: "Resume auto-fill is not configured. Set GOOGLE_GEMINI_API_KEY on the backend.",
+        message: "Resume auto-fill is not configured. Set a Gemini, Groq, or OpenRouter API key on the backend.",
       });
     }
     if (!req.file) {

@@ -18,7 +18,7 @@
  */
 
 import mammoth from "mammoth";
-import { isGeminiConfigured, requestGeminiJson } from "./geminiClient.js";
+import { isAiConfigured, requestAiJson } from "./aiClient.js";
 
 // Inline request data (base64 PDF included) is capped by the Gemini API, so the
 // upload limit has to stay well under it: 8 MB becomes roughly 11 MB base64.
@@ -38,7 +38,7 @@ export const RESUME_MIME_TYPES = {
 // geminiClient.js, shared with the trial-notes insights feature. They used to be
 // here alone and were copied verbatim when that second feature arrived.
 export function isResumeParserConfigured() {
-  return isGeminiConfigured();
+  return isAiConfigured();
 }
 
 /* -------------------------------------------------------------- vocabulary */
@@ -525,7 +525,7 @@ async function callGemini({ documentParts, courseNames, availableCourseNames = [
     },
   };
 
-  const response = await requestGeminiJson({
+  const response = await requestAiJson({
     payload,
     timeoutMs: 60_000,
     timeoutMessage: "Reading the resume took too long. Try again with a smaller file.",

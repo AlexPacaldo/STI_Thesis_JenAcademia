@@ -26,10 +26,9 @@
  */
 
 import {
-  isGeminiConfigured,
   MATCH_REQUEST_TIMEOUT_MS,
-  requestGeminiJson,
 } from "./geminiClient.js";
+import { isAiConfigured, requestAiJson } from "./aiClient.js";
 
 // Long enough that a realistic school never truncates, short enough that one
 // click cannot send an unbounded prompt. When it does truncate the shortlist is
@@ -38,8 +37,7 @@ export const MAX_ADVISOR_CANDIDATES = 60;
 const MAX_BIO_CHARS = 400;
 
 // The fallback has to be usable, not merely correct. While Gemini is healthy the
-// admin waits for the advisor's ranking. While it is DOWN, waiting up to two
-// minutes per click to be handed the old rule-based answer anyway -
+// admin waits for the advisor's ranking. While it is DOWN, waiting a long time per click to be handed the old rule-based answer anyway -
 // on every click, with nothing learned in between - is not a fallback, it is a
 // slower way of getting yesterday's result.
 //
@@ -131,7 +129,7 @@ export function resetAdvisorCircuit() {
 }
 
 export function isTeacherAdvisorConfigured() {
-  return isGeminiConfigured();
+  return isAiConfigured();
 }
 
 /**
@@ -334,7 +332,7 @@ export async function adviseTeacherRanking({
       },
     };
 
-    const response = await requestGeminiJson({
+    const response = await requestAiJson({
       payload,
       timeoutMs: MATCH_REQUEST_TIMEOUT_MS,
       timeoutMessage: "The advisor took too long to rank the teachers.",
