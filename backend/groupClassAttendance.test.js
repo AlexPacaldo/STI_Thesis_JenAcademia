@@ -8,6 +8,7 @@ function database({ grouped = true, consenting = [10, 20] } = {}) {
   return { calls, async query(sql, params) {
     calls.push({ sql, params });
     if (sql.includes("FROM classes source JOIN classes peer")) return [grouped ? [peer] : []];
+    if (sql.includes("SELECT teacher_started_at, teacher_recording_consent_at")) return [[{ teacher_started_at: "start", teacher_recording_consent_at: "consent" }]];
     if (sql.includes("SELECT class_id FROM class_attendance_logs")) return [consenting.map(class_id => ({ class_id }))];
     return [{ affectedRows: 1 }];
   } };
@@ -16,7 +17,7 @@ test("starting one group class starts each participant without confirming studen
   const db = database();
   await startGroupParticipants(db, 10, "recording");
   const write = db.calls.find(call => call.sql.includes("INSERT INTO class_attendance_logs"));
-  assert.deepEqual(write.params, [20, 1, 3, "recording", 10]);
+  assert.deepEqual(write.params, [20, 1, 3, "recording", "start", "consent"]);
   assert(!/student_joined_at\s*=/.test(write.sql));
   assert.match(write.sql, /WHEN student_joined_at IS NOT NULL THEN 'student_confirmed'/);
   assert(!write.sql.includes("student_recording_consent_at"));

@@ -4,11 +4,17 @@ import { assessClassEvidence } from "./classEvidence.js";
 
 export async function startGroupParticipants(db, classId, evidenceMode) {
   const peers = await groupClassPeers(db, classId);
+  if (!peers.length) return peers;
+  const [sourceRows] = await db.query(
+    "SELECT teacher_started_at, teacher_recording_consent_at FROM class_attendance_logs WHERE class_id = ?",
+    [classId]
+  );
+  if (!sourceRows.length) throw new Error("Source class attendance is missing");
+  const source = sourceRows[0];
   for (const peer of peers) {
     await db.query(`INSERT INTO class_attendance_logs
       (class_id, teacher_id, student_id, evidence_mode, teacher_started_at, teacher_recording_consent_at, verification_status)
-      SELECT ?, ?, ?, ?, teacher_started_at, teacher_recording_consent_at, 'in_progress'
-      FROM class_attendance_logs WHERE class_id = ?
+      VALUES (?, ?, ?, ?, ?, ?, 'in_progress')
       ON DUPLICATE KEY UPDATE teacher_started_at = COALESCE(teacher_started_at, VALUES(teacher_started_at)),
         teacher_recording_consent_at = COALESCE(teacher_recording_consent_at, VALUES(teacher_recording_consent_at)),
         evidence_mode = COALESCE(evidence_mode, VALUES(evidence_mode)),
@@ -17,7 +23,7 @@ export async function startGroupParticipants(db, classId, evidenceMode) {
           WHEN student_joined_at IS NOT NULL THEN 'student_confirmed'
           ELSE 'in_progress'
         END`,
-    [peer.class_id, peer.teacher_id, peer.student_id, evidenceMode, classId]);
+    [peer.class_id, peer.teacher_id, peer.student_id, evidenceMode, source.teacher_started_at, source.teacher_recording_consent_at]);
   }
   return peers;
 }
