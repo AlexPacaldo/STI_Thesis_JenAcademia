@@ -131,6 +131,20 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
     }
   }, [isOpen, userId, selectedType, loadNotifications]);
 
+  useEffect(() => {
+    if (!isOpen || !userId) return undefined;
+    const refresh = () => { void loadNotifications(page, selectedType); };
+    const onCancelled = (event) => {
+      setConfirmAction(current => current && String(current.relatedId) === String(event.detail?.request_id) ? null : current);
+    };
+    window.addEventListener("notificationsChanged", refresh);
+    window.addEventListener("rescheduleRequestCancelled", onCancelled);
+    return () => {
+      window.removeEventListener("notificationsChanged", refresh);
+      window.removeEventListener("rescheduleRequestCancelled", onCancelled);
+    };
+  }, [isOpen, userId, page, selectedType, loadNotifications]);
+
   // Mark notification as read
   const handleMarkAsRead = async (notificationId) => {
     try {
@@ -245,9 +259,9 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
       type: "reject-reschedule",
       notificationId,
       relatedId,
-      title: "Keep the old time?",
+      title: "Reject request?",
       message: "Tell them why the new time does not work.",
-      confirmLabel: "Keep old time",
+      confirmLabel: "Reject request",
       requiresReason: true
     });
   };
@@ -332,7 +346,8 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
         setTotalNotifications(Math.max(0, totalNotifications - 1));
       } catch (err) {
         console.error("Error approving reschedule:", err);
-        notify("Failed to approve reschedule request", "error");
+        notify(err?.response?.data?.message || "Failed to approve reschedule request", "error");
+        if (err?.response?.status === 409) void loadNotifications(page, selectedType);
       } finally {
         setActionInProgress(null);
       }

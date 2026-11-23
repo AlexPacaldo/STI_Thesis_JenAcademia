@@ -503,7 +503,7 @@ function RescheduleScene({ role, focus }) {
           </div>
 
           <Spotlight active={focus === "reschedule"}>
-            <span className={styles.btnWarn}>Change the time</span>
+            <span className={styles.btnWarn}>Request reschedule</span>
           </Spotlight>
         </div>
       </AppFrame>

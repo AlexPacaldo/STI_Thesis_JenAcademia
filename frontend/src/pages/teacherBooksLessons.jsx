@@ -101,7 +101,7 @@ export default function TeacherBooksLessons() {
                   </div>
                 )}
 
-                <div className={styles.cardBody}>
+                <div className={styles.bookDetails}>
                   <h3 className={styles.bookTitle}>{book.title}</h3>
 
                   {/* The course, not a person: these books are assigned to the

@@ -21,7 +21,7 @@ const fmtDate = (d) => (d ? d.toISOString().slice(0, 10) : "");
  * Optional props:
  * - title: header text for the page
  */
-export default function teacherScheduleEditor({ title = "Teacher Availability" } = {}) {
+export default function TeacherScheduleEditor() {
   const { notify } = useNotification() || {};
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
@@ -119,14 +119,6 @@ export default function teacherScheduleEditor({ title = "Teacher Availability" }
     setMonth(today.getMonth());
   };
 
-  const countAvailable = days.reduce(
-    (acc, d) => (d && statusOf(d) === "available" ? acc + 1 : acc),
-    0
-  );
-  const countUnavailable = days.reduce(
-    (acc, d) => (d && statusOf(d) === "unavailable" ? acc + 1 : acc),
-    0
-  );
 
   // Get scheduled classes for selected date from cache
   const selectedClasses = selectedDate ? (classesCache[selectedDate] || []) : [];

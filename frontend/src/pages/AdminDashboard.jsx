@@ -1,6 +1,6 @@
 import { isStartScreenshotTimely, attendanceMinutes } from "../utils/classSession.js";
 import axios from "axios";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import styles from "../assets/AdminDashboard.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
@@ -2783,12 +2783,42 @@ export default function AdminDashboard() {
                 </div>
               ) : (
                 pagedVerifications.map((group) => (
-                  <section key={group.key} className={group.isGroup ? styles.verifyGroup : undefined} aria-label={group.isGroup ? "Group class verification" : undefined}>
+                  <section key={group.key} className={group.isGroup ? `${styles.verifyGroup} ${styles.verifyToneInfo}` : undefined} aria-label={group.isGroup ? "Group class verification" : undefined}>
                     {group.isGroup && (
-                      <div className={styles.verifyGroupHeading}>
-                        <div><strong>Group class: {group.rows[0].class_name || "Untitled Class"}</strong><p>{formatDate(group.rows[0].scheduled_date)} · {formatTime(group.rows[0].start_time)} – {formatTime(group.rows[0].end_time)} · Teacher: {`${group.rows[0].teacher_first_name || ""} ${group.rows[0].teacher_last_name || ""}`.trim() || "Teacher"}</p></div>
-                        <span>{group.rows.length} student{group.rows.length === 1 ? "" : "s"}</span>
-                      </div>
+                      <>
+                        <div className={styles.verifyGroupHeading}>
+                          <span className={styles.verifyStatusIcon} aria-hidden="true"><i className="bi bi-people" /></span>
+                          <div className={styles.verifyCardTitle}><h3>{group.rows[0].class_name || "Untitled Class"}</h3><p className={styles.verifyWhen}><i className="bi bi-calendar3" aria-hidden="true" /> {formatDate(group.rows[0].scheduled_date)} · {formatTime(group.rows[0].start_time)} – {formatTime(group.rows[0].end_time)} · {group.rows[0].duration || 0} min</p></div>
+                          <span className={`${styles.verifyBadge} ${styles.verifyToneInfo}`}>Group class · {group.rows.length} student{group.rows.length === 1 ? "" : "s"}</span>
+                        </div>
+                        <div className={styles.verifyPerson}>
+                          <span className={styles.verifyAvatar} aria-hidden="true">{`${group.rows[0].teacher_first_name || ""} ${group.rows[0].teacher_last_name || ""}`.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join("").toUpperCase() || "T"}</span>
+                          <div><span className={styles.verifyPersonLabel}>Teacher</span><strong>{`${group.rows[0].teacher_first_name || ""} ${group.rows[0].teacher_last_name || ""}`.trim() || "Teacher"}</strong></div>
+                        </div>
+                        <div className={styles.verifySteps}>
+                          <span className={`${styles.verifyStep} ${group.rows.every(row => row.teacher_started_at) ? styles.verifyStepDone : styles.verifyStepMissing}`}><i className={`bi ${group.rows.every(row => row.teacher_started_at) ? "bi-check-circle" : "bi-circle"}`} aria-hidden="true" /> Started</span>
+                          <span className={`${styles.verifyStep} ${group.rows.every(row => row.student_joined_at) ? styles.verifyStepDone : styles.verifyStepMissing}`}><i className={`bi ${group.rows.every(row => row.student_joined_at) ? "bi-check-circle" : "bi-circle"}`} aria-hidden="true" /> {group.rows.filter(row => row.student_joined_at).length} of {group.rows.length} students joined</span>
+                          <span className={`${styles.verifyStep} ${group.rows.every(row => row.teacher_ended_at) ? styles.verifyStepDone : styles.verifyStepMissing}`}><i className={`bi ${group.rows.every(row => row.teacher_ended_at) ? "bi-check-circle" : "bi-circle"}`} aria-hidden="true" /> Ended</span>
+                        </div>
+                        <div className={styles.verifyGroupEvidence}>
+                          <strong>Shared class evidence</strong>
+                          <p>{group.rows.every(row => row.evidence_mode === "recording") ? "Recording" : group.rows.every(row => row.evidence_mode === "screenshots") ? "Start and end screenshots" : "Evidence mode varies or has not been selected"}</p>
+                          {group.rows.some(row => row.evidence_mode === "recording" && !row.recording_url) && <p>Recording missing for at least one student record.</p>}
+                          {group.rows.some(row => row.evidence_mode === "screenshots" && (!row.start_proof_url || !row.proof_url)) && <p>Start or end screenshot missing for at least one student record.</p>}
+                          <div className={styles.verifyActions}>
+                            {[...new Map(group.rows.filter(row => row.recording_url).map(row => [row.recording_url, row])).values()].map((row, index, recordings) => (
+                              <button key={row.recording_url} type="button" className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`} onClick={() => openClassRecording({ classId: row.class_id, notify })}><i className="bi bi-play-fill" aria-hidden="true" /> {recordings.length > 1 ? `Recording ${index + 1}` : "Watch recording"} ({formatRecordingDuration(row.recording_duration_seconds)})</button>
+                            ))}
+                            {[...new Set(group.rows.map(row => row.start_proof_url).filter(Boolean))].map((url, index, photos) => (
+                              <button key={url} type="button" className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`} onClick={() => openAuthenticatedFile(url)}><i className="bi bi-image" aria-hidden="true" /> {photos.length > 1 ? `Start photo ${index + 1}` : "Start photo"}</button>
+                            ))}
+                            {[...new Set(group.rows.map(row => row.proof_url).filter(Boolean))].map((url, index, photos) => (
+                              <button key={url} type="button" className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`} onClick={() => openAuthenticatedFile(url)}><i className="bi bi-image" aria-hidden="true" /> {photos.length > 1 ? `End photo ${index + 1}` : "End photo"}</button>
+                            ))}
+                          </div>
+                        </div>
+                        <p className={styles.verifyGroupPrompt}>Students · select a student to see attendance, evidence and review actions</p>
+                      </>
                     )}
                     {group.rows.map((row) => {
                   const displayStatus = getVerificationDisplayStatus(row);
@@ -2814,7 +2844,7 @@ export default function AdminDashboard() {
                     { label: "Started", done: Boolean(row.teacher_started_at) },
                     { label: "Student joined", done: Boolean(row.student_joined_at) },
                     { label: "Ended", done: Boolean(row.teacher_ended_at) },
-                    { label: "Proof", done: hasAnyProof },
+                    ...(!group.isGroup ? [{ label: "Proof", done: hasAnyProof }] : []),
                   ];
                   const showEvidenceNotice = (needsAdminReview || !hasRequiredEvidence)
                     && !["verified", "incomplete"].includes(displayStatus);
@@ -2822,8 +2852,8 @@ export default function AdminDashboard() {
                     ? (reviewReasons.length ? reviewReasons : ["Manual admin review required"])
                     : missingItems.map((item) => item.charAt(0).toUpperCase() + item.slice(1));
 
-                  return (
-                    <article key={row.class_id} className={`${styles.verifyCard} ${toneClass}`}>
+                  const studentCard = (
+                    <article className={`${styles.verifyCard} ${toneClass}`}>
                       <div className={styles.verifyCardHead}>
                         <span className={styles.verifyStatusIcon} aria-hidden="true"><i className={`bi ${statusIcon}`} /></span>
                         <div className={styles.verifyCardTitle}>
@@ -2875,7 +2905,7 @@ export default function AdminDashboard() {
                             <strong>{Number(row.duration_minutes || 0)} min</strong>
                           </div>
                         </div>
-                        <div className={styles.verifyFact}>
+                        {!group.isGroup && <div className={styles.verifyFact}>
                           <span className={styles.verifyFactIcon} aria-hidden="true">
                             <i className={`bi ${row.evidence_mode === "recording" ? "bi-camera-video" : row.evidence_mode === "screenshots" ? "bi-image" : "bi-paperclip"}`} />
                           </span>
@@ -2883,7 +2913,7 @@ export default function AdminDashboard() {
                             <span>Proof</span>
                             <strong>{evidenceLabel}</strong>
                           </div>
-                        </div>
+                        </div>}
                       </div>
 
                       {showEvidenceNotice && (
@@ -2921,7 +2951,7 @@ export default function AdminDashboard() {
                       </details>
 
                       <div className={styles.verifyActions}>
-                        {row.start_proof_url && (
+                        {!group.isGroup && row.start_proof_url && (
                           <button
                             type="button"
                             className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`}
@@ -2930,7 +2960,7 @@ export default function AdminDashboard() {
                             <i className="bi bi-image" aria-hidden="true" /> Start photo
                           </button>
                         )}
-                        {row.recording_url ? (
+                        {!group.isGroup && (row.recording_url ? (
                           <button
                             type="button"
                             className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`}
@@ -2952,7 +2982,7 @@ export default function AdminDashboard() {
                           >
                             <i className="bi bi-image" aria-hidden="true" /> End photo
                           </button>
-                        ) : null}
+                        ) : null)}
 
                         {needsAdminReview && (
                           <>
@@ -2985,6 +3015,16 @@ export default function AdminDashboard() {
                       </div>
                     </article>
                   );
+                  return group.isGroup ? (
+                    <details key={row.class_id} className={styles.verifyGroupStudent}>
+                      <summary>
+                        <strong>{studentName}</strong>
+                        <span className={styles.verifyGroupAttendance}>{row.student_joined_at ? "Joined" : "Not joined"}</span>
+                        <span className={`${styles.verifyBadge} ${toneClass}`}>{statusLabel}</span>
+                      </summary>
+                      {studentCard}
+                    </details>
+                  ) : <Fragment key={row.class_id}>{studentCard}</Fragment>;
                     })}
                   </section>
                 ))

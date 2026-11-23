@@ -133,6 +133,7 @@
 
 .viewAction {
   display: inline-flex;
+  box-sizing: border-box;
   align-items: center;
   justify-content: center;
   width: 100%;
@@ -166,10 +167,8 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
   gap: 18px;
-  align-items: stretch;
-  /* Absorbs the leftover viewport height so the cards grow into it instead of
-     the page ending above the fold. */
-  flex: 1 1 auto;
+  align-items: start;
+  align-content: start;
   min-height: 0;
 }
 
@@ -188,7 +187,7 @@
 
 /* Referenced in the JSX but never styled - needed so the card's text and
    actions stay grouped when it flips to the horizontal layout. */
-.cardBody {
+.bookDetails {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
@@ -199,6 +198,7 @@
      edge and dumped every pixel of slack into a single hole between the
      description and the author row. */
   justify-content: center;
+  align-items: flex-start;
 }
 
 /* Only the wide single-card layout centres; the narrow stacked card still
@@ -214,16 +214,18 @@
   /* auto-fill leaves the empty tracks in place, so a lone card still sits in
      one narrow column unless it is told to span them. */
   grid-column: 1 / -1;
+  width: min(100%, 760px);
+  box-sizing: border-box;
   flex-direction: row;
-  align-items: stretch;
+  align-items: center;
   gap: 20px;
-  padding: 16px;
+  padding: 20px;
 }
 
 .AvailableLessons:has(> .LessonsCard:only-child) .bookCover,
 .AvailableLessons:has(> .LessonsCard:only-child) .bookImagePlaceholder {
-  flex: 0 0 320px;
-  width: 320px;
+  flex: 0 0 220px;
+  width: 220px;
   height: auto;
   max-height: none;
   aspect-ratio: 4 / 3;
@@ -243,6 +245,7 @@
 .AvailableLessons:has(> .LessonsCard:only-child) .viewAction {
   width: auto;
   min-width: 170px;
+  box-sizing: border-box;
 }
 
 .LessonsCard:hover {

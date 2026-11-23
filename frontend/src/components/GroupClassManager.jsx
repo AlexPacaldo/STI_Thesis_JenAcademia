@@ -20,9 +20,10 @@ export default function GroupClassManager({ userId, role, viewerTimezone, select
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [open, setOpen] = useState(false);
+  const [invitationsOpen, setInvitationsOpen] = useState(false);
   const [proposalClass, setProposalClass] = useState(null);
   const [candidates, setCandidates] = useState([]);
-  const [partnerId, setPartnerId] = useState("");
+  const [partnerIds, setPartnerIds] = useState([]);
   const [date, setDate] = useState("");
   const [preferred, setPreferred] = useState("");
   const [times, setTimes] = useState([]);
@@ -30,6 +31,8 @@ export default function GroupClassManager({ userId, role, viewerTimezone, select
   const [error, setError] = useState("");
   const [teacherTimezone, setTeacherTimezone] = useState(DEFAULT_TIMEZONE);
   const closeRef = useRef(null);
+  const invitationsTriggerRef = useRef(null);
+  const invitationsCloseRef = useRef(null);
   const version = useRef(0);
   const listVersion = useRef(0);
   const load = useCallback(async () => {
@@ -57,11 +60,11 @@ export default function GroupClassManager({ userId, role, viewerTimezone, select
     if (!open || !proposalClass) return;
     version.current++;
     const controller = new AbortController();
-    setError(""); setCandidates([]); setPartnerId(""); setTimes([]); setChosen("");
+    setError(""); setCandidates([]); setPartnerIds([]); setTimes([]); setChosen("");
     setDate(proposalClass.source_scheduled_date || proposalClass.scheduled_date);
     setPreferred(String(proposalClass.source_start_time || proposalClass.start_time || "").slice(0, 5));
     axios.get(`${API}/group-class-candidates/${proposalClass.id || proposalClass.class_id}`, { signal: controller.signal })
-      .then(({ data }) => { setCandidates(data.candidates || []); setTeacherTimezone(data.teacher_timezone || DEFAULT_TIMEZONE); })
+      .then(({ data }) => { const choices = data.candidates || []; setCandidates(choices); setPartnerIds(choices.filter(candidate => proposalClass.group_session_id && String(candidate.group_session_id) === String(proposalClass.group_session_id)).map(candidate => String(candidate.class_id))); setTeacherTimezone(data.teacher_timezone || DEFAULT_TIMEZONE); })
       .catch(err => { if (!axios.isCancel(err)) setError(err.response?.data?.message || "Unable to load eligible classes."); });
     closeRef.current?.focus();
     return () => { controller.abort(); };
@@ -72,9 +75,19 @@ export default function GroupClassManager({ userId, role, viewerTimezone, select
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
   }, [open, busy]);
+  useEffect(() => {
+    if (!invitationsOpen) return undefined;
+    invitationsCloseRef.current?.focus();
+    return () => { invitationsTriggerRef.current?.focus(); };
+  }, [invitationsOpen]);
+  useEffect(() => {
+    if (!invitationsOpen) return undefined;
+    const key = event => { if (event.key === "Escape" && !busy) setInvitationsOpen(false); };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [invitationsOpen, busy]);
   const resetTimes = () => { version.current++; setTimes([]); setChosen(""); setError(""); };
-  const classIds = () => [Number(proposalClass.id || proposalClass.class_id), Number(partnerId)];
-  const partner = candidates.find(candidate => String(candidate.class_id) === partnerId);
+  const classIds = () => [Number(proposalClass.id || proposalClass.class_id), ...partnerIds.map(Number)];
   const canPropose = role === "teacher" && selectedClass && !selectedStarted && selectedClass.status === "scheduled";
   const pending = proposals.filter(proposal => proposal.status === "pending");
   const respond = async (proposal, action) => {
@@ -97,11 +110,11 @@ export default function GroupClassManager({ userId, role, viewerTimezone, select
     finally { setBusy(false); }
   };
   const propose = async () => {
-    if (busy || !chosen || !partnerId) return;
+    if (busy || !chosen || !partnerIds.length) return;
     setBusy(true); setError("");
     try {
       await axios.post(`${API}/group-class-proposals`, { class_ids: classIds(), scheduled_date: date, start_time: chosen });
-      setOpen(false); setMessage("Invitation sent to both students. Original bookings stay reserved until both accept.");
+      setOpen(false); setMessage("Invitations sent. Original bookings stay reserved until all students accept.");
       await load(); onUpdated();
     } catch (err) { setError(err.response?.data?.message || "Unable to send the invitation."); }
     finally { setBusy(false); }
@@ -109,8 +122,23 @@ export default function GroupClassManager({ userId, role, viewerTimezone, select
   return (
     <section className={styles.manager} aria-label="Group classes">
       <div className={styles.toolbar}>
-        <details className={styles.invitations}>
-          <summary>Group invitations{pending.length ? ` (${pending.length})` : ""}</summary>
+        <button ref={invitationsTriggerRef} className={styles.invitationsTrigger} type="button" aria-haspopup="dialog" onClick={() => setInvitationsOpen(true)}>
+          Group invitations {pending.length > 0 && <span className={styles.invitationCount}>{pending.length} pending</span>}
+        </button>
+        {canPropose && <button className={styles.propose} onClick={() => { setProposalClass({ ...selectedClass }); setOpen(true); }}>{selectedClass.group_session_id ? "Propose new group time" : "Propose group class"}</button>}
+      </div>
+      {invitationsOpen && <ModalPortal><div className={styles.overlay} onClick={() => { if (!busy) setInvitationsOpen(false); }}>
+        <div role="dialog" aria-modal="true" aria-labelledby="group-invitations-title" className={styles.dialog}
+          onClick={event => event.stopPropagation()}
+          onKeyDown={event => {
+            if (event.key !== "Tab") return;
+            const controls = [...event.currentTarget.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled)')];
+            const first = controls[0], last = controls.at(-1);
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+          }}>
+          <div className={styles.row}><h2 id="group-invitations-title">Group invitations</h2><button ref={invitationsCloseRef} type="button" disabled={busy} onClick={() => setInvitationsOpen(false)} aria-label="Close group invitations">Close</button></div>
+          {message && <p role="status" className={styles.message}>{message}</p>}
           {listError && <p role="alert">{listError} <button type="button" onClick={load}>Retry</button></p>}
           {!proposals.length && !listError && <p>No group invitations yet.</p>}
           {proposals.map(proposal => {
@@ -121,7 +149,7 @@ export default function GroupClassManager({ userId, role, viewerTimezone, select
               <p>{momentLabel(proposal.scheduled_date, proposal.start_time, proposal.teacher_timezone, viewerTimezone)} · {proposal.duration} minutes</p>
               {proposal.members.filter(member => member.original_date).map(member => <p key={member.student_id} className={styles.muted}>{role === "teacher" ? `${member.student_name}'s original class: ` : "Your original class: "}{momentLabel(member.original_date, member.original_time, proposal.teacher_timezone, viewerTimezone)}</p>)}
               {proposal.status === "pending" && <>
-                <p>Both students must accept. Each student keeps one class reservation; there is no extra class charge.</p>
+                <p>All students must accept. Each student keeps one class reservation; there is no extra class charge.</p>
                 <p className={styles.muted}>Respond by {new Date(proposal.expires_at).toLocaleString()}. Original bookings stay reserved while waiting.</p>
                 <p>{proposal.members.map(member => `${member.student_name}: ${member.response === "accepted" ? "accepted" : "waiting"}`).join(" · ")}</p>
                 <div className={styles.actions}>
@@ -134,10 +162,9 @@ export default function GroupClassManager({ userId, role, viewerTimezone, select
               {["declined", "cancelled", "expired", "invalidated"].includes(proposal.status) && <p className={styles.muted}>This invitation did not change your bookings.</p>}
             </article>;
           })}
-        </details>
-        {canPropose && <button className={styles.propose} onClick={() => { setProposalClass({ ...selectedClass }); setOpen(true); }}>{selectedClass.group_session_id ? "Propose new group time" : "Propose group class"}</button>}
-      </div>
-      {message && <p role="status" className={styles.message}>{message}</p>}
+        </div>
+      </div></ModalPortal>}
+      {message && !invitationsOpen && <p role="status" className={styles.message}>{message}</p>}
       {selectedClass?.group_session_id && <div className={styles.groupInfo}>
         <strong>Group class · shared classroom</strong>
         <p>{role === "teacher" ? "Starting and ending apply to the shared session. The class summary and evidence are shared; attendance, class credits, and private remarks stay separate. Select a student to manage their record." : "Your attendance and class allowance are tracked separately. Ask your teacher if you need a different group time."}</p>
@@ -155,21 +182,24 @@ export default function GroupClassManager({ userId, role, viewerTimezone, select
             else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
           }}>
           <div className={styles.row}><h2 id="group-proposal-title">Propose a group class</h2><button ref={closeRef} disabled={busy} onClick={() => setOpen(false)} aria-label="Close group proposal">Close</button></div>
-          <p>Invite two students to share a {proposalClass.duration}-minute class. Their existing bookings change only after both accept.</p>
+          <p>Invite students to share a {proposalClass.duration}-minute class. Their existing bookings change only after everyone accepts.</p>
           <p className={styles.muted}>Selected class: {proposalClass.studentFullName || proposalClass.studentName} · {momentLabel(proposalClass.source_scheduled_date || proposalClass.scheduled_date, proposalClass.source_start_time || proposalClass.start_time, teacherTimezone, viewerTimezone)}</p>
           <form onSubmit={findTimes} className={styles.form}>
-            <label>Other student's booked class<select required disabled={busy} value={partnerId} onChange={event => { setPartnerId(event.target.value); resetTimes(); }}>
-              <option value="">Choose a class</option>
-              {candidates.map(candidate => <option key={candidate.class_id} value={candidate.class_id}>{candidate.student_name} · {momentLabel(candidate.scheduled_date, candidate.start_time, teacherTimezone, viewerTimezone)}</option>)}
-            </select></label>
+            <fieldset><legend>Choose other students' booked classes</legend>
+              {candidates.map(candidate => {
+                const value = String(candidate.class_id);
+                const requiredMember = Boolean(proposalClass.group_session_id && String(candidate.group_session_id) === String(proposalClass.group_session_id));
+                return <label key={value}><input type="checkbox" disabled={busy || requiredMember} checked={partnerIds.includes(value)} onChange={event => { setPartnerIds(ids => event.target.checked ? [...ids, value] : ids.filter(id => id !== value)); resetTimes(); }} /> {candidate.student_name} · {momentLabel(candidate.scheduled_date, candidate.start_time, teacherTimezone, viewerTimezone)}{requiredMember ? " (current group)" : ""}</label>;
+              })}
+            </fieldset>
             {!candidates.length && <p className={styles.muted}>Eligible classes must have the same teacher, course, and duration.</p>}
-            {partner && <p className={styles.muted}>Both students will be asked to approve the shared lesson, even if their time stays the same.</p>}
+            {partnerIds.length > 0 && <p className={styles.muted}>Every selected student will be asked to approve the shared lesson, even if their time stays the same.</p>}
             <div className={styles.fields}>
               <label>Proposed date<input type="date" required disabled={busy} value={date} onChange={event => { setDate(event.target.value); resetTimes(); }} /></label>
               <label>Preferred start time<input type="time" required step="60" disabled={busy} value={preferred} onChange={event => { setPreferred(event.target.value); resetTimes(); }} /></label>
             </div>
-            <p className={styles.muted}>Times in {teacherTimezone.replaceAll("_", " ")}. We check the teacher's breaks and both students' bookings.</p>
-            <button disabled={busy || !partnerId} type="submit">{busy ? "Please wait…" : "Find shared times"}</button>
+            <p className={styles.muted}>Times in {teacherTimezone.replaceAll("_", " ")}. We check the teacher's breaks and all students' bookings.</p>
+            <button disabled={busy || !partnerIds.length} type="submit">{busy ? "Please wait…" : "Find shared times"}</button>
           </form>
           <div role="status">{error && <p className={styles.error}>{error}</p>}</div>
           {times.length > 0 && <div className={styles.options}>{times.map(time => <button key={time} disabled={busy} aria-pressed={chosen === time} onClick={() => setChosen(time)}>
@@ -177,7 +207,7 @@ export default function GroupClassManager({ userId, role, viewerTimezone, select
             <span>{describeTimeDistance(preferred, time)}</span>
           </button>)}</div>}
           {chosen && <p>Proposed group: {momentLabel(date, chosen, teacherTimezone, viewerTimezone)}. The invitation expires within 24 hours or 15 minutes before the earliest affected class, whichever comes first.</p>}
-          <button className={styles.primary} disabled={busy || !chosen || !partnerId} onClick={propose}>Send invitation to both students</button>
+          <button className={styles.primary} disabled={busy || !chosen || !partnerIds.length} onClick={propose}>Send invitations to students</button>
         </div>
       </div></ModalPortal>}
     </section>

@@ -10905,7 +10905,7 @@ app.post("/api/calendar/reschedule-request", requireSession, requireBodyIdentity
       return res.status(409).json({ message: "Only an unresolved scheduled class can be rescheduled." });
     }
     if (classData.group_session_id) {
-      return res.status(409).json({ message: "Ask your teacher to propose a new group time. Both students must approve it." });
+      return res.status(409).json({ message: "Ask your teacher to propose a new group time. All students must approve it." });
     }
 
     // Once either participant records attendance, this class cannot be moved, so
@@ -11194,6 +11194,9 @@ app.post("/api/calendar/reschedule-requests/:id/cancel", requireSession, async (
     }
 
     await connection.commit();
+    broadcastCalendarChange([request.teacher_id, request.student_id], "reschedule-request-cancelled", {
+      request_id: req.params.id,
+    });
     res.json({ message: "Reschedule request cancelled" });
   } catch (err) {
     console.error(err);
@@ -11333,7 +11336,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
       return res.status(409).json({ message: "Only an unresolved scheduled class can be rescheduled." });
     }
     if (classInfo.group_session_id) {
-      return res.status(409).json({ message: "Group class changes require a new proposal and approval from both students." });
+      return res.status(409).json({ message: "Group class changes require a new proposal and approval from all students." });
     }
 
     // The class has already been held, so moving it now would rewrite a class

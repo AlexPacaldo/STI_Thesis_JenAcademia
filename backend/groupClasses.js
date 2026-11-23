@@ -15,13 +15,13 @@ const validDate = value => {
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 };
 export function validateGroupPair(rows) {
-  if (rows.length !== 2 || new Set(rows.map(row => id(row.class_id))).size !== 2) fail("Choose two existing classes.");
-  if (id(rows[0].teacher_id) !== id(rows[1].teacher_id)) fail("Both classes must have the same teacher.");
-  if (id(rows[0].student_id) === id(rows[1].student_id)) fail("Choose classes belonging to two different students.");
-  if (![25, 50].includes(id(rows[0].duration)) || id(rows[0].duration) !== id(rows[1].duration)) fail("Both classes must have the same duration.");
-  if (String(rows[0].class_name).trim().toLowerCase() !== String(rows[1].class_name).trim().toLowerCase()) fail("Both classes must be for the same course.");
+  if (rows.length < 2 || new Set(rows.map(row => id(row.class_id))).size !== rows.length) fail("Choose at least two existing classes.");
+  if (rows.some(row => id(row.teacher_id) !== id(rows[0].teacher_id))) fail("All classes must have the same teacher.");
+  if (new Set(rows.map(row => id(row.student_id))).size !== rows.length) fail("Choose one class per student.");
+  if (![25, 50].includes(id(rows[0].duration)) || rows.some(row => id(row.duration) !== id(rows[0].duration))) fail("All classes must have the same duration.");
+  if (rows.some(row => String(row.class_name).trim().toLowerCase() !== String(rows[0].class_name).trim().toLowerCase())) fail("All classes must be for the same course.");
   if (rows.some(row => row.status !== "scheduled" || row.started || hasClassAttendance(row))) fail("Only scheduled classes that have not started can be grouped.");
-  if (rows.some(row => row.group_session_id) && (!rows[0].group_session_id || id(rows[0].group_session_id) !== id(rows[1].group_session_id))) fail("An existing group can only be moved with its original participants.");
+  if (new Set(rows.filter(row => row.group_session_id).map(row => id(row.group_session_id))).size > 1) fail("Choose classes from only one existing group.");
 }
 export function unchangedBooking(row, member) {
   return id(row?.class_id) === id(member.class_id) && id(row?.teacher_id) === id(member.teacher_id)
@@ -169,14 +169,19 @@ export function createGroupClassService({ pool, instant, encrypt, meetingLink, b
     });
   }
   async function prepare(db, actor, classIds) {
-    if (!Array.isArray(classIds) || classIds.length !== 2 || classIds.some(value => !Number.isSafeInteger(id(value)) || id(value) <= 0)) fail("Choose two existing classes.");
+    if (!Array.isArray(classIds) || classIds.length < 2 || new Set(classIds.map(id)).size !== classIds.length || classIds.some(value => !Number.isSafeInteger(id(value)) || id(value) <= 0)) fail("Choose at least two different existing classes.");
     const preliminary = await classes(db, classIds);
-    if (preliminary.length !== 2) fail("One of the selected classes is no longer available.");
+    if (preliminary.length !== classIds.length) fail("One of the selected classes is no longer available.");
     authorizeTeacher(actor, preliminary);
     await lockPeople(db, preliminary);
     const rows = await classes(db, classIds, true);
     validateGroupPair(rows);
-    if (rows.some(row => moment(row.scheduled_date, row.start_time, row.teacher_timezone) <= Date.now() + 16 * 60_000)) fail("There is not enough time for both students to respond before class. Choose later bookings.");
+    const groupId = rows.find(row => row.group_session_id)?.group_session_id;
+    if (groupId) {
+      const [existingMembers] = await db.query("SELECT class_id FROM classes WHERE group_session_id = ? AND status = 'scheduled' FOR UPDATE", [groupId]);
+      if (existingMembers.some(member => !rows.some(row => id(row.class_id) === id(member.class_id)))) fail("Include all existing group participants.");
+    }
+    if (rows.some(row => moment(row.scheduled_date, row.start_time, row.teacher_timezone) <= Date.now() + 16 * 60_000)) fail("There is not enough time for all students to respond before class. Choose later bookings.");
     return rows;
   }
   return {
@@ -190,10 +195,10 @@ export function createGroupClassService({ pool, instant, encrypt, meetingLink, b
         FROM classes c JOIN users u ON u.user_id = c.student_id
         WHERE c.teacher_id = ? AND c.student_id <> ? AND c.duration = ? AND c.class_name = ?
         AND c.status = 'scheduled' AND c.scheduled_date >= CURDATE()
-        AND ((? IS NULL AND c.group_session_id IS NULL) OR c.group_session_id = ?)
+        AND (c.group_session_id IS NULL OR c.group_session_id = ?)
         AND NOT EXISTS (SELECT 1 FROM class_attendance_logs cal WHERE cal.class_id = c.class_id AND (cal.teacher_started_at IS NOT NULL OR cal.student_joined_at IS NOT NULL))
         ORDER BY c.scheduled_date, c.start_time LIMIT 100`,
-      [rows[0].teacher_id, rows[0].student_id, rows[0].duration, rows[0].class_name, rows[0].group_session_id || null, rows[0].group_session_id || null]);
+      [rows[0].teacher_id, rows[0].student_id, rows[0].duration, rows[0].class_name, rows[0].group_session_id || null]);
       return { candidates: candidates.filter(candidate => moment(candidate.scheduled_date, candidate.start_time, rows[0].teacher_timezone) > Date.now() + 16 * 60_000), teacher_timezone: rows[0].teacher_timezone };
     },
     async options(actor, classIds, date, preferred) {
@@ -230,7 +235,7 @@ export function createGroupClassService({ pool, instant, encrypt, meetingLink, b
         const context = await scheduleContext(db, rows, date);
         if (!checkTime(rows, date, time, context)) fail("That time conflicts with availability, a break, or another booking. Find another time.");
         const expires = groupExpiry(Date.now(), [start, ...rows.map(row => moment(row.scheduled_date, row.start_time, row.teacher_timezone))]);
-        if (expires.getTime() <= Date.now() + 60_000) fail("There is not enough time for both students to respond before class. Choose later bookings.");
+        if (expires.getTime() <= Date.now() + 60_000) fail("There is not enough time for all students to respond before class. Choose later bookings.");
         const [proposal] = await db.query(`INSERT INTO group_class_proposals
           (teacher_id, scheduled_date, start_time, duration, expires_at) VALUES (?, ?, ?, ?, ?)`,
         [rows[0].teacher_id, date, time, rows[0].duration, expires]);
@@ -284,10 +289,10 @@ export function createGroupClassService({ pool, instant, encrypt, meetingLink, b
         };
         if (new Date(proposal.expires_at).getTime() <= Date.now()) return close("expired", "The group invitation expired. Original bookings were kept.");
         if (action === "cancel" || action === "decline") return close(action === "cancel" ? "cancelled" : "declined", "The group invitation was closed. Original bookings were kept.");
-        if (rows.length !== 2 || rows.some(row => !people.some(person => unchangedBooking(row, person)))) return close("invalidated", "An original booking changed. The teacher must send a new invitation.");
+        if (rows.length !== people.length || rows.some(row => !people.some(person => unchangedBooking(row, person)))) return close("invalidated", "An original booking changed. The teacher must send a new invitation.");
         await db.query("UPDATE group_class_proposal_members SET response = 'accepted', responded_at = COALESCE(responded_at, NOW()) WHERE proposal_id = ? AND student_id = ?", [proposalId, actor.userId]);
         const updated = await members(db, proposalId, true);
-        if (!updated.every(person => person.response === "accepted")) return { status: "pending", message: "Accepted. Waiting for the other student. Your original booking is still reserved.", participants };
+        if (!updated.every(person => person.response === "accepted")) return { status: "pending", message: "Accepted. Waiting for the other students. Your original booking is still reserved.", participants };
         try {
           validateGroupPair(rows);
           const start = moment(proposal.scheduled_date, proposal.start_time, rows[0].teacher_timezone);
@@ -310,8 +315,8 @@ export function createGroupClassService({ pool, instant, encrypt, meetingLink, b
         await db.query("UPDATE video_sessions SET teams_meeting_link = ? WHERE class_id IN (?)", [encrypt(link), rows.map(row => row.class_id)]);
         await db.query("UPDATE reschedule_requests SET status = 'cancelled', resolved_at = NOW() WHERE class_id IN (?) AND status = 'pending'", [rows.map(row => row.class_id)]);
         await db.query("UPDATE group_class_proposals SET status = 'approved', resolved_at = NOW(), group_session_id = ? WHERE proposal_id = ?", [session.insertId, proposalId]);
-        await notify(db, participants, "Group class confirmed", "Both students accepted. Calendar now shows your shared group class. Each student's existing class allowance was kept; no extra class was charged.", proposalId);
-        return { status: "approved", message: "Both students accepted. The group class is confirmed.", participants };
+        await notify(db, participants, "Group class confirmed", "All students accepted. Calendar now shows your shared group class. Each student's existing class allowance was kept; no extra class was charged.", proposalId);
+        return { status: "approved", message: "All students accepted. The group class is confirmed.", participants };
       });
       broadcast(result.participants, "group-proposal-changed");
       return result;
@@ -319,7 +324,7 @@ export function createGroupClassService({ pool, instant, encrypt, meetingLink, b
   };
 }
 
-// Pending proposals reserve their proposed interval for the teacher and both
+// Pending proposals reserve their proposed interval for the teacher and all
 // students. Query scope is provided by authenticated calendar routes only.
 export async function groupProposalHolds(db, { teacherId, studentId, date, lock = false }) {
   const [rows] = await db.query(`SELECT gp.proposal_id, gp.teacher_id, gp.duration,

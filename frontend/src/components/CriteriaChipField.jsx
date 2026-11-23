@@ -33,6 +33,8 @@ import { isSelectedValue, CUSTOM_OPTION_VALUE } from "../utils/matchingCriteria.
  */
 
 // Re-exported so callers can keep importing it from here.
+// This re-export preserves the shared criteria API.
+// eslint-disable-next-line react-refresh/only-export-components
 export { CUSTOM_OPTION_VALUE };
 
 const MAX_CUSTOM_LENGTH = 60;

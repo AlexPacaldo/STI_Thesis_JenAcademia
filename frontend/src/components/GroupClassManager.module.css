@@ -8,7 +8,9 @@
 .manager .primary, .dialog .primary { background: #287b38; color: white; border-color: #287b38; }
 .manager .propose { border-color: #287b38; }
 .invitations { flex: 1; min-width: min(100%, 260px); }
-.invitations summary { cursor: pointer; font-weight: 700; padding: 12px 0; }
+.invitations summary { cursor: pointer; font-weight: 700; padding: 12px 16px; width: fit-content; max-width: 100%; box-sizing: border-box; border: 1px solid #b9d2bc; border-radius: 12px; background: #f0f8ee; color: #244a32; }
+.invitations summary:hover { background: #e4f2e1; border-color: #79a847; }
+.invitationCount { display: inline-block; margin-left: 8px; padding: 3px 9px; border-radius: 999px; background: #fff0d7; color: #8a4900; font-size: .8rem; }
 .invitation, .groupInfo { padding: 16px; border: 1px solid #dce4de; border-radius: 14px; background: #fff; margin-top: 12px; }
 .invitation p, .groupInfo p, .dialog p { line-height: 1.55; }
 .badge { background: #eaf3df; padding: 5px 10px; border-radius: 20px; font-size: .8rem; font-weight: 700; }
@@ -21,6 +23,9 @@
 .form { gap: 16px; margin: 20px 0; }
 .form label { font-weight: 700; min-width: 0; }
 .form input, .form select { box-sizing: border-box; min-width: 0; width: 100%; min-height: 48px; border: 1px solid #ccd8cf; border-radius: 12px; padding: 10px; font: inherit; background: white; color: #203c2d; }
+.form fieldset { display: grid; gap: 8px; margin: 0; padding: 12px; border: 1px solid #ccd8cf; border-radius: 12px; }
+.form fieldset label { display: flex; align-items: center; gap: 10px; font-weight: 400; }
+.form input[type="checkbox"] { width: 18px; min-height: 18px; height: 18px; flex: 0 0 18px; padding: 0; }
 .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .options { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 10px; margin: 16px 0; }
 .options button { display: grid; gap: 6px; }

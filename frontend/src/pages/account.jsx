@@ -1626,8 +1626,8 @@ export default function Account() {
         {/* The work: what this person is here to do. */}
         {isAdmin ? (
           <section className={styles.proCard}>
-            <div className={styles.proCardHead}>
-              <h2 className={styles.proCardTitle}>Administration</h2>
+            <div className={styles.proSectionHead}>
+              <h2 className={styles.proSectionTitle}>Administration</h2>
               <span className={styles.proBadge}>Admin</span>
             </div>
             <div className={styles.proStatGrid}>
@@ -1651,8 +1651,8 @@ export default function Account() {
           </section>
         ) : (
           <section className={styles.proCard}>
-            <div className={styles.proCardHead}>
-              <h2 className={styles.proCardTitle}>Teaching profile</h2>
+            <div className={styles.proSectionHead}>
+              <h2 className={styles.proSectionTitle}>Teaching profile</h2>
               <span className={styles.proBadge}>Teacher</span>
             </div>
 
@@ -1673,15 +1673,18 @@ export default function Account() {
                     : `${details.experience_years} ${Number(details.experience_years) === 1 ? "year" : "years"}`}
                 </span>
               </div>
-              <div className={styles.proStat}>
-                <span className={styles.proStatLabel}>Specialization</span>
-                <span className={styles.proStatValue}>
-                  {String(details.specialization || "").trim() || "—"}
-                </span>
-              </div>
             </div>
 
             <div className={styles.proFacts}>
+              <div className={styles.proFact}>
+                <span className={styles.proFactLabel}>Specializations</span>
+                <div className={styles.specializationList}>
+                  {String(details.specialization || "").split(",").map(value => value.trim()).filter(Boolean).map(value => (
+                    <span key={value} className={styles.specializationTag}>{value.charAt(0).toUpperCase() + value.slice(1)}</span>
+                  ))}
+                  {!String(details.specialization || "").trim() && <span className={styles.proFactValue}>—</span>}
+                </div>
+              </div>
               <div className={styles.proFact}>
                 <span className={styles.proFactLabel}>Courses</span>
                 <span className={styles.proFactValue}>{formatValue(details.courses)}</span>
@@ -1711,8 +1714,8 @@ export default function Account() {
 
         {/* The details. Read them, then change them. */}
         <section className={styles.proCard}>
-          <div className={styles.proCardHead}>
-            <h2 className={styles.proCardTitle}>Profile information</h2>
+          <div className={styles.proSectionHead}>
+            <h2 className={styles.proSectionTitle}>Profile information</h2>
             {!profileEditing ? (
               <button
                 type="button"
@@ -1738,8 +1741,8 @@ export default function Account() {
 
         {/* The password. */}
         <section className={styles.proCard}>
-          <div className={styles.proCardHead}>
-            <h2 className={styles.proCardTitle}>Security</h2>
+          <div className={styles.proSectionHead}>
+            <h2 className={styles.proSectionTitle}>Security</h2>
             <button
               type="button"
               className={styles.proBtnGhost}
@@ -1755,8 +1758,8 @@ export default function Account() {
 
         {/* The facts about the account itself, and the way out. */}
         <section className={styles.proCard}>
-          <div className={styles.proCardHead}>
-            <h2 className={styles.proCardTitle}>Account</h2>
+          <div className={styles.proSectionHead}>
+            <h2 className={styles.proSectionTitle}>Account</h2>
             <span className={styles.proBadge}>
               {user.profileCompleted ? "Complete" : "Incomplete"}
             </span>

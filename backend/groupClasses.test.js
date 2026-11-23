@@ -33,6 +33,7 @@ function fixture() {
       return [state.classes.filter(row => params[0].map(Number).includes(row.class_id)).map(row => ({ ...row }))];
     }
     if (q.startsWith("SELECT user_id, role")) return [params[0].map(user_id => ({ user_id, status: "active", profile_completed: true, role: user_id === 1 ? "teacher" : "student" }))];
+    if (q.startsWith("SELECT class_id FROM classes WHERE group_session_id")) return [state.classes.filter(row => row.group_session_id === params[0] && row.status === "scheduled").map(row => ({ class_id: row.class_id }))];
     if (q.includes("FROM student_class_packages")) return [state.packages.filter(pkg => params[0].includes(pkg.student_id) && pkg.status === "active")];
     if (q.startsWith("SELECT * FROM teacher_availability")) return [[state.availability]];
     if (q.startsWith("UPDATE group_class_proposals SET status = 'expired'")) {
@@ -114,6 +115,33 @@ test("group conversion requires both students and preserves booking IDs and clas
   assert.deepEqual(f.state.packages, packages);
   assert.equal(f.state.sessions.length, 1);
   assert(f.queries.some(q => q.includes("ORDER BY student_id FOR UPDATE")), "Final approvals must read current responses, not a stale transaction snapshot");
+});
+
+test("a group of three requires every acceptance and keeps each booking", async () => {
+  const f = fixture();
+  f.state.classes.push({ ...f.state.classes[1], class_id: 30, student_id: 4, start_time: "14:00" });
+  f.state.packages.push({ ...f.state.packages[1], student_id: 4, package_id: 104 });
+  const { proposal_id } = await f.service.create(f.teacher, { ...f.body, class_ids: [10, 20, 30] });
+  assert.equal((await f.service.respond(f.student(2), proposal_id, "accept")).status, "pending");
+  assert.equal((await f.service.respond(f.student(3), proposal_id, "accept")).status, "pending");
+  assert(f.state.classes.every(row => !row.group_session_id));
+  assert.equal((await f.service.respond(f.student(4), proposal_id, "accept")).status, "approved");
+  assert(f.state.classes.every(row => row.group_session_id === 1));
+  await assert.rejects(f.service.create(f.teacher, { ...f.body, class_ids: [10, 20], start_time: "15:00" }), /Include all existing group participants/);
+});
+
+test("an existing group can invite another student only with all current members", async () => {
+  const f = fixture();
+  const first = await f.service.create(f.teacher, f.body);
+  await f.service.respond(f.student(2), first.proposal_id, "accept");
+  await f.service.respond(f.student(3), first.proposal_id, "accept");
+  f.state.classes.push({ ...f.state.classes[1], class_id: 30, student_id: 4, start_time: "14:00", group_session_id: null });
+  f.state.packages.push({ ...f.state.packages[1], student_id: 4, package_id: 104 });
+  await assert.rejects(f.service.create(f.teacher, { ...f.body, class_ids: [10, 30], start_time: "15:00" }), /Include all existing group participants/);
+  const next = await f.service.create(f.teacher, { ...f.body, class_ids: [10, 20, 30], start_time: "15:00" });
+  for (const studentId of [2, 3]) assert.equal((await f.service.respond(f.student(studentId), next.proposal_id, "accept")).status, "pending");
+  assert.equal((await f.service.respond(f.student(4), next.proposal_id, "accept")).status, "approved");
+  assert(f.state.classes.every(row => row.group_session_id === 2));
 });
 
 test("students and unrelated teachers cannot create proposals or respond for someone else", async () => {

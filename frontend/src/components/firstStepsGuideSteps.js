@@ -387,7 +387,7 @@ const STUDENT_STEPS = [
     text: "If you cannot come, ask your teacher for a new time.",
     points: [
       "Open Calendar and choose your class.",
-      "Tap Change the time.",
+      "Tap Request reschedule.",
       "Choose a free new day and time. Tell your teacher why.",
       "Check the new time and send your request.",
       "Your teacher must say yes before the class time changes.",
@@ -396,7 +396,7 @@ const STUDENT_STEPS = [
       scene: "reschedule",
       focus: "reschedule",
       highlight: {
-        title: "Change the time",
+        title: "Request reschedule",
         text: "This starts your request. Your old time stays on the calendar until your teacher approves the new one.",
       },
       example: {

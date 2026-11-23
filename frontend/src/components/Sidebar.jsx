@@ -1,14 +1,9 @@
-import axios from "axios";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import styles from "../assets/sidebar.module.css";
-import pfp from "../assets/img/Navbar/user.jpg";
 import { readStoredUser } from "../utils/sessionUser.js";
-import NotificationPanel from "./NotificationPanel.jsx";
 import Logo from "../assets/img/Navbar/LOGO.png";
-import { API_BASE_URL } from "../utils/api.js";
 
-const API = API_BASE_URL;
 function isProfileComplete(user) {
   return Boolean(user?.profileCompleted);
 }
@@ -21,9 +16,6 @@ function Sidebar({ isMobileOpen = false, onClose }) {
   const [user, setUser] = useState(storedUser);
   const [role, setRole] = useState(storedUser?.role || null);
   const [profileCompleted, setProfileCompleted] = useState(isProfileComplete(storedUser));
-  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [studentPackage, setStudentPackage] = useState(null);
-  const currentUserId = user?.id || user?.user_id || user?.userId;
 
   useEffect(() => {
     try {
@@ -77,89 +69,21 @@ function Sidebar({ isMobileOpen = false, onClose }) {
     };
   }, []);
 
-  useEffect(() => {
-    if (role !== "student" || !currentUserId) {
-      setStudentPackage(null);
-      return;
-    }
-
-    axios
-      .get(`${API}/api/calendar/student-package/${currentUserId}`)
-      .then((response) => setStudentPackage(response.data.package || null))
-      .catch(() => setStudentPackage(null));
-  }, [currentUserId, role, location]);
 
   // ✅ Current page routes (you already have these)
   const path = location.pathname;
 
   const isAccountPage = path === "/account";
-  const isReschedulePage = path.startsWith("/reschedule");
-  const isAllClassesPage = path === "/allClasses";
   const isCallPage = path.startsWith("/call");
 
-  const isAdminDashboardPage = path === "/AdminDashboard";
-  const isAdminBooksContentPage = path.startsWith("/adminBooksContent/");
-  const studentHasNoClassesLeft = role === "student" && studentPackage && Number(studentPackage.classes_left) <= 0;
 
-  const isStudentDashboardPage = path === "/StudentDashboard";
-  const isAssignmentsDropbox = path === "/assignmentsDropbox";
-  const isAssignmentsPage = path === "/assignments";
-  const isRemarksPage = path === "/remarks";
-  const isClassHistoryPage = path === "/classHistory";
-  const isContractReviewPage = path === "/ContractReview";
-  const isBooksLessonsPage = path === "/booksLessons";
-  const isBooksContentPage = path === "/booksContent" || path.startsWith("/booksContent/");
 
-  const isTeacherDashboardPage = path === "/TeacherDashboard";
-  const isTeacherClassHistoryPage = path === "/teacherClassHistory";
-  const isTeacherStudentsPage = path === "/teacherStudents";
-  const isPassRemarksPage = path === "/PassRemarks";
-  const isTeacherAssignmentPage = path === "/teacherAssignment";
-  const isTeacherBooksLessonsPage = path === "/teacherBooksLessons";
-  const isTeacherBooksContentPage = path.startsWith("/teacherBooksLessons/");
-  const isTeacherBooksDropboxPage = path === "/teacherBooksDropbox";
-  const isCalendarPage = path === "/Calendar";
 
   if (isCallPage || (isAccountPage && !profileCompleted)) {
     return null;
   }
 
   // ✅ Keep your current `isStudentArea`
-  const isStudentArea =
-    isReschedulePage ||
-    isStudentDashboardPage ||
-    isAllClassesPage ||
-    isAccountPage ||
-    isAssignmentsDropbox ||
-    isAssignmentsPage ||
-    isRemarksPage ||
-    isClassHistoryPage ||
-    isContractReviewPage ||
-    isBooksLessonsPage ||
-    isCalendarPage ||
-    isBooksContentPage;
-
-  const isTeacherArea =
-    isReschedulePage ||
-    isTeacherDashboardPage ||
-    isTeacherClassHistoryPage ||
-    isTeacherStudentsPage ||
-    isAllClassesPage ||
-    isAccountPage ||
-    isCalendarPage ||
-    isPassRemarksPage ||
-    isContractReviewPage ||
-    isTeacherAssignmentPage ||
-    isTeacherBooksLessonsPage ||
-    isTeacherBooksContentPage ||
-    isBooksContentPage ||
-    isTeacherBooksDropboxPage;
-
-  const isAdminArea =
-    isAccountPage ||
-    isAdminDashboardPage ||
-    isAdminBooksContentPage;
-
   const navConfig = {
     student: [
       { to: "/StudentDashboard", label: "Home", icon: "bi-house-door-fill" },

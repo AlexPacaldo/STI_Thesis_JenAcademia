@@ -28,6 +28,8 @@ const TeacherStudents = lazy(() => import("./pages/TeacherStudents.jsx"));
 const TeacherBooksLessons = lazy(() => import("./pages/teacherBooksLessons.jsx"));
 const Calendar = lazy(() => import("./pages/Calendar.jsx"));
 
+// App entry point also mounts the router.
+// eslint-disable-next-line react-refresh/only-export-components
 function Page({ children }) {
   return <Suspense fallback={<div role="status" style={{ padding: 24 }}>Loading page…</div>}>{children}</Suspense>;
 }

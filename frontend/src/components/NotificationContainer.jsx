@@ -6,7 +6,10 @@ import { getLocalUnreadCount } from "../utils/localNotificationStore.js";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { enqueueToast, MAX_VISIBLE_TOASTS } from "../utils/toastQueue.js";
+import { openSseStream } from "../utils/sseClient.js";
 
+// The provider and its context share one module.
+// eslint-disable-next-line react-refresh/only-export-components
 export const NotificationContext = React.createContext();
 const BADGE_REFRESH_MS = 15 * 1000;
 const API = API_BASE_URL;
@@ -72,6 +75,21 @@ export function NotificationProvider({ children }) {
       setUnreadCount(localCount);
     }
   }, [currentUser, currentUserId, currentUserRole]);
+
+  useEffect(() => {
+    if (!currentUserId || !["student", "teacher"].includes(currentUserRole)) return undefined;
+    const refresh = () => window.dispatchEvent(new Event("notificationsChanged"));
+    const stream = openSseStream(`${API}/api/calendar/stream/${currentUserId}`, { reconnectMs: 5000, onOpen: refresh });
+    const onCancelled = (event) => {
+      let detail = {};
+      try { detail = JSON.parse(event.data); } catch { /* Refresh even if the event has no payload. */ }
+      window.dispatchEvent(new CustomEvent("rescheduleRequestCancelled", { detail }));
+      refresh();
+    };
+    stream.addEventListener("reschedule-request-cancelled", onCancelled);
+    stream.onerror = () => {};
+    return () => stream.close();
+  }, [currentUserId, currentUserRole]);
 
   useEffect(() => {
     if (!currentUserId || !["student", "teacher", "admin"].includes(currentUserRole)) {
@@ -142,6 +160,7 @@ export function NotificationProvider({ children }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useNotification() {
   const context = React.useContext(NotificationContext);
   if (!context) {

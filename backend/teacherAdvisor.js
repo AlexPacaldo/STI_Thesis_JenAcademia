@@ -145,7 +145,7 @@ function describeCandidates(scored, availability) {
     const free = availability?.get(String(teacher.user_id)) || null;
     return {
       id: teacher.user_id,
-      name: `${teacher.first_name || ""} ${teacher.last_name || ""}`.trim() || `Teacher ${teacher.user_id}`,
+      name: `${teacher.first_name || ""} ${teacher.last_name || ""}`.trim() || "Unnamed teacher",
       specialization: profile.specialization || [],
       teachingStyle: profile.teachingStyle || [],
       bestStudentPace: profile.idealStudentPace || [],
@@ -248,12 +248,21 @@ function buildPrompt({ criteria, trialNotes, courseName, shortlisted, preferredL
     "",
     "Rules:",
     "- Return EVERY id exactly once. Do not add, drop, merge or rename any.",
+    "- Use teacher names in the summary and reasons. IDs are only for rankedTeacherIds and teacherId fields; never use IDs in prose.",
     "- Judge fit for THIS student: their goals, focus areas, pace and the trial notes.",
     "- A teacher with no listed subjects can still be the best match if the notes suggest it. Say so in your reason.",
     "- Weigh teaching fit above raw experience. A slightly less experienced teacher who specialises in what this student needs beats a generalist.",
     "- Reason about what suits the student, not about workload; workload is handled separately and is not a reason to rank someone low.",
     "- Reasons are one short sentence each, specific to that teacher and student.",
   ].join("\n");
+}
+
+// Models sometimes repeat identifiers in prose despite the prompt. Replace only
+// known candidate IDs, keeping ordinary numeric quantities such as years intact.
+export function teacherNamesInExplanation(text, candidates) {
+  const names = new Map(candidates.map(candidate => [String(candidate.id), candidate.name]));
+  return String(text || "").replace(/\b(?:teacher\s*#?\s*)?(\d+)\b(?!\s*(?:years?|students?|classes|minutes?|hours?|days?|%))/gi,
+    (match, id) => names.get(id) || match);
 }
 
 const SYSTEM_PROMPT = [
@@ -378,7 +387,7 @@ export async function adviseTeacherRanking({
       const id = String(item?.teacherId ?? "");
       const text2 = String(item?.reason || "").trim();
       if (allowed.has(id) && text2) {
-        reasons[id] = text2.slice(0, 240);
+        reasons[id] = teacherNamesInExplanation(text2, shortlisted).slice(0, 240);
       }
     }
 
@@ -387,7 +396,7 @@ export async function adviseTeacherRanking({
       ok: true,
       order,
       reasons,
-      summary: String(parsed?.summary || "").trim().slice(0, 400),
+      summary: teacherNamesInExplanation(String(parsed?.summary || "").trim(), shortlisted).slice(0, 400),
       shortlistSize: shortlisted.length,
       candidateCount,
       // True when the academy is bigger than the cap, so the admin can be told the

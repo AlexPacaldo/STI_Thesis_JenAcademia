@@ -57,7 +57,7 @@
   color: #fff;
 }
 
-.teacher-theme .content-inner button:not([class*="cell"]):not([class*="day"]):not([class*="time"]):not([class*="close"]):not([class*="icon"]):not([class*="Icon"]):not([class*="navBtn"]):not([class*="avatar"]):not([class*="Avatar"]):not([class*="removeAttachmentFileButton"]) {
+.teacher-theme .content-inner button:not([class*="cell"]):not([class*="day"]):not([class*="time"]):not([class*="close"]):not([class*="icon"]):not([class*="Icon"]):not([class*="navBtn"]):not([class*="avatar"]):not([class*="Avatar"]):not([class*="removeAttachmentFileButton"]):not([class*="viewSwitchBtn"]):not([class*="invitationsTrigger"]):not([class*="propose"]):not([class*="trigger"]) {
   min-height: 48px;
   border-radius: 16px;
   font-weight: 700;

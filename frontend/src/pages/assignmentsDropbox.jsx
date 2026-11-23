@@ -2,7 +2,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import styles from "../assets/assignmentsDropbox.module.css";
-import teacherPic from "../assets/img/Navbar/user.jpg";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
@@ -121,38 +120,6 @@ function getCurrentUser() {
   return readStoredUser() || {};
 }
 
-function getAssignmentDisplayText(assignment) {
-  return assignment?.instructions || assignment?.description || assignment?.name || "Assignment";
-}
-
-function formatDueDate(assignment) {
-  const dueDate = assignment?.dueDate || "";
-  const dueTime = assignment?.dueTime || "";
-
-  if (dueDate) {
-    const [year, month, day] = dueDate.split("-").map(Number);
-    const [hour = 0, minute = 0] = dueTime.split(":").map(Number);
-    const date = new Date(year, month - 1, day, hour, minute);
-
-    if (!Number.isNaN(date.getTime())) {
-      return date.toLocaleString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: dueTime ? "numeric" : undefined,
-        minute: dueTime ? "2-digit" : undefined,
-        hour12: dueTime ? true : undefined,
-      });
-    }
-  }
-
-  if (assignment?.due) {
-    return String(assignment.due).replace("T", " ");
-  }
-
-  return "No due date";
-}
-
 function getAttemptsUsed(assignment) {
   return Number(assignment?.attemptsUsed ?? assignment?.attemptCount ?? 0);
 }
@@ -244,7 +211,6 @@ export default function AssignmentsDropbox() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [selectedAssignment, setSelectedAssignment] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("instructions");
   const location = useLocation();
   const navigate = useNavigate();
@@ -276,7 +242,6 @@ export default function AssignmentsDropbox() {
     if (!assignmentId) return;
 
     let ignore = false;
-    setIsLoading(true);
     setSubmitMessage("");
     setIsEditingSubmission(false);
     setComment("");
@@ -310,7 +275,6 @@ export default function AssignmentsDropbox() {
         }
       })
       .finally(() => {
-        if (!ignore) setIsLoading(false);
       });
 
     return () => {

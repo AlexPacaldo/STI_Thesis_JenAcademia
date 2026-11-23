@@ -145,6 +145,57 @@
   margin: 24px auto;
 }
 
+.classDetailToolbar {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.classDetailGroups,
+.classDetailRequests {
+  min-width: 0;
+}
+
+.classDetailGroups > section,
+.classDetailRequests > div {
+  width: auto;
+  margin: 0;
+}
+
+.classDetailGroups > section > div:first-child {
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.classDetailToolbar > button,
+.classDetailToolbar .classDetailGroups > section > div:first-child > button,
+.classDetailRequests > div > button {
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid #b9d2bc;
+  border-radius: 12px;
+  background: #f0f8ee;
+  box-shadow: none;
+  color: #244a32;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.classDetailToolbar > button { flex: none; }
+
+.classDetailToolbar > button:hover,
+.classDetailToolbar .classDetailGroups > section > div:first-child > button:hover,
+.classDetailRequests > div > button:hover {
+  border-color: #79a847;
+  background: #e4f2e1;
+  box-shadow: none;
+}
+
+
 /* The buttons at the bottom of a form. */
 .actionRow {
   display: flex;

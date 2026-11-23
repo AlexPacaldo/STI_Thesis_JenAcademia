@@ -182,7 +182,7 @@ export default function Classroom() {
       setRecordingStartedAt(new Date());
       setIsRecording(true);
       notify?.("Recording started. Keep this classroom page open until the upload finishes.", "success");
-    } catch (err) {
+    } catch {
       notify?.("Recording permission was cancelled or blocked.", "warning");
     }
   };

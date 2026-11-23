@@ -329,10 +329,24 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
                     </div>
                   </div>
 
-                  <span className={`${kid.pastStatus} ${kid[outcome.tone]}`}>
-                    <span aria-hidden="true"><i className={`bi ${outcome.icon}`} /></span>
-                    {outcome.word}
-                  </span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {(row.verification_status !== "student_confirmed" || !row.student_joined_at) && (
+                      <span className={`${kid.pastStatus} ${kid[outcome.tone]}`}>
+                        <span aria-hidden="true"><i className={`bi ${outcome.icon}`} /></span>
+                        {outcome.word}
+                      </span>
+                    )}
+                    {row.student_joined_at && (
+                      <span className={`${kid.pastStatus} ${kid.pastStatusDone}`}>
+                        <i className="bi bi-person-check" aria-hidden="true" /> Student joined
+                      </span>
+                    )}
+                    {row.teacher_started_at && (
+                      <span className={`${kid.pastStatus} ${kid.pastStatusDone}`}>
+                        <i className="bi bi-person-check" aria-hidden="true" /> Teacher joined
+                      </span>
+                    )}
+                  </div>
 
                   <div className={kid.pastFacts}>
                     <div className={kid.pastFact}>
