@@ -44,7 +44,6 @@ import { API_BASE_URL } from "../utils/api.js";
 import { openClassRecording } from "../utils/classRecording.js";
 import { formatRecordingDuration } from "../utils/recordingDuration.js";
 import { AuthenticatedImage } from "../utils/authenticatedImage.jsx";
-import { openAuthenticatedFile } from "../utils/authenticatedFile.js";
 import useLiveRefresh from "../hooks/useLiveRefresh.js";
 
 const API = API_BASE_URL;
@@ -2810,10 +2809,22 @@ export default function AdminDashboard() {
                               <button key={row.recording_url} type="button" className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`} onClick={() => openClassRecording({ classId: row.class_id, notify })}><i className="bi bi-play-fill" aria-hidden="true" /> {recordings.length > 1 ? `Recording ${index + 1}` : "Watch recording"} ({formatRecordingDuration(row.recording_duration_seconds)})</button>
                             ))}
                             {[...new Set(group.rows.map(row => row.start_proof_url).filter(Boolean))].map((url, index, photos) => (
-                              <button key={url} type="button" className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`} onClick={() => openAuthenticatedFile(url)}><i className="bi bi-image" aria-hidden="true" /> {photos.length > 1 ? `Start photo ${index + 1}` : "Start photo"}</button>
+                              <button key={url} type="button" className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`} onClick={() => setSelectedProof({
+                                url: resolveUploadUrl(url), photoLabel: photos.length > 1 ? `Start photo ${index + 1}` : "Start photo",
+                                className: group.rows[0].class_name || "Class",
+                                teacherName: `${group.rows[0].teacher_first_name || ""} ${group.rows[0].teacher_last_name || ""}`.trim() || "Teacher",
+                                studentName: "Group class",
+                                schedule: `${formatDate(group.rows[0].scheduled_date)} ${formatTime(group.rows[0].start_time)}`,
+                              })}><i className="bi bi-image" aria-hidden="true" /> {photos.length > 1 ? `Start photo ${index + 1}` : "Start photo"}</button>
                             ))}
                             {[...new Set(group.rows.map(row => row.proof_url).filter(Boolean))].map((url, index, photos) => (
-                              <button key={url} type="button" className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`} onClick={() => openAuthenticatedFile(url)}><i className="bi bi-image" aria-hidden="true" /> {photos.length > 1 ? `End photo ${index + 1}` : "End photo"}</button>
+                              <button key={url} type="button" className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`} onClick={() => setSelectedProof({
+                                url: resolveUploadUrl(url), photoLabel: photos.length > 1 ? `End photo ${index + 1}` : "End photo",
+                                className: group.rows[0].class_name || "Class",
+                                teacherName: `${group.rows[0].teacher_first_name || ""} ${group.rows[0].teacher_last_name || ""}`.trim() || "Teacher",
+                                studentName: "Group class",
+                                schedule: `${formatDate(group.rows[0].scheduled_date)} ${formatTime(group.rows[0].start_time)}`,
+                              })}><i className="bi bi-image" aria-hidden="true" /> {photos.length > 1 ? `End photo ${index + 1}` : "End photo"}</button>
                             ))}
                           </div>
                         </div>
@@ -2955,7 +2966,11 @@ export default function AdminDashboard() {
                           <button
                             type="button"
                             className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`}
-                            onClick={() => openAuthenticatedFile(row.start_proof_url)}
+                            onClick={() => setSelectedProof({
+                              url: resolveUploadUrl(row.start_proof_url), photoLabel: "Start photo",
+                              className: row.class_name || "Class", teacherName, studentName,
+                              schedule: `${formatDate(row.scheduled_date)} ${formatTime(row.start_time)}`,
+                            })}
                           >
                             <i className="bi bi-image" aria-hidden="true" /> Start photo
                           </button>
@@ -2974,6 +2989,7 @@ export default function AdminDashboard() {
                             className={`${styles.verifyActionBtn} ${styles.verifyActionSecondary}`}
                             onClick={() => setSelectedProof({
                               url: resolveUploadUrl(row.proof_url),
+                              photoLabel: "End photo",
                               className: row.class_name || "Class",
                               teacherName,
                               studentName,
@@ -4862,7 +4878,7 @@ export default function AdminDashboard() {
             <section
               role="dialog"
               aria-modal="true"
-              aria-label="Class screenshot"
+              aria-label={selectedProof.photoLabel || "Class screenshot"}
               onClick={(event) => event.stopPropagation()}
               style={{
                 width: "min(960px, 100%)",
@@ -4877,7 +4893,7 @@ export default function AdminDashboard() {
             >
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, padding: "16px 18px", borderBottom: "1px solid #e5e7eb" }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: "1rem", color: "#10231d" }}>{selectedProof.className}</h3>
+                  <h3 style={{ margin: 0, fontSize: "1rem", color: "#10231d" }}>{selectedProof.photoLabel} - {selectedProof.className}</h3>
                   <p style={{ margin: "4px 0 0", color: "#667085", fontSize: "0.86rem" }}>
                     {selectedProof.teacherName} / {selectedProof.studentName} / {selectedProof.schedule}
                   </p>
@@ -4904,7 +4920,7 @@ export default function AdminDashboard() {
               <div style={{ padding: 18, background: "#f8fafc" }}>
                 <AuthenticatedImage
                   src={selectedProof.url}
-                  alt="Class proof screenshot"
+                  alt={`${selectedProof.photoLabel || "Class screenshot"} for ${selectedProof.className}`}
                   style={{ display: "block", width: "100%", maxHeight: "72vh", objectFit: "contain", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8 }}
                 />
               </div>

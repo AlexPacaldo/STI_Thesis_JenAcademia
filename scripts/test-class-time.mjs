@@ -17,6 +17,7 @@
  */
 
 import {
+  describeTimeDistance,
   describeTimeOfDay,
   humanTime,
   isPartOfDay,
@@ -63,6 +64,14 @@ check("a 24-hour time is normalised", normalizeTime("8:03 PM"), "20:03");
 check("a time in words is normalised", normalizeTime("7:50 AM"), "07:50");
 check("midnight in words is normalised", normalizeTime("12:00 AM"), "00:00");
 check("noon in words is normalised", normalizeTime("12:00 PM"), "12:00");
+
+check("exact match", describeTimeDistance("09:00", "09:00"), "Exact match");
+check("one minute later", describeTimeDistance("09:00", "09:01"), "1 minute later");
+check("minutes earlier", describeTimeDistance("09:00", "08:55"), "5 minutes earlier");
+check("one hour later", describeTimeDistance("09:00", "10:00"), "1 hour later");
+check("hours and minutes earlier", describeTimeDistance("23:13", "18:05"), "5 hours 8 minutes earlier");
+check("singular hour and minute", describeTimeDistance("09:00", "10:01"), "1 hour 1 minute later");
+check("invalid time difference", describeTimeDistance("", "10:00"), "");
 
 /* ------------------------------------------------------- the parts of a day */
 

@@ -2,14 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import * as apiPolicy from "./classSession.js";
 import * as uiPolicy from "../frontend/src/utils/classSession.js";
-import { isClassJoinable, isClassPast } from "../frontend/src/utils/classEntry.js";
+import { classEntryOpensAt, isClassJoinable, isClassPast } from "../frontend/src/utils/classEntry.js";
 import { zonedWallClockToInstant } from "./lineReminders.js";
 
 const start = Date.parse("2026-11-09T10:00:00Z");
 const scheduled = { status: "scheduled", duration: 25 };
 for (const [name, policy] of [["API", apiPolicy], ["Calendar", uiPolicy]]) {
-  test(`${name}: entry is available before the scheduled start without a teacher`, () => {
-    assert.equal(policy.classEntryError(scheduled, null, start, start - 60 * 60_000), "");
+  test(`${name}: early entry is temporarily available for testing`, () => {
+    assert.equal(policy.classEntryError(scheduled, null, start, start - 30 * 60_000 - 1), "");
+    assert.equal(policy.classEntryError(scheduled, null, start, start - 30 * 60_000), "");
+    assert.equal(policy.classEntryError(scheduled, { teacher_started_at: new Date(start - 60 * 60_000) }, start, start - 31 * 60_000), "");
     assert.equal(policy.classEntryError(scheduled, null, start, start - 1), "");
     assert.equal(policy.classEntryError(scheduled, null, start, start + 20 * 60_000), "");
     assert(policy.classEntryError(scheduled, null, start, start + 25 * 60_000));
@@ -71,4 +73,16 @@ test("Calendar entry and no-show timing use the profile timezone, not the device
   const converted = { ...lesson, time: "2:00 AM", source_scheduled_date: "2026-11-09", source_start_time: "18:00", source_timezone: "Asia/Manila" };
   assert.equal(isClassJoinable(converted, "2026-11-10", start), true);
   assert.equal(apiPolicy.hasScheduledClassEnded(scheduled, start, start + 25 * 60_000), true);
+});
+
+
+test("calendar opening timer uses the same instant as the entry policy", () => {
+  const lesson = { ...scheduled, time: "6:00 PM", viewer_timezone: "Asia/Manila" };
+  const opensAt = classEntryOpensAt(lesson, "2026-11-09");
+  assert.equal(opensAt, start - 30 * 60_000);
+  assert.equal(isClassJoinable(lesson, "2026-11-09", opensAt - 1), true);
+  assert.equal(isClassJoinable(lesson, "2026-11-09", opensAt), true);
+  const converted = { ...lesson, time: "2:00 AM", source_scheduled_date: "2026-11-09", source_start_time: "18:00", source_timezone: "Asia/Manila" };
+  assert.equal(classEntryOpensAt(converted, "2026-11-10"), opensAt);
+  assert(Number.isNaN(classEntryOpensAt(null, "2026-11-09")));
 });

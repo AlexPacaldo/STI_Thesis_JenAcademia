@@ -385,16 +385,54 @@
   display: block;
 }
 
-.reasonLine {
-  margin-top: 9px;
-  padding: 10px 14px;
-  border-left: 4px solid var(--text-danger);
-  border-radius: var(--radius-md);
-  background: var(--pill-danger);
-  color: var(--text-danger);
-  font-size: 0.95rem;
+.scheduleLine {
+  display: grid !important;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.scheduleLabel {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.scheduleValue {
+  color: var(--text);
+  font-size: 0.9rem;
   font-weight: 700;
+  line-height: 1.4;
+}
+
+.scheduleTimezone {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.reasonLine {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--border-mid);
+  border-radius: 0 10px 10px 0;
+  background: var(--surface-soft);
+  color: var(--text-mid);
+  font-size: 0.9rem;
+  font-weight: 500;
   line-height: 1.45;
+}
+
+.reasonLine .scheduleLabel {
+  margin-bottom: 3px;
 }
 
 /* ------------------------------------------------------------- card actions */

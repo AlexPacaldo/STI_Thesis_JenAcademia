@@ -8724,6 +8724,25 @@ app.get("/api/calendar/classes/:class_id/verification", requireSession, requireC
   }
 });
 
+// Class details may be opened before the classroom itself is available.
+app.get("/api/calendar/classes/:class_id/schedule", requireSession, requireClassAccess(), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT DATE_FORMAT(c.scheduled_date, '%Y-%m-%d') AS scheduled_date,
+              TIME_FORMAT(c.start_time, '%H:%i:%s') AS start_time,
+              tea.timezone AS teacher_timezone
+       FROM classes c JOIN users tea ON tea.user_id = c.teacher_id
+       WHERE c.class_id = ? LIMIT 1`,
+      [req.params.class_id]
+    );
+    if (!rows.length) return res.status(404).json({ message: "Class not found." });
+    return res.json({ class: rows[0] });
+  } catch (err) {
+    console.error("Error fetching class schedule:", err);
+    return res.status(500).json({ message: "Unable to load the class schedule." });
+  }
+});
+
 app.get("/api/calendar/classes/:class_id/classroom", requireSession, requireClassAccess(), async (req, res) => {
   try {
     const { class_id } = req.params;

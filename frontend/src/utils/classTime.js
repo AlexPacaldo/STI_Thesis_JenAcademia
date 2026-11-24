@@ -120,7 +120,7 @@ export function minutesToTime(minutes) {
 /**
  * How far a suggested time is from the one that was asked for.
  *
- * The words are a student's: "12 min later", not "12 minutes after".
+ * Use hours and minutes so longer differences are easy to read.
  */
 export function describeTimeDistance(requestedTime, suggestedTime) {
   const requestedMinutes = timeToMinutes(requestedTime);
@@ -129,7 +129,12 @@ export function describeTimeDistance(requestedTime, suggestedTime) {
   const diff = suggestedMinutes - requestedMinutes;
   if (diff === 0) return "Exact match";
   const absDiff = Math.abs(diff);
-  return `${absDiff} min ${diff > 0 ? "later" : "earlier"}`;
+  const hours = Math.floor(absDiff / 60);
+  const minutes = absDiff % 60;
+  const parts = [];
+  if (hours) parts.push(`${hours} ${hours === 1 ? "hour" : "hours"}`);
+  if (minutes) parts.push(`${minutes} ${minutes === 1 ? "minute" : "minutes"}`);
+  return `${parts.join(" ")} ${diff > 0 ? "later" : "earlier"}`;
 }
 
 /**

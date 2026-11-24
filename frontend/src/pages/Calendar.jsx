@@ -1,4 +1,4 @@
-import { classEntryIssue, isClassPast } from "../utils/classEntry.js";
+import { classEntryIssue, classEntryOpensAt, isClassPast } from "../utils/classEntry.js";
 import { hasClassAttendance, attendanceMinutes } from "../utils/classSession.js";
 import GroupClassManager from "../components/GroupClassManager.jsx";
 import { groupClassesForDisplay } from "../utils/groupClasses.js";
@@ -2397,7 +2397,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     };
   }, [location.search, location.state, navigate, notify, searchParams]);
 
-  // Only the current route may select a class. A classroom lookup can finish
+  // Only the current route may select a class. A schedule lookup can finish
   // after the student has returned to the list or opened a different class.
   useEffect(() => {
     let active = true;
@@ -2410,10 +2410,13 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       setSelectedClassId(classIdFromUrl);
     } else if (classIdFromUrl) {
       axios
-        .get(`${API}/api/calendar/classes/${encodeURIComponent(classIdFromUrl)}/classroom`)
+        .get(`${API}/api/calendar/classes/${encodeURIComponent(classIdFromUrl)}/schedule`)
         .then(response => {
           if (!active) return;
-          const classDate = normalizeDate(response.data?.class?.scheduled_date);
+          const sourceClass = response.data?.class;
+          const classDate = sourceClass?.scheduled_date && sourceClass?.start_time
+            ? convertDateTime(sourceClass.scheduled_date, sourceClass.start_time, sourceClass.teacher_timezone || DEFAULT_TIMEZONE, viewerTimezone).date
+            : normalizeDate(sourceClass?.scheduled_date);
           if (!classDate) {
             throw new Error("The booked class did not include a scheduled date.");
           }
@@ -2431,7 +2434,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     }
 
     return () => { active = false; };
-  }, [searchParams, location.state, notify]);
+  }, [searchParams, location.state, notify, viewerTimezone]);
 
   // Fetch the selected day's classes independently of route initialization.
   useEffect(() => {
@@ -3638,6 +3641,17 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   const isSelectedClassCompleted = selectedClass?.status === "completed";
   const selectedClassEntryError = classEntryIssue(selectedClass, selectedDate, currentTimeTick, selectedClassVerification);
   const isSelectedClassConfirmable = !selectedClassEntryError;
+  const isClassEntryTooEarly = selectedClassEntryError === "Joining opens 30 minutes before the scheduled class time.";
+  const classEntryOpeningTime = isClassEntryTooEarly ? classEntryOpensAt(selectedClass, selectedDate) : NaN;
+  useEffect(() => {
+    if (!Number.isFinite(classEntryOpeningTime)) return undefined;
+    const delay = Math.max(0, classEntryOpeningTime - Date.now());
+    // Long timeouts overflow in browsers. The regular clock refresh will
+    // recalculate the remaining delay until it fits.
+    if (delay > 2_147_483_647) return undefined;
+    const timer = window.setTimeout(() => setCurrentTimeTick(Date.now()), delay);
+    return () => window.clearTimeout(timer);
+  }, [classEntryOpeningTime, currentTimeTick]);
   const isSelectedClassNoShowable =
     selectedClass?.status === "scheduled" &&
     isClassPast(selectedClass, selectedDate, currentTimeTick) &&
@@ -3700,6 +3714,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     !isSelectedClassConfirmable ||
     isUpdatingVerification;
   const selectedClassEntryLabel = (() => {
+    if (isClassEntryTooEarly) return "You can join 30 minutes before class starts";
     if (isUpdatingVerification) return "Saving...";
     if (isSelectedClassCompleted) return "Class is done";
     if (localRole === "teacher" && !selectedClassStarted) return "Start & Join Class";
@@ -6391,7 +6406,11 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
             </div>
           )}
 
-          <aside className={styles.calendarAside}>
+          <aside
+            className={`${styles.calendarAside} ${!isSimpleStudentView && calendarView === "month" ? styles.monthCalendarAside : ""}`}
+            tabIndex={!isSimpleStudentView && calendarView === "month" ? 0 : undefined}
+            aria-label="Calendar details"
+          >
             {isTeacherOrAdmin ? (
               selectedClass ? (
                 <>
@@ -6522,23 +6541,17 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                   {renderVerificationPanel()}
 
                   {canShowClassEntryAction && (
+                    <>
                     <button
                       type="button"
                       disabled={isClassEntryDisabled}
                       onClick={enterSelectedClass}
-                      className={`${cal.actionCard} ${cal.actionPrimary}`}
-                      style={{
-                        textAlign: "center",
-                        display: "block",
-                        width: "100%",
-                        cursor: isClassEntryDisabled ? "not-allowed" : "pointer",
-                        opacity: isClassEntryDisabled ? 0.5 : 1,
-                        filter: isClassEntryDisabled ? "grayscale(100%)" : "none",
-                      }}
+                      className={`${cal.actionCard} ${cal.actionPrimary} ${styles.classEntryButton}`}
                       title={selectedClassEntryTitle}
                     >
                       {selectedClassEntryLabel}
                     </button>
+                    </>
                   )}
                   { isTeacherOrAdmin && isSelectedClassNoShowable && !requestMode && (
                     <button
@@ -7206,22 +7219,16 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                         !! they are the ones who act on it. */}
                     {isSimpleStudentView ? renderStudentClassStatus() : renderVerificationPanel()}
                     {canShowClassEntryAction && (
+                      <>
                       <button
                         disabled={isClassEntryDisabled}
                         onClick={enterSelectedClass}
-                        className={`${cal.actionCard} ${cal.actionPrimary}`}
-                        style={{
-                          textAlign: "center",
-                          display: "block",
-                          width: "100%",
-                          cursor: isClassEntryDisabled ? "not-allowed" : "pointer",
-                          opacity: isClassEntryDisabled ? 0.5 : 1,
-                          filter: isClassEntryDisabled ? "grayscale(100%)" : "none",
-                        }}
+                        className={`${cal.actionCard} ${cal.actionPrimary} ${styles.classEntryButton}`}
                         title={selectedClassEntryTitle}
                       >
                         {selectedClassEntryLabel}
                       </button>
+                      </>
                     )}
                     {isTeacherOrAdmin && isSelectedClassNoShowable && !requestMode && (
                       <button

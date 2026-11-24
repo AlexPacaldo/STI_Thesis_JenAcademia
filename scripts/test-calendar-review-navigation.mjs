@@ -74,7 +74,7 @@ try {
       return respond({ classes: [cls] });
     }
     if (path.endsWith("teacher-booking-conflicts")) availabilityRequests++;
-    if (path.endsWith("/187/classroom")) {
+    if (path.endsWith("/187/schedule")) {
       classroomRequested = true;
       await classroomGate;
       return respond({ class: cls });
@@ -95,7 +95,7 @@ try {
   assert.equal(new URL(page.url()).search, "", "Loading classes must keep the calendar list open.");
   assert.equal(availabilityRequests, 0, "The class list must not load booking conflicts or calculate booking slots.");
 
-  // Direct notification links must still open, but a late classroom lookup
+  // Direct notification links must still open, but a late schedule lookup
   // must not restore a class after the student returns to the list.
   await page.goto(`${base}/Calendar?classId=187`);
   await page.waitForFunction(() => document.querySelector('a[href="/Calendar"]'));
@@ -110,7 +110,7 @@ try {
   await page.waitForNetworkIdle({ idleTime: 300 });
   assert.equal(new URL(page.url()).search, "");
   assert.equal(await page.evaluate(() => document.body.textContent.includes("Back to my classes")), false,
-    "A stale classroom response must not reopen details on the class list.");
+    "A stale schedule response must not reopen details on the class list.");
 
   await page.goto(`${base}/Calendar?classId=187`);
   await page.waitForFunction(() => document.body.textContent.includes("Back to my classes"));

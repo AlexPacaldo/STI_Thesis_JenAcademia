@@ -389,23 +389,78 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
     return titles[notification.type] || "Notification";
   };
 
-  const renderNotificationMessage = (message) => {
+  const renderNotificationMessage = (message, type, relatedType) => {
     const lines = String(message || "").split("\n");
 
     return lines.map((line, index) => {
-      if (line.trim().toLowerCase().startsWith("reason:")) {
+      const trimmed = line.trim();
+      if (relatedType === "teacher_availability") {
+        const summary = trimmed.match(/^(.+?) updated availability for (\d+) dates? in (.+?) from (.+?) to (.+?) \(([^)]+)\)\.(?: Break: (.+?) to (.+?)\.)?$/);
+        if (summary) {
+          const [, teacher, count, month, start, end, zone, breakStart, breakEnd] = summary;
+          return (
+            <span key={index}>
+              <span>{teacher} updated availability for {count} {count === "1" ? "date" : "dates"} in {month}.</span>
+              <span className={styles.scheduleLine}>
+                <span className={styles.scheduleLabel}>Hours</span>
+                <span className={styles.scheduleValue}>{start} - {end}<span className={styles.scheduleTimezone}>{zone}</span></span>
+              </span>
+              {breakStart && <span className={styles.scheduleLine}>
+                <span className={styles.scheduleLabel}>Break</span>
+                <span className={styles.scheduleValue}>{breakStart} - {breakEnd}</span>
+              </span>}
+            </span>
+          );
+        }
+        if (trimmed.startsWith("Dates: ")) {
+          const dateText = trimmed.slice(7).replace(/\.$/, "");
+          const dates = [...dateText.matchAll(/([A-Za-z]+) (\d{1,2}), (\d{4})/g)];
+          const reconstructed = dates.map(match => match[0]).join(", ");
+          if (dates.length && reconstructed === dateText && dates.every(match => match[1] === dates[0][1] && match[3] === dates[0][3])) {
+            const days = dates.map(match => Number(match[2]));
+            const ranges = [];
+            for (let i = 0; i < days.length; i += 1) {
+              const start = days[i];
+              while (i + 1 < days.length && days[i + 1] === days[i] + 1) i += 1;
+              ranges.push(start === days[i] ? `${start}` : `${start}-${days[i]}`);
+            }
+            return (
+              <span key={index} className={styles.scheduleLine}>
+                <span className={styles.scheduleLabel}>Dates</span>
+                <span className={styles.scheduleValue}>{dates[0][1]} {ranges.join(", ")}, {dates[0][3]}</span>
+              </span>
+            );
+          }
+        }
+      }
+      const schedule = type === "reschedule" && trimmed.match(/^(Current|Previous|Requested|New):\s*(.+)$/i);
+      if (schedule) {
+        const [, label, rawValue] = schedule;
+        // Older notifications repeat the date at both ends of a same-day range.
+        const value = rawValue.replace(
+          /([A-Za-z]{3} \d{1,2}, \d{4}), (\d{1,2}:\d{2} [AP]M) - \1, (\d{1,2}:\d{2} [AP]M)/,
+          "$1 at $2 - $3"
+        );
+        const timezone = value.match(/\s*\(([^()]+)\)$/);
         return (
-          <span key={`${line}-${index}`} className={styles.reasonLine}>
-            {line}
+          <span key={index} className={styles.scheduleLine}>
+            <span className={styles.scheduleLabel}>{label}</span>
+            <span className={styles.scheduleValue}>
+              {timezone ? value.slice(0, timezone.index) : value}
+              {timezone && <span className={styles.scheduleTimezone}>{timezone[1]}</span>}
+            </span>
           </span>
         );
       }
-
-      return (
-        <span key={`${line}-${index}`}>
-          {line}
-        </span>
-      );
+      if (trimmed.toLowerCase().startsWith("reason:")) {
+        return (
+          <span key={index} className={styles.reasonLine}>
+            <span className={styles.scheduleLabel}>Reason</span>
+            <span>{trimmed.slice(7).trim()}</span>
+          </span>
+        );
+      }
+      return <span key={index}>{line}</span>;
     });
   };
 
@@ -533,7 +588,7 @@ export default function NotificationPanel({ userId, isOpen, onClose }) {
                       </div>
 
                       <h3 className={styles.notifTitle}>{getNotificationTitle(notif)}</h3>
-                      <p className={styles.notifMessage}>{renderNotificationMessage(notif.message)}</p>
+                      <p className={styles.notifMessage}>{renderNotificationMessage(notif.message, notif.type, notif.related_type)}</p>
 
                       <div className={styles.cardActions}>
                         {canRespond ? (

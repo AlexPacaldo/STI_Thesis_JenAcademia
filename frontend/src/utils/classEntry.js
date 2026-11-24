@@ -14,6 +14,12 @@ function scheduledStart(classInfo, selectedDate) {
   return zonedDateTimeToDate(dateKey, time, timezone)?.getTime() ?? NaN;
 }
 
+// Use the same scheduled instant as the entry policy for the UI timer.
+export function classEntryOpensAt(classInfo, selectedDate) {
+  if (!classInfo || !selectedDate) return NaN;
+  return scheduledStart(classInfo, selectedDate) - 30 * 60_000;
+}
+
 // Calendar dates/times have already been converted to the viewer's timezone.
 export function classEntryIssue(classInfo, selectedDate, now = Date.now(), attendance = classInfo) {
   if (!classInfo || !selectedDate) return "Please select a class first.";

@@ -268,6 +268,16 @@
   box-shadow: none;
 }
 
+@media (min-width: 901px) {
+  .monthCalendarAside {
+    max-height: min(600px, 65vh);
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+    padding: 2px 4px 4px 2px;
+  }
+}
+
 /* Everything in the panel has to be allowed to shrink.
    A child that cannot is what pushed the booking form out of the page and
    off both sides: the strip of days was wider than the column, the column
@@ -276,6 +286,23 @@
    way down. */
 .calendarAside > * {
   min-width: 0;
+  flex-shrink: 0;
+}
+
+.classEntryButton {
+  justify-content: center;
+  height: auto;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
+.classEntryButton:disabled {
+  opacity: 1;
+  background: #e9eeeb;
+  border-color: #d2dbd4;
+  color: #40594a;
 }
 
 /* The window a request is sent from. */
