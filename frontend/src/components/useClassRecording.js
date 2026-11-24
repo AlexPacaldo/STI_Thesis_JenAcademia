@@ -165,10 +165,10 @@ export default function useClassRecording({ teacherId, notify, onUploaded }) {
       };
       recorder.start(1000);
       setSession({ classId, status: "recording" });
-    } catch {
+    } catch (error) {
       stream?.getTracks().forEach((track) => track.stop());
       setSession(null);
-      notify?.("Recording permission was cancelled or recording could not start.", "warning");
+      notify?.(error.response?.data?.message || "Recording permission was cancelled or recording could not start.", "warning");
     }
   };
 

@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { endGroupParticipants, groupRecordingConsentReady, shareGroupEvidence, startGroupParticipants } from "./groupClassAttendance.js";
 
 const peer = { class_id: 20, teacher_id: 1, student_id: 3, duration: 25 };
-function database({ grouped = true, consenting = [10, 20] } = {}) {
+function database({ grouped = true, joinedWithoutConsent = [] } = {}) {
   const calls = [];
   return { calls, async query(sql, params) {
     calls.push({ sql, params });
     if (sql.includes("FROM classes source JOIN classes peer")) return [grouped ? [peer] : []];
     if (sql.includes("SELECT teacher_started_at, teacher_recording_consent_at")) return [[{ teacher_started_at: "start", teacher_recording_consent_at: "consent" }]];
-    if (sql.includes("SELECT class_id FROM class_attendance_logs")) return [consenting.map(class_id => ({ class_id }))];
+    if (sql.includes("SELECT class_id FROM class_attendance_logs")) return [joinedWithoutConsent.map(class_id => ({ class_id }))];
     return [{ affectedRows: 1 }];
   } };
 }
@@ -29,9 +29,14 @@ test("individual classes have no peer attendance side effects", async () => {
   assert(db.calls.every(call => !/INSERT|UPDATE/.test(call.sql)));
   assert.equal(await groupRecordingConsentReady(db, 10), true);
 });
-test("a group recording requires separate consent and attendance from both students", async () => {
-  assert.equal(await groupRecordingConsentReady(database({ consenting: [10] }), 10), false);
-  assert.equal(await groupRecordingConsentReady(database({ consenting: [10, 20] }), 10), true);
+test("group recording permits absent students but requires consent from joined students", async () => {
+  const noneJoined = database();
+  assert.equal(await groupRecordingConsentReady(noneJoined, 10), true);
+  const query = noneJoined.calls.find(call => call.sql.includes("SELECT class_id FROM class_attendance_logs"));
+  assert.match(query.sql, /student_joined_at IS NOT NULL AND student_recording_consent_at IS NULL/);
+  assert.deepEqual(query.params, [[10, 20]]);
+  assert.equal(await groupRecordingConsentReady(database({ joinedWithoutConsent: [] }), 10), true);
+  assert.equal(await groupRecordingConsentReady(database({ joinedWithoutConsent: [20] }), 10), false);
 });
 test("shared evidence never overwrites a student's consent, private remarks, or attendance", async () => {
   const db = database();

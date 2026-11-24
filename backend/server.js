@@ -9318,7 +9318,7 @@ app.post("/api/calendar/classes/:class_id/recording-start", requireSession, requ
       return res.status(403).json({ message: "Only the assigned teacher can manage class evidence." });
     }
     if (groupClassSchemaReady && !await groupRecordingConsentReady(pool, req.params.class_id)) {
-      return res.status(409).json({ message: "Both group students must join and consent before recording starts." });
+      return res.status(409).json({ message: "Each student who has joined must consent before recording starts." });
     }
     const [result] = await pool.query(`UPDATE class_attendance_logs cal JOIN classes c ON c.class_id = cal.class_id
       SET cal.recording_started_at = NOW(), cal.evidence_mode = COALESCE(cal.evidence_mode, 'recording')

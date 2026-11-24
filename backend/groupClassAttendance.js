@@ -45,11 +45,12 @@ export async function shareGroupEvidence(db, classId, fields) {
 export async function groupRecordingConsentReady(db, classId) {
   const peers = await groupClassPeers(db, classId);
   if (!peers.length) return true;
+  // Absent students do not block recording; anyone marked as joined must
+  // have consented before the shared recording starts.
   const [rows] = await db.query(`SELECT class_id FROM class_attendance_logs WHERE class_id IN (?)
-    AND teacher_started_at IS NOT NULL AND student_joined_at IS NOT NULL
-    AND student_recording_consent_at IS NOT NULL AND teacher_ended_at IS NULL`,
+    AND student_joined_at IS NOT NULL AND student_recording_consent_at IS NULL`,
   [[Number(classId), ...peers.map(peer => peer.class_id)]]);
-  return rows.length === peers.length + 1;
+  return rows.length === 0;
 }
 
 export async function endGroupParticipants(db, classId, { getVerification, requiredMinutes, encrypt, evidenceAccepted }) {

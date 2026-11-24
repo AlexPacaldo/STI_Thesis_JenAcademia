@@ -3989,9 +3989,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       !hasVerificationRecording &&
       !recording.session
     ) {
-      window.setTimeout(() => {
-        recording.start(selectedClass.id);
-      }, 900);
+      notify?.("Select Start Recording when you are ready, then choose the meeting tab and share its audio.", "info");
     }
   };
 
