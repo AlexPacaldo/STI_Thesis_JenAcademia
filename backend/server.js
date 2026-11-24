@@ -11101,6 +11101,29 @@ app.get("/api/calendar/my-reschedule-requests/:user_id", requireSession, async (
   }
 });
 
+app.get("/api/calendar/reschedule-requests/:id", requireSession, async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+    const [rows] = await pool.query(
+      `SELECT c.class_id
+         FROM reschedule_requests rr
+         JOIN classes c ON c.class_id = rr.class_id
+        WHERE rr.request_id = ?
+          AND (c.teacher_id = ? OR c.student_id = ?)
+        LIMIT 1`,
+      [req.params.id, userId, userId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ message: "Reschedule request not found." });
+    }
+
+    res.json({ class_id: rows[0].class_id });
+  } catch (err) {
+    console.error("GET /api/calendar/reschedule-requests/:id error:", err);
+    res.status(500).json({ message: "Error opening the reschedule request." });
+  }
+});
+
 // Get the reschedule requests the user submitted, including their latest status.
 app.get("/api/calendar/my-submitted-reschedule-requests/:user_id", requireSession, async (req, res) => {
   try {

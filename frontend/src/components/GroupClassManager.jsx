@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import axios from "axios";
 import { API_BASE_URL } from "../utils/api.js";
 import { convertDateTime, DEFAULT_TIMEZONE, humanTime } from "../utils/timezone.js";
@@ -15,6 +16,7 @@ function momentLabel(date, time, source, viewer) {
 }
 
 export default function GroupClassManager({ userId, role, viewerTimezone, selectedClass, selectedStarted, peers = [], refreshToken, onUpdated, onReservationsChanged, onSelectParticipant }) {
+  const location = useLocation();
   const [proposals, setProposals] = useState([]);
   const [listError, setListError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -35,6 +37,7 @@ export default function GroupClassManager({ userId, role, viewerTimezone, select
   const invitationsCloseRef = useRef(null);
   const version = useRef(0);
   const listVersion = useRef(0);
+  const openedNotificationRef = useRef("");
   const load = useCallback(async () => {
     const request = ++listVersion.current;
     try {
@@ -43,6 +46,20 @@ export default function GroupClassManager({ userId, role, viewerTimezone, select
     } catch { if (request === listVersion.current) setListError("Group invitations could not be loaded. Please retry."); }
   }, []);
   useEffect(() => { void load(); }, [load, userId, refreshToken]);
+  useEffect(() => {
+    const proposalId = new URLSearchParams(location.search).get("groupProposalId");
+    const navigationId = `${location.key}:${proposalId || ""}`;
+    if (
+      !proposalId ||
+      openedNotificationRef.current === navigationId ||
+      !proposals.some((proposal) => String(proposal.proposal_id) === proposalId)
+    ) {
+      return;
+    }
+
+    openedNotificationRef.current = navigationId;
+    setInvitationsOpen(true);
+  }, [location.key, location.search, proposals]);
   useEffect(() => {
     const expiry = Math.min(...proposals.filter(proposal => proposal.status === "pending")
       .map(proposal => new Date(proposal.expires_at).getTime()).filter(time => time > Date.now()));

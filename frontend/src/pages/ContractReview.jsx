@@ -18,9 +18,9 @@
  * is the only screen where both sides are together.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import styles from "../assets/contractReview.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
@@ -145,6 +145,8 @@ function ReviewBlock({ title, review, kind, emptyText }) {
 export default function ContractReview() {
   const { notify } = useNotification() || {};
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedPackageId = searchParams.get("packageId");
   const user = readStoredUser() || {};
   const currentUserId = user.id ?? user.user_id ?? user.userId ?? null;
   const role = String(user.role || "").toLowerCase();
@@ -220,12 +222,12 @@ export default function ContractReview() {
   const scoreMax = isTeacher ? LEVEL_SCORE_MAX : REVIEW_SCORE_MAX;
   const canSubmit = isTeacher ? Boolean(computedLevel) : studentAverage != null;
 
-  const openReview = (review) => {
+  const openReview = useCallback((review) => {
     setActiveReview(review);
     setScores(isTeacher ? createEmptyLevelScores() : createEmptyReviewScores());
     setComments("");
     setFormError("");
-  };
+  }, [isTeacher]);
 
   // The closing review is mandatory. Opening it as soon as the page has a
   // pending item means a teacher or student cannot land here, read the card and
@@ -233,13 +235,22 @@ export default function ContractReview() {
   // here if they try another page first.
   useEffect(() => {
     if (loading || submitting || activeReview) return;
-    const pending = reviews.find((review) => review.pending_for_you);
-    if (!pending) return;
-    setActiveReview(pending);
-    setScores(isTeacher ? createEmptyLevelScores() : createEmptyReviewScores());
-    setComments("");
-    setFormError("");
-  }, [activeReview, isTeacher, loading, reviews, submitting]);
+    if (requestedPackageId) {
+      const requestedReview = reviews.find(
+        (item) => String(item.package_id) === requestedPackageId
+      );
+      if (!requestedReview) return;
+      openReview(requestedReview);
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("packageId");
+      setSearchParams(nextParams, { replace: true });
+      return;
+    }
+
+    const review = reviews.find((item) => item.pending_for_you);
+    if (!review) return;
+    openReview(review);
+  }, [activeReview, loading, openReview, requestedPackageId, reviews, searchParams, setSearchParams, submitting]);
 
   const updateScore = (key, value) => {
     setScores((current) => ({ ...current, [key]: value }));

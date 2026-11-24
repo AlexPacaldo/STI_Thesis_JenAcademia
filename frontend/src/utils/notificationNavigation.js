@@ -21,16 +21,50 @@ export function getNotificationTargetUrl(notification, role, origin) {
   const relatedType = notification.related_type ?? notification.relatedType;
 
   if (relatedType === "assignment" || notification.type === "assignment") {
-    if (role === "teacher") return "/teacherAssignment";
+    if (role === "teacher") {
+      const assignmentPath = "/teacherAssignment?tab=submissions";
+      return relatedId
+        ? `${assignmentPath}&assignmentId=${encodeURIComponent(relatedId)}`
+        : assignmentPath;
+    }
     if (role === "student" && relatedId) {
       return `/assignmentsDropbox?assignmentId=${encodeURIComponent(relatedId)}`;
     }
+  }
+
+  if (relatedType === "contract_review") {
+    return relatedId
+      ? `/ContractReview?packageId=${encodeURIComponent(relatedId)}`
+      : "/ContractReview";
+  }
+  if (relatedType === "contract_request" && role === "admin") {
+    return "/AdminDashboard?tab=requests";
+  }
+  if (relatedType === "group_class_proposal") {
+    return relatedId
+      ? `/Calendar?groupProposalId=${encodeURIComponent(relatedId)}`
+      : "/Calendar";
+  }
+  if (relatedType === "reschedule_request") {
+    return relatedId
+      ? `/Calendar?rescheduleRequestId=${encodeURIComponent(relatedId)}`
+      : "/Calendar";
   }
 
   const actionPath = normalizeActionPath(
     notification.action_url || notification.actionUrl,
     origin
   );
+  const isClassNotification =
+    relatedType === "class" || notification.type === "class_reminder";
+  if (
+    isClassNotification &&
+    relatedId &&
+    ["teacher", "student"].includes(role) &&
+    (!actionPath || actionPath === "/Calendar")
+  ) {
+    return `/Calendar?classId=${encodeURIComponent(relatedId)}`;
+  }
   // Older availability notices saved only /Calendar, which opens the student's
   // booked classes. They need the teacher's availability even with no bookings.
   if (relatedType === "teacher_availability" && (!actionPath || actionPath === "/Calendar")) {
@@ -40,10 +74,6 @@ export function getNotificationTargetUrl(notification, role, origin) {
   }
   if (actionPath) return actionPath;
 
-  if (relatedType === "class" && relatedId && ["teacher", "student"].includes(role)) {
-    return `/Calendar?classId=${encodeURIComponent(relatedId)}`;
-  }
-
   if (relatedType === "book" && relatedId) {
     const bookId = encodeURIComponent(relatedId);
     if (role === "teacher") return `/teacherBooksLessons/${bookId}`;
@@ -51,11 +81,10 @@ export function getNotificationTargetUrl(notification, role, origin) {
     return `/booksContent/${bookId}`;
   }
 
-  if (relatedType === "contract_review") return "/ContractReview";
   if (relatedType === "contract_request") {
     return role === "admin" ? "/AdminDashboard" : "/Calendar";
   }
-  if (["contract_expiry", "group_class_proposal", "reschedule_request", "teacher_availability"].includes(relatedType)) {
+  if (["contract_expiry", "teacher_availability"].includes(relatedType)) {
     return "/Calendar";
   }
   if (relatedType === "class_remarks") {

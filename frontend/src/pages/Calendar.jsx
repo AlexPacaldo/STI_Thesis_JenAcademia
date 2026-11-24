@@ -2361,6 +2361,42 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     }
   }, [searchParams, location.state, navigate, isSimpleStudentView]);
 
+  useEffect(() => {
+    const requestId = searchParams.get("rescheduleRequestId");
+    if (!requestId) return undefined;
+
+    let active = true;
+    axios
+      .get(`${API}/api/calendar/reschedule-requests/${encodeURIComponent(requestId)}`)
+      .then((response) => {
+        if (!active) return;
+        const classId = response.data?.class_id;
+        if (!classId) {
+          throw new Error("The reschedule request has no linked class.");
+        }
+
+        const params = new URLSearchParams(location.search);
+        params.delete("rescheduleRequestId");
+        params.set("classId", classId);
+        navigate(`/Calendar?${params.toString()}`, {
+          replace: true,
+          state: { ...location.state, classListEntry: true },
+        });
+      })
+      .catch((error) => {
+        if (!active) return;
+        console.error("Error opening reschedule request from notification:", error);
+        notify?.(
+          error.response?.data?.message || error.message || "Unable to open this reschedule request.",
+          "error"
+        );
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [location.search, location.state, navigate, notify, searchParams]);
+
   // Only the current route may select a class. A classroom lookup can finish
   // after the student has returned to the list or opened a different class.
   useEffect(() => {

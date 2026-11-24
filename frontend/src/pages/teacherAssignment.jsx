@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import userPic from "../assets/img/Navbar/user.jpg";
 import styles from "../assets/teacherAssignment.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
@@ -194,6 +195,7 @@ function getAssignmentInstructions(submission, assignments) {
 
 export default function AssignTask() {
   const { notify } = useNotification() || {};
+  const location = useLocation();
   const [query, setQuery] = useState("");
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [due, setDue] = useState("");
@@ -460,6 +462,27 @@ export default function AssignTask() {
       ignore = true;
     };
   }, [currentTeacherId, notify]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const assignmentId = params.get("assignmentId");
+    if (params.get("tab") !== "submissions") return;
+
+    setActiveTab("submissions");
+    if (!assignmentId) return;
+
+    const submission = submissions.find(
+      (item) => String(item.assignmentId) === assignmentId
+    );
+    const assignment = teacherAssignments.find(
+      (item) => String(item.id ?? item.assignmentId) === assignmentId
+    );
+    const studentId = submission?.studentId ?? assignment?.studentId;
+    if (!studentId) return;
+
+    setSelectedStudentId(String(studentId));
+    setSelectedSubmission(submission || null);
+  }, [location.search, submissions, teacherAssignments]);
 
   const students = useMemo(() => {
     const map = new Map();
