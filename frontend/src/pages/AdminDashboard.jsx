@@ -4679,15 +4679,15 @@ export default function AdminDashboard() {
 
                       <div className={styles.requestSwap} aria-label="Current and requested class schedule">
                         <div className={styles.requestSlot}>
-                          <span className={styles.requestSlotLabel}>Now</span>
-                          <strong className={styles.requestSlotDate}>{formatDate(request.scheduled_date)}</strong>
-                          <span className={styles.requestSlotTime}>{formatTime(request.start_time)}</span>
+                          <span className={styles.requestSlotLabel}>Original</span>
+                          <strong className={styles.requestSlotDate}>{request.original_date ? formatDate(request.original_date) : "Original schedule unavailable"}</strong>
+                          {request.original_start_time && <span className={styles.requestSlotTime}>{formatTime(request.original_start_time)}{request.original_end_time ? ` - ${formatTime(request.original_end_time)}` : ""}</span>}
                         </div>
                         <span className={styles.requestArrow} aria-hidden="true">→</span>
                         <div className={`${styles.requestSlot} ${styles.requestSlotNew}`}>
                           <span className={styles.requestSlotLabel}>Wants</span>
                           <strong className={styles.requestSlotDate}>{formatDate(request.requested_date)}</strong>
-                          <span className={styles.requestSlotTime}>{formatTime(request.requested_time)}</span>
+                          <span className={styles.requestSlotTime}>{formatTime(request.requested_time)}{request.requested_end_time ? ` - ${formatTime(request.requested_end_time)}` : ""}</span>
                         </div>
                       </div>
 

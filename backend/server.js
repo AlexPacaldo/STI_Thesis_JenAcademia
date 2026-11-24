@@ -2690,6 +2690,19 @@ async function ensureRescheduleRequestDeclineReasonColumn() {
     await pool.query("ALTER TABLE reschedule_requests ADD COLUMN decline_reason TEXT DEFAULT NULL AFTER status");
   }
 
+  for (const [column, type] of [["original_date", "DATE"], ["original_start_time", "TIME"], ["original_end_time", "TIME"]]) {
+    if (!(await columnExists("reschedule_requests", column))) {
+      await pool.query(`ALTER TABLE reschedule_requests ADD COLUMN ${column} ${type} DEFAULT NULL`);
+    }
+  }
+
+  // Existing pending requests still refer to the class's current schedule.
+  await pool.query(`UPDATE reschedule_requests rr JOIN classes c ON c.class_id = rr.class_id
+    SET rr.original_date = COALESCE(rr.original_date, c.scheduled_date),
+        rr.original_start_time = COALESCE(rr.original_start_time, c.start_time),
+        rr.original_end_time = COALESCE(rr.original_end_time, c.end_time)
+    WHERE rr.status = 'pending' AND rr.original_date IS NULL`);
+
   await pool.query(
     `ALTER TABLE reschedule_requests
      MODIFY COLUMN status ENUM('pending','approved','declined','cancelled') DEFAULT 'pending'`
@@ -10972,15 +10985,23 @@ app.post("/api/calendar/reschedule-request", requireSession, requireBodyIdentity
 
     // Create reschedule request
     const [result] = await pool.query(
-      `INSERT INTO reschedule_requests (class_id, requested_by_id, requested_date, requested_time, reason)
-       VALUES (?, ?, ?, ?, ?)`,
-      [class_id, requested_by_id, requestedDateKey, requestedTimeForDb, encryptNullableText(reason || null)]
+      `INSERT INTO reschedule_requests (class_id, requested_by_id, requested_date, requested_time, reason, original_date, original_start_time, original_end_time)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [class_id, requested_by_id, requestedDateKey, requestedTimeForDb, encryptNullableText(reason || null), classData.scheduled_date_key, classData.start_time_key, classData.end_time]
     );
 
     // Create notification for the counterparty
     const reasonText = formatNotificationReason(reason);
+    const notificationTimezone = String(recipientId) === String(classData.teacher_id) ? classData.teacher_timezone : classData.student_timezone;
+    const formatRequestRange = (date, time) => {
+      const start = zonedWallClockToInstant(date, time, classData.teacher_timezone);
+      const end = new Date(start.getTime() + classDuration * 60000);
+      return `${formatMomentInTimezone(start, notificationTimezone)} - ${formatMomentInTimezone(end, notificationTimezone)} (${notificationTimezone || "Asia/Manila"})`;
+    };
     const notificationMessage = [
-      `Reschedule request from ${requesterName} for "${classData.class_name}" to ${requestedDateKey} at ${requestedTimeKey}`,
+      `Reschedule request from ${requesterName} for "${classData.class_name}"`,
+      `Current: ${formatRequestRange(classData.scheduled_date_key, classData.start_time_key)}`,
+      `Requested: ${formatRequestRange(requestedDateKey, requestedTimeKey)}`,
       reasonText ? `Reason: ${reasonText}` : "",
     ].filter(Boolean).join("\n");
     await pool.query(
@@ -11136,7 +11157,10 @@ app.get("/api/calendar/my-submitted-reschedule-requests/:user_id", requireSessio
               DATE_FORMAT(rr.requested_date, '%Y-%m-%d') AS requested_date,
               TIME_FORMAT(rr.requested_time, '%H:%i:%s') AS requested_time,
               rr.requested_at, rr.resolved_at, rr.decline_reason,
-              c.class_name,
+              DATE_FORMAT(COALESCE(rr.original_date, CASE WHEN rr.status = 'pending' THEN c.scheduled_date END), '%Y-%m-%d') AS original_date,
+              TIME_FORMAT(COALESCE(rr.original_start_time, CASE WHEN rr.status = 'pending' THEN c.start_time END), '%H:%i:%s') AS original_start_time,
+              TIME_FORMAT(COALESCE(rr.original_end_time, CASE WHEN rr.status = 'pending' THEN c.end_time END), '%H:%i:%s') AS original_end_time,
+              c.duration, c.class_name,
               tea.timezone AS teacher_timezone
        FROM reschedule_requests rr
        JOIN classes c ON rr.class_id = c.class_id
@@ -11430,9 +11454,12 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
     const resolvedAt = new Date();
     const [resolutionResult] = await connection.query(
       `UPDATE reschedule_requests
-          SET status = ?, resolved_at = ?
+          SET status = ?, resolved_at = ?,
+              original_date = COALESCE(original_date, ?),
+              original_start_time = COALESCE(original_start_time, ?),
+              original_end_time = COALESCE(original_end_time, ?)
         WHERE request_id = ? AND status = 'pending'`,
-      ["approved", resolvedAt, id]
+      ["approved", resolvedAt, previousDate, classInfo.start_time, classInfo.end_time, id]
     );
     if (!resolutionResult.affectedRows) {
       return res.status(409).json({ message: "This request is no longer pending." });
@@ -11473,7 +11500,14 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
       
       // Create notification for the requester (they approved the requestor's request)
       const approverName = user_id === teacher_id ? 'Teacher' : 'Student';
-      const notificationMessage = `Your reschedule request for "${class_name}" has been approved for ${requested_date} at ${requested_time}`;
+      const approvalRange = (date, time, timezone) => {
+        const start = zonedWallClockToInstant(date, time, teacher_timezone);
+        const end = new Date(start.getTime() + classDuration * 60000);
+        return `${formatMomentInTimezone(start, timezone)} - ${formatMomentInTimezone(end, timezone)} (${timezone || "Asia/Manila"})`;
+      };
+      const requesterZone = String(requested_by_id) === String(student_id) ? student_timezone : teacher_timezone;
+      const otherZone = String(otherPartyId) === String(student_id) ? student_timezone : teacher_timezone;
+      const notificationMessage = `Your reschedule request for "${class_name}" has been approved.\nPrevious: ${approvalRange(previousDate, previousTime, requesterZone)}\nNew: ${approvalRange(requested_date_key, requested_time_key, requesterZone)}`;
       
       await connection.query(
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
@@ -11482,7 +11516,7 @@ app.post("/api/calendar/reschedule-requests/:id/approve", requireSession, async 
       );
       
       // Create notification for the other party (to inform them of the change)
-      const otherPartyMessage = `${approverName} approved the reschedule request for "${class_name}". New date: ${requested_date} at ${requested_time}`;
+      const otherPartyMessage = `${approverName} approved the reschedule request for "${class_name}".\nPrevious: ${approvalRange(previousDate, previousTime, otherZone)}\nNew: ${approvalRange(requested_date_key, requested_time_key, otherZone)}`;
       await connection.query(
         `INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
          VALUES (?, ?, ?, ?, ?, ?)`,
@@ -11657,7 +11691,11 @@ app.get("/api/admin/reschedule-requests", requireAdminSession, async (req, res) 
   try {
     // optionally filter by status via query param
     const { status } = req.query;
-    let query = `SELECT rr.*, c.class_name, c.scheduled_date, c.start_time,
+    let query = `SELECT rr.*, c.class_name,
+                        DATE_FORMAT(COALESCE(rr.original_date, CASE WHEN rr.status = 'pending' THEN c.scheduled_date END), '%Y-%m-%d') AS original_date,
+                        TIME_FORMAT(COALESCE(rr.original_start_time, CASE WHEN rr.status = 'pending' THEN c.start_time END), '%H:%i:%s') AS original_start_time,
+                        TIME_FORMAT(COALESCE(rr.original_end_time, CASE WHEN rr.status = 'pending' THEN c.end_time END), '%H:%i:%s') AS original_end_time,
+                        c.duration, TIME_FORMAT(ADDTIME(rr.requested_time, SEC_TO_TIME(c.duration * 60)), '%H:%i:%s') AS requested_end_time,
                         req.first_name AS requester_first, req.last_name AS requester_last,
                         stu.first_name AS student_first, stu.last_name AS student_last,
                         tea.first_name AS teacher_first, tea.last_name AS teacher_last

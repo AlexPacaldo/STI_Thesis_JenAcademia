@@ -35,10 +35,10 @@ const STATUS_META = {
   },
 };
 
-function formatRequestedMoment(request, viewerTimezone) {
+function formatRequestedMoment(request, viewerTimezone, dateKey = "requested_date", timeKey = "requested_time") {
   const moment = convertDateTime(
-    request.requested_date,
-    request.requested_time,
+    request[dateKey],
+    request[timeKey],
     request.teacher_timezone || DEFAULT_TIMEZONE,
     viewerTimezone || DEFAULT_TIMEZONE
   );
@@ -51,7 +51,16 @@ function formatRequestedMoment(request, viewerTimezone) {
         year: "numeric",
       });
 
-  return `${dateLabel} at ${humanTime(moment.time)}`;
+  const endTime = dateKey === "original_date" ? request.original_end_time : null;
+  let endMoment;
+  if (endTime) {
+    endMoment = convertDateTime(request[dateKey], endTime, request.teacher_timezone || DEFAULT_TIMEZONE, viewerTimezone || DEFAULT_TIMEZONE);
+  } else if (Number(request.duration) > 0) {
+    const [hours, minutes] = String(moment.time).split(":").map(Number);
+    const total = hours * 60 + minutes + Number(request.duration);
+    endMoment = { time: `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}` };
+  }
+  return `${dateLabel} at ${humanTime(moment.time)}${endMoment ? ` - ${humanTime(endMoment.time)}` : ""}`;
 }
 
 export default function MyRescheduleRequests({
@@ -280,6 +289,11 @@ export default function MyRescheduleRequests({
                             {status.label}
                           </span>
                         </div>
+                        <p className={styles.requestedTime}>
+                          Original time: <strong>{request.original_date && request.original_start_time
+                            ? formatRequestedMoment(request, viewerTimezone, "original_date", "original_start_time")
+                            : "Unavailable for this older request"}</strong>
+                        </p>
                         <p className={styles.requestedTime}>
                           Requested time:{" "}
                           <strong>{formatRequestedMoment(request, viewerTimezone)}</strong>

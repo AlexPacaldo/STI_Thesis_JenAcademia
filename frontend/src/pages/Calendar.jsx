@@ -9080,9 +9080,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                 <div>
                   <div className={kid.detailLabel}>{selectedClass.className || "Selected class"}</div>
                   <div className={kid.detailValue}>
-                    {localRole === "teacher"
-                      ? `${localRole === "teacher" ? "Current" : CONFIRM.now}: ${new Date(selectedClass.scheduled_date + "T00:00:00").toLocaleDateString()} at ${humanTime(selectedClass.start_time || selectedClass.time)}`
-                      : `${localRole === "teacher" ? "Current" : CONFIRM.now}: ${new Date(selectedClass.scheduled_date + "T00:00:00").toLocaleDateString()} at ${humanTime(selectedClass.start_time || selectedClass.time)}`}
+                    {`${localRole === "teacher" ? "Current" : CONFIRM.now}: ${new Date(selectedClass.scheduled_date + "T00:00:00").toLocaleDateString()} at ${humanTime(selectedClass.start_time || selectedClass.time)} - ${getEndTime(selectedClass.start_time || selectedClass.time, selectedClass.duration, selectedClass.end_time)}`}
                   </div>
                 </div>
               </div>
