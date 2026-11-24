@@ -88,8 +88,6 @@ import { describeCorsOrigins, resolveCorsOrigins } from "./corsOrigins.js";
 import {
   getAssignmentFileTypeError,
   getAssignmentUploadError,
-  MAX_ASSIGNMENT_FILES,
-  MAX_ASSIGNMENT_FILE_BYTES,
   MAX_ASSIGNMENT_TOTAL_BYTES,
 } from "./assignmentUploadLimits.js";
 import {
@@ -605,8 +603,7 @@ const upload = multer({
     cb(null, true);
   },
   limits: {
-    fileSize: MAX_ASSIGNMENT_FILE_BYTES,
-    files: MAX_ASSIGNMENT_FILES,
+    fileSize: MAX_ASSIGNMENT_TOTAL_BYTES,
   },
 });
 
@@ -628,8 +625,8 @@ const optionalFileUpload = (req, res, next) => {
   }
 
   upload.fields([
-    { name: "files", maxCount: MAX_ASSIGNMENT_FILES },
-    { name: "file", maxCount: 1 },
+    { name: "files" },
+    { name: "file" },
   ])(req, res, (err) => {
     if (err) {
       console.error("Assignment file upload failed:", {
@@ -638,7 +635,7 @@ const optionalFileUpload = (req, res, next) => {
       });
 
       if (err.code === "LIMIT_FILE_SIZE") {
-        res.status(413).json({ message: "Each file must be 10 MiB or smaller." });
+        res.status(413).json({ message: "All files together must be 100 MB or smaller." });
         return;
       }
 
@@ -647,8 +644,8 @@ const optionalFileUpload = (req, res, next) => {
         return;
       }
 
-      if (err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE") {
-        res.status(400).json({ message: `Choose no more than ${MAX_ASSIGNMENT_FILES} files.` });
+      if (err.code === "LIMIT_UNEXPECTED_FILE") {
+        res.status(400).json({ message: "Unexpected file field." });
         return;
       }
 
@@ -13852,9 +13849,9 @@ app.post("/api/assignments", requireSession, optionalFileUpload, async (req, res
       uploadedFiles[0]?.name ?? attachmentName ?? attachment_name
     ) || null;
 
-    if (!resolvedTeacherId || !resolvedStudentId || !assignmentTitle || !assignmentInstructions) {
+    if (!resolvedTeacherId || !resolvedStudentId || !assignmentTitle) {
       return res.status(400).json({
-        message: "Teacher, student, title, and instructions are required",
+        message: "Teacher, student, and title are required",
       });
     }
 

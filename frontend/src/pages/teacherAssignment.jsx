@@ -16,8 +16,6 @@ import {
 import {
   ASSIGNMENT_UPLOAD_ACCEPT,
   getAssignmentUploadError,
-  MAX_ASSIGNMENT_FILES,
-  MAX_ASSIGNMENT_FILE_BYTES,
   MAX_ASSIGNMENT_TOTAL_BYTES,
 } from "../utils/assignmentUploadLimits.js";
 
@@ -541,8 +539,8 @@ export default function AssignTask() {
   };
 
   const onSubmit = async () => {
-    if (!selectedStudent || !instructions.trim()) {
-      notify?.("Please select a student and add instructions.", "warning");
+    if (!selectedStudent) {
+      notify?.("Please select a student.", "warning");
       return;
     }
 
@@ -691,7 +689,7 @@ export default function AssignTask() {
                       ) : null}
                     </div>
                     <div className={styles.Instructions}>
-                      <h4>Instructions:</h4>
+                      <h4>Instructions (optional):</h4>
                       <textarea
                         id="comment"
                         className={styles.commentBox}
@@ -717,7 +715,7 @@ export default function AssignTask() {
                           }}
                         />
                         <p className={styles.fileInfo}>
-                          Up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
+                          100 MB total upload limit.
                         </p>
                         {attachmentFiles.length ? (
                           <SelectedAttachmentList
@@ -971,7 +969,7 @@ export default function AssignTask() {
                   disabled={isSavingInstructions}
                 />
                 <p className={styles.fileInfo}>
-                  Selected files are added to the replacement set; up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
+                  Selected files are added to the replacement set; 100 MB total upload limit.
                 </p>
                 {editedAttachmentFiles.length ? (
                   <SelectedAttachmentList

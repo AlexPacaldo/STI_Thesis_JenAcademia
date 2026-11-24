@@ -2,16 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   getAssignmentUploadError,
-  MAX_ASSIGNMENT_FILES,
-  MAX_ASSIGNMENT_FILE_BYTES,
   MAX_ASSIGNMENT_TOTAL_BYTES,
 } from "./assignmentUploadLimits.js";
 
 test("assignment uploads accept files at the individual and total size limits", () => {
   assert.equal(getAssignmentUploadError([
-    { name: "work.pdf", size: MAX_ASSIGNMENT_FILE_BYTES },
-    { name: "slides.pptx", size: MAX_ASSIGNMENT_FILE_BYTES },
-    { name: "notes.txt", size: MAX_ASSIGNMENT_TOTAL_BYTES - 2 * MAX_ASSIGNMENT_FILE_BYTES },
+    { name: "work.pdf", size: 40 * 1024 * 1024 },
+    { name: "slides.pptx", size: 30 * 1024 * 1024 },
+    { name: "notes.txt", size: 30 * 1024 * 1024 },
   ]), "");
 });
 
@@ -35,21 +33,14 @@ test("assignment uploads accept approved types and reject unapproved extensions"
   );
 });
 
-test("assignment uploads reject too many files, an oversized file, and an oversized total", () => {
+test("assignment uploads enforce only the 100 MB total size limit", () => {
+  assert.equal(MAX_ASSIGNMENT_TOTAL_BYTES, 100 * 1024 * 1024);
+  assert.equal(getAssignmentUploadError(Array.from(
+    { length: 12 },
+    (_, index) => ({ name: `file-${index}.pdf`, size: 1024 * 1024 })
+  )), "");
   assert.match(
-    getAssignmentUploadError(
-      Array.from({ length: MAX_ASSIGNMENT_FILES + 1 }, () => ({ name: "file.pdf", size: 1 }))
-    ),
-    /no more than 5 files/
-  );
-  assert.match(
-    getAssignmentUploadError([{ name: "file.pdf", size: MAX_ASSIGNMENT_FILE_BYTES + 1 }]),
-    /10 MiB/
-  );
-  assert.match(
-    getAssignmentUploadError(
-      Array.from({ length: 3 }, () => ({ name: "file.pdf", size: 9 * 1024 * 1024 }))
-    ),
-    /25 MiB/
+    getAssignmentUploadError([{ name: "large.pdf", size: MAX_ASSIGNMENT_TOTAL_BYTES + 1 }]),
+    /100 MB/
   );
 });

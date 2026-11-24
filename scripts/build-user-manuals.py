@@ -119,7 +119,7 @@ def rescheduling(role):
         note('You cannot approve your own request. Individual rescheduling is unavailable after attendance/start and for one student inside a linked group lesson. '+('Ask your teacher to use the group proposal process.' if role=='Student' else 'Use the group proposal process to move the whole group.')))
 
 UPLOADS=table(['Upload','Limit / accepted files'],[
-    ('Assignment or submission','Up to 5 files; 10 MiB each; 25 MiB combined.'),
+    ('Assignment or submission','No file-count limit; 100 MB combined maximum.'),
     ('Documents','PDF, DOC/DOCX, XLS/XLSX, PPT/PPTX, TXT and RTF.'),
     ('Images and media','JPG/JPEG/PNG; MP3/WAV/M4A; MP4/WebM/MOV.'),
 ])
@@ -629,7 +629,7 @@ for i, c in enumerate(teacher):
         marker='<div class="procedure"><h3>Inspect and maintain work</h3>'
         first, second=c['body'].split(marker,1)
         teacher[i:i+1]=[
-            chapter('Create student assignments','Give clear instructions, an optional future deadline and an appropriate attempt allowance.',first+note('Assignment/submission uploads allow up to five files, 10 MiB each and 25 MiB combined. See the next chapter for supported formats and submission management.')),
+            chapter('Create student assignments','Give clear instructions, an optional future deadline and an appropriate attempt allowance.',first+note('Assignment/submission uploads have no file-count limit and allow up to 100 MB combined. See the next chapter for supported formats and submission management.')),
             chapter('Inspect submissions and manage assignments','Read current work and previous attempts, then maintain assignment instructions and archive state.',marker+second)
         ]
         break

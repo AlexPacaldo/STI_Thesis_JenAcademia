@@ -18,8 +18,6 @@ import ModalPortal from "../utils/ModalPortal.jsx";
 import {
   ASSIGNMENT_UPLOAD_ACCEPT,
   getAssignmentUploadError,
-  MAX_ASSIGNMENT_FILES,
-  MAX_ASSIGNMENT_FILE_BYTES,
   MAX_ASSIGNMENT_TOTAL_BYTES,
 } from "../utils/assignmentUploadLimits.js";
 
@@ -669,7 +667,7 @@ export default function AssignmentsDropbox() {
                         }}
                       />
                       <p className={styles.fileInfo}>
-                        Up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
+                        100 MB total upload limit.
                       </p>
                       {selectedFiles.length ? (
                         <SelectedFileList files={selectedFiles} onRemove={removeSelectedFile} />
@@ -760,7 +758,7 @@ export default function AssignmentsDropbox() {
                         }}
                       />
                       <p className={styles.fileInfo}>
-                        Selected files are added to the replacement set; up to {MAX_ASSIGNMENT_FILES} files, {MAX_ASSIGNMENT_FILE_BYTES / (1024 * 1024)} MiB each, {MAX_ASSIGNMENT_TOTAL_BYTES / (1024 * 1024)} MiB total.
+                        Selected files are added to the replacement set; 100 MB total upload limit.
                       </p>
                       {selectedFiles.length ? (
                         <SelectedFileList files={selectedFiles} onRemove={removeSelectedFile} />
