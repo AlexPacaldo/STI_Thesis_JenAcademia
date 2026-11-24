@@ -19,12 +19,15 @@ export function hasClassAttendance(log) {
   return Boolean(log?.teacher_started_at || log?.student_joined_at || log?.teacher_ended_at);
 }
 
-// The early-entry restriction is temporarily disabled for testing. Once the
-// teacher starts, entry stays open until they end the session, including when late.
+// Entry opens 30 minutes before the scheduled start. Once the teacher starts,
+// entry stays open until they end the session, including when late.
 export function classEntryError(classInfo, log, scheduledStart, now = Date.now()) {
   if (classInfo?.status !== "scheduled") return "Only scheduled classes can be joined.";
   if (log?.teacher_ended_at || log?.verification_status === "incomplete") return "This class session has ended.";
   const start = timestamp(scheduledStart);
+  if (Number.isFinite(start) && Number.isFinite(now) && now < start - 30 * 60_000) {
+    return "Joining opens 30 minutes before the scheduled class time.";
+  }
   if (Number.isFinite(timestamp(log?.teacher_started_at))) return "";
   const duration = Number(classInfo.duration);
   if (!Number.isFinite(start) || !Number.isFinite(now) || !Number.isFinite(duration) || duration <= 0) {

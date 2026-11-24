@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>JEN Academia Thesis Defense Presentation Guide</title>
+  <style>
+    @page { size: A4; margin: 17mm 16mm 18mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #1f2d27; font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; line-height: 1.42; }
+    h1 { margin: 0 0 4mm; color: #183f30; font-size: 24pt; line-height: 1.12; }
+    h2 { margin: 7mm 0 3mm; color: #183f30; border-bottom: 1px solid #b9cbbf; padding-bottom: 1.5mm; font-size: 15pt; page-break-after: avoid; }
+    h3 { margin: 4mm 0 2mm; color: #294e39; font-size: 11.5pt; page-break-after: avoid; }
+    p { margin: 0 0 2.2mm; }
+    a { color: #315f49; text-decoration: none; }
+    ol, ul { margin: 1.5mm 0 3mm; padding-left: 7mm; }
+    li { margin: 0 0 1.2mm; }
+    table { width: 100%; border-collapse: collapse; margin: 2mm 0 4mm; font-size: 9.5pt; }
+    th { background: #e7efe9; color: #183f30; text-align: left; }
+    th, td { border: 1px solid #cbd8d0; padding: 2mm; vertical-align: top; }
+    code { background: #edf3ef; border-radius: 2mm; padding: 0.2mm 1mm; }
+    .subtitle { color: #66796c; margin-bottom: 5mm; }
+    .warning { border-left: 3px solid #a58a42; background: #f7f3e8; padding: 3mm 4mm; margin: 3mm 0 4mm; }
+    .footer { margin-top: 8mm; border-top: 1px solid #cbd8d0; padding-top: 2mm; color: #66796c; font-size: 8.5pt; }
+  </style>
+</head>
+<body>
+  <h1>JEN Academia thesis defense presentation guide</h1>
+  <p class="subtitle">Railway demo dataset · Presentation script · 12–15 minutes</p>
+
+  <h2>Before the presentation</h2>
+  <ol>
+    <li>Open the deployed application, check the internet connection, and sign in with the demo accounts. Keep <a href="DEMO_CREDENTIALS.md">DEMO_CREDENTIALS.md</a> private; all demo accounts share a password.</li>
+    <li>Use separate browser profiles or private windows for the administrator, teacher and student, so switching roles is quick. Confirm that all three dashboards open.</li>
+    <li>Check upcoming dates in the calendar and contract expiry dates. The seed creates availability for a limited period; rerunning it changes demo records, so rehearse first and do not run it during the presentation.</li>
+    <li>Test the matching analysis and note whether an external AI provider is available. Show the actual result; do not describe a deterministic fallback as a successful external AI response.</li>
+    <li>The current seed has no group proposals or group sessions. If you want to show a converted group class, prepare and rehearse it beforehand using the real interfaces and suitable bookings.</li>
+    <li>Keep a copy of this guide and the application manuals available. If a live action fails, explain the intended workflow and use a screen you have already verified rather than claiming it succeeded.</li>
+  </ol>
+
+  <h2>Suggested 12–15 minute flow</h2>
+  <table>
+    <thead><tr><th>Time</th><th>Demonstration</th><th>Account</th></tr></thead>
+    <tbody>
+      <tr><td>1–2 min</td><td>School overview and contracts</td><td>Super administrator</td></tr>
+      <tr><td>3–4 min</td><td>Trial assessment and teacher matching</td><td>Super administrator</td></tr>
+      <tr><td>2 min</td><td>Teacher profiles and teaching workflow</td><td>Teacher / administrator</td></tr>
+      <tr><td>2–3 min</td><td>Student dashboard, assignment and learning materials</td><td>Student</td></tr>
+      <tr><td>2–3 min</td><td>Group class or attendance review</td><td>Teacher / student / administrator</td></tr>
+      <tr><td>1 min</td><td>Questions and closing</td><td>Any</td></tr>
+    </tbody>
+  </table>
+
+  <h2>1. Introduce the system and administrator dashboard</h2>
+  <p>Sign in as <strong>admin@jenacademia.local</strong>. Open <strong>Overview</strong> and briefly point out student and teacher totals, the timetable, contracts ending soon and any needs-attention items that are visible.</p>
+  <p><strong>Suggested narration:</strong> “JEN Academia brings account management, scheduling, learning materials and contract monitoring into one system. The administrator can see operational priorities from the dashboard.”</p>
+  <p>Open <strong>Contracts</strong>. Look for Carlos Mendoza’s contract, which was seeded close to expiry, and Danica Pope’s expired contract. Check their current status on screen instead of quoting a fixed number of days. Explain that the displayed figures depend on the package and current date.</p>
+
+  <h2>2. Demonstrate assessment and teacher matching</h2>
+  <p>From <strong>Create Student</strong>, enter a fictional trial student and open the assessment and matching section. If you intend to save the account, use a unique demo email; otherwise stop before final submission.</p>
+  <p>For a child-suitability example, use a birth date that makes the student <strong>11 years old on the day of the defense</strong>, and select <strong>Conversational English</strong>. Enter these scores:</p>
+  <table>
+    <thead><tr><th>Assessment criterion</th><th>Score</th></tr></thead>
+    <tbody>
+      <tr><td>Speaking &amp; Pronunciation</td><td>1</td></tr>
+      <tr><td>Reading &amp; Comprehension</td><td>3</td></tr>
+      <tr><td>Structure</td><td>2</td></tr>
+      <tr><td>Sentence / Grammar</td><td>3</td></tr>
+      <tr><td>Vocabulary</td><td>2</td></tr>
+    </tbody>
+  </table>
+  <p>Choose a conversation-related goal, speaking focus, conversational learning style and balanced pace. Add a note such as “The learner understands instructions but needs encouragement to speak.” If schedule preferences are available, select Saturday morning, then run the analysis. The project’s example expects these scores to produce <strong>Intermediate Low</strong>; confirm the displayed result during rehearsal.</p>
+  <p>Compare the recommendations and explain the factors shown on the screen: course eligibility, profile characteristics, child eligibility, workload and availability. Maia Cruz teaches conversational English but is marked as not teaching children; Rafael Santos is marked as child-eligible. Follow the actual output rather than promising a specific ranking.</p>
+  <p><strong>Suggested narration:</strong> “The assessment supplies a proficiency level and learning preferences. The matching process considers eligibility first, then compares relevant teaching and scheduling factors. The administrator makes the final selection.”</p>
+
+  <h2>3. Show teacher management</h2>
+  <ul>
+    <li><strong>Rafael Santos:</strong> beginner and children’s English, structured and visual teaching.</li>
+    <li><strong>Gina Dela Cruz:</strong> IELTS and TOEIC, exam preparation and structured review.</li>
+    <li><strong>Maia Cruz:</strong> conversation specialist who does not teach children.</li>
+    <li><strong>Ben Martin:</strong> interactive conversation and pronunciation.</li>
+  </ul>
+  <p>Open <strong>Account Management</strong> or <strong>Teacher Courses</strong>, compare profiles and show assigned courses and published availability where available.</p>
+
+  <h2>4. Show the student experience</h2>
+  <p>Sign in as <strong>carlos.mendoza@student.jenacademia.local</strong>. Show the dashboard, assigned teacher <strong>Ben Martin</strong>, contract and calendar. Booking depends on the package, teacher availability and schedule conflicts.</p>
+  <p>Open assignments and find <strong>Meeting Introductions</strong>, seeded for Carlos. Explain the instructions and due date. If you demonstrate a submission, use a short fictional answer and check the result on screen; submitting changes the demo state.</p>
+  <p>Open learning materials and look for <strong>Confident Conversations</strong>. The seed includes lesson progress for Carlos: one completed lesson and one partly completed lesson. Confirm the current display before quoting percentages.</p>
+
+  <h2>5. Show the teacher’s view</h2>
+  <p>Sign in as <strong>ben.martin@jenacademia.local</strong>. Open the student and assignment pages, locate Carlos and <strong>Meeting Introductions</strong>, and show pending work or the submission you just made.</p>
+  <p>Open the calendar or reschedule area and look for <strong>Conversation Reschedule Demo</strong>, which was seeded with a pending request. Explain that the original booking stays in place while the request awaits a decision; check the status before demonstrating an approval.</p>
+  <p>For a second example, <strong>gina.delacruz@jenacademia.local</strong> teaches Beatrice Alvarez. The seed includes <strong>Listening Reflection</strong> and an <strong>IELTS Progress Review</strong> class with a teacher remark.</p>
+
+  <h2>6. Attendance and administrator review</h2>
+  <p>As the administrator, open <strong>Verifications</strong> and look for <strong>Conversation Attendance Review</strong>. This example was seeded for review without evidence files.</p>
+  <p>Explain that verification uses the application’s attendance and evidence rules and affects the package according to the recorded outcome. Avoid approving or changing the record during the defense unless you have rehearsed the consequences.</p>
+
+  <h2>7. Group-class demonstration</h2>
+  <div class="warning"><strong>Important:</strong> The current seed contains no prepared group invitations or converted sessions.</div>
+  <ol>
+    <li>Arrange at least two eligible, unstarted individual bookings belonging to different students with the same teacher, course and duration.</li>
+    <li>As the teacher, open an eligible booking and use the group proposal feature to select compatible bookings and invite the students.</li>
+    <li>Sign in as each invited student and respond. Show the pending state before the last acceptance if the interface permits it.</li>
+    <li>Once all required invitations are accepted, show the resulting group session and each student’s original booking record.</li>
+  </ol>
+  <p>Rehearse the exact sequence and record the chosen accounts and times here: ______________________________.</p>
+  <p><strong>Suggested narration:</strong> “The proposal collects each participant’s consent. A shared session preserves the individual student records and their separate attendance and credits.”</p>
+
+  <h2>8. Close and handle questions</h2>
+  <p>Summarize the journey: an administrator assesses and assigns a learner; the teacher schedules and delivers lessons; the student accesses learning materials; and the administrator reviews the resulting records.</p>
+  <p>Be explicit when a capability depends on an external integration or has not been demonstrated live. If asked about AI, distinguish the application’s matching rules from external provider responses. If asked about group classes, show the prepared proposal if available; otherwise explain the workflow without claiming it was browser-tested.</p>
+
+  <h3>Reference documents</h3>
+  <ul>
+    <li><a href="ADMIN_USER_MANUAL.html">Administrator manual</a></li>
+    <li><a href="USER_MANUAL.html">User manual</a></li>
+    <li><a href="SAMPLE_ACCOUNTS.txt">Sample accounts</a></li>
+  </ul>
+  <p>Some examples in those documents may describe data or dates that have since changed; the live screen is authoritative.</p>
+  <div class="footer">JEN Academia · Thesis defense presentation guide</div>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # JEN Academia — features and system rules
 
-Source inventory prepared 15 November 2026. This describes the current repository, including local changes. It is not a certification of the deployed website or a comparison against the thesis transcript, which was not provided. Features listed as API support, interface rules, or configuration dependent should retain those qualifications in a thesis checklist.
+Source inventory updated 25 November 2026 against the current repository. This describes the current repository, including local changes. It is not a certification of the deployed website or a comparison against the thesis transcript, which was not provided. Features listed as API support, interface rules, or configuration dependent should retain those qualifications in a thesis checklist.
 
 ## Role boundaries
 
@@ -35,7 +35,7 @@ Source inventory prepared 15 November 2026. This describes the current repositor
 - Sign in using email and password; choose whether to stay signed in.
 - Redirect to the dashboard for the authenticated role.
 - Show incorrect credentials, temporary lockout, archived-account and setup-link errors.
-- Default account lockout: five failed sign-in attempts, locked for 15 minutes. Network sign-in limiter defaults to 100 attempts per 15 minutes; deployment settings may override these values.
+- Account lockout begins after five failed sign-in attempts for 30 seconds. Every three further failed attempts triggers a longer lockout: 45 seconds, 60 seconds, 3 minutes and then 5 minutes; later lockouts remain at 5 minutes. Network sign-in limiter defaults to 100 attempts per 15 minutes; deployment settings may override these values.
 - Request a password-reset email. The response does not disclose whether an eligible email account exists.
 - Open and validate a password-reset link; set a new password.
 - Reset links expire after one hour, are stored as hashes, are single use, and older unused reset links are invalidated when replaced.
@@ -334,19 +334,19 @@ Source inventory prepared 15 November 2026. This describes the current repositor
 
 ### Group Class Proposals module
 
-- From an existing class, select a compatible second student's booked lesson.
+- From an existing class, select one or more compatible booked lessons belonging to other students.
 - Find shared date/time options and optionally use a preferred time.
 - Propose a group class, view invitation responses/status and cancel the teacher's proposal.
-- Propose a new time for an existing two-student group, keeping the same participants.
-- Exactly two different students; same teacher, course and 25/50-minute duration; both original bookings must remain eligible, scheduled and unstarted.
+- Propose a new time for an existing group, keeping the same participants.
+- At least two different students, with one existing booking per student; same teacher, course and 25/50-minute duration. Original bookings must remain eligible, scheduled and unstarted.
 - All participants must have active, complete accounts and eligible original packages.
-- Both students must accept before conversion/rescheduling is committed.
+- Every invited student must accept before conversion/rescheduling is committed.
 - Proposal expires at the earlier of 24 hours after creation or 15 minutes before the earliest original/proposed lesson.
 - Pending proposal temporarily reserves the proposed interval; original bookings remain reserved until conversion.
 - Decline/cancellation/expiry, original-booking changes or failed final eligibility/conflict checks preserve the originals.
-- Conversion reuses the two original student booking IDs, links one shared session/meeting and does not create an extra booking or an extra credit deduction.
+- Conversion reuses the original student booking IDs, links one shared session/meeting and does not create an extra booking or an extra credit deduction.
 - Teacher timetable collapses the group into one displayed session; attendance, consent, private remarks, verification and charging remain per student.
-- Both group students must join and consent before group recording can start.
+- Students already marked as joined must have consented before group recording starts; an absent student does not block recording. Attendance and verification remain individual.
 - One present student does not automatically verify the absent student.
 
 ### Class History module
@@ -426,7 +426,7 @@ Source inventory prepared 15 November 2026. This describes the current repositor
 - Open a scheduled class's meeting, acknowledge consent and record own attendance.
 - Students may arrive before teacher start; attendance is recorded without deducting a class credit.
 - There is no automatic 15-minute attendance cutoff.
-- An unstarted lesson closes at its scheduled end. Once the teacher starts, participants may join/rejoin until the teacher ends it.
+- Entry opens 30 minutes before the scheduled start. An unstarted lesson closes at its scheduled end. Once the teacher starts, participants may join/rejoin until the teacher ends it.
 - Closed, cancelled, completed, no-show or incomplete sessions reject entry.
 - Students confirm their own attendance/consent; a teacher cannot impersonate student attendance through the normal endpoint.
 - Attendance closes ordinary rescheduling/group conversion for that booking.
@@ -445,7 +445,7 @@ Source inventory prepared 15 November 2026. This describes the current repositor
 
 - View teacher proposals, original and proposed lesson details, response/expiry status.
 - Accept or decline own invitation.
-- Both students' acceptance is required; one acceptance alone does not replace the originals.
+- Every invited student's acceptance is required; partial acceptance does not replace the originals.
 - Cannot accept for another student or create the teacher's proposal.
 - Shared session uses own individual attendance, consent, package credit and private remarks.
 
@@ -546,7 +546,7 @@ Source inventory prepared 15 November 2026. This describes the current repositor
 
 ### Shared file rules
 
-- Assignment and submission: maximum five files, 10 MiB per file, 25 MiB combined.
+- Assignment and submission uploads: 100 MiB maximum combined size; an individual file is also limited to 100 MiB. The current upload handler does not set a fixed file-count limit.
 - Accepted extensions: PDF; DOC/DOCX; XLS/XLSX; PPT/PPTX; TXT/RTF; JPG/JPEG/PNG; MP3/WAV/M4A; MP4/WebM/MOV.
 - Profile photo, book cover, resume, lesson, screenshot and recording limits differ; use their respective module rules.
 - Protected assignment/submission links are signed, access checked and time limited; arbitrary public upload URLs are not the intended access flow.
@@ -571,7 +571,7 @@ Source inventory prepared 15 November 2026. This describes the current repositor
 - Administrator-only material writes, contract decisions and user administration are distinct from teacher/student reading permissions.
 - Passwords are hashed; setup/reset tokens are hashed; chat and selected private notes/notifications/reviews are encrypted in storage.
 - Current-password checks and costly AI/resume/contact operations are rate limited.
-- Email, LINE, optional SMS, AI, meeting-provider and recording-storage functions depend on deployment configuration.
+- Email, LINE, optional SMS, AI, meeting-provider and recording-storage functions depend on deployment configuration. AI requests use configured Gemini first, then Groq and OpenRouter as fallbacks; backup-provider PDF resume parsing requires readable extracted text. Provider availability is not guaranteed.
 - Meeting-link generation supports the configured provider path; Jitsi configuration and Teams integration code exist. This is not a guarantee that both providers are active in a deployment.
 - Group schema preparation failure disables group endpoints while preserving the individual scheduling path.
 
@@ -596,7 +596,7 @@ Source inventory prepared 15 November 2026. This describes the current repositor
 | Account/photo/name | `frontend/src/pages/account.jsx`, `frontend/src/components/PasswordInput.jsx`, `backend/profileValidation.js`, `backend/server.js` |
 | Booking/rescheduling/attendance | `frontend/src/pages/Calendar.jsx`, `frontend/src/components/StudentBookingWizard.jsx`, `RescheduleTimePicker.jsx`, `MyRescheduleRequests.jsx`; `backend/server.js`, `scheduling.js`, `classSession.js`, `classEvidence.js`, `rescheduleRequestFlow.js`; `docs/scheduling-attendance-rules.md` |
 | Group lessons | `frontend/src/components/GroupClassManager.jsx`, `backend/groupClasses.js`, `backend/groupClassAttendance.js`, `docs/group-class-proposals.md` |
-| Matching/evaluation | `backend/teacherMatching.js`, `teacherAdvisor.js`, `teacherResumeParser.js`, `matchInsights.js`, `proficiencyEvaluation.js`; `frontend/src/utils/matchingCriteria.js` |
+| Matching/evaluation | `backend/teacherMatching.js`, `teacherAdvisor.js`, `teacherResumeParser.js`, `aiClient.js`, `geminiClient.js`, `matchInsights.js`, `proficiencyEvaluation.js`; `frontend/src/utils/matchingCriteria.js` |
 | Contracts/reviews | `backend/contractTerms.js`, `contractRequestFlow.js`, `contractReview.js`, `server.js`; `frontend/src/pages/ContractReview.jsx` |
 | Assignments | `frontend/src/pages/teacherAssignment.jsx`, `assignments.jsx`, `assignmentsDropbox.jsx`; `backend/assignmentUploadLimits.js`, `fileLink.js`, `server.js` |
 | Remarks/history/students | `frontend/src/pages/PassRemarks.jsx`, `remarks.jsx`, `StudentClassHistoryKid.jsx`, `TeacherStudents.jsx`; `backend/server.js` |
@@ -604,4 +604,4 @@ Source inventory prepared 15 November 2026. This describes the current repositor
 | Notifications/chat/LINE | `frontend/src/components/NotificationPanel.jsx`, `NotificationContainer.jsx`, `ChatPanel.jsx`, `LineConnectCard.jsx`; `frontend/src/utils/toastQueue.js`; `backend/chatPagination.js`, `line.js`, `lineSetup.js`, `lineReminders.js`, `server.js` |
 | Dormancy/security | `backend/accountDormancy.js`, `sessionToken.js`, `rateLimit.js`, `dbRateLimit.js`, `server.js` |
 
-This document adds an audit artifact only; preparing it does not change application behavior.
+This inventory describes repository code, not a live deployment or a complete end-to-end acceptance test. Updating this document does not change application behavior.
