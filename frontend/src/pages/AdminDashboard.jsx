@@ -5334,7 +5334,7 @@ export default function AdminDashboard() {
                 </p>
               </div>
             </div>
-            <Calendar />
+            <Calendar embeddedInAdmin />
           </section>
         )}
 

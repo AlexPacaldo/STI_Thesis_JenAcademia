@@ -9129,14 +9129,16 @@ app.post("/api/calendar/classes/:class_id/recording", requireSession, requireCla
       ]
     );
 
-    if (groupClassSchemaReady) await shareGroupEvidence(pool, class_id, ["recording_url", "recording_mime_type", "recording_size_bytes", "recording_uploaded_at", "recording_expires_at", "recording_duration_seconds"]);
+    const recordingPeers = groupClassSchemaReady
+      ? await shareGroupEvidence(pool, class_id, ["recording_url", "recording_mime_type", "recording_size_bytes", "recording_uploaded_at", "recording_expires_at", "recording_duration_seconds"])
+      : [];
 
     if (existingRows[0]?.recording_url && existingRows[0].recording_url !== recordingUrl) {
       await deleteClassRecording(existingRows[0].recording_url);
     }
 
     const verification = await getClassVerification(pool, class_id);
-    broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id], "class-verification-changed", {
+    broadcastCalendarChange([classInfo.teacher_id, classInfo.student_id, ...recordingPeers.flatMap(peer => [peer.teacher_id, peer.student_id])], "class-verification-changed", {
       class_id: classInfo.class_id,
       verification_status: verification?.verification_status || "needs_review",
     });
@@ -9859,6 +9861,7 @@ app.get("/api/student/:student_id/class-history", requireSession, async (req, re
               cal.recording_expires_at,
               cal.summary,
               COALESCE(cal.verification_status, 'pending') AS verification_status,
+              tea.timezone AS teacher_timezone,
               tea.user_id AS teacher_id,
               tea.first_name AS teacher_first_name,
               tea.last_name AS teacher_last_name,
@@ -9913,12 +9916,14 @@ app.get("/api/teacher/:teacher_id/class-history", requireSession, async (req, re
               cal.recording_expires_at,
               cal.summary,
               COALESCE(cal.verification_status, 'pending') AS verification_status,
+              tea.timezone AS teacher_timezone,
               stu.user_id AS student_id,
               stu.first_name AS student_first_name,
               stu.last_name AS student_last_name,
               stu.email AS student_email
        FROM classes c
        LEFT JOIN class_attendance_logs cal ON cal.class_id = c.class_id
+       JOIN users tea ON c.teacher_id = tea.user_id
        JOIN users stu ON c.student_id = stu.user_id
         AND stu.status = 'active' AND stu.profile_completed = TRUE
        WHERE c.teacher_id = ?

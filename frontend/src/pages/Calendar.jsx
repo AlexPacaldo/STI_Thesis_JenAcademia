@@ -193,13 +193,13 @@ const formatRemarkDate = (value) => {
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleDateString();
 };
 
-const formatVerificationTimestamp = (value, includeDate = false) => {
+const formatVerificationTimestamp = (value, includeDate = false, monthStyle = "short") => {
   if (!value) return "";
   const parsed = new Date(String(value).replace(" ", "T"));
   if (Number.isNaN(parsed.getTime())) return String(value);
   if (includeDate) {
     return parsed.toLocaleString([], {
-      month: "short", day: "numeric", year: "numeric",
+      month: monthStyle, day: "numeric", year: "numeric",
       hour: "numeric", minute: "2-digit", timeZoneName: "short",
     });
   }
@@ -1014,7 +1014,7 @@ function RescheduleClosedNotice() {
  * - studentId: for admin to view a specific student's schedule
  * - onBookClass: callback for admin to book classes (date, time) => void
  */
-export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId = null, studentId = null, onBookClass = null }) {
+export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId = null, studentId = null, onBookClass = null, embeddedInAdmin = false }) {
   const { notify } = useNotification() || {};
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
@@ -1055,13 +1055,22 @@ export default function Calendar({ classesUsed = 0, classesLimit = 20, teacherId
     const params = new URLSearchParams(location.search);
     params.set("classId", classId);
     if (date) params.set("date", date);
-    navigate(`/Calendar?${params}`, { state: { classListEntry: true } });
+    if (embeddedInAdmin) params.set("tab", "calendar");
+    navigate(`${embeddedInAdmin ? "/AdminDashboard" : "/Calendar"}?${params}`, { state: { classListEntry: true } });
   };
 
   const closeClassDetails = () => {
     setSelectedClassId(null);
     if (isSimpleStudentView) setSelectedDate(null);
-    navigate("/Calendar", { replace: true });
+    if (embeddedInAdmin) {
+      const params = new URLSearchParams(location.search);
+      params.set("tab", "calendar");
+      params.delete("classId");
+      params.delete("date");
+      navigate(`/AdminDashboard?${params}`, { replace: true });
+    } else {
+      navigate("/Calendar", { replace: true });
+    }
   };
   // reschedule request form
   const [requestMode, setRequestMode] = useState(false);
@@ -2348,8 +2357,8 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   useEffect(() => {
     const classId = searchParams.get("classId");
     if (classId && !location.state?.classListEntry) {
-      const detailsUrl = `/Calendar?${searchParams}`;
-      navigate("/Calendar", { replace: true });
+      const detailsUrl = `${embeddedInAdmin ? "/AdminDashboard" : "/Calendar"}?${searchParams}`;
+      navigate(embeddedInAdmin ? "/AdminDashboard?tab=calendar" : "/Calendar", { replace: true });
       navigate(detailsUrl, { state: { ...location.state, classListEntry: true } });
     }
     if (previousClassUrl.current !== classId) {
@@ -2359,7 +2368,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
         if (isSimpleStudentView) setSelectedDate(null);
       }
     }
-  }, [searchParams, location.state, navigate, isSimpleStudentView]);
+  }, [searchParams, location.state, navigate, isSimpleStudentView, embeddedInAdmin]);
 
   useEffect(() => {
     const requestId = searchParams.get("rescheduleRequestId");
@@ -4756,7 +4765,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     if (simpleAvailabilityLoading || !availableSlot) return;
 
     if (studentBookingLimit <= 0) {
-      setStudentBookingError(BOOKING.noClassesLeft);
+      setStudentBookingError(allRemainingClassesReserved ? PLAN_STATUS.allBooked : studentPlanStatusNote);
       return;
     }
 
@@ -4859,7 +4868,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return false;
     }
     if (!studentBookingLimit) {
-      setStudentBookingError(BOOKING.noClassesLeft);
+      setStudentBookingError(allRemainingClassesReserved ? PLAN_STATUS.allBooked : studentPlanStatusNote);
       return false;
     }
     if (studentBookingSelections.length >= studentBookingLimit) {
@@ -5034,7 +5043,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
   const openMonthlyBooking = () => {
     setBookingInitialStep("choose");
     if (hasNoClassesLeft) {
-      setStudentBookingError(BOOKING.noClassesLeft);
+      setStudentBookingError(allRemainingClassesReserved ? PLAN_STATUS.allBooked : studentPlanStatusNote);
       return;
     }
 
@@ -5345,7 +5354,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return;
     }
     if (hasNoClassesLeft) {
-      setStudentBookingError(BOOKING.noClassesLeft);
+      setStudentBookingError(allRemainingClassesReserved ? PLAN_STATUS.allBooked : studentPlanStatusNote);
       return;
     }
     if (slotsToBook.length > studentBookingLimit) {
@@ -5531,7 +5540,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
       return;
     }
     if (hasNoClassesLeft) {
-      setStudentBookingError(BOOKING.noClassesLeft);
+      setStudentBookingError(allRemainingClassesReserved ? PLAN_STATUS.allBooked : studentPlanStatusNote);
       return;
     }
     if (slotsToBook.length > studentBookingLimit) {
@@ -5591,7 +5600,9 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
    * !! where the class got to, in words a student would use.
    */
   const renderStudentClassStatus = () => {
-    if (!selectedClass || isSelectedClassCompleted) return null;
+    if (!selectedClass) return null;
+    const recordingExpiry = verificationRecordingExpiresAt || selectedClassVerification?.recording_expires_at;
+    if (isSelectedClassCompleted && !(hasVerificationRecording && recordingExpiry)) return null;
 
     const sentences = {
       verified: "Your teacher marked this class as done.",
@@ -5605,9 +5616,9 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
     return (
       <div className={kid.info}>
         <span>
-          {sentences[selectedVerificationStatus] || sentences.pending}
-          {hasVerificationRecording && verificationRecordingExpiresAt && (
-            ` The recording is deleted ${formatVerificationTimestamp(verificationRecordingExpiresAt, true)}.`
+          {isSelectedClassCompleted ? "Your teacher marked this class as done." : (sentences[selectedVerificationStatus] || sentences.pending)}
+          {hasVerificationRecording && recordingExpiry && (
+            ` The recording will be deleted on ${formatVerificationTimestamp(recordingExpiry, true, "long")}.`
           )}
         </span>
       </div>
@@ -7624,7 +7635,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                           <div className={kid.empty}>
                             <span className={kid.emptyIcon} aria-hidden="true"><i className="bi bi-calendar-x" /></span>
                             <span>
-                              {hasNoClassesLeft ? HOME.noClassesLeft : HOME.noClassesYet}
+                              {hasNoClassesLeft ? studentPlanStatusNote : HOME.noClassesYet}
                             </span>
                             {!hasNoClassesLeft && <span>{HOME.noClassesYetHelp}</span>}
                           </div>
@@ -8036,7 +8047,7 @@ const stream = openSseStream(`${API}/api/calendar/stream/${localUserId}`, { reco
                                 </div>
                                 <div className={kid.newPlanPrompt} aria-live="polite">
                                   <span className={kid.newPlanStepIcon} aria-hidden="true">
-                                    {NEW_PLAN_STEPS[newPlanStep].icon}
+                                    <i className={`bi ${NEW_PLAN_STEPS[newPlanStep].icon}`} />
                                   </span>
                                   <div>
                                     <h4 className={kid.newPlanStepTitle}>

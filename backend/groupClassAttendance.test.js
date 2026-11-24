@@ -40,7 +40,8 @@ test("group recording permits absent students but requires consent from joined s
 });
 test("shared evidence never overwrites a student's consent, private remarks, or attendance", async () => {
   const db = database();
-  await shareGroupEvidence(db, 10, ["recording_url", "recording_duration_seconds"]);
+  const peers = await shareGroupEvidence(db, 10, ["recording_url", "recording_duration_seconds"]);
+  assert.deepEqual(peers, [peer]);
   const write = db.calls.find(call => call.sql.includes("UPDATE class_attendance_logs"));
   assert.deepEqual(write.params, [10, [20]]);
   assert(!write.sql.includes("student_joined_at"));

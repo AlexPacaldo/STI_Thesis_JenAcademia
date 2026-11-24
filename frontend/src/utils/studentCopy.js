@@ -37,7 +37,7 @@ export const PLAN_STATUS = {
   endedWithClasses: "Your plan ended, but your unused classes are still yours.",
   noPlan: "You do not have a class plan yet.",
   allUsed: "You have used all your classes.",
-  allBooked: "All your classes are already booked. Change one to free a day.",
+  allBooked: "All your remaining classes are already booked.",
   normal: PLAN.tip,
 };
 

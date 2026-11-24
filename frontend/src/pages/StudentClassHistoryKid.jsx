@@ -23,7 +23,8 @@ import axios from "axios";
 import kid from "../assets/studentKid.module.css";
 import { useNotification } from "../components/NotificationContainer.jsx";
 import { API_BASE_URL } from "../utils/api.js";
-import { describeTimeOfDay, formatFriendlyDate } from "../utils/classTime.js";
+import { formatFriendlyDate, humanTime } from "../utils/classTime.js";
+import { convertDateTime, formatDateInTimezone, getStoredUserTimezone, DEFAULT_TIMEZONE } from "../utils/timezone.js";
 import { openClassRecording } from "../utils/classRecording.js";
 import ModalPortal from "../utils/ModalPortal.jsx";
 import { readStoredUser } from "../utils/sessionUser.js";
@@ -111,7 +112,15 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
         `${API_BASE_URL}/api/${isTeacherMode ? "teacher" : "student"}/${currentUserId}/class-history`,
         { params: { limit: 200 } }
       );
-      setHistory(response.data?.history || []);
+      const viewerTimezone = getStoredUserTimezone();
+      setHistory((response.data?.history || []).map((row) => {
+        if (!row.scheduled_date || !row.start_time) return row;
+        const sourceTimezone = row.teacher_timezone || DEFAULT_TIMEZONE;
+        const start = convertDateTime(row.scheduled_date, row.start_time, sourceTimezone, viewerTimezone);
+        const end = row.end_time ? convertDateTime(row.scheduled_date, row.end_time, sourceTimezone, viewerTimezone) : null;
+        return { ...row, scheduled_date: start.date, start_time: start.time,
+          end_time: end?.time || null, end_date: end?.date || null };
+      }));
       if (showLoading) setVisible(PAGE_SIZE);
     } catch (err) {
       if (showLoading) {
@@ -143,12 +152,7 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
     enabled: Boolean(currentUserId && userRole === (isTeacherMode ? "teacher" : "student")),
   });
 
-  const todayKey = useMemo(() => {
-    const today = new Date();
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
-      today.getDate()
-    ).padStart(2, "0")}`;
-  }, []);
+  const todayKey = useMemo(() => formatDateInTimezone(new Date(), getStoredUserTimezone()), []);
 
   /* The filter.
      *
@@ -311,7 +315,10 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
                 HISTORY.yourTeacher;
 
               const minutes = Number(row.duration_minutes || 0) || Number(row.duration || 0) || 0;
-              const partOfDay = describeTimeOfDay(row.start_time);
+              const startTime = humanTime(row.start_time);
+              const endTime = humanTime(row.end_time);
+              const endDate = row.end_date && row.end_date !== row.scheduled_date ? ` (${formatFriendlyDate(row.end_date)})` : "";
+              const timeLabel = startTime ? `${startTime}${endTime ? ` - ${endTime}${endDate}` : ""}` : "";
               const when = describeWhen(row.scheduled_date, todayKey);
 
               return (
@@ -324,7 +331,7 @@ export default function StudentClassHistoryKid({ mode = "student" }) {
                       <h2 className={kid.pastName}>{row.class_name || HISTORY.title}</h2>
                       <p className={kid.pastWhen}>
                         {when}
-                        {partOfDay ? ` · ${partOfDay}` : ""}
+                        {timeLabel ? ` - ${timeLabel}` : ""}
                       </p>
                     </div>
                   </div>

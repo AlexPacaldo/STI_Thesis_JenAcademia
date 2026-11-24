@@ -6,6 +6,8 @@ import { readStoredUser } from "../utils/sessionUser.js";
 import { API_BASE_URL } from "../utils/api.js";
 import { openSseStream } from "../utils/sseClient.js";
 import FirstStepsGuide from "../components/FirstStepsGuide.jsx";
+import { describeExtensionEligibility } from "../utils/contractExpiry.js";
+import { PLAN_STATUS } from "../utils/studentCopy.js";
 import { convertDateTime, formatDateInTimezone, getStoredUserTimezone, normalizeDateKey } from "../utils/timezone.js";
 
 const API = API_BASE_URL;
@@ -265,7 +267,11 @@ export default function Dashboard({ mode }) {
   const readyToBook =
     studentData.package?.bookable_classes != null
       ? Number(studentData.package.bookable_classes || 0)
-      : (studentData.package?.classes_left ?? 0) - (studentData.package?.classes_used ?? 0);
+      : Math.max(0, Number(classesLeft) - Number(studentData.package?.booked_classes || 0));
+  const noBookableMessage = !studentData.package
+    ? (describeExtensionEligibility({ activePackage: null, latestPackage: studentData.latest_package }) === "extend"
+      ? PLAN_STATUS.endedWithClasses : "You do not have an active class plan.")
+    : Number(classesLeft) > 0 ? PLAN_STATUS.allBooked : PLAN_STATUS.allUsed;
 
   return (
     <main className={styles.page}>
@@ -294,11 +300,8 @@ export default function Dashboard({ mode }) {
               <article className={styles.counterCard}>
                 <span className={styles.counterLabel}>Classes left</span>
                 <span className={styles.counterNumber}>{classesLeft}</span>
-                {readyToBook > 0 ? (
-                  <span className={styles.counterReady}>Ready to book: {readyToBook}</span>
-                ) : (
-                  <span className={styles.counterZero}>No classes left. Ask your teacher for more.</span>
-                )}
+                <span className={styles.counterReady}>Ready to book: {Math.max(0, readyToBook)}</span>
+                {readyToBook <= 0 && <span className={styles.counterZero}>{noBookableMessage}</span>}
               </article>
             )}
 
@@ -322,7 +325,7 @@ export default function Dashboard({ mode }) {
                     <div className={styles.emptyCard}>
                       <span className={styles.emptyIcon} aria-hidden="true"><i className="bi bi-calendar-x" /></span>
                       <p className={styles.emptyText}>
-                        {isTeacher ? "No classes today." : "No classes today. Press the green button above to book one."}
+                        {isTeacher || readyToBook <= 0 ? "No classes today." : "No classes today. Press the green button above to book one."}
                       </p>
                     </div>
                   );

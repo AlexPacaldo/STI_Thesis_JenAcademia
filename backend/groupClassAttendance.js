@@ -36,10 +36,11 @@ const sharedFields = new Set([
 export async function shareGroupEvidence(db, classId, fields) {
   if (fields.some(field => !sharedFields.has(field))) throw new Error("Unsupported shared group evidence field");
   const peers = await groupClassPeers(db, classId);
-  if (!peers.length) return;
+  if (!peers.length) return peers;
   await db.query(`UPDATE class_attendance_logs target JOIN class_attendance_logs source ON source.class_id = ?
     SET ${fields.map(field => `target.${field} = source.${field}`).join(", ")}
     WHERE target.class_id IN (?) AND target.teacher_ended_at IS NULL`, [classId, peers.map(peer => peer.class_id)]);
+  return peers;
 }
 
 export async function groupRecordingConsentReady(db, classId) {
